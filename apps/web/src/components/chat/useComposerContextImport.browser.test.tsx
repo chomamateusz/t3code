@@ -42,6 +42,10 @@ function deferred<T>() {
 it.each([
   { kind: "file", edit: "delete" },
   { kind: "image", edit: "delete" },
+  { kind: "image", edit: "delete-during-decode" },
+  { kind: "image", edit: "cached-delete-during-decode" },
+  { kind: "image", edit: "retain" },
+  { kind: "image", edit: "cached" },
   { kind: "file", edit: "undo" },
   { kind: "file", edit: "retain" },
   { kind: "file", edit: "switch" },
@@ -55,11 +59,22 @@ it.each([
   const store = useComposerDraftStore.getState();
   using _draft = { [Symbol.dispose]: () => store.clearComposerContent(target) };
   const sourceEnvironmentId = EnvironmentId.make("clipboard-source");
+  const bytes =
+    kind === "image"
+      ? Uint8Array.from(
+          atob(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==",
+          ),
+          (character) => character.charCodeAt(0),
+        )
+      : "notes";
+  const mimeType = kind === "image" ? "image/png" : "text/plain";
+  const file = new File([bytes], "notes.txt", { type: mimeType });
+  const cached = edit === "cached" || edit === "cached-delete-during-decode";
+  const delayDecode = edit === "delete-during-decode" || edit === "cached-delete-during-decode";
   rememberCopiedComposerAttachments(
     sourceEnvironmentId,
-    edit === "cached"
-      ? new Map([["source-attachment", new File(["notes"], "notes.txt")]])
-      : new Map(),
+    cached ? new Map([["source-attachment", file]]) : new Map(),
   );
   using _copy = {
     [Symbol.dispose]: () => rememberCopiedComposerAttachments(sourceEnvironmentId, new Map()),
@@ -68,6 +83,8 @@ it.each([
   const downloaded = deferred<Response>();
   const requested = deferred<void>();
   const settled = deferred<void>();
+  const decoding = deferred<void>();
+  const resumeDecode = deferred<void>();
   const input = {
     environmentId: EnvironmentId.make("clipboard-target"),
     linkedEnvironments: new Map(),
@@ -105,6 +122,18 @@ it.each([
     requested.resolve();
     return downloaded.promise;
   });
+  const decode = globalThis.createImageBitmap.bind(globalThis);
+  using _decode = stubGlobal(
+    "createImageBitmap",
+    async (image: ImageBitmapSource, options?: ImageBitmapOptions) => {
+      const bitmap = await decode(image, options);
+      if (delayDecode) {
+        decoding.resolve();
+        await resumeDecode.promise;
+      }
+      return bitmap;
+    },
+  );
   const contextId = ComposerContextId.make(`${kind}_source`);
   const attachmentFields = {
     version: 1 as const,
@@ -112,8 +141,8 @@ it.each([
     label: "notes.txt",
     attachmentId: "source-attachment",
     name: "notes.txt",
-    mimeType: kind === "file" ? "text/plain" : "image/png",
-    sizeBytes: 5,
+    mimeType,
+    sizeBytes: file.size,
   };
   const attachment = (
     kind === "file"
@@ -148,9 +177,15 @@ it.each([
     if (edit === "question") pastedPrompt = "Question answer";
     promptRef.current = pastedPrompt;
     store.setPrompt(target, pastedPrompt);
-    if (edit !== "cached") await requested.promise;
+    if (!cached) await requested.promise;
   });
-  if (edit !== "cached") expect(pendingDraftWork.has(target)).toBe(true);
+  if (!cached || delayDecode) expect(pendingDraftWork.has(target)).toBe(true);
+  if (delayDecode) {
+    await act(async () => {
+      downloaded.resolve(new Response(bytes, { headers: { "Content-Type": mimeType } }));
+      await decoding.promise;
+    });
+  }
   await act(() => {
     if (
       edit !== "annotation" &&
@@ -169,7 +204,8 @@ it.each([
     if (edit === "switch") input.attachmentTargetKeyRef.current = DraftId.make("other-draft");
   });
   await act(async () => {
-    downloaded.resolve(new Response("notes", { headers: { "Content-Type": attachment.mimeType } }));
+    downloaded.resolve(new Response(bytes, { headers: { "Content-Type": mimeType } }));
+    resumeDecode.resolve();
     await settled.promise;
   });
   expect(pendingDraftWork.has(target)).toBe(false);

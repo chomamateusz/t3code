@@ -58,6 +58,10 @@ also send files to T3 Code through another app's system share sheet.
 On Android, you can also drag images from another app into the message input
 in split screen.
 
+On web and desktop, images larger than 2000 pixels on either side are resized before
+upload, preserving their proportions. For small text, attach a crop of the relevant
+area. Previously sent images are not changed.
+
 See [images and videos](#images-and-videos-in-messages) for previewing and saving media.
 
 ## Send while the agent is working

@@ -12,6 +12,7 @@ import {
   type ComposerContextRecord,
   type EnvironmentId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
 import {
   type ComposerFileAttachment,
@@ -56,6 +57,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { countPreparingComposerImages } from "./preparingComposerImages";
+import { prepareImageForAttachment } from "~/lib/imageCompression";
 
 const isUnreachable = Schema.is(
   Schema.Union([ConnectionTransientError, ConnectionBlockedError, EnvironmentRpcUnavailableError]),
@@ -165,7 +167,8 @@ export function useComposerContextImport(input: {
         description: `${reason} Remove the chip or attach the file again.`,
       });
     };
-    let file = copiedComposerAttachmentFile(sourceEnvironmentId, record.attachmentId);
+    const cachedFile = copiedComposerAttachmentFile(sourceEnvironmentId, record.attachmentId);
+    let file = cachedFile;
     if (!file) {
       const sourceConnection = readPreparedConnection(sourceEnvironmentId);
       if (!sourceConnection) {
@@ -194,6 +197,24 @@ export function useComposerContextImport(input: {
         fail("Downloading it from the source failed.");
         return;
       }
+      file = new File([blob], record.name, { type: record.mimeType || blob.type });
+    }
+    if (record.kind === "image") {
+      const prepared = await prepareImageForAttachment(
+        file,
+        PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+      ).catch(() => ({ ok: false, reason: "unreadable" }) as const);
+      if (!prepared.ok) {
+        fail(
+          prepared.reason === "unreadable"
+            ? "It could not be read as an image."
+            : "It is too large to attach, even after compression.",
+        );
+        return;
+      }
+      file = prepared.file;
+    }
+    if (!cachedFile || record.kind === "image") {
       // Question attachments have no inline reference; annotations can own their screenshots.
       const references = new Set(collectInlineContextIds(promptRef.current));
       if (
@@ -208,7 +229,6 @@ export function useComposerContextImport(input: {
         )
       )
         return;
-      file = new File([blob], record.name, { type: record.mimeType || blob.type });
     }
     // The draft these bytes belong to may have been sent or switched away from while they
     // downloaded. Dropping them here keeps them out of whatever draft is open now.
@@ -239,7 +259,7 @@ export function useComposerContextImport(input: {
           {
             type: "image",
             id: localId,
-            name: record.name,
+            name: file.name,
             mimeType: file.type,
             sizeBytes: file.size,
             previewUrl: URL.createObjectURL(file),

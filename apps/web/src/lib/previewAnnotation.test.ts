@@ -30,7 +30,8 @@ describe("preview annotation capture", () => {
   it("preserves the PNG bytes, MIME type, and filename without fetching", async () => {
     const fetch = vi.fn().mockRejectedValue(new TypeError("Blocked by connect-src"));
     vi.stubGlobal("fetch", fetch);
-    const capture = capturePreviewAnnotationScreenshot(annotation);
+    vi.stubGlobal("createImageBitmap", async () => ({ width: 1, height: 1, close: vi.fn() }));
+    const capture = await capturePreviewAnnotationScreenshot(annotation);
     expect(capture.status).toBe("captured");
     if (capture.status !== "captured") throw new Error("Expected a screenshot file");
     expect(capture.file.name).toBe("preview-annotation-annotation_1.png");
@@ -41,12 +42,55 @@ describe("preview annotation capture", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("resizes a Retina annotation screenshot to 2000px before attaching it", async () => {
+    const bytes = Buffer.from(annotation.screenshot!.dataUrl.split(",")[1]!, "base64");
+    bytes.writeUInt32BE(4000, 16);
+    bytes.writeUInt32BE(2400, 20);
+    const canvases: Array<{ width: number; height: number }> = [];
+    vi.stubGlobal("createImageBitmap", async () => ({
+      width: 4000,
+      height: 2400,
+      close: vi.fn(),
+    }));
+    vi.stubGlobal(
+      "OffscreenCanvas",
+      class {
+        constructor(width: number, height: number) {
+          canvases.push({ width, height });
+        }
+        getContext() {
+          return { drawImage: vi.fn() };
+        }
+        async convertToBlob({ type }: { type: string }) {
+          return new Blob(["resized"], { type });
+        }
+      },
+    );
+
+    const capture = await capturePreviewAnnotationScreenshot({
+      ...annotation,
+      screenshot: {
+        ...annotation.screenshot!,
+        dataUrl: `data:image/png;base64,${bytes.toString("base64")}`,
+        width: 4000,
+        height: 2400,
+      },
+    });
+
+    expect(canvases).toEqual([{ width: 2000, height: 1200 }]);
+    expect(capture.status).toBe("captured");
+    if (capture.status !== "captured") throw new Error("Expected a screenshot file");
+    expect(await capture.file.text()).toBe("resized");
+    expect(capture.file.type).toBe("image/png");
+    expect(capture.file.name).toBe("preview-annotation-annotation_1.png");
+  });
+
   // regression: #12636 desktop annotation screenshots must be decoded without fetch (CSP)
   it.each(["data:image/jpeg;base64,AA==", "data:image/png;base64,", "data:image/png;base64,%%%"])(
     "reports a malformed screenshot as failed: %s",
-    (dataUrl) => {
+    async (dataUrl) => {
       const picked = { ...annotation, screenshot: { ...annotation.screenshot!, dataUrl } };
-      expect(capturePreviewAnnotationScreenshot(picked)).toEqual({ status: "failed" });
+      expect(await capturePreviewAnnotationScreenshot(picked)).toEqual({ status: "failed" });
     },
   );
 });

@@ -114,8 +114,9 @@ describe("open question delivery", () => {
     id: "12345678-1234-1234-1234-123456789abc",
     name: "window.png",
     mimeType: "image/png" as const,
-    sizeBytes: 3,
-    dataUrl: "data:image/png;base64,AQID",
+    sizeBytes: 70,
+    dataUrl:
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==",
     source: {
       kind: "snap-shot" as const,
       capturedAt: "2026-09-01T00:00:00.000Z",
@@ -212,8 +213,9 @@ describe("durable snapshot delivery", () => {
         id: "12345678-1234-1234-1234-123456789abc",
         name: "window.png",
         mimeType: "image/png" as const,
-        sizeBytes: 3,
-        dataUrl: "data:image/png;base64,AQID",
+        sizeBytes: 70,
+        dataUrl:
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==",
         source: {
           kind: "snap-shot" as const,
           capturedAt: "2026-09-01T00:00:00.000Z",
@@ -237,7 +239,15 @@ describe("durable snapshot delivery", () => {
             type: "image",
             ...capture,
             previewUrl: capture.dataUrl,
-            file: new File([new Uint8Array([1, 2, 3])], capture.name, { type: capture.mimeType }),
+            file: new File(
+              [
+                Uint8Array.from(atob(capture.dataUrl.split(",")[1]!), (character) =>
+                  character.charCodeAt(0),
+                ),
+              ],
+              capture.name,
+              { type: capture.mimeType },
+            ),
           });
           void store.syncPersistedAttachments(target, [capture]);
         }

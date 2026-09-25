@@ -793,7 +793,7 @@ export function PreviewView({
       const { annotation: picked, submission, screenshotFailed = false } = result;
       // Send annotations even if the optional crop fails or stalls; drop failed screenshots so prompts cannot
       // claim an attachment.
-      const capture = capturePreviewAnnotationScreenshot(picked);
+      const capture = await capturePreviewAnnotationScreenshot(picked);
       const cropDropped = screenshotFailed || capture.status === "failed";
       const annotation = capture.status === "failed" ? { ...picked, screenshot: null } : picked;
       addPreviewAnnotation(threadRef, annotation);

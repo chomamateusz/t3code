@@ -3,10 +3,6 @@ import {
   fitImageAttachmentSize,
   IMAGE_ATTACHMENT_MAX_EDGE,
 } from "@t3tools/client-runtime/image-attachment-size";
-import {
-  IMAGE_DIMENSIONS_HEADER_BYTES,
-  readImageDimensions,
-} from "@t3tools/shared/imageDimensions";
 
 const MAX_DIMENSION = IMAGE_ATTACHMENT_MAX_EDGE;
 export const MAX_STASH_IMAGE_DATA_URL_CHARS = 1_300_000;
@@ -313,14 +309,16 @@ async function reencodeWithinBudget(
   file: File,
   budgetChars: number,
   preferredMimeType?: "image/jpeg",
+  decodedBitmap?: ImageBitmap,
 ): Promise<ReencodeResult> {
   if (!canRecompress()) {
+    decodedBitmap?.close();
     return { ok: false, reason: "too-large" };
   }
 
   let bitmap: ImageBitmap;
   try {
-    bitmap = await createImageBitmap(file);
+    bitmap = decodedBitmap ?? (await createImageBitmap(file));
   } catch {
     return { ok: false, reason: "unreadable" };
   }
@@ -389,16 +387,13 @@ export async function compressImageForStash(
   }
 }
 
-async function fitImageToMaxEdge(file: File): Promise<{ file: File; imageSize: ImageSize } | null> {
+async function fitImageToMaxEdge(
+  file: File,
+  bitmap: ImageBitmap,
+): Promise<{ file: File; imageSize: ImageSize } | null> {
   const mimeType = downscalableImageMimeType(file.type);
-  if (!mimeType || !canRecompress() || file.size > MAX_COMPRESSIBLE_SOURCE_BYTES) return null;
-  let bitmap: ImageBitmap | undefined;
+  if (!mimeType || !canRecompress()) return null;
   try {
-    const header = readImageDimensions(
-      new Uint8Array(await file.slice(0, IMAGE_DIMENSIONS_HEADER_BYTES).arrayBuffer()),
-    );
-    if (!header || !fitImageAttachmentSize(header)) return null;
-    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
     const imageSize = fitImageAttachmentSize(bitmap);
     if (!imageSize) return null;
     const target = createCanvas(imageSize.width, imageSize.height);
@@ -413,8 +408,6 @@ async function fitImageToMaxEdge(file: File): Promise<{ file: File; imageSize: I
     };
   } catch {
     return null;
-  } finally {
-    bitmap?.close();
   }
 }
 
@@ -423,21 +416,30 @@ export async function compressImageToByteLimit(
   maxBytes: number,
   options?: { preferredMimeType?: "image/jpeg"; sourceSizeBytes?: number },
 ): Promise<CompressImageFileResult> {
-  const fitted = await fitImageToMaxEdge(file);
-  if (fitted && fitted.file.size <= maxBytes) {
-    return { ok: true, file: fitted.file, recompressed: true, imageSize: fitted.imageSize };
-  }
-  if (!fitted && file.size <= maxBytes) {
-    return { ok: true, file, recompressed: false };
-  }
   if ((options?.sourceSizeBytes ?? file.size) > MAX_COMPRESSIBLE_SOURCE_BYTES) {
     return { ok: false, reason: "too-large" };
   }
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    return { ok: false, reason: "unreadable" };
+  }
+  if (file.size <= maxBytes && Math.max(bitmap.width, bitmap.height) <= MAX_DIMENSION) {
+    bitmap.close();
+    return { ok: true, file, recompressed: false };
+  }
+  const fitted = await fitImageToMaxEdge(file, bitmap);
+  if (fitted && fitted.file.size <= maxBytes) {
+    bitmap.close();
+    return { ok: true, file: fitted.file, recompressed: true, imageSize: fitted.imageSize };
+  }
   const budgetChars = Math.floor(maxBytes / 3) * 4;
   const reencoded = await reencodeWithinBudget(
-    fitted?.file ?? file,
+    file,
     budgetChars,
     options?.preferredMimeType,
+    bitmap,
   );
   if (!reencoded.ok) {
     return reencoded;

@@ -232,6 +232,72 @@ describe("compressImageForStash", () => {
     });
   });
 
+  it("compressImageToByteLimit passes small files through byte-for-byte", async () => {
+    const close = vi.fn();
+    const bitmapSpy = vi.fn(async () => ({ width: 1600, height: 900, close }));
+    vi.stubGlobal("createImageBitmap", bitmapSpy);
+
+    const original = makeFile(1024);
+    const result = await compressImageToByteLimit(original, 10 * 1024 * 1024);
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.recompressed).toBe(false);
+    expect(result.ok && result.file).toBe(original);
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [5120, 2880, 2000, 1125],
+    [2880, 5120, 1125, 2000],
+    [2048, 1024, 2000, 1000],
+  ])(
+    "resizes a small %i x %i attachment to %i x %i",
+    async (width, height, targetWidth, targetHeight) => {
+      stubCanvasPipeline(() => 100_000);
+      const close = vi.fn();
+      vi.stubGlobal(
+        "createImageBitmap",
+        vi.fn(async () => ({ width, height, close })),
+      );
+      const Canvas = globalThis.OffscreenCanvas;
+      const sizes: number[][] = [];
+      vi.stubGlobal(
+        "OffscreenCanvas",
+        class extends Canvas {
+          constructor(w: number, h: number) {
+            super(w, h);
+            sizes.push([w, h]);
+          }
+        },
+      );
+      const result = await prepareImageForAttachment(makeFile(1_071_334), 10_000_000);
+      expect(result.ok && result.recompressed).toBe(true);
+      expect(sizes).toEqual([[targetWidth, targetHeight]]);
+      expect(globalThis.createImageBitmap).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("rejects an unreadable image even when its bytes fit", async () => {
+    vi.stubGlobal("createImageBitmap", vi.fn().mockRejectedValue(new Error("Invalid PNG")));
+    expect(await prepareImageForAttachment(makeFile(1024), 10_000_000)).toEqual({
+      ok: false,
+      reason: "unreadable",
+    });
+  });
+
+  it("compressImageToByteLimit re-encodes an oversized file under the byte cap", async () => {
+    stubCanvasPipeline(() => 200_000);
+
+    const result = await compressImageToByteLimit(makeFile(2_000_000, "image/webp"), 1_000_000);
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.recompressed).toBe(true);
+    expect(result.ok && result.file.type).toBe("image/webp");
+    expect(result.ok && result.file.name).toBe("shot.webp");
+    expect(result.ok && result.file.size).toBeLessThanOrEqual(1_000_000);
+  });
+
   it("compressImageToByteLimit refuses sources above the decode-safety ceiling", async () => {
     const bitmapSpy = vi.fn();
     vi.stubGlobal("createImageBitmap", bitmapSpy);
@@ -263,6 +329,16 @@ describe("composer image thumbnails", () => {
 });
 
 describe("HEIC attachment preparation", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(async () => ({
+        width: 1600,
+        height: 900,
+        close: vi.fn(),
+      })),
+    );
+  });
   it("converts a HEIC photo with a missing MIME type into a named JPEG", async () => {
     const original = makeHeicFile({
       name: "IMG_1234.HEIC",
@@ -419,22 +495,69 @@ describe("attachment max edge", () => {
     expect(result.ok && result.imageSize).toEqual({ width: 1500, height: 2000 });
   });
 
-  it.each([
-    { label: "a 2000px PNG", header: pngHeader(2000, 1200), type: "image/png" },
-    {
-      label: "a 3000px GIF",
-      header: [0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0xb8, 0x0b, 0x10, 0x04],
-      type: "image/gif",
-    },
-  ])("passes $label through without decoding it", async ({ header, type }) => {
-    const { decode } = stubDecoder({ width: 3000, height: 1040 });
-    const original = image(header, "image", type);
+  it("passes a 2000px PNG through after checking its decoded size", async () => {
+    const { decode, canvases } = stubDecoder({ width: 2000, height: 1200 });
+    const original = image(pngHeader(2000, 1200), "image.png", "image/png");
 
     const result = await prepareImageForAttachment(original, 10 * 1024 * 1024);
 
     expect(result.ok && result.file).toBe(original);
     expect(result.ok && result.recompressed).toBe(false);
-    expect(decode).not.toHaveBeenCalled();
+    expect(decode).toHaveBeenCalledOnce();
+    expect(canvases).toEqual([]);
+  });
+
+  it.each(["image/gif", "image/webp"])(
+    "resizes oversized %s attachments below the byte cap",
+    async (type) => {
+      const { decode, canvases } = stubDecoder({ width: 3000, height: 1040 });
+      const original = makeFile(1024, type);
+
+      const result = await prepareImageForAttachment(original, 10 * 1024 * 1024);
+
+      expect(result.ok && result.recompressed).toBe(true);
+      expect(result.ok && result.imageSize).toEqual({ width: 2000, height: 693 });
+      expect(decode).toHaveBeenCalledOnce();
+      expect(canvases).toEqual([{ width: 2000, height: 693 }]);
+    },
+  );
+
+  it("reuses the decoded bitmap when a resized PNG still exceeds the byte cap", async () => {
+    const { close } = stubCanvasPipeline(() => 100_000);
+    const Canvas = globalThis.OffscreenCanvas;
+    vi.stubGlobal(
+      "OffscreenCanvas",
+      class extends Canvas {
+        override async convertToBlob(options: { type: string; quality: number }) {
+          return options.type === "image/png"
+            ? new Blob([new Uint8Array(2_000_000)], { type: options.type })
+            : super.convertToBlob(options);
+        }
+      },
+    );
+
+    const result = await prepareImageForAttachment(makeFile(1024), 1_000_000);
+
+    expect(result.ok && result.file.type).toBe("image/webp");
+    expect(result.ok && result.file.size).toBeLessThanOrEqual(1_000_000);
+    expect(globalThis.createImageBitmap).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("closes the decoded bitmap when resizing is unavailable", async () => {
+    const close = vi.fn();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(async () => ({ width: 3000, height: 2000, close })),
+    );
+    vi.stubGlobal("OffscreenCanvas", undefined);
+    vi.stubGlobal("document", undefined);
+
+    expect(await prepareImageForAttachment(makeFile(1024), 10_000_000)).toEqual({
+      ok: false,
+      reason: "too-large",
+    });
+    expect(close).toHaveBeenCalledOnce();
   });
 });
 

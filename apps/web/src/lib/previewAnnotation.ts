@@ -1,6 +1,9 @@
-import type { PreviewAnnotationPayload } from "@t3tools/contracts";
+import {
+  type PreviewAnnotationPayload,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+} from "@t3tools/contracts";
 
-import { dataUrlToFile } from "./imageCompression";
+import { dataUrlToFile, prepareImageForAttachment } from "./imageCompression";
 
 export type PreviewAnnotationCapture =
   | { readonly status: "captured"; readonly file: File }
@@ -10,9 +13,9 @@ export type PreviewAnnotationCapture =
 const PNG_DATA_URL_PREFIX = "data:image/png;base64,";
 
 /** Decode Electron's PNG crop locally; fetching a data URL violates desktop connect-src. */
-export function capturePreviewAnnotationScreenshot(
+export async function capturePreviewAnnotationScreenshot(
   annotation: PreviewAnnotationPayload,
-): PreviewAnnotationCapture {
+): Promise<PreviewAnnotationCapture> {
   if (!annotation.screenshot) return { status: "none" };
   try {
     const { dataUrl } = annotation.screenshot;
@@ -20,7 +23,9 @@ export function capturePreviewAnnotationScreenshot(
       return { status: "failed" };
     }
     const file = dataUrlToFile(dataUrl, `preview-annotation-${annotation.id}.png`, "image/png");
-    return file.size > 0 ? { status: "captured", file } : { status: "failed" };
+    if (file.size === 0) return { status: "failed" };
+    const prepared = await prepareImageForAttachment(file, PROVIDER_SEND_TURN_MAX_IMAGE_BYTES);
+    return prepared.ok ? { status: "captured", file: prepared.file } : { status: "failed" };
   } catch {
     return { status: "failed" };
   }
