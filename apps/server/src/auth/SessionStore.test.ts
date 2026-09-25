@@ -568,6 +568,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("SessionStore.lay
       );
 
       expect(beforeRevoke).toHaveLength(2);
+      const pairedClient = beforeRevoke.find((entry) => entry.sessionId === client.sessionId)!;
+      expect(
+        pairedClient.expiresAt.epochMilliseconds - pairedClient.issuedAt.epochMilliseconds,
+      ).toBe(Duration.toMillis(Duration.days(3650)));
       expect(beforeRevoke.find((entry) => entry.sessionId === client.sessionId)?.connected).toBe(
         true,
       );
