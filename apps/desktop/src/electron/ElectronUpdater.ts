@@ -58,6 +58,7 @@ export type ElectronUpdaterError = typeof ElectronUpdaterError.Type;
 export class ElectronUpdater extends Context.Service<
   ElectronUpdater,
   {
+    readonly feedURL: Effect.Effect<ElectronUpdaterFeedUrl | undefined>;
     readonly setFeedURL: (options: ElectronUpdaterFeedUrl) => Effect.Effect<void>;
     readonly setAutoDownload: (value: boolean) => Effect.Effect<void>;
     readonly setAutoInstallOnAppQuit: (value: boolean) => Effect.Effect<void>;
@@ -80,11 +81,15 @@ export class ElectronUpdater extends Context.Service<
   }
 >()("@t3tools/desktop/electron/ElectronUpdater") {}
 
+let feedURL: ElectronUpdaterFeedUrl | undefined;
+
 /** @public */
 export const make = ElectronUpdater.of({
+  feedURL: Effect.sync(() => feedURL),
   setFeedURL: Effect.fn("ElectronUpdater.setFeedURL")(function (options) {
     return Effect.suspend(() => {
-      autoUpdater.setFeedURL(options);
+      feedURL = typeof options === "string" ? options : { ...options };
+      autoUpdater.setFeedURL(feedURL);
       return Effect.void;
     });
   }),

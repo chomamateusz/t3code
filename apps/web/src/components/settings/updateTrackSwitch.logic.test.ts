@@ -6,7 +6,7 @@ import { localUpdaterStaysPut, prepareLocalTrackSwitch } from "./updateTrackSwit
 const STABLE = "0.1.3";
 
 /** Like the desktop app, saving a track re-checks the feed and reports what it offers. */
-function fakeBridge(offer: string | null | Error) {
+function fakeBridge(offer: string | null | Error, retainedChannel?: DesktopUpdateChannel) {
   const saved: DesktopUpdateChannel[] = [];
   const base: DesktopUpdateState = {
     enabled: true,
@@ -34,7 +34,7 @@ function fakeBridge(offer: string | null | Error) {
         if (offer instanceof Error) throw offer;
         return {
           ...base,
-          channel,
+          channel: retainedChannel ?? channel,
           status: offer === null ? ("up-to-date" as const) : ("available" as const),
           availableVersion: offer,
         };
@@ -62,6 +62,10 @@ describe("prepareLocalTrackSwitch", () => {
   });
 
   it("reports a track that could not be saved", async () => {
+    expect(await prepare(fakeBridge(null, "nightly").bridge, false)).toEqual({
+      ok: false,
+      message: "This build does not offer the requested update track.",
+    });
     expect(await prepare(fakeBridge(new Error("feed check failed")).bridge)).toEqual({
       ok: false,
       message: "feed check failed",

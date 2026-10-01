@@ -2688,6 +2688,13 @@ export function resolveDesktopRuntimeDependencies(
   );
 }
 
+export const allowedDesktopUpdateRepository = Config.String(
+  "T3CODE_ALLOWED_UPDATE_REPOSITORY",
+).pipe(
+  Config.withDefault(""),
+  Config.map((repository) => repository.trim().toLowerCase()),
+);
+
 export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig")(function* (
   updateChannel: "latest" | "nightly",
 ) {
@@ -2699,7 +2706,9 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
     Option.getOrUndefined(env.updateRepository)?.trim() ||
     Option.getOrUndefined(env.githubRepository)?.trim() ||
     ""
-  ).trim();
+  )
+    .trim()
+    .toLowerCase();
   if (!rawRepo) return undefined;
 
   const [owner, repo, ...rest] = rawRepo.split("/");
@@ -2808,6 +2817,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       ...(platform === "win" && wslRuntimeBundled ? WSL_RUNTIME_EXTRA_RESOURCES : []),
     ],
   };
+  const allowedUpdateRepository = yield* allowedDesktopUpdateRepository;
+  if (allowedUpdateRepository) {
+    buildConfig.extraMetadata = { t3codeAllowedUpdateRepository: allowedUpdateRepository };
+  }
   const updateChannel = resolveDesktopUpdateChannel(version);
   // Missing publish config infers a GitHub feed from tokens; staging has no repository, so manifest generation would crash.
   buildConfig.publish = null;

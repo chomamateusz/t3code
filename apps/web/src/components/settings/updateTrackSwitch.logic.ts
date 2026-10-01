@@ -31,6 +31,9 @@ export async function prepareLocalTrackSwitch(
       message: error instanceof Error ? error.message : "The update track did not change.",
     };
   }
+  if (local.channel !== input.channel) {
+    return { ok: false, message: "This build does not offer the requested update track." };
+  }
   if (!input.reinstall) return { ok: true, local: null };
   const found = local.downloadedVersion ?? local.availableVersion;
   if (

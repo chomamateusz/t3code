@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { DesktopUpdateState } from "@t3tools/contracts";
+import type { DesktopUpdateActionResult, DesktopUpdateState } from "@t3tools/contracts";
 
 import {
   canCheckForUpdate,
+  getDesktopUpdateActionError,
+  isDesktopUpdateButtonDisabled,
+  shouldToastDesktopUpdateActionResult,
   getDesktopUpdateButtonTooltip,
+  getDesktopUpdateDownloadUrl,
   getDesktopUpdateReleaseHistoryUrl,
   getDesktopUpdateReleaseUrl,
   resolveDesktopUpdateButtonAction,
@@ -29,6 +33,35 @@ const baseState: DesktopUpdateState = {
 };
 
 describe("desktop update button state", () => {
+  it("keeps reinstall downloads on the baked release repository", () => {
+    for (const channel of ["stable", "nightly"]) {
+      expect(getDesktopUpdateDownloadUrl(channel, "chomamateusz/t3code")).toBe(
+        "https://github.com/chomamateusz/t3code/releases",
+      );
+    }
+    expect(getDesktopUpdateDownloadUrl("stable", "")).toBe("https://t3.codes/download");
+    expect(getDesktopUpdateDownloadUrl("nightly", "")).toBe(
+      "https://t3.codes/download?channel=nightly",
+    );
+  });
+
+  it.each(["available", "downloaded", "disabled"] as const)(
+    "shows the desktop refusal instead of the %s action when updates are disabled",
+    (status) => {
+      const state: DesktopUpdateState = {
+        ...baseState,
+        enabled: false,
+        status,
+        availableVersion: "0.0.47-fork.1",
+        downloadedVersion: "0.0.47-fork.1",
+        message: "Updates for this build come only from chomamateusz/t3code",
+      };
+      expect(resolveDesktopUpdateButtonAction(state)).toBe("none");
+      expect(isDesktopUpdateButtonDisabled(state)).toBe(true);
+      expect(getDesktopUpdateButtonTooltip(state)).toBe(state.message);
+    },
+  );
+
   it("keeps retry action available after a download error", () => {
     const state: DesktopUpdateState = {
       ...baseState,
@@ -61,6 +94,23 @@ describe("desktop update button state", () => {
       downloadPercent: 100,
     };
     expect(resolveDesktopUpdateButtonAction(state)).toBe("none");
+  });
+});
+
+describe("getDesktopUpdateActionError", () => {
+  it("shows the refusal when the desktop disables an update action", () => {
+    const result: DesktopUpdateActionResult = {
+      accepted: false,
+      completed: false,
+      state: {
+        ...baseState,
+        enabled: false,
+        status: "disabled",
+        message: "Updates for this build come only from chomamateusz/t3code",
+      },
+    };
+    expect(getDesktopUpdateActionError(result)).toBe(result.state.message);
+    expect(shouldToastDesktopUpdateActionResult(result)).toBe(true);
   });
 });
 

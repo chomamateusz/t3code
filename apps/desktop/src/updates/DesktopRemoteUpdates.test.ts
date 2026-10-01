@@ -40,10 +40,15 @@ function runRemoteUpdatesTest(
   harness: ReturnType<typeof makeHarness>,
   body: (context: {
     readonly reports: DesktopUpdateStatusReport[];
+    readonly nextReport: Effect.Effect<DesktopUpdateStatusReport>;
     readonly requests: Queue.Queue<DesktopTelemetryRequestDesktopUpdate>;
     readonly commits: Queue.Queue<DesktopTelemetryCommitDesktopUpdate>;
     readonly cancellations: Queue.Queue<DesktopTelemetryCancelDesktopUpdate>;
-  }) => Effect.Effect<void, never, DesktopUpdates.DesktopUpdates | DesktopState.DesktopState>,
+  }) => Effect.Effect<
+    void,
+    never,
+    DesktopUpdates.DesktopUpdates | DesktopState.DesktopState | ElectronUpdater.ElectronUpdater
+  >,
 ) {
   return Effect.scoped(
     Effect.gen(function* () {
@@ -51,6 +56,7 @@ function runRemoteUpdatesTest(
       const commits = yield* Queue.unbounded<DesktopTelemetryCommitDesktopUpdate>();
       const cancellations = yield* Queue.unbounded<DesktopTelemetryCancelDesktopUpdate>();
       const reports: DesktopUpdateStatusReport[] = [];
+      const reportQueue = yield* Queue.unbounded<DesktopUpdateStatusReport>();
       const publisher = DesktopTelemetryPublisher.DesktopTelemetryPublisher.of({
         latest: Effect.succeedNone,
         changes: Stream.empty,
@@ -60,7 +66,7 @@ function runRemoteUpdatesTest(
         publishUpdateReport: (report) =>
           Effect.sync(() => {
             reports.push(report);
-          }),
+          }).pipe(Effect.andThen(Queue.offer(reportQueue, report)), Effect.asVoid),
         updateRequests: Stream.fromQueue(requests),
         updateCommits: Stream.fromQueue(commits),
         updateCancellations: Stream.fromQueue(cancellations),
@@ -72,7 +78,13 @@ function runRemoteUpdatesTest(
         Effect.provideService(DesktopTelemetryPublisher.DesktopTelemetryPublisher, publisher),
       );
       yield* settle;
-      yield* body({ reports, requests, commits, cancellations });
+      yield* body({
+        reports,
+        nextReport: Queue.take(reportQueue),
+        requests,
+        commits,
+        cancellations,
+      });
     }),
   ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
 }
@@ -82,6 +94,90 @@ function terminalReports(reports: DesktopUpdateStatusReport[]): DesktopUpdateSta
 }
 
 describe("DesktopRemoteUpdates", () => {
+  it.effect.each([
+    undefined,
+    "provider: github\nowner: pingdotgg\nrepo: t3code\n",
+    "provider: github\nowner: chomamateusz\nrepo: t3code\nhost: updates.example.com\n",
+  ])("terminates a refused fork-feed request: %s", (appUpdateYml) => {
+    const harness = makeHarness({
+      allowedUpdateRepository: "chomamateusz/t3code",
+      appUpdateYml,
+      env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
+    });
+    return runRemoteUpdatesTest(harness, ({ requests, nextReport }) =>
+      Effect.gen(function* () {
+        yield* Queue.offer(requests, request("fork-refused"));
+        let report = yield* nextReport;
+        while (report.requestId !== "fork-refused" || report.outcome === undefined) {
+          report = yield* nextReport;
+        }
+        assert.equal(report.outcome, "failed");
+        assert.equal(report.reason, "Updates for this build come only from chomamateusz/t3code");
+        assert.equal(harness.checkCount(), 0);
+        assert.equal(harness.downloadCount(), 0);
+        assert.equal(harness.quitAndInstalls(), 0);
+      }),
+    );
+  });
+
+  it.effect("reports the fork refusal when the feed changes during a remote check", () => {
+    const harness = makeHarness({
+      allowedUpdateRepository: "chomamateusz/t3code",
+      appUpdateYml: "provider: github\nowner: chomamateusz\nrepo: t3code\n",
+      env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
+    });
+    return runRemoteUpdatesTest(harness, ({ requests, nextReport }) =>
+      Effect.gen(function* () {
+        yield* Queue.offer(requests, request("fork-redirected"));
+        let report = yield* nextReport;
+        while (report.requestId !== "fork-redirected" || report.state.status !== "checking")
+          report = yield* nextReport;
+        const updater = yield* ElectronUpdater.ElectronUpdater;
+        yield* updater.setFeedURL("https://updates.example.com");
+        harness.emit("update-available", { version: "0.0.46-fork.2" });
+        while (report.outcome === undefined) report = yield* nextReport;
+        assert.equal(report.outcome, "failed");
+        assert.equal(report.reason, "Updates for this build come only from chomamateusz/t3code");
+        assert.equal(harness.downloadCount(), 0);
+        assert.equal(harness.quitAndInstalls(), 0);
+      }),
+    );
+  });
+
+  it.effect("downloads and commits a remote update from the allowed fork", () =>
+    Effect.gen(function* () {
+      const installed = yield* Deferred.make<void>();
+      const harness = makeHarness({
+        allowedUpdateRepository: "chomamateusz/t3code",
+        appUpdateYml: "provider: github\nowner: chomamateusz\nrepo: t3code\n",
+        appVersion: "0.0.46-fork.1",
+        quitAndInstall: Deferred.succeed(installed, undefined).pipe(Effect.asVoid),
+        env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
+      });
+      yield* runRemoteUpdatesTest(harness, ({ requests, commits, nextReport }) =>
+        Effect.gen(function* () {
+          yield* Queue.offer(requests, request("fork-allowed"));
+          let report = yield* nextReport;
+          while (report.requestId !== "fork-allowed" || report.state.status !== "checking")
+            report = yield* nextReport;
+          harness.emit("update-available", { version: "0.0.46-fork.2" });
+          while (report.state.status !== "downloading") report = yield* nextReport;
+          harness.emit("update-downloaded", { version: "0.0.46-fork.2" });
+          while (report.outcome !== "ready-to-install") report = yield* nextReport;
+          assert.equal(report.state.downloadedVersion, "0.0.46-fork.2");
+          yield* Queue.offer(commits, {
+            version: 1,
+            type: "commitDesktopUpdate",
+            requestId: "fork-allowed",
+          });
+          yield* Deferred.await(installed);
+          assert.equal(harness.downloadCount(), 1);
+          assert.equal(harness.quitAndInstalls(), 1);
+        }),
+      );
+    }),
+  );
+
   it.effect("drives check, download, and install with no local confirmation", () => {
     const harness = makeHarness();
 
@@ -115,6 +211,39 @@ describe("DesktopRemoteUpdates", () => {
           .map((report) => report.state.status);
         assert.include(statuses, "available");
         assert.include(statuses, "downloaded");
+      }),
+    );
+  });
+
+  it.effect("refuses a remote track switch pinned out by the fork build", () => {
+    const harness = makeHarness({
+      allowedUpdateRepository: "chomamateusz/t3code",
+      appUpdateYml: "provider: github\nowner: chomamateusz\nrepo: t3code\n",
+      env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
+    });
+    return runRemoteUpdatesTest(harness, ({ nextReport, requests }) =>
+      Effect.gen(function* () {
+        yield* Queue.offer(requests, {
+          ...request("req-fork-track"),
+          channel: "nightly",
+          targetVersion: "1.2.4-nightly.20261027.1",
+        });
+        const terminal = yield* Stream.fromEffectRepeat(nextReport).pipe(
+          Stream.filter(
+            (report) => report.requestId === "req-fork-track" && report.outcome !== undefined,
+          ),
+          Stream.runHead,
+        );
+        assert.equal(terminal._tag, "Some");
+        if (terminal._tag === "Some") {
+          assert.equal(terminal.value.outcome, "failed");
+          assert.equal(
+            terminal.value.reason,
+            "This build does not offer the requested update track.",
+          );
+        }
+        assert.equal(harness.downloadCount(), 0);
+        assert.equal(harness.quitAndInstalls(), 0);
       }),
     );
   });

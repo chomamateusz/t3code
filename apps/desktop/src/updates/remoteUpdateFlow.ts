@@ -38,7 +38,7 @@ export function nextRemoteDesktopUpdateStep(
     return {
       action: "done",
       outcome: "failed",
-      reason: disabledReason ?? "Automatic updates are disabled on this machine.",
+      reason: disabledReason ?? state.message ?? "Automatic updates are disabled on this machine.",
     };
   }
   // Reinstalling a failed version disrupts threads without updating; retries require the local user.

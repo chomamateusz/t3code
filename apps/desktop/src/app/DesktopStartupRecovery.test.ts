@@ -1,5 +1,6 @@
 import type { DesktopUpdateState } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -17,7 +18,11 @@ import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 
 import { createInitialDesktopUpdateState } from "../updates/updateMachine.ts";
-import { listen, resolveStartupRecoveryOffer } from "./DesktopStartupRecovery.ts";
+import {
+  listen,
+  resolveStartupRecoveryOffer,
+  startupRecoveryReleaseUrl,
+} from "./DesktopStartupRecovery.ts";
 
 const updateState = (patch: Partial<DesktopUpdateState>): DesktopUpdateState => ({
   ...createInitialDesktopUpdateState(
@@ -94,6 +99,16 @@ describe("resolveStartupRecoveryOffer", () => {
     expect(resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), null)).toEqual({
       _tag: "Releases",
     });
+    expect(startupRecoveryReleaseUrl()).toBe("https://github.com/pingdotgg/t3code/releases");
+    vi.stubGlobal("__T3CODE_BUILD_RELEASE_REPOSITORY__", " Chomamateusz/T3Code ");
+    try {
+      expect(startupRecoveryReleaseUrl()).toBe("https://github.com/chomamateusz/t3code/releases");
+      expect(startupRecoveryReleaseUrl("0.1.4-fork.1")).toBe(
+        "https://github.com/chomamateusz/t3code/releases/tag/v0.1.4-fork.1",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

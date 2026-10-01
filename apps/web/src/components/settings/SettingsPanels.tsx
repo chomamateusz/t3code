@@ -35,6 +35,7 @@ import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
 import { MobileAppSettingsRow } from "./MobileAppSettingsRow";
 import {
   canCheckForUpdate,
+  getDesktopUpdateActionError,
   getDesktopUpdateButtonTooltip,
   getDesktopUpdateDisabledReason,
   getDesktopUpdateInstallConfirmationMessage,
@@ -195,15 +196,28 @@ function AboutVersionSection() {
     const action = updateState ? resolveDesktopUpdateButtonAction(updateState) : "none";
 
     if (action === "download") {
-      void bridge.downloadUpdate().catch((error: unknown) => {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not download update",
-            description: error instanceof Error ? error.message : "Download failed.",
-          }),
-        );
-      });
+      void bridge
+        .downloadUpdate()
+        .then((result) => {
+          const message = getDesktopUpdateActionError(result);
+          if (message)
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: "Could not download update",
+                description: message,
+              }),
+            );
+        })
+        .catch((error: unknown) => {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Could not download update",
+              description: error instanceof Error ? error.message : "Download failed.",
+            }),
+          );
+        });
       return;
     }
 
@@ -234,6 +248,17 @@ function AboutVersionSection() {
       }
       void bridge
         .installUpdate()
+        .then((result) => {
+          const message = getDesktopUpdateActionError(result);
+          if (message)
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: "Could not install update",
+                description: message,
+              }),
+            );
+        })
         .catch((error: unknown) => {
           toastManager.add(
             stackedThreadToast({

@@ -1855,3 +1855,67 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
     assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 );
+
+it.effect("bakes the allowed update repository only when configured", () =>
+  Effect.gen(function* () {
+    const build = (env: Record<string, string>) =>
+      createBuildConfig(
+        "linux",
+        "AppImage",
+        "0.0.46-fork.1",
+        false,
+        false,
+        undefined,
+        undefined,
+      ).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env }))));
+    const configured = yield* build({
+      T3CODE_ALLOWED_UPDATE_REPOSITORY: " Chomamateusz/T3Code ",
+      T3CODE_DESKTOP_UPDATE_REPOSITORY: " Chomamateusz/T3Code ",
+    });
+    assert.deepEqual(configured.extraMetadata, {
+      t3codeAllowedUpdateRepository: "chomamateusz/t3code",
+    });
+    assert.deepEqual(configured.publish, [
+      { provider: "github", owner: "chomamateusz", repo: "t3code", releaseType: "release" },
+    ]);
+    const upstream = yield* build({ T3CODE_DESKTOP_UPDATE_REPOSITORY: "pingdotgg/t3code" });
+    assert.equal(upstream.extraMetadata, undefined);
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("treats empty fork build variables as unset", () =>
+  Effect.gen(function* () {
+    const config = yield* createBuildConfig(
+      "linux",
+      "AppImage",
+      "0.0.46-nightly.20261001.1",
+      false,
+      false,
+      undefined,
+      undefined,
+    ).pipe(
+      Effect.provide(
+        ConfigProvider.layer(
+          ConfigProvider.fromEnv({
+            env: {
+              T3CODE_ALLOWED_UPDATE_REPOSITORY: "",
+              T3CODE_DESKTOP_UPDATE_REPOSITORY: "",
+              T3CODE_RELEASE_REPOSITORY: "",
+              GITHUB_REPOSITORY: "pingdotgg/t3code",
+            },
+          }),
+        ),
+      ),
+    );
+    assert.equal(config.extraMetadata, undefined);
+    assert.deepEqual(config.publish, [
+      {
+        provider: "github",
+        owner: "pingdotgg",
+        repo: "t3code",
+        releaseType: "prerelease",
+        channel: "nightly",
+      },
+    ]);
+  }).pipe(Effect.provide(NodeServices.layer)),
+);

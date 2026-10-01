@@ -6,7 +6,7 @@ import * as Cause from "effect/Cause";
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { vi } from "vite-plus/test";
+import { afterAll, afterEach, vi } from "vite-plus/test";
 
 import { npmReleaseAtom, npmReleaseFailureMessage } from "./npmRelease";
 import { primaryEnvironmentIdAtom } from "./primaryEnvironment";
@@ -21,6 +21,16 @@ vi.mock("./presentation", () => ({
 vi.mock("./primaryEnvironment", () => ({
   primaryEnvironmentIdAtom: Atom.make<EnvironmentId | null>(null),
 }));
+
+const fetchMock = vi.fn<typeof globalThis.fetch>();
+vi.stubGlobal("fetch", fetchMock);
+afterEach(() => {
+  fetchMock.mockReset();
+  vi.unstubAllEnvs();
+});
+afterAll(() => {
+  vi.unstubAllGlobals();
+});
 
 const version = "0.0.46-nightly.20261012.3021";
 const first = EnvironmentId.make("first");
@@ -134,9 +144,7 @@ it.effect("resolves track metadata through a supporting server when there is no 
 it.effect("does not call an unsupported RPC or fetch public npm for an older primary server", () =>
   Effect.gen(function* () {
     const query = setup(false);
-    using fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockRejectedValue(new Error("Unexpected browser fetch"));
+    fetchMock.mockRejectedValue(new Error("Unexpected browser fetch"));
     const registry = AtomRegistry.make();
     NodeAssert.ok(
       Atom.isWritable<EnvironmentId | null, EnvironmentId | null>(primaryEnvironmentIdAtom),
@@ -151,7 +159,7 @@ it.effect("does not call an unsupported RPC or fetch public npm for an older pri
         "Update it before switching tracks",
       );
       expect(query).not.toHaveBeenCalled();
-      expect(fetch).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       unmount();
       registry.dispose();
@@ -166,3 +174,81 @@ it("only displays the safe release error, not arbitrary transport diagnostics", 
     npmReleaseFailureMessage(Cause.fail(new Error("sensitive transport details"))),
   ).not.toContain("sensitive");
 });
+
+it.effect("checks fork versions and tracks without consulting a server registry", () =>
+  Effect.gen(function* () {
+    const query = setup();
+    vi.stubEnv("T3CODE_RELEASE_REPOSITORY", " Chomamateusz/T3Code ");
+    const registry = AtomRegistry.make();
+    const exact = npmReleaseAtom(version);
+    const latest = npmReleaseAtom("latest");
+    try {
+      fetchMock.mockResolvedValueOnce(Response.json({ tag_name: `v${version}` }));
+      expect(yield* AtomRegistry.getResult(registry, exact, { suspendOnWaiting: true })).toEqual({
+        version,
+        databaseMigration: undefined,
+      });
+      const request = new Request(fetchMock.mock.calls[0]![0], fetchMock.mock.calls[0]![1]);
+      expect(request.url).toBe(
+        `https://api.github.com/repos/chomamateusz/t3code/releases/tags/v${version}`,
+      );
+      expect(request.headers.get("traceparent")).toBeNull();
+      expect(request.headers.get("b3")).toBeNull();
+      fetchMock.mockClear();
+      fetchMock.mockResolvedValueOnce(
+        Response.json(
+          Array.from({ length: 100 }, () => ({ tag_name: `v${version}`, prerelease: true })),
+        ),
+      );
+      fetchMock.mockResolvedValueOnce(
+        Response.json([{ tag_name: "v0.1.4-fork.2", draft: true }, { tag_name: "v0.1.4-fork.1" }]),
+      );
+      expect(yield* AtomRegistry.getResult(registry, latest, { suspendOnWaiting: true })).toEqual({
+        version: "0.1.4-fork.1",
+        databaseMigration: undefined,
+      });
+      expect(fetchMock.mock.calls.map(([input, init]) => new Request(input, init).url)).toEqual([
+        "https://api.github.com/repos/chomamateusz/t3code/releases?per_page=100&page=1",
+        "https://api.github.com/repos/chomamateusz/t3code/releases?per_page=100&page=2",
+      ]);
+      expect(query).not.toHaveBeenCalled();
+    } finally {
+      registry.dispose();
+      vi.unstubAllEnvs();
+    }
+  }),
+);
+
+it.effect.each([
+  { repository: "chomamateusz/t3code", body: null, status: 404, fails: false },
+  {
+    repository: "chomamateusz/t3code",
+    body: { tag_name: `v${version}`, draft: true },
+    status: 200,
+    fails: false,
+  },
+  { repository: "chomamateusz/t3code", body: { tag_name: "v0.0.1" }, status: 200, fails: false },
+  { repository: "chomamateusz/t3code", body: { version }, status: 200, fails: true },
+  { repository: "invalid/repository/path", body: null, status: 404, fails: false },
+])(
+  "does not fall back from an unavailable fork release: %o",
+  ({ repository, body, status, fails }) =>
+    Effect.gen(function* () {
+      const query = setup();
+      fetchMock.mockResolvedValue(Response.json(body, { status }));
+      vi.stubEnv("T3CODE_RELEASE_REPOSITORY", repository);
+      const registry = AtomRegistry.make();
+      try {
+        const result = yield* AtomRegistry.getResult(registry, npmReleaseAtom(version), {
+          suspendOnWaiting: true,
+        }).pipe(Effect.result);
+        expect(result._tag).toBe(fails ? "Failure" : "Success");
+        if (result._tag === "Success") expect(result.success).toBeNull();
+        expect(fetchMock).toHaveBeenCalledTimes(repository === "chomamateusz/t3code" ? 1 : 0);
+        expect(query).not.toHaveBeenCalled();
+      } finally {
+        registry.dispose();
+        vi.unstubAllEnvs();
+      }
+    }),
+);

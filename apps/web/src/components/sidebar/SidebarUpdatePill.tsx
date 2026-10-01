@@ -172,16 +172,16 @@ export async function installLocalUpdate(
 ): Promise<boolean> {
   try {
     const result = await bridge.installUpdate(expectedVersion);
+    const actionError = getDesktopUpdateActionError(result);
+    if (actionError) {
+      reportError("Could not install update", actionError);
+      return false;
+    }
     if (!result.accepted) {
       showDesktopUpdateDownloadedToast(bridge, result.state);
       return false;
     }
-    const actionError = shouldToastDesktopUpdateActionResult(result)
-      ? getDesktopUpdateActionError(result)
-      : null;
-    if (!actionError) return true;
-    reportError("Could not install update", actionError);
-    return false;
+    return true;
   } catch (error) {
     reportError(
       "Could not install update",

@@ -20,6 +20,8 @@ import * as DesktopUpdates from "./DesktopUpdates.ts";
 export const flushCallbacks = Effect.yieldNow;
 
 export interface UpdatesHarnessOptions {
+  readonly allowedUpdateRepository?: string;
+  readonly appUpdateYml?: string | undefined;
   readonly checkForUpdates?: Effect.Effect<
     void,
     ElectronUpdater.ElectronUpdaterCheckForUpdatesError
@@ -52,6 +54,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
   let allowDowngrade = false;
   const checkAllowedDowngrade: boolean[] = [];
   let fullChangelog = false;
+  let channel = "latest";
+  let allowPrerelease = true;
   const feedUrls: ElectronUpdater.ElectronUpdaterFeedUrl[] = [];
   const listeners = new Map<string, Set<(...args: readonly unknown[]) => void>>();
   const sentStates: DesktopUpdateState[] = [];
@@ -75,14 +79,22 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
   };
 
   const layerUpdater = Layer.succeed(ElectronUpdater.ElectronUpdater, {
+    feedURL: Effect.sync(() => feedUrls.at(-1)),
     setFeedURL: (options) =>
       Effect.sync(() => {
         feedUrls.push(options);
       }),
     setAutoDownload: () => Effect.void,
     setAutoInstallOnAppQuit: () => Effect.void,
-    setChannel: () => Effect.void,
-    setAllowPrerelease: () => Effect.void,
+    setChannel: (value) =>
+      Effect.sync(() => {
+        channel = value;
+        allowDowngrade = true;
+      }),
+    setAllowPrerelease: (value) =>
+      Effect.sync(() => {
+        allowPrerelease = value;
+      }),
     allowDowngrade: Effect.sync(() => allowDowngrade),
     setAllowDowngrade: (value) =>
       Effect.sync(() => {
@@ -243,6 +255,12 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
     path.endsWith(DesktopUpdates.DESKTOP_UPDATE_INSTALL_RECORD_FILE);
   const layerFileSystem = FileSystem.layerNoop({
     readFileString: (path) => {
+      if (path === "/repo/package.json")
+        return Effect.succeed(
+          JSON.stringify({ t3codeAllowedUpdateRepository: options.allowedUpdateRepository }),
+        );
+      if (path === "/missing/resources/app-update.yml" && options.appUpdateYml !== undefined)
+        return Effect.succeed(options.appUpdateYml);
       const installRecord = isInstallRecord(path)
         ? (installRecords.get(path) ?? previousInstallRecord)
         : undefined;
@@ -305,6 +323,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
     fullChangelog: () => fullChangelog,
     /** Whether each feed check could offer an older release, and the flag now. */
     checkAllowedDowngrade,
+    channel: () => channel,
+    allowPrerelease: () => allowPrerelease,
     allowDowngrade: () => allowDowngrade,
     listenerCount: () =>
       Array.from(listeners.values()).reduce(

@@ -21,6 +21,12 @@ function desktopReleaseRepositoryUrl(repository: string | undefined): string {
   return `https://github.com/${releaseRepository}/releases`;
 }
 
+function configuredDesktopReleaseRepository() {
+  return (
+    import.meta.env.T3CODE_RELEASE_REPOSITORY || import.meta.env.T3CODE_DESKTOP_UPDATE_REPOSITORY
+  );
+}
+
 /** The download RPC can beat the updater's downloadedVersion event; fall back to the requested version. */
 export function getDesktopUpdateDownloadedVersion(state: DesktopUpdateState): string | null {
   return state.downloadedVersion ?? state.availableVersion;
@@ -28,7 +34,7 @@ export function getDesktopUpdateDownloadedVersion(state: DesktopUpdateState): st
 
 export function getDesktopUpdateReleaseUrl(
   version: string | null,
-  repository: string | undefined = import.meta.env.T3CODE_DESKTOP_UPDATE_REPOSITORY,
+  repository: string | undefined = configuredDesktopReleaseRepository(),
 ): string | null {
   const normalizedVersion = version?.trim();
   if (!normalizedVersion) return null;
@@ -36,14 +42,23 @@ export function getDesktopUpdateReleaseUrl(
 }
 
 export function getDesktopUpdateReleaseHistoryUrl(
-  repository: string | undefined = import.meta.env.T3CODE_DESKTOP_UPDATE_REPOSITORY,
+  repository: string | undefined = configuredDesktopReleaseRepository(),
 ): string {
   return desktopReleaseRepositoryUrl(repository);
+}
+
+export function getDesktopUpdateDownloadUrl(
+  channel: string,
+  repository: string | undefined = configuredDesktopReleaseRepository(),
+): string {
+  if (repository?.trim()) return getDesktopUpdateReleaseHistoryUrl(repository);
+  return `https://t3.codes/download${channel === "nightly" ? "?channel=nightly" : ""}`;
 }
 
 export function resolveDesktopUpdateButtonAction(
   state: DesktopUpdateState,
 ): DesktopUpdateButtonAction {
+  if (!state.enabled || state.status === "disabled") return "none";
   if (
     state.downloadedVersion &&
     (state.status === "downloaded" ||
@@ -68,7 +83,10 @@ export function shouldShowArm64IntelBuildWarning(state: DesktopUpdateState | nul
 }
 
 export function isDesktopUpdateButtonDisabled(state: DesktopUpdateState | null): boolean {
-  return state?.status === "downloading";
+  return (
+    state !== null &&
+    (!state.enabled || state.status === "disabled" || state.status === "downloading")
+  );
 }
 
 export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState): string {
@@ -87,6 +105,9 @@ export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState):
 }
 
 export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string {
+  if (!state.enabled || state.status === "disabled") {
+    return state.message ?? "Automatic updates are not available in this build.";
+  }
   if (
     state.notAppliedVersion !== undefined &&
     (state.status === "available" || state.status === "downloaded") &&
@@ -128,7 +149,8 @@ export function getDesktopUpdateInstallConfirmationMessage(
 }
 
 export function getDesktopUpdateActionError(result: DesktopUpdateActionResult): string | null {
-  if (!result.accepted || result.completed) return null;
+  if (result.completed) return null;
+  if (!result.accepted && result.state.enabled && result.state.status !== "disabled") return null;
   if (typeof result.state.message !== "string") return null;
   const message = result.state.message.trim();
   return message.length > 0 ? message : null;

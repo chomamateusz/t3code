@@ -278,9 +278,21 @@ export function describeUpdateErrorCause(cause: unknown): string {
   }
 }
 
-function parseAppUpdateYml(raw: string): Effect.Effect<Option.Option<AppUpdateYmlConfig>> {
+function parseAppUpdateYml(
+  raw: string,
+  strict = false,
+): Effect.Effect<Option.Option<AppUpdateYmlConfig>> {
   const entries: Record<string, string> = {};
   for (const line of raw.split("\n")) {
+    if (strict) {
+      if (/^\s*(?:#.*)?$/.test(line)) continue;
+      const scalar = line.match(
+        /^(\w+):[ \t]*(?:([\w./-]+)|"([\w./-]+)"|'([\w./-]+)')[ \t]*(?:#.*)?$/,
+      );
+      if (!scalar?.[1] || Object.hasOwn(entries, scalar[1])) return Effect.succeedNone;
+      entries[scalar[1]] = scalar[2] ?? scalar[3] ?? scalar[4] ?? "";
+      continue;
+    }
     const match = line.match(/^(\w+):\s*(.+)$/);
     if (match?.[1] && match[2]) {
       entries[match[1]] = match[2].trim();
@@ -375,6 +387,32 @@ export const make = Effect.gen(function* () {
   // Any user can set the mock flag, so it never replaces an administrator's update source.
   const mockUpdates = config.mockUpdates && policy.message === null;
 
+  const allowedUpdateRepository = yield* fileSystem
+    .readFileString(environment.path.join(environment.appPath, "package.json"))
+    .pipe(
+      Effect.flatMap(
+        Schema.decodeUnknownEffect(
+          Schema.fromJsonString(
+            Schema.Struct({
+              t3codeAllowedUpdateRepository: Schema.optional(Schema.String),
+            }),
+          ),
+        ),
+      ),
+      Effect.map((metadata) => metadata.t3codeAllowedUpdateRepository?.trim().toLowerCase() ?? ""),
+      Effect.orElseSucceed(() => ""),
+    );
+  const isAllowedFeed = (
+    feed: ElectronUpdater.ElectronUpdaterFeedUrl | AppUpdateYmlConfig | undefined,
+  ) =>
+    typeof feed === "object" &&
+    feed.provider === "github" &&
+    "owner" in feed &&
+    "repo" in feed &&
+    `${feed.owner}/${feed.repo}`.toLowerCase() === allowedUpdateRepository &&
+    (!("host" in feed) || feed.host === "github.com") &&
+    (!("protocol" in feed) || feed.protocol === "https");
+
   const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
   const activeUpdateActionRef = yield* Ref.make<Option.Option<UpdateAction>>(Option.none());
   const installRunningBackendsRef = yield* Ref.make<
@@ -436,7 +474,7 @@ export const make = Effect.gen(function* () {
     Effect.flatMap(
       Option.match({
         onNone: () => Effect.succeed(Option.none<AppUpdateYmlConfig>()),
-        onSome: parseAppUpdateYml,
+        onSome: (raw) => parseAppUpdateYml(raw, allowedUpdateRepository !== ""),
       }),
     ),
   );
@@ -459,7 +497,32 @@ export const make = Effect.gen(function* () {
     ),
   );
 
+  const feedRefusalReason = Effect.gen(function* () {
+    if (!allowedUpdateRepository) return Option.none<string>();
+    const packagedFeed = Option.getOrUndefined(yield* readAppUpdateYml);
+    const override = yield* electronUpdater.feedURL;
+    return isAllowedFeed(packagedFeed) && (override === undefined || isAllowedFeed(override))
+      ? Option.none<string>()
+      : Option.some(`Updates for this build come only from ${allowedUpdateRepository}`);
+  });
+
+  const refuseDisallowedFeed = Effect.gen(function* () {
+    const reason = yield* feedRefusalReason;
+    if (Option.isNone(reason)) return false;
+    yield* updateState((state) => ({
+      ...state,
+      enabled: false,
+      status: "disabled",
+      message: reason.value,
+      errorContext: null,
+      canRetry: false,
+    }));
+    return true;
+  });
+
   const resolveDisabledReason = Effect.gen(function* () {
+    const refusal = yield* feedRefusalReason;
+    if (Option.isSome(refusal)) return refusal;
     const hasFeedConfig = yield* hasUpdateFeedConfig;
     return Option.fromNullishOr(
       getAutoUpdateDisabledReason({
@@ -514,6 +577,7 @@ export const make = Effect.gen(function* () {
     channel: DesktopUpdateChannel,
   ) {
     yield* Effect.annotateCurrentSpan({ channel });
+    if (allowedUpdateRepository) channel = "latest";
     const allowsPrerelease = channel === "nightly";
     yield* electronUpdater.setChannel(channel);
     yield* electronUpdater.setAllowPrerelease(allowsPrerelease);
@@ -536,6 +600,7 @@ export const make = Effect.gen(function* () {
     yield* Effect.annotateCurrentSpan({ reason });
     if (yield* Ref.get(desktopState.quitting)) return false;
     if (!(yield* Ref.get(updaterConfiguredRef))) return false;
+    if (yield* refuseDisallowedFeed) return false;
 
     const state = yield* Ref.get(updateStateRef);
     // A configured updater is disabled only by a channel the managed policy blocks.
@@ -589,6 +654,7 @@ export const make = Effect.gen(function* () {
   });
 
   const downloadAvailableUpdate = Effect.gen(function* () {
+    if (yield* refuseDisallowedFeed) return { accepted: false, completed: false };
     const state = yield* Ref.get(updateStateRef);
     if (!(yield* Ref.get(updaterConfiguredRef)) || state.status !== "available") {
       return { accepted: false, completed: false };
@@ -604,6 +670,7 @@ export const make = Effect.gen(function* () {
         isArm64HostRunningIntelBuild(environment.runtimeInfo),
       );
       yield* logUpdaterInfo("downloading update");
+      if (yield* refuseDisallowedFeed) return { accepted: false, completed: false };
       yield* electronUpdater.downloadUpdate;
       return { accepted: true, completed: true };
     }).pipe(
@@ -759,6 +826,7 @@ export const make = Effect.gen(function* () {
   const installDownloadedUpdate = (expectedVersion?: string) =>
     Effect.scoped(
       Effect.gen(function* () {
+        if (yield* refuseDisallowedFeed) return { accepted: false, completed: false, failed: true };
         const actionCompletions = yield* PubSub.subscribe(finishedUpdateActions);
         let admission: "admitted" | "refused" | "wait-for-check" = "wait-for-check";
         while (admission === "wait-for-check") {
@@ -804,6 +872,10 @@ export const make = Effect.gen(function* () {
           return { accepted: false, completed: false, failed: false };
         }
 
+        if (yield* refuseDisallowedFeed) {
+          yield* finishUpdateAction("install");
+          return { accepted: false, completed: false, failed: true };
+        }
         yield* Ref.set(desktopState.quitting, true);
         yield* Ref.set(installRunningBackendsRef, []);
 
@@ -824,6 +896,12 @@ export const make = Effect.gen(function* () {
               instance.stop({ timeout: DesktopBackendManager.BACKEND_QUIT_STOP_TIMEOUT }),
             { concurrency: "unbounded" },
           );
+          const refusal = yield* feedRefusalReason;
+          if (Option.isSome(refusal)) {
+            yield* recoverFailedInstall(refusal.value);
+            yield* refuseDisallowedFeed;
+            return { accepted: false, completed: false, failed: true };
+          }
           yield* electronUpdater.quitAndInstall({
             isSilent: true,
             isForceRunAfter: true,
@@ -1131,7 +1209,7 @@ export const make = Effect.gen(function* () {
         });
       }
 
-      if (mockUpdates) {
+      if (mockUpdates && !allowedUpdateRepository) {
         yield* electronUpdater.setFeedURL({
           provider: "generic",
           url: `http://localhost:${config.mockUpdateServerPort}`,
@@ -1146,10 +1224,11 @@ export const make = Effect.gen(function* () {
 
       const settings = yield* desktopSettings.get;
       const disabledReason = yield* resolveDisabledReason;
+      const channel = allowedUpdateRepository ? "latest" : settings.updateChannel;
       yield* setState(
         yield* baseUpdateState(
-          settings.updateChannel,
-          Option.orElse(disabledReason, () => channelBlockedReason(settings.updateChannel)),
+          channel,
+          Option.orElse(disabledReason, () => channelBlockedReason(channel)),
         ),
       );
       if (Option.isSome(disabledReason)) {
@@ -1199,6 +1278,9 @@ export const make = Effect.gen(function* () {
       nextChannel: DesktopUpdateChannel,
       options?: { readonly minimumVersion?: string | undefined },
     ) {
+      if (allowedUpdateRepository && nextChannel !== "latest") {
+        return yield* Ref.get(updateStateRef);
+      }
       yield* Effect.annotateCurrentSpan({ channel: nextChannel });
       if (Option.isSome(channelBlockedReason(nextChannel))) {
         return yield* new DesktopUpdateChannelManagedError({

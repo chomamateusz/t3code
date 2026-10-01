@@ -226,6 +226,17 @@ export const listen: Effect.Effect<
           // A host already running the target only needed its track saved; installing a newer
           // build here would restart it without the dialog having said so.
           const state = yield* updates.getState;
+          if (state.channel !== request.channel) {
+            yield* publishReport(
+              state,
+              {
+                outcome: "failed",
+                reason: "This build does not offer the requested update track.",
+              },
+              request.requestId,
+            );
+            return;
+          }
           if (request.targetVersion === state.currentVersion) {
             yield* publishReport(state, { outcome: "up-to-date" }, request.requestId);
             return;
