@@ -41,7 +41,6 @@ import { shortcutLabelForCommand } from "../../keybindings";
 import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
-  enumerateDays,
   enumerateHourStarts,
   formatCount,
   formatDateTimeShort,
@@ -51,7 +50,6 @@ import {
   formatTokens,
   formatUsageContractMismatch,
   formatUsd,
-  makeWindow,
   usageSourceMessages,
 } from "@t3tools/shared/usageFormat";
 import { Button, InlineButton } from "../ui/button";
@@ -107,12 +105,20 @@ import {
   type UsagePagePreferences,
 } from "./usagePagePreferences";
 
+import {
+  ALL_USAGE_SINCE_DAY,
+  makeUsageWindow,
+  usageChartDays,
+  type UsageRange,
+} from "./usageRange";
+
 function isUsageMetric(value: string | null | undefined): value is UsageMetric {
   return METRIC_OPTIONS.some((option) => option.value === value);
 }
 
-function isUsageWindowDays(value: number): value is UsagePagePreferences["windowDays"] {
-  return WINDOW_OPTIONS.some((option) => option.days === value);
+function parseUsageWindow(value: string | null | undefined): UsageRange | null {
+  const range = value === "all" ? value : Number(value);
+  return WINDOW_OPTIONS.find((option) => option.days === range)?.days ?? null;
 }
 
 const providerLabel = (provider: UsageProviderKind) => PROVIDER_PRESENTATION[provider].label;
@@ -181,6 +187,7 @@ export function UsagePage() {
   const shortcutTitle = (
     option: (typeof METRIC_OPTIONS)[number] | (typeof WINDOW_OPTIONS)[number],
   ) => {
+    if (option.command === undefined) return option.label;
     const shortcut = shortcutLabelForCommand(keybindings, option.command, {
       context: { usagePageOpen: true },
     });
@@ -188,11 +195,7 @@ export function UsagePage() {
   };
   const [windowSelection, setWindowSelection] = useState(() => ({
     days: preferences.windowDays,
-    window: makeWindow(
-      preferences.windowDays,
-      undefined,
-      preferences.windowDays === 1 ? "hour" : "day",
-    ),
+    window: makeUsageWindow(preferences.windowDays),
   }));
   const metric = preferences.metric;
   const showingLimits = metric === "limits";
@@ -204,7 +207,6 @@ export function UsagePage() {
     useState<ReadonlySet<EnvironmentId> | null>(null);
   const hiddenProviders = new Set(preferences.hiddenProviders);
   const { days: windowDays, window } = windowSelection;
-  const isPast24Hours = windowDays === 1;
   const {
     merged: answeredUsage,
     environments,
@@ -235,12 +237,11 @@ export function UsagePage() {
     setPreferences(nextPreferences);
     saveUsagePagePreferences(nextPreferences);
   };
-  const selectWindow = (days: number) => {
-    if (!isUsageWindowDays(days)) return;
+  const selectWindow = (days: UsageRange) => {
     updatePreferences({ windowDays: days });
     setWindowSelection({
       days,
-      window: makeWindow(days, undefined, days === 1 ? "hour" : "day"),
+      window: makeUsageWindow(days),
     });
   };
   const selectMetric = (nextMetric: UsageMetric) => {
@@ -305,7 +306,7 @@ export function UsagePage() {
       });
       return;
     }
-    const nextWindow = makeWindow(windowDays, undefined, isPast24Hours ? "hour" : "day");
+    const nextWindow = makeUsageWindow(windowDays);
     if (
       nextWindow.sinceDay !== window.sinceDay ||
       nextWindow.untilDay !== window.untilDay ||
@@ -339,7 +340,7 @@ export function UsagePage() {
     if (showingLimits && connectedLimitsEnvironments) autoRefreshLimits();
   }, [showingLimits, connectedLimitsEnvironments]);
 
-  const days = enumerateDays(shownWindow.sinceDay, shownWindow.untilDay);
+  const days = usageChartDays(shownWindow, merged.daily);
   const hours =
     shownWindow.sinceTime === undefined || shownWindow.untilTime === undefined
       ? []
@@ -353,9 +354,11 @@ export function UsagePage() {
     );
 
   const windowLabel =
-    shownHourly && shownWindow.sinceTime !== undefined && shownWindow.untilTime !== undefined
-      ? `${formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone, hour12)} to ${formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone, hour12)}`
-      : `${formatDayShort(shownWindow.sinceDay)} to ${formatDayShort(shownWindow.untilDay)}`;
+    shownWindow.sinceDay === ALL_USAGE_SINCE_DAY
+      ? "All time"
+      : shownHourly && shownWindow.sinceTime !== undefined && shownWindow.untilTime !== undefined
+        ? `${formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone, hour12)} to ${formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone, hour12)}`
+        : `${formatDayShort(shownWindow.sinceDay)} to ${formatDayShort(shownWindow.untilDay)}`;
   const topbarContent = (
     <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-2 @4xl/usage-header:flex">
       <WorkspaceBreadcrumb ariaLabel="Usage breadcrumb" className="min-w-0">
@@ -399,8 +402,8 @@ export function UsagePage() {
             variant="segmented"
             value={[String(windowDays)]}
             onValueChange={(next) => {
-              const value = next[0];
-              if (value) selectWindow(Number(value));
+              const range = parseUsageWindow(next[0]);
+              if (range !== null) selectWindow(range);
             }}
           >
             {WINDOW_OPTIONS.map((option) => (
@@ -438,7 +441,13 @@ export function UsagePage() {
       </div>
       <div className="ms-auto flex shrink-0 items-center justify-end gap-1 @4xl/usage-header:hidden">
         {showingLimits ? null : (
-          <Select value={String(windowDays)} onValueChange={(value) => selectWindow(Number(value))}>
+          <Select
+            value={String(windowDays)}
+            onValueChange={(value) => {
+              const range = parseUsageWindow(value);
+              if (range !== null) selectWindow(range);
+            }}
+          >
             <SelectTrigger
               aria-label="Usage period"
               size="compact"

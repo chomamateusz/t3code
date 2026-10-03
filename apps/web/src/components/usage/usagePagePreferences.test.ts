@@ -24,6 +24,12 @@ afterEach(() => {
 });
 
 describe("Usage page preferences", () => {
+  it("round-trips the all-time range with provider preferences", () => {
+    const preferences = { metric: "cost", windowDays: "all", hiddenProviders: ["codex"] } as const;
+    saveUsagePagePreferences(preferences);
+    expect(readUsagePagePreferences()).toEqual(preferences);
+  });
+
   it("round-trips hidden providers and reads older saves without them", () => {
     saveUsagePagePreferences({ metric: "cost", windowDays: 7, hiddenProviders: ["codex"] });
     expect(readUsagePagePreferences().hiddenProviders).toEqual(["codex"]);

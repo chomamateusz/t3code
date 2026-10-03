@@ -99,6 +99,11 @@ const WINDOW: UsageSummaryInput = {
   untilDay: UsageDay.make("2026-08-02"),
 };
 
+const ALL_TIME_WINDOW: UsageSummaryInput = {
+  ...WINDOW,
+  sinceDay: UsageDay.make("1970-01-01"),
+};
+
 const setup = Effect.gen(function* () {
   const home = yield* Effect.promise(() =>
     NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "usage-service-test-")),
@@ -1438,6 +1443,42 @@ describe("UsageService", () => {
         1,
       );
     }).pipe(Effect.scoped),
+  );
+
+  it.live("requests all-time Cursor history from epoch zero and retains it after refresh", () =>
+    Effect.gen(function* () {
+      const { settings, home } = yield* setup;
+      yield* TestClock.setTime(CURSOR_NOW);
+      const cursor = makeFakeCursor();
+      cursor.state.events = [
+        { timestampMs: Date.parse("2025-01-01T00:00:00Z"), outputTokens: 5 },
+        { timestampMs: CURSOR_NOW - 3 * HOUR_MS, outputTokens: 7 },
+      ];
+      yield* Effect.gen(function* () {
+        const service = yield* makeWithCursor(cursor.read);
+        const original = yield* service.readSummary({ ...ALL_TIME_WINDOW, awaitRefresh: true });
+        assert.strictEqual(totalOutputTokens(original), 12);
+        assert.deepStrictEqual(cursor.state.calls, [{ sinceMs: 0, untilMs: CURSOR_NOW }]);
+        yield* service.awaitPersisted;
+
+        yield* TestClock.adjust(Duration.minutes(2));
+        const refreshed = yield* service.readSummary({ ...ALL_TIME_WINDOW, awaitRefresh: true });
+        assert.deepStrictEqual(refreshed.buckets, original.buckets);
+        yield* service.awaitPersisted;
+        const restarted = yield* makeWithCursor(cursor.read);
+        const restored = yield* restarted.readSummary(ALL_TIME_WINDOW);
+        assert.deepStrictEqual(restored.buckets, original.buckets);
+      }).pipe(
+        Effect.provide(
+          layerService({
+            prefix: "usage-service-cursor-all-time",
+            home,
+            settings,
+            environment: { CURSOR_API_KEY: "test-key" },
+          }),
+        ),
+      );
+    }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
   );
 
   it.live("restores the Cursor account cache after a restart", () =>
@@ -2789,7 +2830,7 @@ describe("UsageService", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.live("preserves saved tokens, costs and sessions after transcript cleanup and restart", () =>
+  it.live("preserves old saved usage after transcript cleanup and restart", () =>
     Effect.gen(function* () {
       const { transcript, settings, home } = yield* setup;
       const alias = NodePath.join(home, "claude-alias");
@@ -2797,26 +2838,38 @@ describe("UsageService", () => {
         NodeFSP.symlink(NodePath.join(home, "claude"), alias, "junction"),
       );
       const content = claudeLine(1, 5);
-      yield* Effect.promise(() => NodeFSP.writeFile(transcript, content));
+      yield* Effect.promise(async () => {
+        await NodeFSP.writeFile(transcript, content);
+        await NodeFSP.utimes(transcript, 946_684_800, 946_684_800);
+      });
       yield* Effect.gen(function* () {
         const service = yield* UsageService.make;
-        const first = yield* service.readSummary(WINDOW);
+        const first = yield* service.readSummary(ALL_TIME_WINDOW);
         assert.strictEqual(totalOutputTokens(first), 5);
         assert.isAbove(first.buckets[0]?.costUsd ?? 0, 0);
 
         yield* Effect.promise(() => NodeFSP.rm(transcript));
-        const deleted = yield* service.readSummary(WINDOW);
+        const deleted = yield* service.readSummary(ALL_TIME_WINDOW);
         assert.deepStrictEqual(deleted.buckets, first.buckets);
         assert.deepStrictEqual(deleted.sources, first.sources);
 
         yield* service.awaitPersisted;
         const restarted = yield* UsageService.make;
-        const restored = yield* restarted.readSummary(WINDOW);
+        const restored = yield* restarted.readSummary(ALL_TIME_WINDOW);
         assert.deepStrictEqual(restored.buckets, first.buckets);
         assert.deepStrictEqual(restored.sources, first.sources);
+        assert.strictEqual(restored.sources[0]?.scannedFiles, 1);
+        assert.strictEqual(restored.sources[0]?.distinctSessions, 1);
+
+        const lastSevenDays = yield* restarted.readSummary({
+          ...WINDOW,
+          sinceDay: UsageDay.make("2026-07-27"),
+        });
+        assert.strictEqual(lastSevenDays.sources[0]?.scannedFiles, 0);
+        assert.strictEqual(lastSevenDays.sources[0]?.distinctSessions, 0);
 
         yield* Effect.promise(() => NodeFSP.writeFile(transcript + ".jsonl", content));
-        const moved = yield* restarted.readSummary(WINDOW);
+        const moved = yield* restarted.readSummary(ALL_TIME_WINDOW);
         assert.deepStrictEqual(moved.buckets, first.buckets);
         assert.strictEqual(moved.sources[0]?.distinctSessions, 1);
         yield* restarted.awaitPersisted;
@@ -2827,7 +2880,7 @@ describe("UsageService", () => {
           NodeFSP.rm(NodePath.join(home, "claude", "projects"), { recursive: true }),
         );
         const afterRootCleanup = yield* UsageService.make;
-        const missingRoot = yield* afterRootCleanup.readSummary(WINDOW);
+        const missingRoot = yield* afterRootCleanup.readSummary(ALL_TIME_WINDOW);
         assert.deepStrictEqual(missingRoot.buckets, first.buckets);
         assert.strictEqual(missingRoot.sources[0]?.distinctSessions, 1);
         assert.strictEqual(missingRoot.sources[0]?.status, "ok");
@@ -2837,7 +2890,7 @@ describe("UsageService", () => {
           await NodeFSP.rename(replacementProjects, projects);
           await NodeFSP.writeFile(NodePath.join(projects, "new.jsonl"), claudeLine(2, 7));
         });
-        const recreated = yield* afterRootCleanup.readSummary(WINDOW);
+        const recreated = yield* afterRootCleanup.readSummary(ALL_TIME_WINDOW);
         assert.strictEqual(totalOutputTokens(recreated), 12);
         assert.deepStrictEqual(recreated.sources[0]?.fingerprint, first.sources[0]?.fingerprint);
 
@@ -2861,7 +2914,7 @@ describe("UsageService", () => {
         assert.strictEqual(merged.costUsd, recreated.buckets[0]?.costUsd);
 
         const outsideWindow = yield* restarted.readSummary({
-          ...WINDOW,
+          ...ALL_TIME_WINDOW,
           sinceDay: UsageDay.make("2026-08-02"),
         });
         assert.deepStrictEqual(outsideWindow.buckets, []);
@@ -3001,11 +3054,9 @@ describe("UsageService", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.live("reports saved usage of a removed directory only for windows it reaches", () =>
+  it.live("keeps saved sources discoverable while filtering records to the requested window", () =>
     Effect.gen(function* () {
-      yield* TestClock.setTime(Date.parse("2026-08-12T00:00:00Z"));
       const { transcript, settings, home } = yield* setup;
-      // Saved usage is pruned after the retention window, so pin "now" near the write.
       yield* TestClock.setTime(Date.parse("2026-08-15T00:00:00Z"));
       yield* Effect.promise(async () => {
         await NodeFSP.writeFile(transcript, claudeLine(1, 5));
@@ -3032,6 +3083,7 @@ describe("UsageService", () => {
       assert.deepStrictEqual(later.buckets, []);
       assert.strictEqual(later.sources[0]?.status, "missing");
       assert.strictEqual(later.sources[0]?.scannedFiles, 0);
+      assert.strictEqual(later.sources[0]?.distinctSessions, 0);
     }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
   );
 

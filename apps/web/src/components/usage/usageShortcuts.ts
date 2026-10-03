@@ -1,5 +1,6 @@
 import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import type { UsageChartMetric } from "./UsageProviderChart";
+import type { UsageRange } from "./usageRange";
 import { resolveShortcutCommand, type ShortcutEventLike } from "../../keybindings";
 
 export type UsageMetric = UsageChartMetric | "limits";
@@ -14,7 +15,12 @@ export const WINDOW_OPTIONS = [
   { days: 7, label: "7 days", command: "usage.period.week" },
   { days: 30, label: "30 days", command: "usage.period.month" },
   { days: 90, label: "90 days", command: "usage.period.quarter" },
-] as const;
+  { days: "all", label: "All", command: undefined },
+] as const satisfies readonly {
+  days: UsageRange;
+  label: string;
+  command: KeybindingCommand | undefined;
+}[];
 
 export function resolveUsageShortcut(
   event: ShortcutEventLike & { target: EventTarget | null },
