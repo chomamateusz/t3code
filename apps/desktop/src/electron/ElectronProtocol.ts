@@ -28,6 +28,10 @@ export function getDesktopUrl(isDevelopment: boolean): string {
   return `${getDesktopOrigin(isDevelopment)}/`;
 }
 
+export function shouldClearRendererCache(previousVersion: string | null, currentVersion: string) {
+  return previousVersion !== currentVersion;
+}
+
 export class ElectronProtocolRegistrationError extends Schema.TaggedError<ElectronProtocolRegistrationError>()(
   "ElectronProtocolRegistrationError",
   {
@@ -37,6 +41,17 @@ export class ElectronProtocolRegistrationError extends Schema.TaggedError<Electr
 ) {
   override get message(): string {
     return `Failed to register Electron protocol scheme "${this.scheme}".`;
+  }
+}
+
+export class ElectronProtocolCacheClearError extends Schema.TaggedError<ElectronProtocolCacheClearError>()(
+  "ElectronProtocolCacheClearError",
+  {
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return "Failed to clear the renderer cache.";
   }
 }
 
@@ -60,6 +75,7 @@ export type DesktopProtocolRegistrationInput = {
 export class ElectronProtocol extends Context.Service<
   ElectronProtocol,
   {
+    readonly clearRendererCache: Effect.Effect<void, ElectronProtocolCacheClearError>;
     readonly registerDesktopProtocol: (
       input: DesktopProtocolRegistrationInput,
     ) => Effect.Effect<void, ElectronProtocolRegistrationError, Scope.Scope>;
@@ -212,31 +228,42 @@ const serveDesktopAsset = Effect.fn("desktop.protocol.serveAsset")(function* (
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const url = new URL(request.url);
-  if (url.host !== DESKTOP_HOST) return new Response(null, { status: 404 });
+  if (url.host !== DESKTOP_HOST)
+    return new Response(null, { status: 404, headers: { "cache-control": "no-store" } });
   if (request.method !== "GET" && request.method !== "HEAD") {
-    return new Response(null, { status: 405 });
+    return new Response(null, { status: 405, headers: { "cache-control": "no-store" } });
   }
   const pathname = Option.getOrNull(Option.liftThrowable(decodeURIComponent)(url.pathname));
-  if (pathname === null || pathname.includes("\0")) return new Response(null, { status: 400 });
+  if (pathname === null || pathname.includes("\0"))
+    return new Response(null, { status: 400, headers: { "cache-control": "no-store" } });
   const root = path.resolve(assetDirectory);
   const assetPath = path.resolve(root, `.${pathname}`);
   if (assetPath !== root && !assetPath.startsWith(root + path.sep)) {
-    return new Response(null, { status: 404 });
+    return new Response(null, { status: 404, headers: { "cache-control": "no-store" } });
   }
   const stat = yield* fileSystem.stat(assetPath).pipe(Effect.orElseSucceed(() => null));
   let filePath = assetPath;
   if (stat?.type !== "File") {
     const wantsHtml = request.headers.get("accept")?.includes("text/html") ?? false;
     if (path.extname(assetPath) !== "" && !wantsHtml) {
-      return new Response(null, { status: 404 });
+      return new Response(null, { status: 404, headers: { "cache-control": "no-store" } });
     }
     filePath = path.join(root, "index.html");
   }
   const contents = yield* fileSystem.readFile(filePath).pipe(Effect.orElseSucceed(() => null));
-  if (contents === null) return new Response(null, { status: 404 });
+  if (contents === null)
+    return new Response(null, { status: 404, headers: { "cache-control": "no-store" } });
+  const relativePath = path.relative(root, filePath).split(path.sep).join("/");
+  const cacheControl =
+    path.extname(filePath).toLowerCase() === ".html"
+      ? "no-store"
+      : /^assets\/.*-[\w-]{8,}\.[^/.]+$/.test(relativePath)
+        ? "public, max-age=31536000, immutable"
+        : "no-cache";
   return new Response(request.method === "HEAD" ? null : new Uint8Array(contents), {
     headers: {
       "content-type": Option.getOrElse(Mime.getType(filePath), () => "application/octet-stream"),
+      "cache-control": cacheControl,
     },
   });
 });
@@ -287,7 +314,16 @@ export const make = Effect.gen(function* () {
     },
   );
 
-  return ElectronProtocol.of({ registerDesktopProtocol });
+  return ElectronProtocol.of({
+    clearRendererCache: Effect.tryPromise({
+      try: async () => {
+        await Electron.session.defaultSession.clearCache();
+        await Electron.session.defaultSession.clearCodeCaches({});
+      },
+      catch: (cause) => new ElectronProtocolCacheClearError({ cause }),
+    }).pipe(Effect.withSpan("desktop.electron.protocol.clearRendererCache")),
+    registerDesktopProtocol,
+  });
 });
 
 export const layer = Layer.effect(ElectronProtocol, make);

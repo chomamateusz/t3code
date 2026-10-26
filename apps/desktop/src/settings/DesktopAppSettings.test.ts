@@ -127,6 +127,18 @@ describe("DesktopSettings", () => {
     }),
   );
 
+  it.effect("defaults the renderer cache version to null and persists the accepted version", () =>
+    withSettings(
+      Effect.gen(function* () {
+        const settings = yield* DesktopAppSettings.DesktopAppSettings;
+        assert.isNull((yield* settings.load).rendererCacheVersion);
+        assert.isTrue((yield* settings.setRendererCacheVersion("0.0.18")).changed);
+        assert.equal((yield* settings.load).rendererCacheVersion, "0.0.18");
+        assert.isFalse((yield* settings.setRendererCacheVersion("0.0.18")).changed);
+      }),
+    ),
+  );
+
   it.effect(
     "persists disabling and re-enabling local execution without clearing backend settings",
     () =>
@@ -179,6 +191,7 @@ describe("DesktopSettings", () => {
         );
 
         assert.deepEqual(yield* settings.load, {
+          rendererCacheVersion: null,
           linuxPasswordStore: "auto",
           localEnvironmentEnabled: true,
           mainWindowBounds: { x: 120, y: 80, width: 1280, height: 900 },
@@ -310,6 +323,7 @@ describe("DesktopSettings", () => {
         });
 
         assert.deepEqual(yield* settings.load, {
+          rendererCacheVersion: null,
           linuxPasswordStore: "auto",
           localEnvironmentEnabled: true,
           mainWindowBounds: null,
@@ -339,6 +353,7 @@ describe("DesktopSettings", () => {
         });
 
         assert.deepEqual(yield* settings.load, {
+          rendererCacheVersion: null,
           linuxPasswordStore: "auto",
           localEnvironmentEnabled: true,
           mainWindowBounds: null,

@@ -27,6 +27,60 @@ describe("ElectronProtocol", () => {
     unhandleMock.mockReset();
   });
 
+  it("purges renderer caches on first launch and every version change", () => {
+    assert.isTrue(ElectronProtocol.shouldClearRendererCache(null, "0.0.18"));
+    assert.isTrue(ElectronProtocol.shouldClearRendererCache("0.0.17", "0.0.18"));
+    assert.isTrue(ElectronProtocol.shouldClearRendererCache("0.0.18", "0.0.17"));
+    assert.isFalse(ElectronProtocol.shouldClearRendererCache("0.0.18", "0.0.18"));
+  });
+
+  it.effect("sets cache policies for bundled documents and assets", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const directory = yield* fileSystem.makeTempDirectoryScoped();
+      yield* fileSystem.makeDirectory(`${directory}/assets`);
+      for (const file of [
+        "index.html",
+        "help.html",
+        "assets/page-BKx6Wqpp.html",
+        "assets/atomRegistry-BKx6Wqpp.js",
+        "assets/style-D9_A-b12.css",
+        "assets/app.js",
+        "app-BKx6Wqpp.js",
+        "favicon.ico",
+      ]) {
+        yield* fileSystem.writeFileString(`${directory}/${file}`, "bundled content");
+      }
+      let handler: ((request: Request) => Promise<Response>) | undefined;
+      handleMock.mockImplementation((_scheme, nextHandler) => {
+        handler = nextHandler;
+      });
+      const protocol = yield* ElectronProtocol.ElectronProtocol;
+      yield* protocol.registerDesktopProtocol({
+        scheme: "t3code",
+        assetDirectory: directory,
+        clerkFrontendApiHostname: undefined,
+      });
+
+      for (const [pathname, cacheControl] of [
+        ["/", "no-store"],
+        ["/settings/connections", "no-store"],
+        ["/help.html", "no-store"],
+        ["/assets/page-BKx6Wqpp.html", "no-store"],
+        ["/assets/atomRegistry-BKx6Wqpp.js?v=1", "public, max-age=31536000, immutable"],
+        ["/assets/style-D9_A-b12.css", "public, max-age=31536000, immutable"],
+        ["/assets/app.js", "no-cache"],
+        ["/app-BKx6Wqpp.js", "no-cache"],
+        ["/favicon.ico", "no-cache"],
+      ]) {
+        const response = yield* Effect.promise(() =>
+          handler!(new Request(`t3code://app${pathname}`)),
+        );
+        assert.equal(response.headers.get("cache-control"), cacheControl, pathname);
+      }
+    }).pipe(Effect.provide(Layer.merge(layerProtocol, NodeServices.layer)), Effect.scoped),
+  );
+
   it.effect("serves the bundled client from disk without a backend", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -58,10 +112,35 @@ describe("ElectronProtocol", () => {
       assert.equal(yield* Effect.promise(() => script.text()), "export default 1;");
       assert.include(script.headers.get("content-type") ?? "", "javascript");
 
-      assert.equal((yield* request("/missing.js")).status, 404);
-      assert.equal((yield* request("/%2e%2e%2fsecret.txt")).status, 404);
-      assert.equal((yield* request("/%invalid")).status, 400);
-      assert.equal((yield* request("/", { method: "POST" })).status, 405);
+      const head = yield* request("/app.js", { method: "HEAD" });
+      assert.equal(head.status, 200);
+      assert.equal(head.headers.get("cache-control"), "no-cache");
+      assert.equal(yield* Effect.promise(() => head.text()), "");
+
+      for (const [pathname, status, method] of [
+        ["/missing.js", 404, "GET"],
+        ["/assets/missing-BKx6Wqpp.js", 404, "GET"],
+        ["/assets/missing-BKx6Wqpp.js", 404, "HEAD"],
+        ["/%2e%2e%2fsecret.txt", 404, "GET"],
+        ["/%invalid", 400, "GET"],
+        ["/%00", 400, "GET"],
+        ["/", 405, "POST"],
+      ] as const) {
+        const response = yield* request(pathname, { method });
+        assert.equal(response.status, status, pathname);
+        assert.equal(response.headers.get("cache-control"), "no-store", pathname);
+        if (method === "HEAD") {
+          assert.equal(yield* Effect.promise(() => response.text()), "");
+        }
+      }
+      const otherHost = yield* Effect.promise(() => handler!(new Request("t3code://other/")));
+      assert.equal(otherHost.status, 404);
+      assert.equal(otherHost.headers.get("cache-control"), "no-store");
+
+      yield* fileSystem.remove(`${directory}/index.html`);
+      const missingIndex = yield* request("/");
+      assert.equal(missingIndex.status, 404);
+      assert.equal(missingIndex.headers.get("cache-control"), "no-store");
       assert.equal(netFetchMock.mock.calls.length, 0);
     }).pipe(Effect.provide(Layer.merge(layerProtocol, NodeServices.layer)), Effect.scoped),
   );

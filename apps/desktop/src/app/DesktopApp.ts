@@ -178,6 +178,22 @@ const bootstrap = Effect.gen(function* () {
 
   const settings = yield* desktopSettings.get;
   const electronProtocol = yield* ElectronProtocol.ElectronProtocol;
+  if (
+    !environment.isDevelopment &&
+    ElectronProtocol.shouldClearRendererCache(settings.rendererCacheVersion, environment.appVersion)
+  ) {
+    yield* electronProtocol.clearRendererCache.pipe(
+      Effect.andThen(desktopSettings.setRendererCacheVersion(environment.appVersion)),
+      Effect.catch((error) =>
+        Effect.logWarning(
+          "Could not refresh the renderer cache; keeping the previous cache version.",
+          {
+            error,
+          },
+        ),
+      ),
+    );
+  }
   yield* electronProtocol.registerDesktopProtocol({
     scheme: ElectronProtocol.getDesktopScheme(environment.isDevelopment),
     ...(environment.isDevelopment

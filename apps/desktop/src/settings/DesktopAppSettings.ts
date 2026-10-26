@@ -26,6 +26,7 @@ import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
 import { isValidDistroName } from "../wsl/wslPathParsing.ts";
 
 export interface DesktopSettings {
+  readonly rendererCacheVersion: string | null;
   readonly localEnvironmentEnabled: boolean;
   readonly linuxPasswordStore: LinuxPasswordStorePreference;
   readonly mainWindowBounds: DesktopWindowBounds | null;
@@ -67,6 +68,7 @@ export const DEFAULT_MAIN_WINDOW_SIZE = {
 } as const;
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
+  rendererCacheVersion: null,
   localEnvironmentEnabled: true,
   linuxPasswordStore: DEFAULT_LINUX_PASSWORD_STORE,
   mainWindowBounds: null,
@@ -89,6 +91,7 @@ const DesktopWindowBoundsDocument = Schema.Struct({
 });
 
 const DesktopSettingsDocument = Schema.Struct({
+  rendererCacheVersion: Schema.optionalKey(Schema.NullOr(Schema.String)),
   localEnvironmentEnabled: Schema.optionalKey(Schema.Boolean),
   linuxPasswordStore: Schema.optionalKey(Schema.Unknown),
   mainWindowBounds: Schema.optionalKey(Schema.NullOr(DesktopWindowBoundsDocument)),
@@ -146,6 +149,9 @@ export class DesktopAppSettings extends Context.Service<
   {
     readonly load: Effect.Effect<DesktopSettings>;
     readonly get: Effect.Effect<DesktopSettings>;
+    readonly setRendererCacheVersion: (
+      version: string,
+    ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
     readonly setLocalEnvironmentEnabled: (
       enabled: boolean,
     ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
@@ -218,6 +224,7 @@ function normalizeDesktopSettingsDocument(
     (parsed.wslBackendEnabled === undefined && parsed.wslMode === "wsl");
 
   return {
+    rendererCacheVersion: parsed.rendererCacheVersion ?? null,
     localEnvironmentEnabled: parsed.localEnvironmentEnabled !== false,
     linuxPasswordStore: normalizeLinuxPasswordStorePreference(parsed.linuxPasswordStore),
     mainWindowBounds,
@@ -241,6 +248,10 @@ function toDesktopSettingsDocument(
   defaults: DesktopSettings,
 ): DesktopSettingsDocument {
   const document: Mutable<DesktopSettingsDocument> = {};
+
+  if (settings.rendererCacheVersion !== defaults.rendererCacheVersion) {
+    document.rendererCacheVersion = settings.rendererCacheVersion;
+  }
 
   if (settings.localEnvironmentEnabled !== defaults.localEnvironmentEnabled) {
     document.localEnvironmentEnabled = settings.localEnvironmentEnabled;
@@ -281,6 +292,12 @@ function toDesktopSettingsDocument(
   }
 
   return document;
+}
+
+function setRendererCacheVersion(settings: DesktopSettings, version: string): DesktopSettings {
+  return settings.rendererCacheVersion === version
+    ? settings
+    : { ...settings, rendererCacheVersion: version };
 }
 
 function setServerExposureMode(
@@ -510,6 +527,12 @@ export const make = Effect.gen(function* () {
 
   return DesktopAppSettings.of({
     get: SynchronizedRef.get(settingsRef),
+    setRendererCacheVersion: Effect.fn("desktop.settings.setRendererCacheVersion")(
+      function* (version) {
+        yield* Effect.annotateCurrentSpan({ version });
+        return yield* persist((settings) => setRendererCacheVersion(settings, version));
+      },
+    ),
     load: Effect.gen(function* () {
       const settings = yield* readSettings(
         fileSystem,
@@ -599,6 +622,11 @@ export const layerTest = (initialSettings: DesktopSettings = DEFAULT_DESKTOP_SET
       return DesktopAppSettings.of({
         get: SynchronizedRef.get(settingsRef),
         load: SynchronizedRef.get(settingsRef),
+        setRendererCacheVersion: Effect.fn("DesktopAppSettings.setRendererCacheVersion")(
+          function (version) {
+            return update((settings) => setRendererCacheVersion(settings, version));
+          },
+        ),
         setMainWindowBounds: Effect.fn("DesktopAppSettings.setMainWindowBounds")(
           function (bounds, isMaximized) {
             return update((settings) => setMainWindowBounds(settings, bounds, isMaximized));

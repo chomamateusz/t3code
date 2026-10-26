@@ -241,6 +241,7 @@ function layerTest(input: {
   const layerDesktopAppSettings = Layer.succeed(DesktopAppSettings.DesktopAppSettings, {
     get: Effect.sync(() => desktopSettings),
     load: Effect.sync(() => desktopSettings),
+    setRendererCacheVersion: () => Effect.die("unexpected renderer cache version update"),
     setMainWindowBounds: (bounds, isMaximized) =>
       Effect.gen(function* () {
         if (input.beforeMainWindowBoundsUpdate) {
