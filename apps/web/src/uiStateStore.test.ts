@@ -20,6 +20,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectExpandedById: {},
     projectOrder: [],
     sidebarProjectScopeKeys: [],
+    sidebarEnvironmentScopeKeys: [],
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
@@ -95,6 +96,23 @@ describe("uiStateStore pure functions", () => {
 });
 
 describe("parsePersistedState", () => {
+  it.each([
+    { legacy: undefined, keys: undefined, expected: [] },
+    { legacy: null, keys: undefined, expected: [] },
+    { legacy: "", keys: undefined, expected: [] },
+    { legacy: 42, keys: undefined, expected: [] },
+    { legacy: "mac", keys: undefined, expected: ["mac"] },
+    { legacy: "mac", keys: [], expected: [] },
+    { legacy: "mac", keys: ["linux", "unknown", "linux", "", 42], expected: ["linux", "unknown"] },
+  ])("migrates and sanitizes machine scopes $legacy / $keys", ({ legacy, keys, expected }) => {
+    expect(
+      parsePersistedState({
+        sidebarEnvironmentScopeKey: legacy as string | null,
+        ...(keys === undefined ? {} : { sidebarEnvironmentScopeKeys: keys as string[] }),
+      }).sidebarEnvironmentScopeKeys,
+    ).toEqual(expected);
+  });
+
   it("hydrates raw UI-owned state without server entities", () => {
     const parsed = parsePersistedState({
       projectExpandedById: {
@@ -126,6 +144,7 @@ describe("parsePersistedState", () => {
       },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKeys: [],
+      sidebarEnvironmentScopeKeys: [],
       pullRequestMergeMethod: "merge",
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
@@ -231,6 +250,7 @@ describe("uiStateStore persistence", () => {
       },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKeys: [],
+      sidebarEnvironmentScopeKeys: [],
       sidebarProjectScopeKey: null,
       threadChangedFilesExpansionVersion: 2,
       threadChangedFilesExpandedById: {
@@ -248,13 +268,21 @@ describe("uiStateStore persistence", () => {
 
   it("restores the sidebar project scope across reloads", () => {
     const keys = ["github.com/pingdotgg/t3code", "github.com/pingdotgg/uploadthing"];
-    persistState(makeUiState({ sidebarProjectScopeKeys: keys }));
+    persistState(
+      makeUiState({
+        sidebarProjectScopeKeys: keys,
+        sidebarEnvironmentScopeKeys: ["environment-remote-mac"],
+      }),
+    );
 
     const persisted = JSON.parse(
       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
     ) as PersistedUiState;
 
     expect(parsePersistedState(persisted).sidebarProjectScopeKeys).toEqual(keys);
+    expect(parsePersistedState(persisted).sidebarEnvironmentScopeKeys).toEqual([
+      "environment-remote-mac",
+    ]);
   });
 
   it("keeps a single-project scope readable by older clients", () => {

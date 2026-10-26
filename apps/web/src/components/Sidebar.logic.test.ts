@@ -1,3 +1,4 @@
+import { threadKey } from "@t3tools/client-runtime/state/entities";
 import { presentThreadShell } from "@t3tools/client-runtime/state/models";
 import { isThreadWorking as isSidebarThreadWorking } from "@t3tools/client-runtime/state/thread-inbox";
 import * as DateTime from "effect/DateTime";
@@ -1455,17 +1456,77 @@ describe("resolveSidebarRouteReveal", () => {
   const hiddenKey = "environment-test:thread-test";
   const findThread = (key: string) => (key === hiddenKey ? hidden : undefined);
 
-  it("widens the scope for a newly opened thread the scope hides", () => {
+  it.each([
+    { projects: scopedProjectKeys, machine: null, project: true, environment: false },
+    {
+      projects: new Set(["environment-test:project-other", "environment-other:project-scoped"]),
+      machine: new Set(["environment-other"]),
+      project: false,
+      environment: true,
+    },
+    {
+      projects: scopedProjectKeys,
+      machine: new Set(["environment-other"]),
+      project: true,
+      environment: true,
+    },
+    {
+      projects: scopedProjectKeys,
+      machine: new Set(["environment-test"]),
+      project: true,
+      environment: false,
+    },
+    { projects: null, machine: new Set(["environment-other"]), project: false, environment: true },
+    {
+      projects: null,
+      machine: new Set(["environment-other", "environment-test"]),
+      project: false,
+      environment: false,
+    },
+    {
+      projects: null,
+      machine: new Set(["environment-other", "environment-third"]),
+      project: false,
+      environment: true,
+    },
+  ])(
+    "widens only scopes hiding the opened thread: $project / $environment",
+    ({ projects, machine, project, environment }) => {
+      expect(
+        resolveSidebarRouteReveal({
+          reveal: { observedKey: "environment-test:other", pendingKey: null },
+          routeKey: hiddenKey,
+          isSearching: false,
+          scopedProjectKeys: projects,
+          scopedEnvironmentIds: machine,
+          delegatedUnderParent: new Set(),
+          findThread,
+        }),
+      ).toEqual({
+        pendingKey: hiddenKey,
+        widensProjectScope: project,
+        widensEnvironmentScope: environment,
+      });
+    },
+  );
+
+  it.each(["archived", "delegated"] as const)("does not widen for a %s thread", (kind) => {
     expect(
       resolveSidebarRouteReveal({
-        reveal: { observedKey: "environment-test:other", pendingKey: null },
+        reveal: { observedKey: null, pendingKey: null },
         routeKey: hiddenKey,
         isSearching: false,
         scopedProjectKeys,
-        delegatedUnderParent: new Set(),
-        findThread,
+        scopedEnvironmentIds: new Set(["environment-other"]),
+        delegatedUnderParent: new Set(
+          kind === "delegated"
+            ? [threadKey({ environmentId: hidden.environmentId, threadId: hidden.id })]
+            : [],
+        ),
+        findThread: () =>
+          kind === "archived" ? { ...hidden, archivedAt: "2026-10-30T00:00:00.000Z" } : hidden,
       }),
-    ).toEqual({ pendingKey: hiddenKey, widensScope: true });
+    ).toEqual({ pendingKey: hiddenKey, widensProjectScope: false, widensEnvironmentScope: false });
   });
 
   it("never widens for a thread whose reveal already completed", () => {
@@ -1476,10 +1537,11 @@ describe("resolveSidebarRouteReveal", () => {
         routeKey: hiddenKey,
         isSearching: false,
         scopedProjectKeys,
+        scopedEnvironmentIds: new Set(["environment-other"]),
         delegatedUnderParent: new Set(),
         findThread,
       }),
-    ).toEqual({ pendingKey: null, widensScope: false });
+    ).toEqual({ pendingKey: null, widensProjectScope: false, widensEnvironmentScope: false });
   });
 
   it("widens again for a thread reopened before the thread between them listed its row", () => {
@@ -1492,11 +1554,16 @@ describe("resolveSidebarRouteReveal", () => {
         routeKey,
         isSearching: false,
         scopedProjectKeys,
+        scopedEnvironmentIds: new Set(["environment-other"]),
         delegatedUnderParent: new Set(),
         findThread,
       });
     resolve("environment-test:unlisted");
-    expect(resolve(hiddenKey)).toEqual({ pendingKey: hiddenKey, widensScope: true });
+    expect(resolve(hiddenKey)).toEqual({
+      pendingKey: hiddenKey,
+      widensProjectScope: true,
+      widensEnvironmentScope: true,
+    });
   });
 
   it("holds a pending reveal without widening while searching", () => {
@@ -1506,10 +1573,11 @@ describe("resolveSidebarRouteReveal", () => {
         routeKey: hiddenKey,
         isSearching: true,
         scopedProjectKeys,
+        scopedEnvironmentIds: new Set(["environment-other"]),
         delegatedUnderParent: new Set(),
         findThread,
       }),
-    ).toEqual({ pendingKey: hiddenKey, widensScope: false });
+    ).toEqual({ pendingKey: hiddenKey, widensProjectScope: false, widensEnvironmentScope: false });
   });
 });
 

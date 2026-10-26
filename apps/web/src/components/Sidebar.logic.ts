@@ -599,6 +599,7 @@ export function filterSidebarV2VisibleThreads<
   threads: readonly T[],
   scopedProjectKeys: ReadonlySet<string> | null,
   delegatedUnderParent: ReadonlySet<string>,
+  scopedEnvironmentIds: ReadonlySet<string> | null = null,
 ): T[] {
   return threads.filter(
     (thread) =>
@@ -608,8 +609,18 @@ export function filterSidebarV2VisibleThreads<
         thread.lineage,
         delegatedUnderParent,
       ) &&
-      (scopedProjectKeys === null ||
-        scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
+      isInSidebarScope(thread, scopedProjectKeys, scopedEnvironmentIds),
+  );
+}
+
+export function isInSidebarScope(
+  item: { readonly environmentId: string; readonly projectId: string },
+  scopedProjectKeys: ReadonlySet<string> | null,
+  scopedEnvironmentIds: ReadonlySet<string> | null,
+): boolean {
+  return (
+    (scopedEnvironmentIds === null || scopedEnvironmentIds.has(item.environmentId)) &&
+    (scopedProjectKeys === null || scopedProjectKeys.has(`${item.environmentId}:${item.projectId}`))
   );
 }
 

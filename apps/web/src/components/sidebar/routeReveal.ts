@@ -55,18 +55,31 @@ export function resolveSidebarRouteReveal<T extends RevealableThread>(input: {
   readonly routeKey: string | null;
   readonly isSearching: boolean;
   readonly scopedProjectKeys: ReadonlySet<string> | null;
+  readonly scopedEnvironmentIds?: ReadonlySet<string> | null;
   readonly delegatedUnderParent: ReadonlySet<string>;
   readonly findThread: (key: string) => T | undefined;
-}): { readonly pendingKey: string | null; readonly widensScope: boolean } {
+}): {
+  readonly pendingKey: string | null;
+  readonly widensProjectScope: boolean;
+  readonly widensEnvironmentScope: boolean;
+} {
   const { reveal, routeKey, isSearching, scopedProjectKeys, delegatedUnderParent, findThread } =
     input;
   const pendingKey = pendingSidebarRouteReveal(reveal, routeKey);
   // Search results replace the thread list; the reveal waits for it to return.
   const thread = pendingKey === null || isSearching ? undefined : findThread(pendingKey);
-  const widensScope =
+  const canReveal =
     thread !== undefined &&
-    scopedProjectKeys !== null &&
-    filterSidebarV2VisibleThreads([thread], scopedProjectKeys, delegatedUnderParent).length === 0 &&
     filterSidebarV2VisibleThreads([thread], null, delegatedUnderParent).length === 1;
-  return { pendingKey, widensScope };
+  return {
+    pendingKey,
+    widensProjectScope:
+      canReveal &&
+      scopedProjectKeys !== null &&
+      !scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`),
+    widensEnvironmentScope:
+      canReveal &&
+      input.scopedEnvironmentIds != null &&
+      !input.scopedEnvironmentIds.has(thread.environmentId),
+  };
 }
