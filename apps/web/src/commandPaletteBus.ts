@@ -1,6 +1,7 @@
 import type { EnvironmentId, PullRequestLinkedThreadsResult } from "@t3tools/contracts";
 
 import { dispatchCommandPalette, isCommandPaletteMounted } from "./commandPaletteStore";
+import type { NewThreadTarget } from "./newThreadTarget";
 
 export interface CommandPaletteLinkedThreads {
   readonly environmentId: EnvironmentId;
@@ -11,6 +12,7 @@ export interface CommandPaletteOpenDetail {
   readonly open?: "add-project" | "new-thread-in";
   readonly query?: string;
   readonly linkedThreads?: CommandPaletteLinkedThreads;
+  readonly newThreadTarget?: Exclude<NewThreadTarget, { kind: "direct" }>;
 }
 
 export function openCommandPalette(detail: CommandPaletteOpenDetail = {}): void {
@@ -18,7 +20,10 @@ export function openCommandPalette(detail: CommandPaletteOpenDetail = {}): void 
   // store, it would pop a stale palette once the app shell mounts.
   if (!isCommandPaletteMounted()) return;
   if (detail.open === "new-thread-in") {
-    dispatchCommandPalette({ _tag: "OpenNewThreadIn" });
+    dispatchCommandPalette({
+      _tag: "OpenNewThreadIn",
+      ...(detail.newThreadTarget ? { target: detail.newThreadTarget } : {}),
+    });
   } else if (detail.open === "add-project") {
     dispatchCommandPalette({ _tag: "OpenAddProject" });
   } else if (detail.query !== undefined) {

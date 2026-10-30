@@ -175,7 +175,7 @@ function matchesCommandShortcut(
   return resolveShortcutCommand(event, keybindings, options) === command;
 }
 
-export function resolveShortcutCommand(
+function resolveExactShortcutCommand(
   event: ShortcutEventLike,
   keybindings: ResolvedKeybindingsConfig,
   options?: ShortcutMatchOptions,
@@ -192,6 +192,31 @@ export function resolveShortcutCommand(
     if (!matchesWhenClause(binding.whenAst, context)) continue;
     if (!matchesKeybindingShortcut(event, shortcutForContext(binding, context), platform)) continue;
     return binding.command;
+  }
+  return null;
+}
+
+export function resolveShortcutCommand(
+  event: ShortcutEventLike,
+  keybindings: ResolvedKeybindingsConfig,
+  options?: ShortcutMatchOptions,
+): KeybindingCommand | null {
+  const exactCommand = resolveExactShortcutCommand(event, keybindings, options);
+  if (exactCommand !== null) return exactCommand;
+  if (event.altKey) {
+    const withoutAlt = {
+      key: event.key,
+      ...(event.code !== undefined ? { code: event.code } : {}),
+      ...(event.target !== undefined ? { target: event.target } : {}),
+      metaKey: event.metaKey,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      altKey: false,
+      getModifierState: (key: "AltGraph") => event.getModifierState?.(key) ?? false,
+    };
+    if (resolveExactShortcutCommand(withoutAlt, keybindings, options) === "chat.new") {
+      return "chat.new";
+    }
   }
   return null;
 }

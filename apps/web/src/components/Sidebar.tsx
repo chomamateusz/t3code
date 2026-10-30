@@ -123,6 +123,7 @@ import {
   toggleSidebarProjectSelection,
 } from "../sidebarProjectRow";
 import { ConnectedSidebarProjectRow } from "./sidebar/SidebarProjectRow";
+import { startNewThreadInSidebarFilter } from "../newThreadActions";
 import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
 import {
   getThreadKeysToDeselectAfterDelete,
@@ -194,6 +195,7 @@ import {
   isInSidebarScope,
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
+  shouldCreateNewThreadInCurrentProject,
   orderItemsByPreferredIds,
   planSidebarThreadDrop,
   resolveAdjacentThreadId,
@@ -204,7 +206,6 @@ import {
   resolveSidebarReorderableThreadKeys,
   resolveSidebarThreadShelfState,
   searchSidebarThreads,
-  shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
   sidebarListItemId,
   sidebarThreadKeyAtY,
@@ -3058,13 +3059,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const showJumpHints = useThreadJumpHintsVisible(shouldShowJumpHintsNow);
 
   const handleNewThreadClick = (event?: ReactMouseEvent) => {
-    if (
-      shouldCreateNewThreadInCurrentProject(
-        event?.shiftKey ?? false,
-        scopeGroups.length,
-        projectGroups.length,
-      )
-    ) {
+    if (event?.shiftKey) {
       if (isMobile) setOpenMobile(false);
       // With no current or open project, such as when every project is archived, pick one.
       void startNewThreadFromContext({
@@ -3078,7 +3073,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       return;
     }
     if (isMobile) setOpenMobile(false);
-    openCommandPalette({ open: "new-thread-in" });
+    void startNewThreadInSidebarFilter(handleNewThread, {
+      allProjects: event?.altKey ?? false,
+      currentProject: {
+        activeDraftThread: newThreadContext.activeDraftThread,
+        activeThread: newThreadContext.activeThread ?? undefined,
+        defaultProjectRef: newThreadContext.defaultProjectRef,
+      },
+    });
   };
 
   const newThreadShortcutLabel =
@@ -3124,16 +3126,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               }
               onNewProject={openAddProjectCommandPalette}
               onNewThread={handleNewThreadClick}
-              newThreadDisabled={projects.length === 0}
+              newThreadInCurrentProject={shouldCreateNewThreadInCurrentProject(
+                false,
+                scopeGroups.length,
+                projectGroups.length,
+              )}
               newThreadShortcutLabel={newThreadShortcutLabel}
               newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
-              showNewThreadInProjectHint={
-                !shouldCreateNewThreadInCurrentProject(
-                  false,
-                  scopeGroups.length,
-                  projectGroups.length,
-                )
-              }
               searchInputRef={threadSearchInputRef}
               searchQuery={threadSearchQuery}
               onSearchQueryChange={(value) => {

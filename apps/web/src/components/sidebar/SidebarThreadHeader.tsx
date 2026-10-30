@@ -7,6 +7,8 @@ import {
   type RefObject,
 } from "react";
 
+import { newThreadTargetTooltip, resolveNewThreadTarget } from "../../newThreadTarget";
+import { useNewThreadTargetInput } from "../../newThreadTargetState";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
@@ -18,10 +20,9 @@ export interface SidebarThreadHeaderProps {
   projectRow?: ReactNode;
   onNewProject: () => void;
   onNewThread: (event: ReactMouseEvent) => void;
-  newThreadDisabled: boolean;
+  newThreadInCurrentProject: boolean;
   newThreadShortcutLabel: string | null | undefined;
   newThreadInProjectShortcutLabel: string | null | undefined;
-  showNewThreadInProjectHint: boolean;
   searchInputRef: RefObject<HTMLInputElement | null>;
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
@@ -38,10 +39,9 @@ export function SidebarThreadHeader({
   projectRow,
   onNewProject,
   onNewThread,
-  newThreadDisabled,
+  newThreadInCurrentProject,
   newThreadShortcutLabel,
   newThreadInProjectShortcutLabel,
-  showNewThreadInProjectHint,
   searchInputRef,
   searchQuery,
   onSearchQueryChange,
@@ -54,9 +54,11 @@ export function SidebarThreadHeader({
   const resultsVisible = isSearching && searchResultCount > 0;
   // Shrinking results can remove the active option; never leave aria-activedescendant pointing at it.
   const activeResultExists = resultsVisible && activeSearchResultIndex < searchResultCount;
-  const newThreadLabel = newThreadShortcutLabel
-    ? `New thread (${newThreadShortcutLabel})`
-    : "New thread";
+  const newThreadTarget = resolveNewThreadTarget(useNewThreadTargetInput());
+  const opensCurrentProject = newThreadTarget.kind === "full" && newThreadInCurrentProject;
+  const newThreadLabel = opensCurrentProject
+    ? `New thread in current project${newThreadShortcutLabel ? ` (${newThreadShortcutLabel})` : ""}\n⌥-click: all projects`
+    : newThreadTargetTooltip(newThreadTarget, newThreadShortcutLabel);
 
   return (
     <>
@@ -108,19 +110,17 @@ export function SidebarThreadHeader({
           <SidebarHeaderIconButton
             label="New thread"
             tooltip={
-              showNewThreadInProjectHint ? (
-                <span className="flex flex-col gap-0.5">
-                  <span>{newThreadLabel}</span>
+              <span className="flex flex-col gap-0.5">
+                <span className="whitespace-pre-line">{newThreadLabel}</span>
+                {!opensCurrentProject ? (
                   <span className="text-muted-foreground">
                     New thread in current project: Shift+click
                     {newThreadInProjectShortcutLabel ? ` (${newThreadInProjectShortcutLabel})` : ""}
                   </span>
-                </span>
-              ) : (
-                newThreadLabel
-              )
+                ) : null}
+              </span>
             }
-            disabled={newThreadDisabled}
+            disabled={!hasProjects}
             onClick={onNewThread}
           >
             <SquarePenIcon />

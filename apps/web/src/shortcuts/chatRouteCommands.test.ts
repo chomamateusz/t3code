@@ -53,7 +53,10 @@ describe("new thread commands", () => {
     commands[scenario.command]!(event);
 
     if (scenario.picker) {
-      expect(openPicker).toHaveBeenCalledWith({ open: "new-thread-in" });
+      expect(openPicker).toHaveBeenCalledWith({
+        open: "new-thread-in",
+        newThreadTarget: { kind: "full" },
+      });
       expect(startLocal).not.toHaveBeenCalled();
     } else {
       expect(openPicker).not.toHaveBeenCalled();

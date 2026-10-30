@@ -74,7 +74,10 @@ export function buildProjectSearchItems(input: ProjectItemsInput) {
 
 /** Projects as targets of the "New thread in..." submenu. */
 export function buildNewThreadInProjectItems(
-  input: ProjectItemsInput & { readonly currentProjectKey: string | null },
+  input: ProjectItemsInput & {
+    readonly currentProjectKey: string | null;
+    readonly isOnline?: (project: CommandPaletteProject) => boolean;
+  },
 ) {
   return buildProjectActionItems({
     projects: input.projects,
@@ -92,18 +95,23 @@ export function buildNewThreadInProjectItems(
         location={input.locationByEnvironmentId.get(project.environmentId)}
         workspaceRoot={project.workspaceRoot}
         current={input.currentProjectKey === `${project.environmentId}:${project.id}`}
+        offline={input.isOnline?.(project) === false}
       />
     ),
     icon: projectFaviconIcon,
     runProject: input.runProject,
     ...(input.pin ? { pin: input.pin } : {}),
-  });
+  }).map((item, index) => ({
+    ...item,
+    disabled: input.isOnline?.(input.projects[index]!) === false,
+  }));
 }
 
 function ProjectLocationDescription(props: {
   readonly location: CommandPaletteProjectLocation | undefined;
   readonly workspaceRoot: string;
   readonly current?: boolean;
+  readonly offline?: boolean;
 }) {
   const location = props.location ?? UNKNOWN_PROJECT_LOCATION;
   return (
@@ -122,7 +130,10 @@ function ProjectLocationDescription(props: {
             className={COMMAND_PALETTE_META_ICON_CLASS}
           />
         ) : null}
-        <span className="truncate">{location.label}</span>
+        <span className="truncate">
+          {location.label}
+          {props.offline ? " (Offline)" : ""}
+        </span>
       </span>
       <CommandPaletteMetaDot />
       <span className="min-w-0 flex-1 truncate">{props.workspaceRoot}</span>

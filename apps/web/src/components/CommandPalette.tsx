@@ -94,6 +94,9 @@ import { useAtomValue } from "@effect/atom-react";
 
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
+import { newThreadTargetProjectKeys, type NewThreadTargetMember } from "../newThreadTarget";
+import { useNewThreadTargetInput } from "../newThreadTargetState";
+import { startNewThreadInMember } from "../newThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { copyThreadReference } from "../lib/copyThreadReference";
@@ -424,6 +427,11 @@ function OpenCommandPaletteDialog(props: {
   const linkedEnvironmentId = linkedThreadSearch?.linkedThreads?.environmentId ?? null;
   const hidingAnywhere = useAnyEnvironmentHiding();
   const linkedThreadRefs = useEnvironmentThreadRefs(linkedEnvironmentId);
+  const [newThreadTarget, setNewThreadTarget] = useState(() =>
+    props.openIntent?.kind === "new-thread-in" ? props.openIntent.target : undefined,
+  );
+  const newThreadTargetInput = useNewThreadTargetInput();
+  const filteredProjectKeys = newThreadTargetProjectKeys(newThreadTargetInput);
   const [searchState, dispatchSearch] = useReducer(reduceCommandPaletteSearchState, null, () => {
     const view = props.initialContext ? null : openIntentView(props.openIntent);
     return view
@@ -514,6 +522,8 @@ function OpenCommandPaletteDialog(props: {
   const providersByEnvironment = useEnvironmentProviders();
   const { changeThemeItem, changeAppearanceItem, themeEditorItem } = useCommandPaletteThemeItems();
   const currentView = viewStack.at(-1)?.view ?? null;
+  const isRestrictedNewThread =
+    currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP && newThreadTarget?.kind === "restricted";
   const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
   const [browseGeneration, setBrowseGeneration] = useState(0);
   const [browseNavigation] = useState(createBrowseNavigationCoordinator);
@@ -552,11 +562,12 @@ function OpenCommandPaletteDialog(props: {
     ...targetProject,
     displayName: group.displayName,
   }));
-  const projectGroupByTargetKey = new Map(
-    projectPickerEntries.map(({ group, targetProject }) => [
-      `${targetProject.environmentId}:${targetProject.id}`,
-      group,
-    ]),
+  const projectGroupByTargetKey = new Map<string, (typeof projectGroups)[number]>(
+    projectPickerEntries.flatMap(({ group }) =>
+      group.memberProjectRefs.map(
+        (ref) => [`${ref.environmentId}:${ref.projectId}`, group] as const,
+      ),
+    ),
   );
   const { canPinProjectGroup, toggleProjectGroupPin } = useProjectPin();
   // A row's target record can change when another machine's copy loads, so the kept
@@ -659,7 +670,10 @@ function OpenCommandPaletteDialog(props: {
         )
       : "";
   const canBrowsePaths =
-    browseEnvironmentId !== null && !isRemoteProjectRepositoryStep && newProjectFlow === null;
+    browseEnvironmentId !== null &&
+    !isRemoteProjectRepositoryStep &&
+    newProjectFlow === null &&
+    !isRestrictedNewThread;
   const browsePath = getFilesystemBrowsePath(query, browseEnvironmentPlatform, canBrowsePaths);
   const isBrowsing = browsePath.isBrowsing;
   const browseDirectoryPath = browsePath.directoryPath;
@@ -830,6 +844,22 @@ function OpenCommandPaletteDialog(props: {
     true,
   );
 
+  const makeNewThreadItems = (members: readonly NewThreadTargetMember[]) =>
+    enumerateCommandPaletteItems(
+      buildNewThreadInProjectItems({
+        projects: members,
+        currentProjectKey: null,
+        projectGroupByTargetKey,
+        locationByEnvironmentId: projectEnvironmentLocationById,
+        pin: projectPin,
+        runProject: (project) => startNewThreadInMember(handleNewThread, project),
+        isOnline: (project) =>
+          newThreadTargetInput.environments.some(
+            (environment) =>
+              environment.environmentId === project.environmentId && environment.online,
+          ),
+      }),
+    );
   const openingOrderThreadItems = useOrderWhileOpen(
     (() => {
       const isScratch = (project: CommandPaletteProject) =>
@@ -863,7 +893,6 @@ function OpenCommandPaletteDialog(props: {
         },
       });
       if (scratchTargetEnvironmentId === null) return projectItems;
-
       const noProjectIndex = newThreadNoProjectIndex(
         projectPickerEntries.map(({ group, targetProject, isPreferred }) => ({
           isScratch: isScratchProject(
@@ -891,15 +920,63 @@ function OpenCommandPaletteDialog(props: {
     rowOrderKey("new-thread-in"),
     true,
   );
-  // Jump shortcuts follow the rows as shown, so a pin cannot move a number to another row.
-  const projectJumpItems = new Map(
-    enumerateCommandPaletteItems(
-      openingOrderThreadItems.filter((item) => item.value !== NEW_THREAD_NO_PROJECT_VALUE),
-    ).map((item) => [item.value, item] as const),
+  const enumerateProjectItems = (items: readonly CommandPaletteActionItem[]) => {
+    const jumps = new Map(
+      enumerateCommandPaletteItems(
+        items.filter((item) => item.value !== NEW_THREAD_NO_PROJECT_VALUE),
+      ).map((item) => [item.value, item] as const),
+    );
+    return items.map((item) => jumps.get(item.value) ?? item);
+  };
+  const projectThreadItems = enumerateProjectItems(openingOrderThreadItems);
+  const noProjectIndex = openingOrderThreadItems.findIndex(
+    (item) => item.value === NEW_THREAD_NO_PROJECT_VALUE,
   );
-  const projectThreadItems = openingOrderThreadItems.map(
-    (item) => projectJumpItems.get(item.value) ?? item,
+  const rootOrderedProjects = openingOrderThreadItems
+    .filter((item) => item.value !== NEW_THREAD_NO_PROJECT_VALUE)
+    .toSorted((left, right) => {
+      const matches = (item: CommandPaletteActionItem) =>
+        filteredProjectKeys.has(
+          projectGroupByTargetKey.get(item.value.slice("new-thread-in:".length))?.projectKey ?? "",
+        );
+      return Number(matches(right)) - Number(matches(left));
+    });
+  const rootProjectThreadItems = enumerateProjectItems(
+    noProjectIndex < 0
+      ? rootOrderedProjects
+      : [
+          ...rootOrderedProjects.slice(0, noProjectIndex),
+          openingOrderThreadItems[noProjectIndex]!,
+          ...rootOrderedProjects.slice(noProjectIndex),
+        ],
   );
+  const rootNewThreadGroups = [
+    {
+      value: `${NEW_THREAD_IN_GROUP}:all-projects`,
+      label: "Projects",
+      items: rootProjectThreadItems,
+    },
+  ];
+  const widenNewThreadProjects = useStableCallback((): void => {
+    setNewThreadTarget({ kind: "full" });
+    setQuery("");
+    clearTypedHighlight();
+  });
+  const newThreadGroups = [
+    {
+      value: NEW_THREAD_IN_GROUP,
+      label:
+        newThreadTarget?.kind === "restricted"
+          ? newThreadTarget.title
+          : newThreadTarget?.kind === "unreachable-note"
+            ? newThreadTarget.note
+            : "Projects",
+      items:
+        newThreadTarget?.kind === "restricted"
+          ? makeNewThreadItems(newThreadTarget.members)
+          : projectThreadItems,
+    },
+  ];
 
   const {
     threadItems: allThreadItems,
@@ -929,6 +1006,10 @@ function OpenCommandPaletteDialog(props: {
   });
 
   function popView(): void {
+    if (isRestrictedNewThread) {
+      widenNewThreadProjects();
+      return;
+    }
     browseNavigation.invalidate();
     setAddProjectCloneFlow(null);
     setNewProjectFlow(null);
@@ -1304,7 +1385,7 @@ function OpenCommandPaletteDialog(props: {
       title: "New thread in...",
       icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
       addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
-      groups: [{ value: NEW_THREAD_IN_GROUP, label: "Projects", items: projectThreadItems }],
+      groups: rootNewThreadGroups,
     });
   }
 
@@ -1780,19 +1861,20 @@ function OpenCommandPaletteDialog(props: {
       : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
         ? addProjectEntryGroups()
         : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
-          ? [
-              {
-                value: NEW_THREAD_IN_GROUP,
-                label: "Projects",
-                // Every project archived and no "No project" home leaves only adding one.
-                items: projectThreadItems.length > 0 ? projectThreadItems : [addProjectAction],
-              },
-            ]
-          : currentView?.groups[0]?.value === "themes"
-            ? changeThemeItem.groups
-            : currentView?.groups[0]?.value === "appearance"
-              ? changeAppearanceItem.groups
-              : (currentView?.groups ?? rootGroups);
+          ? newThreadGroups.map((group) => ({
+              ...group,
+              items: group.items.length > 0 ? group.items : [addProjectAction],
+            }))
+          : currentView?.groups[0]?.value === `${NEW_THREAD_IN_GROUP}:all-projects`
+            ? rootNewThreadGroups.map((group) => ({
+                ...group,
+                items: group.items.length > 0 ? group.items : [addProjectAction],
+              }))
+            : currentView?.groups[0]?.value === "themes"
+              ? changeThemeItem.groups
+              : currentView?.groups[0]?.value === "appearance"
+                ? changeAppearanceItem.groups
+                : (currentView?.groups ?? rootGroups);
 
   const isLinkedThreadSearch =
     linkedThreadSearch?.linkedThreads !== undefined && deferredQuery === linkedThreadSearch.query;
@@ -1800,7 +1882,7 @@ function OpenCommandPaletteDialog(props: {
     activeGroups,
     query: deferredQuery,
     isInSubmenu: currentView !== null,
-    ...(deferredQuery.trim().length > 0
+    ...(deferredQuery.trim().length > 0 && !isRestrictedNewThread
       ? {
           allOptions: {
             rootGroups,
@@ -2412,7 +2494,26 @@ function OpenCommandPaletteDialog(props: {
           },
         ];
 
-  let displayedGroups: CommandPaletteView["groups"] = filteredGroups;
+  let displayedGroups: CommandPaletteView["groups"] = isRestrictedNewThread
+    ? [
+        ...filteredGroups,
+        {
+          value: "all-projects",
+          label: "",
+          items: [
+            {
+              kind: "action",
+              value: "new-thread-in:all-projects",
+              title: "All projects…",
+              searchTerms: [],
+              icon: <FolderIcon className={ITEM_ICON_CLASS} />,
+              keepOpen: true,
+              run: async () => widenNewThreadProjects(),
+            },
+          ],
+        },
+      ]
+    : filteredGroups;
   if (newProjectFlow !== null) {
     displayedGroups = [
       ...(newProjectMachineGroup ? [newProjectMachineGroup] : []),

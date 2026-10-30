@@ -5,12 +5,27 @@ need a separate branch and working directory.
 
 ## Start a thread
 
-On web and desktop, **New thread** opens the project picker when you have more than one
-open project in the default or project-grouped sidebar. Archived projects don't count. **Shift-click** to start in
-the current project, or use a project's own new-thread action. A new thread carries
-your model and mode selections, unless the destination project has its own model default.
-Its branch and workspace mode come from your configured defaults. To continue in
-an existing worktree, use **New thread in this worktree** from the branch toolbar.
+On web and desktop, including a mobile browser, **New thread** and its keyboard
+shortcut follow the sidebar's machine and project filters. With one reachable
+project on one machine, the thread opens there directly. When several machines
+are selected, each project's target prefers connected selected machines, then the
+machine where that project was most recently active. Ties use the first matching
+machine in the list. With several project or folder choices, you choose from the filtered
+list. Sidebar search text does not
+affect this choice. Without a filter, the current project opens when there is
+exactly one open project. Otherwise the full project list opens, including in the
+project-grouped sidebar. Archived projects don't count and are not offered in the filtered picker. If nothing in the filter is reachable, the full list opens with a note.
+
+To choose outside the filter, **⌥-click** (Alt-click) **New thread**. In the
+filtered picker, press **Backspace** with an empty search or choose **All projects…** for the full list;
+**Esc** cancels. **Shift-click** starts in the current thread's project. The command
+palette's **New thread in…** always shows the full list, with filtered projects first.
+
+A new thread carries your model and mode selections, unless the destination
+project has its own model default. Its branch and workspace mode come from your
+configured defaults. An existing empty draft for that project and machine opens
+again. Use history back to return to the previous thread. To continue in an
+existing worktree, use **New thread in this worktree** from the branch toolbar.
 
 On mobile, **New thread** starts in the current thread's project, or else in the
 last project you opened or chose on that device. If neither is available, the
@@ -26,8 +41,8 @@ if that project exists there. Otherwise it selects an environment that has it.
 A thread does not need a project. To start one without a project, click **or
 start without a project** under a new thread's heading, pick **No project** from
 the project menu in that heading or from **New thread in...** in the command
-palette, or press `mod+alt+n`. On mobile, pick **No project** from the project
-list. It starts on your current machine; before sending, pick another machine
+palette, or press `mod+alt+n` (⌘⌥N on macOS). On mobile, pick **No project** from
+the project list. It starts on your current machine; before sending, pick another machine
 from the machine menu to move it there. To move a draft into a project, pick the
 project in the heading.
 

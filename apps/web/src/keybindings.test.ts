@@ -1,4 +1,4 @@
-import { assert, describe, it } from "vite-plus/test";
+import { assert, describe, it, vi } from "vite-plus/test";
 import {
   compileResolvedKeybindingsConfig,
   DEFAULT_RESOLVED_KEYBINDINGS,
@@ -537,6 +537,135 @@ describe("cross-command precedence", () => {
         context: { terminalFocus: true },
       }),
       "chat.new",
+    );
+  });
+});
+
+describe("New thread shortcut override", () => {
+  it.each([
+    ["MacIntel", { metaKey: true }],
+    ["Linux", { ctrlKey: true }],
+  ] as const)("keeps the exact No project binding and its hint on %s", (platform, modifiers) => {
+    const input = event({ key: "n", code: "KeyN", altKey: true, ...modifiers });
+    assert.strictEqual(
+      resolveShortcutCommand(input, DEFAULT_RESOLVED_KEYBINDINGS, { platform }),
+      "chat.newWithoutProject",
+    );
+    assert.strictEqual(
+      shortcutLabelForCommand(DEFAULT_RESOLVED_KEYBINDINGS, "chat.newWithoutProject", platform),
+      platform === "MacIntel" ? "⌥⌘N" : "Ctrl+Alt+N",
+    );
+  });
+
+  it("follows a remapped New thread chord and its when clause", () => {
+    const bindings = compile([
+      {
+        shortcut: modShortcut("o", { shiftKey: true }),
+        command: "chat.new",
+        whenAst: whenNot(whenIdentifier("terminalFocus")),
+      },
+      { shortcut: modShortcut("n", { altKey: true }), command: "chat.newWithoutProject" },
+    ]);
+    const input = event({ key: "Ø", code: "KeyO", metaKey: true, shiftKey: true, altKey: true });
+    assert.strictEqual(
+      resolveShortcutCommand(input, bindings, { platform: "MacIntel" }),
+      "chat.new",
+    );
+    assert.isNull(
+      resolveShortcutCommand(input, bindings, {
+        platform: "MacIntel",
+        context: { terminalFocus: true },
+      }),
+    );
+    const conflicting = [
+      ...bindings,
+      ...compile([
+        {
+          shortcut: modShortcut("o", { shiftKey: true, altKey: true }),
+          command: "chat.newLocal",
+          whenAst: whenIdentifier("previewOpen"),
+        },
+      ]),
+    ];
+    assert.strictEqual(
+      resolveShortcutCommand(input, conflicting, {
+        platform: "MacIntel",
+        context: { previewOpen: true },
+      }),
+      "chat.newLocal",
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(input, conflicting, {
+        platform: "MacIntel",
+        context: { previewOpen: false },
+      }),
+      "chat.new",
+    );
+
+    assert.strictEqual(
+      resolveShortcutCommand(event({ key: "n", metaKey: true, altKey: true }), bindings, {
+        platform: "MacIntel",
+      }),
+      "chat.newWithoutProject",
+    );
+    assert.strictEqual(
+      shortcutLabelForCommand(bindings, "chat.newWithoutProject", "MacIntel"),
+      "⌥⌘N",
+    );
+    class FocusTarget extends EventTarget {
+      constructor(readonly editable: boolean) {
+        super();
+      }
+      closest() {
+        return this.editable ? this : null;
+      }
+    }
+    const editableBindings = compile([
+      {
+        shortcut: modShortcut("o", { shiftKey: true }),
+        command: "chat.new",
+        whenAst: whenNot(whenIdentifier("editableFocus")),
+      },
+    ]);
+    vi.stubGlobal("Element", FocusTarget);
+    try {
+      for (const editable of [true, false]) {
+        vi.stubGlobal("document", { activeElement: new FocusTarget(!editable) });
+        assert.strictEqual(
+          resolveShortcutCommand(
+            { ...input, target: new FocusTarget(editable) },
+            editableBindings,
+            { platform: "MacIntel" },
+          ),
+          editable ? null : "chat.new",
+        );
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("preserves ordinary shortcuts and AltGr text input", () => {
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "n", metaKey: true, shiftKey: true }),
+        DEFAULT_RESOLVED_KEYBINDINGS,
+        { platform: "MacIntel" },
+      ),
+      "chat.newLocal",
+    );
+    assert.isNull(
+      resolveShortcutCommand(
+        event({
+          key: "ń",
+          code: "KeyN",
+          ctrlKey: true,
+          altKey: true,
+          getModifierState: () => true,
+        }),
+        DEFAULT_RESOLVED_KEYBINDINGS,
+        { platform: "Linux" },
+      ),
     );
   });
 });

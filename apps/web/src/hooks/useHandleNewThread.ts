@@ -8,7 +8,7 @@ import { type AnyRouter, useRouter } from "@tanstack/react-router";
 import {
   composerDraftHasUserContent,
   markPromotedDraftThreadByRef,
-  type DraftId,
+  DraftId,
   type DraftThreadEnvMode,
   type DraftThreadState,
   useComposerDraftStore,
@@ -83,6 +83,7 @@ export function createNewThreadHandler(router: AnyRouter) {
       envMode?: DraftThreadEnvMode;
       startFromOrigin?: boolean;
       replace?: boolean;
+      exactProject?: boolean;
       /** Composer text for the draft, set before it shows. A draft with user text keeps it. */
       prompt?: string;
     },
@@ -211,11 +212,32 @@ export function createNewThreadHandler(router: AnyRouter) {
     const logicalProjectKey = project
       ? deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings)
       : scopedProjectKey(projectRef);
+    const targetEnvironmentOptions = options?.exactProject
+      ? { environmentSelection: "manual" as const, loadBalancedEnvironmentId: null }
+      : {};
     const hasBranchOption = options?.branch !== undefined;
     const hasWorktreePathOption = options?.worktreePath !== undefined;
     const hasEnvModeOption = options?.envMode !== undefined;
     const hasStartFromOriginOption = options?.startFromOrigin !== undefined;
-    const storedDraftThread = getDraftSessionByLogicalProjectKey(logicalProjectKey);
+    const readStoredDraft = () => {
+      if (!options?.exactProject) return getDraftSessionByLogicalProjectKey(logicalProjectKey);
+      for (const [key, draft] of Object.entries(
+        useComposerDraftStore.getState().draftThreadsByThreadKey,
+      )) {
+        const draftId = DraftId.make(key);
+        if (
+          draft.environmentId === projectRef.environmentId &&
+          draft.projectId === projectRef.projectId &&
+          draft.promotedTo == null &&
+          !composerDraftHasUserContent(getComposerDraft(draftId)) &&
+          readThreadShell(scopeThreadRef(draft.environmentId, draft.threadId)) === null
+        ) {
+          return { ...draft, draftId };
+        }
+      }
+      return null;
+    };
+    const storedDraftThread = readStoredDraft();
     const storedDraftThreadRef = storedDraftThread
       ? scopeThreadRef(storedDraftThread.environmentId, storedDraftThread.threadId)
       : null;
@@ -261,9 +283,7 @@ export function createNewThreadHandler(router: AnyRouter) {
             routeTargetNow.draftId === emptyStoredDraftThread.draftId;
           const promotedMeanwhile =
             storedDraftThreadRef !== null && readThreadShell(storedDraftThreadRef) !== null;
-          const remappedMeanwhile =
-            getDraftSessionByLogicalProjectKey(logicalProjectKey)?.draftId !==
-            emptyStoredDraftThread.draftId;
+          const remappedMeanwhile = readStoredDraft()?.draftId !== emptyStoredDraftThread.draftId;
           const investedMeanwhile = composerDraftHasUserContent(
             getComposerDraft(emptyStoredDraftThread.draftId),
           );
@@ -306,6 +326,7 @@ export function createNewThreadHandler(router: AnyRouter) {
           projectRef,
           emptyStoredDraftThread.draftId,
           {
+            ...targetEnvironmentOptions,
             threadId: emptyStoredDraftThread.threadId,
             ...workspaceContext,
             ...(!isDraftAlreadyOpen ? { runtimeMode: defaultRuntimeMode } : {}),
@@ -337,6 +358,9 @@ export function createNewThreadHandler(router: AnyRouter) {
       latestActiveDraftThread &&
       currentRouteTarget?.kind === "draft" &&
       latestActiveDraftThread.logicalProjectKey === logicalProjectKey &&
+      (!options?.exactProject ||
+        (latestActiveDraftThread.environmentId === projectRef.environmentId &&
+          latestActiveDraftThread.projectId === projectRef.projectId)) &&
       latestActiveDraftThread.promotedTo == null &&
       !composerDraftHasUserContent(getComposerDraft(currentRouteTarget.draftId))
     ) {
@@ -349,6 +373,7 @@ export function createNewThreadHandler(router: AnyRouter) {
         setDraftThreadContext(currentRouteTarget.draftId, pickExplicitWorkspaceOptions(options));
       }
       setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, currentRouteTarget.draftId, {
+        ...targetEnvironmentOptions,
         threadId: latestActiveDraftThread.threadId,
         createdAt: latestActiveDraftThread.createdAt,
         runtimeMode: latestActiveDraftThread.runtimeMode,
@@ -371,13 +396,14 @@ export function createNewThreadHandler(router: AnyRouter) {
         return null;
       }
       // Reuse drafts registered while awaiting so their pending navigation cannot lose them.
-      const racedDraft = getDraftSessionByLogicalProjectKey(logicalProjectKey);
+      const racedDraft = readStoredDraft();
       if (
         racedDraft &&
         racedDraft.draftId !== storedDraftThread?.draftId &&
         readThreadShell(scopeThreadRef(racedDraft.environmentId, racedDraft.threadId)) === null
       ) {
         setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, racedDraft.draftId, {
+          ...targetEnvironmentOptions,
           threadId: racedDraft.threadId,
           createdAt: racedDraft.createdAt,
           runtimeMode: racedDraft.runtimeMode,
@@ -393,6 +419,7 @@ export function createNewThreadHandler(router: AnyRouter) {
         return { draftId: racedDraft.draftId, threadId: racedDraft.threadId };
       }
       setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
+        ...targetEnvironmentOptions,
         threadId,
         createdAt,
         branch: options?.branch ?? null,

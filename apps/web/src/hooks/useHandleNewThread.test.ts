@@ -5,6 +5,9 @@ const testState = vi.hoisted(() => {
   let completeProjectFileRead: (value: null) => void = () => undefined;
   let projectFileRead = Promise.resolve<null>(null);
   let projectRemoved = false;
+  let scratch = false;
+  let groupCount = 2;
+  let boringSidebarEnabled = false;
   let connectedEnvironmentIds = ["environment-primary", "environment-ssh"];
   let targetSettings = {
     defaultThreadEnvMode: "local" as "local" | "worktree" | null,
@@ -12,12 +15,15 @@ const testState = vi.hoisted(() => {
     defaultModelSelection: null,
     defaultRuntimeMode: "full-access" as RuntimeMode,
   };
-  let storedDraft: {
+  type StoredDraft = {
     readonly draftId: string;
     readonly environmentId: string;
+    readonly projectId: string;
     readonly promotedTo: null;
     readonly threadId: string;
-  } | null = null;
+  };
+  let storedDraft: StoredDraft | null = null;
+  let additionalDrafts: Record<string, StoredDraft> = {};
   let openDraftRoute: { readonly kind: "draft"; readonly draftId: string } | null = null;
   let draftsWithUserText = new Set<string>();
   const router = {
@@ -30,6 +36,12 @@ const testState = vi.hoisted(() => {
     }),
   };
   const draftStore = {
+    get draftThreadsByThreadKey() {
+      return {
+        ...(storedDraft ? { [storedDraft.draftId]: storedDraft } : {}),
+        ...additionalDrafts,
+      };
+    },
     getComposerDraft: vi.fn((draftId: string) => ({ draftId })),
     getDraftSessionByLogicalProjectKey: vi.fn(() => storedDraft),
     getDraftSession: vi.fn(() =>
@@ -54,6 +66,24 @@ const testState = vi.hoisted(() => {
 
   return {
     completeProjectFileRead: (value: null) => completeProjectFileRead(value),
+    configureStart: (input: {
+      scratch?: boolean;
+      groupCount?: number;
+      boringSidebarEnabled?: boolean;
+    }) => {
+      scratch = input.scratch ?? false;
+      groupCount = input.groupCount ?? 2;
+      boringSidebarEnabled = input.boringSidebarEnabled ?? false;
+    },
+    get scratch() {
+      return scratch;
+    },
+    get groupCount() {
+      return groupCount;
+    },
+    get clientSettings() {
+      return { boringSidebarEnabled };
+    },
     draftStore,
     get projectFileRead() {
       return projectFileRead;
@@ -78,6 +108,9 @@ const testState = vi.hoisted(() => {
     get openDraftRoute() {
       return openDraftRoute;
     },
+    addDraft(draft: StoredDraft) {
+      additionalDrafts[draft.draftId] = draft;
+    },
     openEmptyDraft(draftId: string) {
       openDraftRoute = { kind: "draft", draftId };
     },
@@ -92,9 +125,13 @@ const testState = vi.hoisted(() => {
       },
     ) {
       storedDraft = nextStoredDraft;
+      additionalDrafts = {};
       openDraftRoute = null;
       draftsWithUserText = new Set();
       projectRemoved = false;
+      scratch = false;
+      groupCount = 2;
+      boringSidebarEnabled = false;
       connectedEnvironmentIds = ["environment-primary", "environment-ssh"];
       targetSettings = {
         defaultThreadEnvMode: workspaceDefaults.envMode,
@@ -134,7 +171,19 @@ vi.mock("../rpc/atomRegistry", () => ({
     get: (atom: unknown) =>
       atom === "connected-environment-ids"
         ? testState.connectedEnvironmentIds
-        : testServerConfigs(),
+        : atom === "presentations"
+          ? new Map([
+              [
+                "environment-ssh",
+                {
+                  connection: { phase: "connected" },
+                  serverConfig: { scratchWorkspaceRoot: "/remote/scratch" },
+                },
+              ],
+            ])
+          : atom === "primary-environment"
+            ? "environment-ssh"
+            : testServerConfigs(),
   },
 }));
 
@@ -183,12 +232,16 @@ vi.mock("react", () => ({
   useCallback: <T>(callback: T) => callback,
   useMemo: <T>(factory: () => T) => factory(),
 }));
-vi.mock("../components/Sidebar.logic", () => ({ orderItemsByPreferredIds: () => [] }));
+vi.mock("../components/Sidebar.logic", () => ({
+  orderItemsByPreferredIds: () => [],
+  shouldCreateNewThreadInCurrentProject: () => testState.groupCount <= 1,
+}));
 vi.mock("../composerDraftStore", () => {
   const useComposerDraftStore = Object.assign(() => null, {
     getState: () => testState.draftStore,
   });
   return {
+    DraftId: { make: (value: string) => value },
     composerDraftHasUserContent: (draft: { readonly draftId?: string } | null | undefined) =>
       testState.hasUserText(draft),
     markPromotedDraftThreadByRef: vi.fn(),
@@ -208,7 +261,12 @@ vi.mock("../lib/utils", () => ({
   newDraftId: () => "draft-delayed",
   newThreadId: () => "thread-delayed",
 }));
+vi.mock("@t3tools/client-runtime/state/projects", () => ({
+  isScratchProject: (project: { workspaceRoot: string }, root: string | undefined) =>
+    project.workspaceRoot === root,
+}));
 vi.mock("@t3tools/client-runtime/state/project-grouping", () => ({
+  pickableProjectGroups: <T>(groups: readonly T[]) => groups,
   deriveLogicalProjectKeyFromSettings: () => "remote-project",
   getProjectOrderKey: () => "remote-project",
   selectProjectGroupingSettings: () => ({}),
@@ -217,7 +275,9 @@ vi.mock("../state/entities", () => {
   const project = {
     id: "project-remote",
     environmentId: "environment-ssh",
-    workspaceRoot: "/remote/project",
+    get workspaceRoot() {
+      return testState.scratch ? "/remote/scratch" : "/remote/project";
+    },
     defaultThreadEnvMode: null,
     defaultModelSelection: null,
   };
@@ -233,6 +293,7 @@ vi.mock("../state/entities", () => {
 vi.mock("../state/olderSettledShelf", () => ({ readUnloadedThreadCount: () => 0 }));
 vi.mock("../state/presentation", () => ({
   environmentSummaries: { connectedEnvironmentIdsAtom: "connected-environment-ids" },
+  environmentPresentations: { presentationsAtom: "presentations" },
 }));
 vi.mock("../state/server", () => ({
   environmentServerConfigsAtom: {},
@@ -245,9 +306,31 @@ vi.mock("../uiStateStore", () => ({
   legacyProjectCwdPreferenceKey: () => "remote-project",
   useUiStateStore: () => [],
 }));
-vi.mock("./useSettings", () => ({ getClientSettings: () => ({}) }));
+vi.mock("./useSettings", () => ({ getClientSettings: () => testState.clientSettings }));
+vi.mock("../state/primaryEnvironment", () => ({ primaryEnvironmentIdAtom: "primary-environment" }));
+vi.mock("../newThreadTargetState", () => ({
+  readNewThreadTargetInput: () => ({
+    groups: Array.from({ length: testState.groupCount }, () => ({
+      archived: false,
+      pinned: false,
+    })),
+  }),
+}));
+vi.mock("../newThreadTarget", () => ({ resolveNewThreadTarget: () => ({ kind: "full" }) }));
+vi.mock("../commandPaletteBus", () => ({ openCommandPalette: () => undefined }));
+vi.mock("./useScratchProject", () => ({
+  createScratchProjectActions: ({
+    handleNewThread,
+  }: {
+    handleNewThread: (ref: unknown) => Promise<unknown>;
+  }) => ({
+    startScratchThread: (environmentId: string) =>
+      handleNewThread({ environmentId, projectId: "project-remote" }),
+  }),
+}));
 
 import { useNewThreadHandler } from "./useHandleNewThread";
+import { startNewThreadInMember, startNewThreadInSidebarFilter } from "../newThreadActions";
 
 describe.each([
   ["new", null],
@@ -256,6 +339,7 @@ describe.each([
     {
       draftId: "draft-existing",
       environmentId: "environment-ssh",
+      projectId: "project-remote",
       promotedTo: null,
       threadId: "thread-existing",
     },
@@ -314,11 +398,151 @@ describe.each([
 });
 
 describe("useNewThreadHandler", () => {
+  it.each([
+    [{ groupCount: 1 }, false, "/draft/draft-delayed"],
+    [{ groupCount: 0 }, false, "/draft/draft-delayed"],
+    [{ boringSidebarEnabled: true }, false, "/"],
+    [{ groupCount: 2 }, false, "/"],
+    [{ boringSidebarEnabled: true }, true, "/"],
+  ] as const)(
+    "retains the upstream unfiltered policy with %j and allProjects=%s",
+    async (settings, allProjects, destination) => {
+      testState.reset(null);
+      testState.configureStart(settings);
+      await startNewThreadInSidebarFilter(useNewThreadHandler(), {
+        allProjects,
+        currentProject: {
+          activeDraftThread: null,
+          activeThread: { environmentId: "environment-ssh", projectId: "project-remote" },
+          defaultProjectRef: null,
+        },
+      } as never);
+      expect(testState.router.state.location.href).toBe(destination);
+    },
+  );
+
+  it("starts a filtered scratch member through No project without pinning its draft", async () => {
+    testState.reset(null);
+    testState.configureStart({ scratch: true });
+    await startNewThreadInMember(useNewThreadHandler(), {
+      environmentId: "environment-ssh",
+      id: "project-remote",
+    } as never);
+    expect(testState.router.state.location.href).toBe("/draft/draft-delayed");
+    expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
+      "remote-project",
+      { environmentId: "environment-ssh", projectId: "project-remote" },
+      "draft-delayed",
+      expect.not.objectContaining({ environmentSelection: "manual" }),
+    );
+  });
+  it.each([
+    ["same member", "environment-ssh", "project-remote", "draft-existing"],
+    ["another machine", "environment-primary", "project-remote", "draft-delayed"],
+    ["another clone", "environment-ssh", "project-clone", "draft-delayed"],
+  ])(
+    "starts in the exact member with an empty draft for %s",
+    async (_, environmentId, projectId, expectedDraftId) => {
+      testState.reset({
+        draftId: "draft-existing",
+        environmentId,
+        projectId,
+        promotedTo: null,
+        threadId: "thread-existing",
+      });
+
+      const opened = await useNewThreadHandler()(
+        { environmentId: "environment-ssh", projectId: "project-remote" } as never,
+        { exactProject: true },
+      );
+
+      expect(opened?.draftId).toBe(expectedDraftId);
+      expect(testState.router.navigate).toHaveBeenCalledWith({
+        to: "/draft/$draftId",
+        params: { draftId: expectedDraftId },
+        replace: false,
+      });
+      expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
+        "remote-project",
+        { environmentId: "environment-ssh", projectId: "project-remote" },
+        expectedDraftId,
+        expect.objectContaining({
+          envMode: "local",
+          runtimeMode: "full-access",
+          environmentSelection: "manual",
+          loadBalancedEnvironmentId: null,
+        }),
+      );
+    },
+  );
+
+  it("finds an empty exact-member draft behind a populated draft", async () => {
+    testState.reset({
+      draftId: "draft-populated",
+      environmentId: "environment-ssh",
+      projectId: "project-remote",
+      promotedTo: null,
+      threadId: "thread-populated",
+    });
+    testState.giveUserText("draft-populated");
+    testState.addDraft({
+      draftId: "draft-empty",
+      environmentId: "environment-ssh",
+      projectId: "project-remote",
+      promotedTo: null,
+      threadId: "thread-empty",
+    });
+
+    const opened = await useNewThreadHandler()(
+      { environmentId: "environment-ssh", projectId: "project-remote" } as never,
+      { exactProject: true },
+    );
+
+    expect(opened).toEqual({ draftId: "draft-empty", threadId: "thread-empty" });
+    expect(testState.draftStore.setLogicalProjectDraftThreadId).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "draft-populated",
+      expect.anything(),
+    );
+  });
+
+  it("reuses an exact-member draft registered while project defaults resolve", async () => {
+    testState.reset(null, { envMode: null, startFromOrigin: false });
+    const pendingOpen = useNewThreadHandler()(
+      { environmentId: "environment-ssh", projectId: "project-remote" } as never,
+      { exactProject: true },
+    );
+    testState.addDraft({
+      draftId: "draft-raced",
+      environmentId: "environment-ssh",
+      projectId: "project-remote",
+      promotedTo: null,
+      threadId: "thread-raced",
+    });
+    testState.completeProjectFileRead(null);
+
+    await expect(pendingOpen).resolves.toEqual({
+      draftId: "draft-raced",
+      threadId: "thread-raced",
+    });
+    expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
+      "remote-project",
+      { environmentId: "environment-ssh", projectId: "project-remote" },
+      "draft-raced",
+      expect.objectContaining({
+        environmentSelection: "manual",
+        loadBalancedEnvironmentId: null,
+      }),
+    );
+  });
+
   it("keeps the text of a draft that gained some while it waited", async () => {
     testState.reset(null);
     const raced = {
       draftId: "draft-raced",
       environmentId: "environment-ssh",
+      projectId: "project-remote",
       promotedTo: null,
       threadId: "thread-raced",
     };
