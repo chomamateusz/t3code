@@ -3,9 +3,9 @@ import { presentThreadShell } from "@t3tools/client-runtime/state/models";
 import { isThreadWorking as isSidebarThreadWorking } from "@t3tools/client-runtime/state/thread-inbox";
 import * as DateTime from "effect/DateTime";
 import { deriveActiveWorkStartedAt } from "../session-logic.ts";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import * as Cause from "effect/Cause";
-import { AsyncResult } from "effect/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import {
   shouldCreateNewThreadInCurrentProject,
   deleteSelectedThreadEntries,
@@ -16,6 +16,12 @@ import {
   pinOrderKeyBetween,
   resolveSidebarSweepKeys,
   resolveSidebarThreadStatus,
+  resolveSidebarThreadTopStatus,
+  buildSidebarProjectBadges,
+  combineSidebarProjectBadges,
+  summarizeSidebarProjectBadge,
+  sameSidebarProjectBadges,
+  sameSidebarProjectBadgeThreads,
   resolveThreadStatusPill,
   resolveWorkingStartedAt,
   searchSidebarThreads,
@@ -43,7 +49,14 @@ import {
 } from "@t3tools/client-runtime/state/thread-sort";
 import { resolveProjectExpanded } from "../uiStateStore";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
-import { EnvironmentId, ProjectId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  RunId,
+  RuntimeRequestId,
+  ThreadId,
+} from "@t3tools/contracts";
 
 import {
   DEFAULT_INTERACTION_MODE,
@@ -1695,5 +1708,356 @@ describe("shouldCreateNewThreadInCurrentProject", () => {
     expect(shouldCreateNewThreadInCurrentProject(false, 1, 3)).toBe(true);
     expect(shouldCreateNewThreadInCurrentProject(false, 0, 0)).toBe(true);
     expect(shouldCreateNewThreadInCurrentProject(true, 2, 2)).toBe(true);
+  });
+});
+
+describe("sidebar project thread badges", () => {
+  const now = "2026-03-09T10:10:00.000Z";
+  const visited = "2026-03-09T10:04:00.000Z";
+  const projectId = ProjectId.make("project-badge");
+  const remoteId = EnvironmentId.make("remote-badge");
+  const groups = [
+    {
+      projectKey: "logical-badge",
+      memberProjectRefs: [
+        { environmentId: localEnvironmentId, projectId },
+        { environmentId: remoteId, projectId },
+      ],
+    },
+    {
+      projectKey: "other-badge",
+      memberProjectRefs: [
+        { environmentId: localEnvironmentId, projectId: ProjectId.make("other") },
+      ],
+    },
+  ];
+  const defaults = {
+    now,
+    loadedEnvironmentIds: new Set([localEnvironmentId, remoteId]),
+    delegatedUnderParent: new Set<string>(),
+  };
+  const baseThread = () =>
+    makeThreadFixture({
+      environmentId: localEnvironmentId,
+      projectId,
+      runtime: null,
+      latestRun: makeLatestRun(),
+      lastVisitedAt: visited,
+    });
+  const runtime = {
+    status: "running" as const,
+    activeRunId: null,
+    providerInstanceId: ProviderInstanceId.make("codex"),
+    providerName: "Codex",
+    lastError: null,
+    updatedAt: now,
+  };
+  const states = () => [
+    { ...baseThread(), hasPendingApprovals: true },
+    { ...baseThread(), hasPendingUserInput: true },
+    { ...baseThread(), pendingGuestMessageCount: 1 },
+    { ...baseThread(), runtime: { ...runtime, status: "failed" as const } },
+    {
+      ...baseThread(),
+      runtime: { ...runtime, status: "failed" as const, lastErrorClass: "usage_limit" as const },
+    },
+    { ...baseThread(), snoozedUntil: "2026-03-09T10:06:00.000Z" },
+    baseThread(),
+    { ...baseThread(), runtime },
+  ];
+
+  it("counts each top status once, with the row's urgency colors and a capped attention label", () => {
+    const threads = states();
+    const expected = [
+      ["text-warning-foreground", 7],
+      ["text-indigo-600 dark:text-indigo-300", 6],
+      ["text-guest-foreground", 5],
+      ["text-error-foreground", 4],
+      ["text-warning-foreground", 3],
+      ["text-warning-foreground", 2],
+      ["text-success-foreground", 1],
+      ["text-info-foreground", 0],
+    ] as const;
+    for (const [index, [className, count]] of expected.entries()) {
+      const badges = buildSidebarProjectBadges(groups, threads.slice(index), { ...defaults });
+      expect(summarizeSidebarProjectBadge(badges[0]!.counts)).toMatchObject({
+        className,
+        count,
+        label: count === 0 ? null : String(count),
+      });
+    }
+    const badge = buildSidebarProjectBadges(groups, threads, { ...defaults })[0]!;
+    expect(badge.counts).toEqual({
+      approval: 1,
+      input: 1,
+      request: 1,
+      failed: 1,
+      limited: 1,
+      woke: 1,
+      done: 1,
+      working: 1,
+    });
+    expect(summarizeSidebarProjectBadge(badge.counts)?.description).toBe(
+      "1 approval · 1 needs input · 1 request · 1 failed · 1 limited · 1 woke · 1 done · 1 working",
+    );
+    const many = buildSidebarProjectBadges(
+      groups,
+      Array.from({ length: 10 }, () => threads[0]!),
+      { ...defaults },
+    );
+    expect(summarizeSidebarProjectBadge(many[0]!.counts)).toMatchObject({ count: 10, label: "9+" });
+    expect(summarizeSidebarProjectBadge(many[1]!.counts)).toBeNull();
+  });
+
+  it("excludes settled, archived, deleted and still-snoozed threads but counts early wakes", () => {
+    const thread = baseThread();
+    const badges = buildSidebarProjectBadges(
+      groups,
+      [
+        { ...thread, settledOverride: "settled" },
+        { ...thread, archivedAt: now },
+        { ...thread, deletedAt: now },
+        { ...thread, snoozedUntil: "2026-03-09T11:00:00.000Z" },
+        { ...thread, snoozedUntil: "2026-03-09T11:00:00.000Z", hasPendingUserInput: true },
+        { ...thread, hasPendingApprovals: true },
+        { ...thread, runtime: { ...runtime, status: "idle" } },
+      ],
+      { ...defaults },
+    );
+    expect(badges[0]!.counts).toEqual({
+      approval: 1,
+      input: 1,
+      request: 0,
+      failed: 0,
+      limited: 0,
+      woke: 0,
+      done: 0,
+      working: 0,
+    });
+  });
+
+  it.each([
+    {
+      name: "failed subagent",
+      patch: {
+        runtime: { ...runtime, status: "failed" as const },
+        lineage: {
+          rootThreadId: ThreadId.make("parent"),
+          parentThreadId: ThreadId.make("parent"),
+          relationshipToParent: "subagent" as const,
+        },
+      },
+      delegated: false,
+      loaded: true,
+      expected: null,
+    },
+    {
+      name: "failed side chat",
+      patch: {
+        runtime: { ...runtime, status: "failed" as const },
+        lineage: {
+          rootThreadId: ThreadId.make("parent"),
+          parentThreadId: ThreadId.make("parent"),
+          relationshipToParent: "fork" as const,
+          sideChat: true,
+        },
+      },
+      delegated: false,
+      loaded: true,
+      expected: null,
+    },
+    {
+      name: "delegated input",
+      patch: { hasPendingUserInput: true },
+      delegated: true,
+      loaded: true,
+      expected: null,
+    },
+    {
+      name: "snooze before config",
+      patch: { snoozedUntil: "2026-03-09T11:00:00.000Z" },
+      delegated: false,
+      loaded: false,
+      expected: { count: 1 },
+    },
+    {
+      name: "snooze after config",
+      patch: { snoozedUntil: "2026-03-09T11:00:00.000Z" },
+      delegated: false,
+      loaded: true,
+      expected: null,
+    },
+  ])("matches row visibility for $name", ({ patch, delegated, loaded, expected }) => {
+    const thread = { ...baseThread(), ...patch };
+    const badges = buildSidebarProjectBadges(groups, [thread], {
+      ...defaults,
+      loadedEnvironmentIds: new Set(loaded ? [localEnvironmentId] : []),
+      delegatedUnderParent: new Set(
+        delegated ? [threadKey({ environmentId: thread.environmentId, threadId: thread.id })] : [],
+      ),
+    });
+    const summary = summarizeSidebarProjectBadge(badges[0]!.counts);
+    if (expected === null) expect(summary).toBeNull();
+    else expect(summary).toMatchObject(expected);
+  });
+
+  it("combines logical project members only inside the machine scope, then sums overflow projects", () => {
+    const threads = [
+      states()[1]!,
+      { ...baseThread(), environmentId: remoteId },
+      { ...baseThread(), projectId: ProjectId.make("other"), runtime },
+      { ...baseThread(), projectId: ProjectId.make("unrelated") },
+    ];
+    const all = buildSidebarProjectBadges(groups, threads, { ...defaults });
+    expect(all[0]!.counts).toMatchObject({ input: 1, done: 1 });
+    const local = buildSidebarProjectBadges(groups, threads, {
+      ...defaults,
+      environmentIds: new Set([localEnvironmentId]),
+    });
+    expect(local[0]!.counts).toMatchObject({ input: 1, done: 0 });
+    expect(
+      summarizeSidebarProjectBadge(combineSidebarProjectBadges(all.map((entry) => entry.counts))),
+    ).toMatchObject({
+      count: 2,
+      className: "text-indigo-600 dark:text-indigo-300",
+      description: "1 needs input · 1 done · 1 working",
+    });
+    expect(
+      summarizeSidebarProjectBadge(combineSidebarProjectBadges([all[1]!.counts])),
+    ).toMatchObject({ count: 0, label: null, className: "text-info-foreground" });
+    expect(summarizeSidebarProjectBadge(combineSidebarProjectBadges([]))).toBeNull();
+  });
+
+  it("shares unread and wake precedence with rows and respects server visits over local fallback", () => {
+    const thread = { ...baseThread(), snoozedUntil: "2026-03-09T10:06:00.000Z" };
+    expect(
+      resolveSidebarThreadTopStatus(thread, {
+        lastVisitedAt: visited,
+        wokeAt: thread.snoozedUntil,
+      }),
+    ).toMatchObject({ isUnread: true, isWoke: true, topStatus: { kind: "woke" } });
+    expect(
+      resolveSidebarThreadTopStatus(
+        { ...thread, runtime },
+        { lastVisitedAt: visited, wokeAt: thread.snoozedUntil },
+      ).topStatus,
+    ).toMatchObject({ kind: "working" });
+    expect(
+      resolveSidebarThreadTopStatus(
+        { ...thread, settledOverride: "settled" },
+        { lastVisitedAt: visited, wokeAt: thread.snoozedUntil },
+      ).isWoke,
+    ).toBe(false);
+    const localLastVisitedAtById = {
+      [scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))]: now,
+    };
+    expect(
+      buildSidebarProjectBadges(groups, [thread], { ...defaults, localLastVisitedAtById })[0]!
+        .counts.woke,
+    ).toBe(1);
+    const { lastVisitedAt: _lastVisitedAt, ...legacyThread } = thread;
+    expect(
+      buildSidebarProjectBadges(groups, [legacyThread], { ...defaults, localLastVisitedAtById })[0]!
+        .counts.woke,
+    ).toBe(0);
+  });
+
+  it.each([
+    ["environmentId", { environmentId: remoteId }],
+    ["id", { id: ThreadId.make("changed") }],
+    ["projectId", { projectId: ProjectId.make("changed") }],
+    ["archivedAt", { archivedAt: now }],
+    ["deletedAt", { deletedAt: now }],
+    ["settledOverride", { settledOverride: "settled" }],
+    ["snoozedAt", { snoozedAt: visited }],
+    ["snoozedUntil", { snoozedUntil: now }],
+    ["lastVisitedAt", { lastVisitedAt: now }],
+    ["hasPendingApprovals", { hasPendingApprovals: true }],
+    ["hasPendingUserInput", { hasPendingUserInput: true }],
+    ["pendingSubagentRequest", { pendingSubagentRequest: "approval" }],
+    ["pendingGuestMessageCount", { pendingGuestMessageCount: 1 }],
+    ["blockedOnThreadWait", { blockedOnThreadWait: true }],
+    [
+      "lineage.relationshipToParent",
+      { lineage: { ...baseThread().lineage!, relationshipToParent: "subagent" } },
+    ],
+    ["lineage.sideChat", { lineage: { ...baseThread().lineage, sideChat: true } }],
+    ["runtime.status", { runtime: { ...runtime, status: "failed" } }],
+    ["runtime.lastErrorClass", { runtime: { ...runtime, lastErrorClass: "usage_limit" } }],
+    ["runtime.updatedAt", { runtime: { ...runtime, updatedAt: visited } }],
+    ["latestRun.status", { latestRun: { ...makeLatestRun(), status: "failed" } }],
+    ["latestRun.completedAt", { latestRun: makeLatestRun({ completedAt: now }) }],
+    [
+      "source.pendingRuntimeRequest",
+      {
+        source: {
+          ...baseThread().source,
+          pendingRuntimeRequest: {
+            id: RuntimeRequestId.make("request"),
+            kind: "permission",
+            createdAt: DateTime.makeUnsafe(now),
+          },
+        },
+      },
+    ],
+  ] satisfies ReadonlyArray<readonly [string, Partial<Thread>]>)(
+    "invalidates badge thread equality when %s changes",
+    (_field, patch) => {
+      const thread = { ...baseThread(), runtime, snoozedUntil: visited };
+      expect(sameSidebarProjectBadgeThreads([thread], [{ ...thread }])).toBe(true);
+      expect(sameSidebarProjectBadgeThreads([thread], [{ ...thread, ...patch }])).toBe(false);
+    },
+  );
+
+  it("keeps equality for unrelated shell changes while observing every count", () => {
+    const threads = states();
+    const first = buildSidebarProjectBadges(groups, threads, { ...defaults });
+    const renamed = buildSidebarProjectBadges(
+      groups,
+      threads.map((thread) => ({ ...thread, title: "changed" })),
+      { ...defaults },
+    );
+    expect(sameSidebarProjectBadges(first, renamed)).toBe(true);
+    for (const thread of threads) {
+      expect(
+        sameSidebarProjectBadges(
+          first,
+          buildSidebarProjectBadges(groups, [...threads, thread], { ...defaults }),
+        ),
+      ).toBe(false);
+    }
+    expect(sameSidebarProjectBadges(first, [...first].reverse())).toBe(false);
+    const registry = AtomRegistry.make();
+    const source = Atom.make(threads);
+    const inputs = Atom.make((get) => get(source)).pipe(
+      Atom.withEquality(sameSidebarProjectBadgeThreads),
+    );
+    const aggregate = vi.fn((get: Atom.AtomContext) =>
+      buildSidebarProjectBadges(groups, get(inputs), defaults),
+    );
+    const badgesAtom = Atom.make(aggregate).pipe(Atom.withEquality(sameSidebarProjectBadges));
+    const release = registry.mount(badgesAtom);
+    try {
+      const initial = registry.get(badgesAtom);
+      registry.set(
+        source,
+        threads.map((thread) => ({
+          ...thread,
+          title: "renamed",
+          updatedAt: now,
+          source: { ...thread.source, title: "renamed" },
+          runtime: thread.runtime === null ? null : { ...thread.runtime },
+          latestRun: thread.latestRun === null ? null : { ...thread.latestRun },
+        })),
+      );
+      expect(registry.get(badgesAtom)).toBe(initial);
+      expect(aggregate).toHaveBeenCalledTimes(1);
+      registry.set(source, [...threads, threads[0]!]);
+      expect(registry.get(badgesAtom)[0]!.counts.approval).toBe(2);
+      expect(aggregate).toHaveBeenCalledTimes(2);
+    } finally {
+      release();
+      registry.dispose();
+    }
   });
 });

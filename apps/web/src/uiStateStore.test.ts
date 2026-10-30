@@ -10,8 +10,13 @@ import {
   type PersistedUiState,
   persistState,
   reorderProjects,
+  revealSidebarProjectScope,
   resolveProjectExpanded,
   setProjectExpanded,
+  setSidebarEnvironmentScopeKeys,
+  setSidebarProjectScopeKeys,
+  setSidebarProjectExcludeKeys,
+  setSidebarProjectFilterMode,
   type UiState,
 } from "./uiStateStore";
 
@@ -21,6 +26,8 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectOrder: [],
     sidebarProjectScopeKeys: [],
     sidebarEnvironmentScopeKeys: [],
+    sidebarProjectExcludeKeys: [],
+    sidebarProjectFilterMode: "include",
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
@@ -29,7 +36,113 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
   };
 }
 
+const projectModeScope = {
+  groups: [],
+  settings: {
+    sidebarProjectGroupingMode: "repository" as const,
+    sidebarProjectGroupingOverrides: {},
+  },
+  availableKeys: new Set(["a", "c", "local"]),
+};
+
 describe("uiStateStore pure functions", () => {
+  it.each(["include", "exclude"] as const)(
+    "keeps the shared %s filter across machine changes, including removed machines",
+    (mode) => {
+      const initial = setSidebarProjectFilterMode(
+        makeUiState({ sidebarProjectScopeKeys: ["a", "offline", "removed"] }),
+        mode,
+        projectModeScope,
+      );
+      let state = initial;
+      for (const keys of [["mac"], ["linux", "mac"], ["removed"], [], ["linux"]]) {
+        state = setSidebarEnvironmentScopeKeys(state, keys);
+        expect(state.sidebarProjectScopeKeys).toBe(initial.sidebarProjectScopeKeys);
+        expect(state.sidebarProjectExcludeKeys).toBe(initial.sidebarProjectExcludeKeys);
+        expect(state.sidebarProjectFilterMode).toBe(mode);
+      }
+      expect(setSidebarEnvironmentScopeKeys(state, ["linux", "linux"])).toBe(state);
+      const pair = setSidebarEnvironmentScopeKeys(state, ["mac", "linux"]);
+      expect(setSidebarEnvironmentScopeKeys(pair, ["linux", "mac"])).toBe(pair);
+      const cleared = setSidebarEnvironmentScopeKeys(pair, []);
+      expect(setSidebarEnvironmentScopeKeys(cleared, [])).toBe(cleared);
+      const stale = setSidebarEnvironmentScopeKeys(state, ["removed"]);
+      expect(setSidebarEnvironmentScopeKeys(stale, []).sidebarEnvironmentScopeKeys).toEqual([]);
+      const picked = setSidebarProjectScopeKeys(state, ["picked"]);
+      expect(picked.sidebarProjectFilterMode).toBe("include");
+      expect(picked.sidebarProjectExcludeKeys).toBe(initial.sidebarProjectExcludeKeys);
+      if (mode === "exclude") {
+        const restored = setSidebarProjectFilterMode(picked, "exclude", projectModeScope);
+        expect(restored.sidebarProjectExcludeKeys).toEqual(initial.sidebarProjectExcludeKeys);
+        expect(restored.sidebarProjectScopeKeys).toEqual(["picked"]);
+      }
+      expect(picked.sidebarProjectScopeKeys).toEqual(["picked"]);
+      expect(setSidebarProjectScopeKeys(picked, ["picked"])).toBe(picked);
+      expect(setSidebarProjectExcludeKeys(picked, picked.sidebarProjectExcludeKeys)).toBe(picked);
+    },
+  );
+
+  it.each(
+    (["include", "exclude"] as const).flatMap((mode) =>
+      [undefined, true, false].map((restoreExclude) => ({ mode, restoreExclude })),
+    ),
+  )(
+    "sanitizes active $mode mode and ignores legacy restoreExclude=$restoreExclude",
+    ({ mode, restoreExclude }) => {
+      const valid = makeUiState({ sidebarProjectFilterMode: mode });
+      expect(revealSidebarProjectScope(valid, "a", false)).toBe(valid);
+      const legacySelection = { include: ["a"], exclude: ["b"], restoreExclude };
+      const state = parsePersistedState({
+        sidebarProjectFilterMode: mode,
+        sidebarProjectScopeKeys: ["a"],
+        sidebarProjectExcludeKeys: ["b"],
+        sidebarProjectScopesByEnvironment: { "": legacySelection },
+      });
+      expect(state).not.toHaveProperty("sidebarProjectScopesByEnvironment");
+      expect(state.sidebarProjectScopeKeys).toEqual(["a"]);
+      expect(state.sidebarProjectExcludeKeys).toEqual(["b"]);
+      expect(revealSidebarProjectScope(state, "a", false)).toBe(state);
+    },
+  );
+
+  it.each(["include", "exclude"] as const)(
+    "reveals a project using the shared %s selection when widening machines",
+    (mode) => {
+      const all = makeUiState({ sidebarProjectScopeKeys: ["a", "b"] });
+      const mac = setSidebarProjectScopeKeys(setSidebarEnvironmentScopeKeys(all, ["mac"]), ["c"]);
+      const state = setSidebarProjectFilterMode(mac, mode, projectModeScope);
+      const revealed = revealSidebarProjectScope(state, "b", true);
+      expect(revealed.sidebarEnvironmentScopeKeys).toEqual([]);
+      expect(revealed.sidebarProjectScopeKeys).toEqual(mode === "include" ? ["c", "b"] : ["c"]);
+      expect(revealed.sidebarProjectExcludeKeys).toEqual(mode === "exclude" ? ["c"] : []);
+    },
+  );
+
+  it.each(["include", "exclude"] as const)(
+    "reveals through canonical project keys while preserving unknown saved keys in %s mode",
+    (mode) => {
+      const all = makeUiState({ sidebarProjectScopeKeys: ["legacy-a", "unknown"] });
+      const mac = setSidebarProjectScopeKeys(setSidebarEnvironmentScopeKeys(all, ["mac"]), [
+        "local",
+      ]);
+      const state = setSidebarProjectFilterMode(mac, mode, projectModeScope);
+      const revealed = revealSidebarProjectScope(
+        state,
+        mode === "include" ? "b" : "a",
+        true,
+        new Set(["a", "b"]),
+        mode === "include"
+          ? { include: ["a", "unknown"], exclude: [] }
+          : { include: [], exclude: ["a", "unknown"] },
+      );
+      expect(revealed.sidebarProjectScopeKeys).toEqual(
+        mode === "include" ? ["a", "unknown", "b"] : [],
+      );
+      expect(revealed.sidebarProjectExcludeKeys).toEqual(mode === "exclude" ? ["unknown"] : []);
+      expect(revealed.sidebarEnvironmentScopeKeys).toEqual([]);
+    },
+  );
+
   it("stores server timestamps without moving visit state backwards", () => {
     const threadId = ThreadId.make("thread-1");
     const initialState = makeUiState();
@@ -113,6 +226,47 @@ describe("parsePersistedState", () => {
     ).toEqual(expected);
   });
 
+  it.each([undefined, null, [], "invalid", 42])(
+    "ignores invalid project scope maps and mode %s",
+    (value) => {
+      const parsed = parsePersistedState({
+        sidebarEnvironmentScopeKeys: ["__proto__"],
+        sidebarProjectScopesByEnvironment: value as unknown as NonNullable<
+          PersistedUiState["sidebarProjectScopesByEnvironment"]
+        >,
+        sidebarProjectFilterMode: value as unknown as NonNullable<
+          PersistedUiState["sidebarProjectFilterMode"]
+        >,
+        sidebarProjectExcludeKeys: value as unknown as string[],
+      });
+      expect(parsed.sidebarProjectScopeKeys).toEqual([]);
+      expect(parsed).not.toHaveProperty("sidebarProjectScopesByEnvironment");
+      expect(parsed.sidebarProjectFilterMode).toBe("include");
+      expect(parsed.sidebarProjectExcludeKeys).toEqual([]);
+    },
+  );
+
+  it("sanitizes selections while keeping unknown machine and project keys", () => {
+    const parsed = parsePersistedState(
+      JSON.parse(
+        JSON.stringify({
+          sidebarProjectExcludeKeys: ["a", "", "a", 42, "unknown"],
+          sidebarProjectFilterMode: "exclude",
+          sidebarProjectScopesByEnvironment: {
+            "": { include: ["all"], exclude: [] },
+            unknown: { include: ["a", "a", false], exclude: ["b", ""] },
+            malformed: { include: null, exclude: 42 },
+            ignored: null,
+            array: [],
+          },
+        }),
+      ) as PersistedUiState,
+    );
+    expect(parsed.sidebarProjectExcludeKeys).toEqual(["a", "unknown"]);
+    expect(parsed.sidebarProjectFilterMode).toBe("exclude");
+    expect(parsed).not.toHaveProperty("sidebarProjectScopesByEnvironment");
+  });
+
   it("hydrates raw UI-owned state without server entities", () => {
     const parsed = parsePersistedState({
       projectExpandedById: {
@@ -145,6 +299,8 @@ describe("parsePersistedState", () => {
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKeys: [],
       sidebarEnvironmentScopeKeys: [],
+      sidebarProjectExcludeKeys: [],
+      sidebarProjectFilterMode: "include",
       pullRequestMergeMethod: "merge",
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
@@ -250,8 +406,10 @@ describe("uiStateStore persistence", () => {
       },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKeys: [],
-      sidebarEnvironmentScopeKeys: [],
       sidebarProjectScopeKey: null,
+      sidebarEnvironmentScopeKeys: [],
+      sidebarProjectExcludeKeys: [],
+      sidebarProjectFilterMode: "include",
       threadChangedFilesExpansionVersion: 2,
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
@@ -266,24 +424,80 @@ describe("uiStateStore persistence", () => {
     });
   });
 
-  it("restores the sidebar project scope across reloads", () => {
-    const keys = ["github.com/pingdotgg/t3code", "github.com/pingdotgg/uploadthing"];
-    persistState(
-      makeUiState({
-        sidebarProjectScopeKeys: keys,
-        sidebarEnvironmentScopeKeys: ["environment-remote-mac"],
-      }),
-    );
-
-    const persisted = JSON.parse(
-      localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
-    ) as PersistedUiState;
-
-    expect(parsePersistedState(persisted).sidebarProjectScopeKeys).toEqual(keys);
-    expect(parsePersistedState(persisted).sidebarEnvironmentScopeKeys).toEqual([
-      "environment-remote-mac",
-    ]);
-  });
+  it.each(
+    [
+      { top: ["current"], active: ["machine"], all: ["all"], expected: ["current"] },
+      { top: [], active: ["machine"], all: ["all"], expected: ["machine"] },
+      { top: undefined, active: ["machine"], all: ["all"], expected: ["machine"] },
+      { top: [], active: [], all: ["all"], expected: ["all"] },
+      { top: undefined, active: undefined, all: ["all"], expected: ["all"] },
+      { top: [], active: [], all: [], expected: [] },
+      { top: [], inactiveTop: ["saved"], active: [], all: [], expected: [] },
+      {
+        top: [],
+        inactiveTop: ["inactive"],
+        active: ["machine"],
+        all: ["all"],
+        expected: ["machine"],
+      },
+      { top: [], active: [], inactiveActive: ["inactive"], all: ["all"], expected: ["all"] },
+      {
+        top: ["current"],
+        inactiveTop: ["other-mode"],
+        active: ["machine"],
+        all: ["all"],
+        expected: ["current"],
+      },
+      {
+        top: ["", 42],
+        active: ["machine", "machine", 42, ""],
+        all: ["all"],
+        expected: ["machine"],
+      },
+    ].flatMap((row) =>
+      (["include", "exclude"] as const).flatMap((mode) =>
+        [["mac"], ["mac", "linux"]].map((machines) => ({ ...row, mode, machines })),
+      ),
+    ),
+  )(
+    "restores the shared $mode filter across reloads: $top / $active / $all on $machines",
+    ({ top, inactiveTop, active, inactiveActive, all, expected, mode, machines }) => {
+      const activeKey = machines.length === 1 ? machines[0]! : JSON.stringify([...machines].sort());
+      const state = parsePersistedState({
+        sidebarEnvironmentScopeKeys: machines,
+        sidebarProjectFilterMode: mode,
+        [mode === "include" ? "sidebarProjectExcludeKeys" : "sidebarProjectScopeKeys"]: inactiveTop,
+        ...(top === undefined
+          ? {}
+          : {
+              [mode === "include" ? "sidebarProjectScopeKeys" : "sidebarProjectExcludeKeys"]: top,
+            }),
+        sidebarProjectScopesByEnvironment: {
+          [activeKey]: {
+            include: [],
+            exclude: [],
+            [mode === "include" ? "exclude" : "include"]: inactiveActive,
+            [mode]: active,
+          },
+          "": { include: [], exclude: [], [mode]: all },
+        },
+      } as PersistedUiState);
+      const field = mode === "include" ? "sidebarProjectScopeKeys" : "sidebarProjectExcludeKeys";
+      expect(state[field]).toEqual(expected);
+      const inactiveField =
+        mode === "include" ? "sidebarProjectExcludeKeys" : "sidebarProjectScopeKeys";
+      expect(state[inactiveField]).toEqual(inactiveTop ?? []);
+      persistState(state);
+      const saved = JSON.parse(localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}");
+      expect(saved).not.toHaveProperty("sidebarProjectScopesByEnvironment");
+      expect(saved.sidebarProjectScopeKey).toBe(
+        state.sidebarProjectScopeKeys.length === 1 ? state.sidebarProjectScopeKeys[0] : null,
+      );
+      expect(parsePersistedState(saved)).toEqual(state);
+      expect(state.sidebarEnvironmentScopeKeys).toEqual(machines);
+      expect(state.sidebarProjectFilterMode).toBe(mode);
+    },
+  );
 
   it("keeps a single-project scope readable by older clients", () => {
     persistState(makeUiState({ sidebarProjectScopeKeys: ["github.com/pingdotgg/t3code"] }));

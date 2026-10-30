@@ -145,8 +145,11 @@ export function scopeSidebarProjectGroupsToEnvironment(
 export function sidebarEmptyThreadsLabel(input: {
   readonly projectName: string | null;
   readonly machineLabel: string | null;
+  readonly hidingProjects?: boolean;
 }): string {
   const project = input.projectName === null ? "" : ` in ${input.projectName}`;
   const machine = input.machineLabel === null ? "" : ` on ${input.machineLabel}`;
-  return `No threads${project}${machine} yet`;
+  return input.hidingProjects
+    ? `No threads outside the hidden projects${machine} yet`
+    : `No threads${project}${machine} yet`;
 }

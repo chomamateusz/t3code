@@ -26,6 +26,7 @@ import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/c
 import type { AsyncResult } from "effect/reactivity";
 import {
   effectiveSnoozed,
+  threadWokeAt,
   type ThreadSnoozeShell,
 } from "@t3tools/client-runtime/state/thread-settled";
 import {
@@ -42,6 +43,8 @@ import { observeIntersection } from "../lib/observeIntersection";
 import { deadlineAfter, deadlineStore } from "@t3tools/client-runtime/clock";
 import { useDeadlinePassed } from "../hooks/useDeadline";
 import { legacyProjectCwdPreferenceKey } from "../uiStateStore";
+import { isInSidebarProjectScope } from "../sidebarProjectRow";
+import { parseTimestampDate } from "../timestampFormat";
 
 export function shouldNavigateAfterThreadPark(input: {
   readonly threadKey: string;
@@ -618,10 +621,7 @@ export function isInSidebarScope(
   scopedProjectKeys: ReadonlySet<string> | null,
   scopedEnvironmentIds: ReadonlySet<string> | null,
 ): boolean {
-  return (
-    (scopedEnvironmentIds === null || scopedEnvironmentIds.has(item.environmentId)) &&
-    (scopedProjectKeys === null || scopedProjectKeys.has(`${item.environmentId}:${item.projectId}`))
-  );
+  return isInSidebarProjectScope(item, scopedProjectKeys, scopedEnvironmentIds);
 }
 
 export function buildBulkTitleRegenerationContextMenuItem(input: {
@@ -901,6 +901,246 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   return "ready";
 }
 
+const SIDEBAR_TOP_STATUS = {
+  preparing: { label: "Setting up", icon: "working", className: "text-info-foreground" },
+  working: { label: "Working", icon: "working", className: "text-info-foreground" },
+  waiting: { label: "Waiting", icon: "waiting", className: "text-muted-foreground" },
+  approval: { label: "Approval", icon: "approval", className: "text-warning-foreground" },
+  input: { label: "Input", icon: "input", className: "text-indigo-600 dark:text-indigo-300" },
+  request: { label: "Request", icon: "request", className: "text-guest-foreground" },
+  limited: { label: "Limited", icon: "failed", className: "text-warning-foreground" },
+  failed: { label: "Failed", icon: "failed", className: "text-error-foreground" },
+  woke: { label: "Woke", icon: "woke", className: "text-warning-foreground" },
+  done: { label: "Done", icon: "done", className: "text-success-foreground" },
+} as const;
+
+export function resolveSidebarThreadTopStatus(
+  thread: ThreadStatusInput &
+    SidebarThreadStatusInput &
+    Pick<SidebarThreadSummary, "goal" | "settledOverride">,
+  input: { readonly lastVisitedAt: string | undefined; readonly wokeAt: string | null },
+) {
+  const { lastVisitedAt, wokeAt } = input;
+  const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
+  const status = resolveSidebarThreadStatus(thread);
+  const lastVisitedDate = lastVisitedAt === undefined ? null : parseTimestampDate(lastVisitedAt);
+  const wokeAtDate = wokeAt === null ? null : parseTimestampDate(wokeAt);
+  const isWoke =
+    wokeAtDate !== null &&
+    (lastVisitedDate === null || lastVisitedDate < wokeAtDate) &&
+    thread.settledOverride !== "settled";
+  const kind = status !== "ready" ? status : isWoke ? "woke" : isUnread ? "done" : null;
+  const topStatus =
+    kind === null
+      ? null
+      : ({
+          ...SIDEBAR_TOP_STATUS[kind],
+          kind,
+          label:
+            kind === "working" && thread.goal?.status === "active"
+              ? "Goal"
+              : SIDEBAR_TOP_STATUS[kind].label,
+        } as const);
+  return { status, isUnread, isWoke, topStatus };
+}
+
+const PROJECT_BADGE_STATES = [
+  "approval",
+  "input",
+  "request",
+  "failed",
+  "limited",
+  "woke",
+  "done",
+  "working",
+] as const;
+const PROJECT_BADGE_LABELS = {
+  approval: "approval",
+  input: "needs input",
+  request: "request",
+  failed: "failed",
+  limited: "limited",
+  woke: "woke",
+  done: "done",
+  working: "working",
+} as const;
+export type SidebarProjectBadgeCounts = Readonly<
+  Record<(typeof PROJECT_BADGE_STATES)[number], number>
+>;
+export interface SidebarProjectBadge {
+  readonly projectKey: string;
+  readonly counts: SidebarProjectBadgeCounts;
+}
+
+function emptySidebarProjectBadgeCounts() {
+  return { approval: 0, input: 0, request: 0, failed: 0, limited: 0, woke: 0, done: 0, working: 0 };
+}
+
+export function summarizeSidebarProjectBadge(counts: SidebarProjectBadgeCounts) {
+  const state = PROJECT_BADGE_STATES.find((state) => counts[state] > 0);
+  if (state === undefined) return null;
+  const count = PROJECT_BADGE_STATES.reduce(
+    (sum, state) => sum + (state === "working" ? 0 : counts[state]),
+    0,
+  );
+  return {
+    count,
+    label: count === 0 ? null : count > 9 ? "9+" : String(count),
+    className: SIDEBAR_TOP_STATUS[state].className,
+    description: PROJECT_BADGE_STATES.filter((state) => counts[state] > 0)
+      .map(
+        (state) =>
+          `${counts[state]} ${PROJECT_BADGE_LABELS[state]}${state === "request" && counts[state] !== 1 ? "s" : ""}`,
+      )
+      .join(" · "),
+  };
+}
+
+export type SidebarProjectBadgeState = (typeof PROJECT_BADGE_STATES)[number];
+
+export const SIDEBAR_PROJECT_BADGE_LEGEND = PROJECT_BADGE_STATES.map((state) => ({
+  state,
+  label: PROJECT_BADGE_LABELS[state].charAt(0).toUpperCase() + PROJECT_BADGE_LABELS[state].slice(1),
+  badge: summarizeSidebarProjectBadge({ ...emptySidebarProjectBadgeCounts(), [state]: 1 }),
+}));
+
+export function combineSidebarProjectBadges(
+  counts: readonly SidebarProjectBadgeCounts[],
+): SidebarProjectBadgeCounts {
+  const combined = emptySidebarProjectBadgeCounts();
+  for (const entry of counts) {
+    for (const state of PROJECT_BADGE_STATES) combined[state] += entry[state];
+  }
+  return combined;
+}
+
+export function resolveSidebarThreadShelfState(
+  thread: ThreadSnoozeShell & Pick<SidebarThreadSummary, "settledOverride">,
+  input: { readonly now: string; readonly configLoaded: boolean },
+) {
+  return {
+    snoozed: input.configLoaded && effectiveSnoozed(thread, input),
+    settled: input.configLoaded && thread.settledOverride === "settled",
+  };
+}
+
+export function buildSidebarProjectBadges(
+  groups: ReadonlyArray<{
+    readonly projectKey: string;
+    readonly memberProjectRefs: ReadonlyArray<{
+      readonly environmentId: string;
+      readonly projectId: string;
+    }>;
+  }>,
+  threads: readonly SidebarThreadSummary[],
+  input: {
+    readonly now: string;
+    readonly loadedEnvironmentIds: ReadonlySet<EnvironmentId>;
+    readonly delegatedUnderParent: ReadonlySet<string>;
+    readonly environmentIds?: ReadonlySet<EnvironmentId> | null;
+    readonly localLastVisitedAtById?: Readonly<Record<string, string>>;
+  },
+): readonly SidebarProjectBadge[] {
+  const countsByGroup = new Map(
+    groups.map((group) => [group.projectKey, emptySidebarProjectBadgeCounts()]),
+  );
+  const groupKeyByMember = new Map(
+    groups.flatMap((group) =>
+      group.memberProjectRefs.map(
+        (ref) => [`${ref.environmentId}:${ref.projectId}`, group.projectKey] as const,
+      ),
+    ),
+  );
+  for (const thread of filterSidebarV2VisibleThreads(
+    threads,
+    null,
+    input.delegatedUnderParent,
+    input.environmentIds,
+  )) {
+    const shelf = resolveSidebarThreadShelfState(thread, {
+      now: input.now,
+      configLoaded: input.loadedEnvironmentIds.has(thread.environmentId),
+    });
+    if (thread.archivedAt !== null || thread.deletedAt !== null || shelf.settled || shelf.snoozed)
+      continue;
+    const key = groupKeyByMember.get(`${thread.environmentId}:${thread.projectId}`);
+    const counts = key === undefined ? undefined : countsByGroup.get(key);
+    if (counts === undefined) continue;
+    const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+    const { topStatus } = resolveSidebarThreadTopStatus(thread, {
+      lastVisitedAt: resolveThreadLastVisitedAt(
+        thread.lastVisitedAt,
+        input.localLastVisitedAtById?.[threadKey],
+      ),
+      wokeAt: threadWokeAt(thread, input),
+    });
+    if (topStatus === null || topStatus.kind === "waiting") continue;
+    counts[topStatus.kind === "preparing" ? "working" : topStatus.kind]++;
+  }
+  return groups.map((group) => ({
+    projectKey: group.projectKey,
+    counts: countsByGroup.get(group.projectKey)!,
+  }));
+}
+
+export function sameSidebarProjectBadgeThreads(
+  left: readonly SidebarThreadSummary[],
+  right: readonly SidebarThreadSummary[],
+): boolean {
+  const fields = [
+    "environmentId",
+    "id",
+    "projectId",
+    "archivedAt",
+    "deletedAt",
+    "settledOverride",
+    "snoozedAt",
+    "snoozedUntil",
+    "lastVisitedAt",
+    "hasPendingApprovals",
+    "hasPendingUserInput",
+    "pendingSubagentRequest",
+    "pendingGuestMessageCount",
+    "blockedOnThreadWait",
+  ] as const;
+  return (
+    left.length === right.length &&
+    left.every((thread, index) => {
+      const other = right[index];
+      return (
+        other !== undefined &&
+        fields.every((field) => thread[field] === other[field]) &&
+        thread.lineage?.relationshipToParent === other.lineage?.relationshipToParent &&
+        thread.lineage.sideChat === other.lineage.sideChat &&
+        thread.runtime?.status === other.runtime?.status &&
+        thread.runtime?.lastErrorClass === other.runtime?.lastErrorClass &&
+        (thread.snoozedUntil == null || thread.runtime?.updatedAt === other.runtime?.updatedAt) &&
+        thread.latestRun?.status === other.latestRun?.status &&
+        thread.latestRun?.completedAt === other.latestRun?.completedAt &&
+        (thread.source.pendingRuntimeRequest != null) ===
+          (other.source.pendingRuntimeRequest != null)
+      );
+    })
+  );
+}
+
+export function sameSidebarProjectBadges(
+  left: readonly SidebarProjectBadge[],
+  right: readonly SidebarProjectBadge[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((entry, index) => {
+      const other = right[index];
+      return (
+        other !== undefined &&
+        entry.projectKey === other.projectKey &&
+        PROJECT_BADGE_STATES.every((state) => entry.counts[state] === other.counts[state])
+      );
+    })
+  );
+}
+
 /**
  * The dot on a closed boring-sidebar folder: the most urgent state among its
  * hidden threads. Waiting threads stay quiet, like their rows.
@@ -1057,40 +1297,6 @@ export function pullRequestMatchesSearchQuery(
   if (normalizedQuery.length === 0) return false;
   const haystack = normalizeSearchText(threadPullRequestSearchTerms(pullRequest).join(" "));
   return normalizedQuery.split(" ").every((token) => haystack.includes(token));
-}
-
-export function filterSidebarProjectScopeItems<TItem extends { readonly value: string }>(input: {
-  items: readonly TItem[];
-  query: string;
-  matches: (item: TItem, query: string) => boolean;
-}): readonly TItem[] {
-  const query = input.query.trim();
-  if (query.length === 0) return input.items;
-  return input.items.filter((item) => item.value !== "all" && input.matches(item, query));
-}
-
-interface SidebarProjectScopeMenuState {
-  readonly open: boolean;
-  readonly query: string;
-}
-
-type SidebarProjectScopeMenuAction =
-  | { readonly type: "query-changed"; readonly query: string }
-  | { readonly type: "open-changed"; readonly open: boolean }
-  | { readonly type: "project-settings-opened" };
-
-export function reduceSidebarProjectScopeMenuState(
-  state: SidebarProjectScopeMenuState,
-  action: SidebarProjectScopeMenuAction,
-): SidebarProjectScopeMenuState {
-  switch (action.type) {
-    case "query-changed":
-      return { ...state, query: action.query };
-    case "open-changed":
-      return { open: action.open, query: "" };
-    case "project-settings-opened":
-      return { open: false, query: "" };
-  }
 }
 
 export function resolveWorkingStartedAt(

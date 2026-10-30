@@ -3,6 +3,13 @@ import type { PullRequestMergeMethod } from "@t3tools/contracts";
 import { create } from "zustand";
 import { normalizeProjectPathForComparison } from "@t3tools/client-runtime/state/projects";
 
+import {
+  revealSidebarProject,
+  switchSidebarProjectMode,
+  type SidebarProjectFilterMode,
+  type SidebarProjectSelection,
+} from "./sidebarProjectRow";
+
 export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
 const THREAD_CHANGED_FILES_EXPANSION_VERSION = 2;
 const LEGACY_PERSISTED_STATE_KEYS = [
@@ -30,6 +37,9 @@ export interface PersistedUiState {
   sidebarProjectScopeKeys?: string[];
   sidebarEnvironmentScopeKey?: string | null;
   sidebarEnvironmentScopeKeys?: string[];
+  sidebarProjectExcludeKeys?: string[];
+  sidebarProjectFilterMode?: SidebarProjectFilterMode;
+  sidebarProjectScopesByEnvironment?: Record<string, SidebarProjectSelection>;
   threadChangedFilesExpansionVersion?: number;
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
   pullRequestMergeMethod?: string;
@@ -40,6 +50,8 @@ export interface UiProjectState {
   projectOrder: string[];
   sidebarProjectScopeKeys: string[];
   sidebarEnvironmentScopeKeys: string[];
+  sidebarProjectExcludeKeys: string[];
+  sidebarProjectFilterMode: SidebarProjectFilterMode;
 }
 
 export interface UiThreadState {
@@ -63,6 +75,8 @@ const initialState: UiState = {
   projectOrder: [],
   sidebarProjectScopeKeys: [],
   sidebarEnvironmentScopeKeys: [],
+  sidebarProjectExcludeKeys: [],
+  sidebarProjectFilterMode: "include",
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
   defaultAdvertisedEndpointKey: null,
@@ -86,6 +100,24 @@ function sanitizeStringArray(value: unknown): string[] {
       value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0),
     ),
   ];
+}
+
+function sanitizeProjectScopes(value: unknown): Record<string, SidebarProjectSelection> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, selection]) => {
+      if (!selection || typeof selection !== "object" || Array.isArray(selection)) return [];
+      return [
+        [
+          key,
+          {
+            include: sanitizeStringArray("include" in selection ? selection.include : undefined),
+            exclude: sanitizeStringArray("exclude" in selection ? selection.exclude : undefined),
+          },
+        ],
+      ];
+    }),
+  );
 }
 
 function sanitizeBooleanRecord(value: unknown): Record<string, boolean> {
@@ -146,6 +178,27 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
       ? sanitizeStringArray(parsed.projectOrderCwds).map(legacyProjectCwdPreferenceKey)
       : sanitizeStringArray(parsed.projectOrder);
 
+  const sidebarProjectScopesByEnvironment = sanitizeProjectScopes(
+    parsed.sidebarProjectScopesByEnvironment,
+  );
+  const sidebarEnvironmentScopeKeys = sanitizeStringArray(
+    parsed.sidebarEnvironmentScopeKeys ?? [parsed.sidebarEnvironmentScopeKey],
+  );
+  const topLevelSelection = {
+    include: sanitizeStringArray(parsed.sidebarProjectScopeKeys ?? [parsed.sidebarProjectScopeKey]),
+    exclude: sanitizeStringArray(parsed.sidebarProjectExcludeKeys),
+  };
+  const activeScopeKey = sidebarEnvironmentScopeStorageKey(sidebarEnvironmentScopeKeys) ?? "";
+  const activeSelection = Object.hasOwn(sidebarProjectScopesByEnvironment, activeScopeKey)
+    ? sidebarProjectScopesByEnvironment[activeScopeKey]
+    : undefined;
+  const sidebarProjectFilterMode =
+    parsed.sidebarProjectFilterMode === "exclude" ? "exclude" : "include";
+  const selection = [
+    topLevelSelection,
+    activeSelection,
+    sidebarProjectScopesByEnvironment[""],
+  ].find((candidate) => candidate && candidate[sidebarProjectFilterMode].length > 0);
   return {
     projectExpandedById,
     projectOrder,
@@ -155,12 +208,16 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
         ? sanitizePersistedThreadChangedFilesExpanded(parsed.threadChangedFilesExpandedById)
         : {},
     defaultAdvertisedEndpointKey: sanitizeOptionalKey(parsed.defaultAdvertisedEndpointKey),
-    sidebarProjectScopeKeys: sanitizeStringArray(
-      parsed.sidebarProjectScopeKeys ?? [parsed.sidebarProjectScopeKey],
-    ),
-    sidebarEnvironmentScopeKeys: sanitizeStringArray(
-      parsed.sidebarEnvironmentScopeKeys ?? [parsed.sidebarEnvironmentScopeKey],
-    ),
+    sidebarProjectScopeKeys:
+      sidebarProjectFilterMode === "exclude"
+        ? topLevelSelection.include
+        : [...(selection?.include ?? [])],
+    sidebarEnvironmentScopeKeys,
+    sidebarProjectExcludeKeys:
+      sidebarProjectFilterMode === "exclude"
+        ? [...(selection?.exclude ?? [])]
+        : topLevelSelection.exclude,
+    sidebarProjectFilterMode,
     pullRequestMergeMethod: isPullRequestMergeMethod(parsed.pullRequestMergeMethod)
       ? parsed.pullRequestMergeMethod
       : initialState.pullRequestMergeMethod,
@@ -235,12 +292,14 @@ export function persistState(state: UiState): void {
         threadLastVisitedAtById: state.threadLastVisitedAtById,
         defaultAdvertisedEndpointKey: state.defaultAdvertisedEndpointKey,
         sidebarProjectScopeKeys: state.sidebarProjectScopeKeys,
-        sidebarEnvironmentScopeKeys: state.sidebarEnvironmentScopeKeys,
         // Older clients read only this field.
         sidebarProjectScopeKey:
           state.sidebarProjectScopeKeys.length === 1
             ? (state.sidebarProjectScopeKeys[0] ?? null)
             : null,
+        sidebarEnvironmentScopeKeys: state.sidebarEnvironmentScopeKeys,
+        sidebarProjectExcludeKeys: state.sidebarProjectExcludeKeys,
+        sidebarProjectFilterMode: state.sidebarProjectFilterMode,
         threadChangedFilesExpansionVersion: THREAD_CHANGED_FILES_EXPANSION_VERSION,
         threadChangedFilesExpandedById: state.threadChangedFilesExpandedById,
         pullRequestMergeMethod: state.pullRequestMergeMethod,
@@ -339,7 +398,16 @@ function setDefaultAdvertisedEndpointKey(state: UiState, key: string | null): Ui
   };
 }
 
-function setSidebarProjectScopeKeys(state: UiState, projectKeys: readonly string[]): UiState {
+export function setSidebarProjectScopeKeys(
+  state: UiState,
+  projectKeys: readonly string[],
+): UiState {
+  if (state.sidebarProjectFilterMode === "exclude") {
+    state = {
+      ...state,
+      sidebarProjectFilterMode: "include",
+    };
+  }
   const nextKeys = sanitizeStringArray(projectKeys);
   if (
     nextKeys.length === state.sidebarProjectScopeKeys.length &&
@@ -353,15 +421,89 @@ function setSidebarProjectScopeKeys(state: UiState, projectKeys: readonly string
   };
 }
 
-function setSidebarEnvironmentScopeKeys(
+export function setSidebarProjectExcludeKeys(
+  state: UiState,
+  projectKeys: readonly string[],
+): UiState {
+  const nextKeys = sanitizeStringArray(projectKeys);
+  if (
+    nextKeys.length === state.sidebarProjectExcludeKeys.length &&
+    nextKeys.every((key, index) => key === state.sidebarProjectExcludeKeys[index])
+  )
+    return state;
+  return { ...state, sidebarProjectExcludeKeys: nextKeys };
+}
+
+export function setSidebarProjectFilterMode(
+  state: UiState,
+  mode: SidebarProjectFilterMode,
+  scope: Parameters<typeof switchSidebarProjectMode>[3],
+): UiState {
+  if (state.sidebarProjectFilterMode === mode) return state;
+  const selection = switchSidebarProjectMode(
+    {
+      include: state.sidebarProjectScopeKeys,
+      exclude: state.sidebarProjectExcludeKeys,
+    },
+    state.sidebarProjectFilterMode,
+    mode,
+    scope,
+  );
+  return {
+    ...state,
+    sidebarProjectFilterMode: mode,
+    sidebarProjectScopeKeys: [...selection.include],
+    sidebarProjectExcludeKeys: [...selection.exclude],
+  };
+}
+
+function sidebarEnvironmentScopeStorageKey(keys: readonly string[]): string | null {
+  const sorted = [...new Set(keys)].sort();
+  return sorted.length < 2 ? (sorted[0] ?? null) : JSON.stringify(sorted);
+}
+
+export function setSidebarEnvironmentScopeKeys(
   state: UiState,
   environmentKeys: readonly string[],
 ): UiState {
   const nextKeys = sanitizeStringArray(environmentKeys);
-  return nextKeys.length === state.sidebarEnvironmentScopeKeys.length &&
-    nextKeys.every((key) => state.sidebarEnvironmentScopeKeys.includes(key))
-    ? state
-    : { ...state, sidebarEnvironmentScopeKeys: nextKeys };
+  if (
+    sidebarEnvironmentScopeStorageKey(state.sidebarEnvironmentScopeKeys) ===
+    sidebarEnvironmentScopeStorageKey(nextKeys)
+  )
+    return state;
+  return { ...state, sidebarEnvironmentScopeKeys: nextKeys };
+}
+
+export function revealSidebarProjectScope(
+  state: UiState,
+  projectKey: string,
+  revealEnvironment: boolean,
+  availableKeys?: ReadonlySet<string>,
+  resolvedSelection?: SidebarProjectSelection,
+): UiState {
+  const next = revealEnvironment ? setSidebarEnvironmentScopeKeys(state, []) : state;
+  const selection = revealSidebarProject(
+    resolvedSelection ?? {
+      include: next.sidebarProjectScopeKeys,
+      exclude: next.sidebarProjectExcludeKeys,
+    },
+    next.sidebarProjectFilterMode,
+    projectKey,
+    availableKeys,
+  );
+  if (
+    selection.include.length === next.sidebarProjectScopeKeys.length &&
+    selection.include.every((key, index) => key === next.sidebarProjectScopeKeys[index]) &&
+    selection.exclude.length === next.sidebarProjectExcludeKeys.length &&
+    selection.exclude.every((key, index) => key === next.sidebarProjectExcludeKeys[index])
+  )
+    return next;
+  return {
+    ...next,
+    sidebarProjectScopeKeys: [...selection.include],
+    sidebarProjectExcludeKeys: [...selection.exclude],
+  };
 }
 
 function setPullRequestMergeMethod(state: UiState, method: PullRequestMergeMethod): UiState {
@@ -453,6 +595,17 @@ interface UiStateStore extends UiState {
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
   setDefaultAdvertisedEndpointKey: (key: string | null) => void;
   setSidebarProjectScopeKeys: (projectKeys: readonly string[]) => void;
+  setSidebarProjectExcludeKeys: (projectKeys: readonly string[]) => void;
+  setSidebarProjectFilterMode: (
+    mode: SidebarProjectFilterMode,
+    scope: Parameters<typeof switchSidebarProjectMode>[3],
+  ) => void;
+  revealSidebarProjectScope: (
+    projectKey: string,
+    revealEnvironment: boolean,
+    availableKeys?: ReadonlySet<string>,
+    resolvedSelection?: SidebarProjectSelection,
+  ) => void;
   setSidebarEnvironmentScopeKeys: (environmentKeys: readonly string[]) => void;
   setPullRequestMergeMethod: (method: PullRequestMergeMethod) => void;
   setProjectExpanded: (projectIds: string | readonly string[], expanded: boolean) => void;
@@ -475,6 +628,20 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => setDefaultAdvertisedEndpointKey(state, key)),
   setSidebarProjectScopeKeys: (projectKeys) =>
     set((state) => setSidebarProjectScopeKeys(state, projectKeys)),
+  setSidebarProjectExcludeKeys: (projectKeys) =>
+    set((state) => setSidebarProjectExcludeKeys(state, projectKeys)),
+  setSidebarProjectFilterMode: (mode, scope) =>
+    set((state) => setSidebarProjectFilterMode(state, mode, scope)),
+  revealSidebarProjectScope: (projectKey, revealEnvironment, availableKeys, resolvedSelection) =>
+    set((state) =>
+      revealSidebarProjectScope(
+        state,
+        projectKey,
+        revealEnvironment,
+        availableKeys,
+        resolvedSelection,
+      ),
+    ),
   setSidebarEnvironmentScopeKeys: (environmentKeys) =>
     set((state) => setSidebarEnvironmentScopeKeys(state, environmentKeys)),
   setPullRequestMergeMethod: (method) => set((state) => setPullRequestMergeMethod(state, method)),
