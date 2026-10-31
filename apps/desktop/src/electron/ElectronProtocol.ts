@@ -70,7 +70,10 @@ export class ElectronProtocolUnregistrationError extends Schema.TaggedError<Elec
 export type DesktopProtocolRegistrationInput = {
   readonly scheme: string;
   readonly clerkFrontendApiHostname: string | undefined;
-} & ({ readonly targetOrigin: URL } | { readonly assetDirectory: string });
+} & (
+  | { readonly targetOrigin: URL }
+  | { readonly assetDirectory: string; readonly baseDir: string; readonly appVersion: string }
+);
 
 export class ElectronProtocol extends Context.Service<
   ElectronProtocol,
@@ -221,6 +224,60 @@ const proxyRequest = Effect.fn("desktop.protocol.proxyRequest")(function* (
   return withContentSecurityPolicy(response, contentSecurityPolicy);
 });
 
+const decodeWebOverride = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ appVersion: Schema.String })),
+);
+
+const makeAssetDirectoryResolver = Effect.fn("desktop.protocol.makeAssetDirectoryResolver")(
+  function* (input: Extract<DesktopProtocolRegistrationInput, { assetDirectory: string }>) {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const bundled = yield* fileSystem
+      .realPath(input.assetDirectory)
+      .pipe(Effect.orElseSucceed(() => path.resolve(input.assetDirectory)));
+    const current = path.join(input.baseDir, "web-override", "current");
+    const warnedTargets = new Set<string>();
+    let cached: { target: string; directory: Effect.Effect<string> } | undefined;
+    const validate = Effect.fn("desktop.protocol.validateWebOverride")(function* (target: string) {
+      const index = yield* fileSystem
+        .stat(path.join(target, "index.html"))
+        .pipe(Effect.orElseSucceed(() => null));
+      const stamp = yield* fileSystem
+        .readFileString(path.join(target, "t3-web-override.json"))
+        .pipe(
+          Effect.map(decodeWebOverride),
+          Effect.orElseSucceed(() => Option.none()),
+        );
+      if (
+        index?.type === "File" &&
+        Option.isSome(stamp) &&
+        stamp.value.appVersion === input.appVersion
+      ) {
+        return target;
+      }
+      if (!warnedTargets.has(target)) {
+        warnedTargets.add(target);
+        yield* Effect.logWarning("Ignoring invalid or incompatible desktop web override.", {
+          target,
+          appVersion: input.appVersion,
+        });
+      }
+      return bundled;
+    });
+    return Effect.fn("desktop.protocol.resolveAssetDirectory")(function* () {
+      const target = yield* fileSystem.realPath(current).pipe(Effect.orElseSucceed(() => null));
+      if (target === null) {
+        cached = undefined;
+        return bundled;
+      }
+      if (cached?.target !== target) {
+        cached = { target, directory: yield* Effect.cached(validate(target)) };
+      }
+      return yield* cached.directory;
+    });
+  },
+);
+
 const serveDesktopAsset = Effect.fn("desktop.protocol.serveAsset")(function* (
   request: Request,
   assetDirectory: string,
@@ -250,7 +307,11 @@ const serveDesktopAsset = Effect.fn("desktop.protocol.serveAsset")(function* (
     }
     filePath = path.join(root, "index.html");
   }
-  const contents = yield* fileSystem.readFile(filePath).pipe(Effect.orElseSucceed(() => null));
+  const realFilePath = yield* fileSystem.realPath(filePath).pipe(Effect.orElseSucceed(() => null));
+  if (realFilePath === null || !realFilePath.startsWith(root + path.sep)) {
+    return new Response(null, { status: 404, headers: { "cache-control": "no-store" } });
+  }
+  const contents = yield* fileSystem.readFile(realFilePath).pipe(Effect.orElseSucceed(() => null));
   if (contents === null)
     return new Response(null, { status: 404, headers: { "cache-control": "no-store" } });
   const relativePath = path.relative(root, filePath).split(path.sep).join("/");
@@ -279,6 +340,10 @@ export const make = Effect.gen(function* () {
       if (yield* Ref.get(registered)) return;
 
       const contentSecurityPolicy = makeDesktopContentSecurityPolicy(input);
+      const resolveAssetDirectory =
+        "assetDirectory" in input
+          ? yield* makeAssetDirectoryResolver(input).pipe(Effect.provide(context))
+          : undefined;
 
       yield* Effect.acquireRelease(
         Effect.try({
@@ -286,7 +351,11 @@ export const make = Effect.gen(function* () {
             Electron.protocol.handle(input.scheme, async (request) => {
               if ("assetDirectory" in input) {
                 return withContentSecurityPolicy(
-                  await runPromise(serveDesktopAsset(request, input.assetDirectory)),
+                  await runPromise(
+                    resolveAssetDirectory!().pipe(
+                      Effect.flatMap((directory) => serveDesktopAsset(request, directory)),
+                    ),
+                  ),
                   contentSecurityPolicy,
                 );
               }

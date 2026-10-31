@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import { beforeEach, vi } from "vite-plus/test";
 
 const { handleMock, netFetchMock, unhandleMock } = vi.hoisted(() => ({
@@ -59,6 +60,8 @@ describe("ElectronProtocol", () => {
       yield* protocol.registerDesktopProtocol({
         scheme: "t3code",
         assetDirectory: directory,
+        baseDir: directory,
+        appVersion: "1.2.3",
         clerkFrontendApiHostname: undefined,
       });
 
@@ -95,6 +98,8 @@ describe("ElectronProtocol", () => {
       yield* protocol.registerDesktopProtocol({
         scheme: "t3code",
         assetDirectory: directory,
+        baseDir: directory,
+        appVersion: "1.2.3",
         clerkFrontendApiHostname: undefined,
       });
       const request = (pathname: string, init?: RequestInit) =>
@@ -143,6 +148,93 @@ describe("ElectronProtocol", () => {
       assert.equal(missingIndex.headers.get("cache-control"), "no-store");
       assert.equal(netFetchMock.mock.calls.length, 0);
     }).pipe(Effect.provide(Layer.merge(layerProtocol, NodeServices.layer)), Effect.scoped),
+  );
+
+  it.effect("selects versioned overrides per request and confines their assets", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const directory = yield* fileSystem.makeTempDirectoryScoped();
+      const bundled = `${directory}/bundled`;
+      const overrides = `${directory}/web-override`;
+      yield* fileSystem.makeDirectory(bundled);
+      yield* fileSystem.makeDirectory(overrides);
+      yield* fileSystem.writeFileString(`${bundled}/index.html`, "bundled");
+      yield* fileSystem.writeFileString(`${directory}/secret.txt`, "secret");
+      let handler: ((request: Request) => Promise<Response>) | undefined;
+      handleMock.mockImplementation((_scheme, nextHandler) => {
+        handler = nextHandler;
+      });
+      const warnings: unknown[] = [];
+      const logger = Logger.make(({ message }) => warnings.push(message));
+      const protocol = yield* ElectronProtocol.make.pipe(
+        Effect.provide(Logger.layer([logger], { mergeWithExisting: false })),
+      );
+      yield* protocol.registerDesktopProtocol({
+        scheme: "t3code",
+        assetDirectory: bundled,
+        baseDir: directory,
+        appVersion: "1.2.3-local",
+        clerkFrontendApiHostname: undefined,
+      });
+      const request = (pathname = "/") =>
+        Effect.promise(() => handler!(new Request(`t3code://app${pathname}`)));
+      const page = () =>
+        request().pipe(Effect.flatMap((response) => Effect.promise(() => response.text())));
+      const select = (target: string) =>
+        Effect.gen(function* () {
+          yield* fileSystem.symlink(target, `${overrides}/next`);
+          yield* fileSystem.rename(`${overrides}/next`, `${overrides}/current`);
+        });
+      assert.equal(yield* page(), "bundled");
+      for (const [name, stamp, hasIndex] of [
+        ["missing", null, true],
+        ["mismatch", '{"appVersion":"1.2.3"}', true],
+        ["malformed", "{", true],
+        ["wrong-shape", '{"appVersion":123}', true],
+        ["no-index", '{"appVersion":"1.2.3-local"}', false],
+      ] as const) {
+        const target = `${overrides}/${name}`;
+        yield* fileSystem.makeDirectory(target);
+        if (hasIndex) yield* fileSystem.writeFileString(`${target}/index.html`, name);
+        if (stamp !== null)
+          yield* fileSystem.writeFileString(`${target}/t3-web-override.json`, stamp);
+        yield* select(target);
+        assert.equal(yield* page(), "bundled", name);
+        assert.equal(yield* page(), "bundled", name);
+      }
+      assert.equal(warnings.length, 5);
+      for (const name of ["first", "second"]) {
+        const target = `${overrides}/${name}`;
+        yield* fileSystem.makeDirectory(`${target}/assets`, { recursive: true });
+        yield* fileSystem.writeFileString(`${target}/index.html`, name);
+        yield* fileSystem.writeFileString(`${target}/assets/app-12345678.js`, name);
+        yield* fileSystem.writeFileString(
+          `${target}/t3-web-override.json`,
+          '{"appVersion":"1.2.3-local"}',
+        );
+        yield* fileSystem.symlink(`${directory}/secret.txt`, `${target}/escape.txt`);
+        yield* select(target);
+        const response = yield* request();
+        assert.equal(yield* Effect.promise(() => response.text()), name);
+        assert.equal(response.headers.get("cache-control"), "no-store");
+        const asset = yield* request("/assets/app-12345678.js");
+        assert.equal(yield* Effect.promise(() => asset.text()), name);
+        assert.equal(asset.headers.get("cache-control"), "public, max-age=31536000, immutable");
+        for (const pathname of ["/escape.txt", "/%2e%2e%2fsecret.txt"]) {
+          const refused = yield* request(pathname);
+          assert.equal(refused.status, 404);
+          assert.equal(refused.headers.get("cache-control"), "no-store");
+        }
+      }
+      yield* select(`${overrides}/malformed`);
+      assert.equal(yield* page(), "bundled");
+      assert.equal(warnings.length, 5);
+      yield* select(`${overrides}/first`);
+      assert.equal(yield* page(), "first");
+      yield* fileSystem.remove(`${overrides}/current`);
+      assert.equal(yield* page(), "bundled");
+      assert.equal(netFetchMock.mock.calls.length, 0);
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   );
 
   it.effect("proxies the stable renderer origin to the current app server", () =>
