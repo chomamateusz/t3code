@@ -1,7 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
-import { DesktopSnapShotId } from "@t3tools/contracts";
+import { DEFAULT_CLIENT_SETTINGS, DesktopSnapShotId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -64,7 +64,7 @@ const environmentInput = {
 } satisfies DesktopEnvironment.MakeDesktopEnvironmentInput;
 
 function makeFakeBrowserWindow() {
-  const windowListeners = new Map<string, (...args: readonly unknown[]) => void>();
+  const windowListeners = new Map<string, (...args: readonly unknown[]) => unknown>();
   const webContentsListeners = new Map<string, (...args: readonly unknown[]) => void>();
   let zoomLevel = 0;
   const webContents = {
@@ -222,6 +222,7 @@ function layerTest(input: {
   readonly mainWindow: Ref.Ref<Option.Option<Electron.BrowserWindow>>;
   readonly createdWindowOptions?: Electron.BrowserWindowConstructorOptions[];
   readonly desktopSettings?: DesktopAppSettings.DesktopSettings;
+  readonly clientSettings?: DesktopClientSettings.DesktopClientSettings["Service"];
   readonly mainWindowBoundsUpdates?: DesktopAppSettings.DesktopWindowBounds[];
   readonly mainWindowMaximizedUpdates?: boolean[];
   readonly beforeMainWindowBoundsUpdate?: (
@@ -308,7 +309,9 @@ function layerTest(input: {
         }),
         layerDesktopEnvironment,
         layerDesktopAppSettings,
-        layerDesktopClientSettings,
+        input.clientSettings
+          ? Layer.succeed(DesktopClientSettings.DesktopClientSettings, input.clientSettings)
+          : layerDesktopClientSettings,
         layerDesktopServerExposure,
         DesktopState.layer,
         layerElectronApp,
@@ -1020,7 +1023,17 @@ describe("DesktopWindow", () => {
       const fakeWindow = makeFakeBrowserWindow();
       const createCount = yield* Ref.make(0);
       const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
-      const layer = layerTest({ window: fakeWindow.window, createCount, mainWindow });
+      const settings = yield* Ref.make(Option.none<typeof DEFAULT_CLIENT_SETTINGS>());
+      let beforeRead = Effect.void;
+      const layer = layerTest({
+        window: fakeWindow.window,
+        createCount,
+        mainWindow,
+        clientSettings: {
+          get: Effect.suspend(() => beforeRead).pipe(Effect.andThen(Ref.get(settings))),
+          set: (value) => Ref.set(settings, Option.some(value)),
+        },
+      });
 
       yield* Effect.gen(function* () {
         const desktopWindow = yield* DesktopWindow.DesktopWindow;
@@ -1028,22 +1041,55 @@ describe("DesktopWindow", () => {
         const swipe = fakeWindow.windowListeners.get("swipe");
         assert.isDefined(swipe);
         if (!swipe) return;
+        const sendSwipe = (direction: string) =>
+          Effect.promise(() => Promise.resolve(swipe({}, direction)));
         const history = fakeWindow.navigationHistory;
 
-        swipe({}, "left");
+        yield* sendSwipe("left");
         assert.equal(history.goBack.mock.calls.length, 1);
         assert.equal(history.goForward.mock.calls.length, 0);
-        swipe({}, "right");
+        yield* sendSwipe("right");
         assert.equal(history.goForward.mock.calls.length, 1);
 
-        swipe({}, "up");
-        swipe({}, "down");
-        history.canGoBack.mockReturnValue(false);
-        history.canGoForward.mockReturnValue(false);
-        swipe({}, "left");
-        swipe({}, "right");
+        yield* Ref.set(
+          settings,
+          Option.some({ ...DEFAULT_CLIENT_SETTINGS, historySwipeNavigation: false }),
+        );
+        yield* sendSwipe("left");
+        yield* sendSwipe("right");
         assert.equal(history.goBack.mock.calls.length, 1);
         assert.equal(history.goForward.mock.calls.length, 1);
+
+        yield* Ref.set(
+          settings,
+          Option.some({ ...DEFAULT_CLIENT_SETTINGS, historySwipeNavigation: true }),
+        );
+        yield* sendSwipe("left");
+        yield* sendSwipe("right");
+        assert.equal(history.goBack.mock.calls.length, 2);
+        assert.equal(history.goForward.mock.calls.length, 2);
+
+        yield* sendSwipe("up");
+        yield* sendSwipe("down");
+        history.canGoBack.mockReturnValue(false);
+        history.canGoForward.mockReturnValue(false);
+        yield* sendSwipe("left");
+        yield* sendSwipe("right");
+        assert.equal(history.goBack.mock.calls.length, 2);
+        assert.equal(history.goForward.mock.calls.length, 2);
+
+        const readStarted = yield* Deferred.make<void>();
+        const finishRead = yield* Deferred.make<void>();
+        beforeRead = Deferred.succeed(readStarted, undefined).pipe(
+          Effect.andThen(Deferred.await(finishRead)),
+        );
+        history.canGoBack.mockReturnValue(true);
+        const pendingSwipe = yield* sendSwipe("left").pipe(Effect.forkChild);
+        yield* Deferred.await(readStarted);
+        fakeWindow.isDestroyed.mockReturnValue(true);
+        yield* Deferred.succeed(finishRead, undefined);
+        yield* Fiber.join(pendingSwipe);
+        assert.equal(history.goBack.mock.calls.length, 2);
       }).pipe(Effect.provide(layer));
     }),
   );
