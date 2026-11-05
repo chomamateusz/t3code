@@ -729,41 +729,17 @@ interface SupersededAttemptFold {
   readonly hiddenEntryIds: ReadonlySet<string>;
 }
 
-// Interrupted streams can be `completed`; only the attempt's last output proves completion.
 function completeSupersededReplyEntryIds(
   timelineEntries: ReadonlyArray<TimelineEntry>,
 ): ReadonlySet<string> {
-  const lastOutputByAttemptId = new Map<RunAttemptId, TimelineEntry>();
-  for (const entry of timelineEntries) {
-    if (
-      entry.attempt?.status !== "superseded" ||
-      (entry.kind === "message" && entry.message.role === "user") ||
-      (entry.kind === "work" &&
-        (entry.entry.itemType === "system_notice" || entry.entry.itemType === "notification")) ||
-      (entry.kind !== "message" && entry.kind !== "work")
-    ) {
-      continue;
-    }
-    const previous = lastOutputByAttemptId.get(entry.attempt.id);
-    const deferredEnd =
-      previous?.kind === "work"
-        ? previous.entry.projectedItem?.item.deferredWork?.lastOrdinal
-        : undefined;
-    const ordinal =
-      entry.kind === "work"
-        ? entry.entry.projectedItem?.item.ordinal
-        : entry.kind === "message"
-          ? entry.projectedItem?.item.ordinal
-          : undefined;
-    if (deferredEnd !== undefined && ordinal !== undefined && deferredEnd > ordinal) continue;
-    lastOutputByAttemptId.set(entry.attempt.id, entry);
-  }
   const replyEntryIds = new Set<string>();
-  for (const entry of lastOutputByAttemptId.values()) {
+  for (const entry of timelineEntries) {
     const supersededAt = entry.attempt?.completedAt ?? null;
     const item = entry.kind === "message" ? entry.projectedItem?.item : undefined;
     if (
+      entry.attempt?.status === "superseded" &&
       entry.kind === "message" &&
+      entry.message.role === "assistant" &&
       !entry.message.streaming &&
       item?.type === "assistant_message" &&
       item.status === "completed" &&
@@ -783,9 +759,32 @@ function deriveSupersededAttemptFolds(
   liveSubagentEntryIds: ReadonlySet<string>,
   completeReplyEntryIds: ReadonlySet<string>,
 ): ReadonlyMap<string, SupersededAttemptFold> {
+  const lastOutputByAttemptId = new Map<RunAttemptId, TimelineEntry>();
+  for (const entry of timelineEntries) {
+    if (
+      entry.attempt?.status !== "superseded" ||
+      (entry.kind === "message" && entry.message.role === "user") ||
+      (entry.kind === "work" &&
+        (entry.entry.itemType === "system_notice" || entry.entry.itemType === "notification")) ||
+      (entry.kind !== "message" && entry.kind !== "work")
+    ) {
+      continue;
+    }
+    const previous = lastOutputByAttemptId.get(entry.attempt.id);
+    const deferredEnd =
+      previous?.kind === "work"
+        ? previous.entry.projectedItem?.item.deferredWork?.lastOrdinal
+        : undefined;
+    const ordinal =
+      entry.kind === "work"
+        ? entry.entry.projectedItem?.item.ordinal
+        : entry.projectedItem?.item.ordinal;
+    if (deferredEnd !== undefined && ordinal !== undefined && deferredEnd > ordinal) continue;
+    lastOutputByAttemptId.set(entry.attempt.id, entry);
+  }
   const completeAttemptIds = new Set(
-    timelineEntries.flatMap((entry) =>
-      entry.attempt !== undefined && completeReplyEntryIds.has(entry.id) ? [entry.attempt.id] : [],
+    [...lastOutputByAttemptId].flatMap(([attemptId, entry]) =>
+      completeReplyEntryIds.has(entry.id) ? [attemptId] : [],
     ),
   );
   const entriesByAttemptId = new Map<RunAttemptId, TimelineEntry[]>();
@@ -793,6 +792,7 @@ function deriveSupersededAttemptFolds(
     if (
       entry.attempt?.status !== "superseded" ||
       completeAttemptIds.has(entry.attempt.id) ||
+      completeReplyEntryIds.has(entry.id) ||
       unfoldedRunIds.has(entry.attempt.runId) ||
       (entry.kind === "message" && entry.message.role === "user") ||
       (entry.kind === "event" && entry.projectedItem.item.type === "handoff") ||
@@ -1124,7 +1124,7 @@ function deriveTurnFolds(input: {
       ? group.entries.findIndex((entry) => entry.id === group.terminalEntry?.id)
       : group.entries.length;
     for (const [index, entry] of group.entries.entries()) {
-      if (entry.id === group.terminalEntry?.id) {
+      if (entry.kind === "message" && entry.message.role === "assistant") {
         continue;
       }
       const isCompaction = timelineEntryIsCompaction(entry);

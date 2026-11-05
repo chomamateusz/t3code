@@ -217,9 +217,79 @@ const TASK_ID = ScheduledTaskId.make("task-1");
 const AUTOMATION_PROMPT = "Triage the inbox\n\nLabel every new issue and close duplicates.";
 
 describe("MessagesTimeline work rows", () => {
+  it("keeps assistant text visible when tool work settles, expands and folds again", async () => {
+    setup();
+    const props = baseProps();
+    const runId = RunId.make("visibility-run");
+    const entries = [
+      message("Investigate the issue", {}, "prompt"),
+      message("Answer before tools", { role: "assistant", runId }, "before-tools"),
+      work("first-tool", {
+        runId,
+        label: "Initial investigation",
+        tone: "tool",
+        toolLifecycleStatus: "completed",
+      }),
+      message("Answer between tools", { role: "assistant", runId }, "between-tools"),
+      work("second-tool", {
+        runId,
+        label: "Follow-up investigation",
+        tone: "tool",
+        toolLifecycleStatus: "completed",
+      }),
+    ];
+    await using screen = await renderElement(
+      <MessagesTimeline {...props} timelineEntries={entries} isWorking runningRunId={runId} />,
+    );
+    await expect.element(screen.getByText("Answer before tools")).toBeVisible();
+    await expect.element(screen.getByText("Answer between tools")).toBeVisible();
+    await screen.rerender(
+      <MessagesTimeline
+        {...props}
+        timelineEntries={[
+          ...entries,
+          message("Final answer", { role: "assistant", runId }, "final"),
+        ]}
+      />,
+    );
+    const heading = screen.getByRole("button", { name: /^Worked/ });
+    await expect.element(heading).toBeVisible();
+    await expect.element(screen.getByText("Answer before tools")).toBeVisible();
+    await expect.element(screen.getByText("Answer between tools")).toBeVisible();
+    expect(screen.text()).not.toContain("Initial investigation");
+    expect(screen.text()).not.toContain("Follow-up investigation");
+    await heading.click();
+    await expect.element(screen.getByText("Initial investigation")).toBeVisible();
+    await expect.element(screen.getByText("Follow-up investigation")).toBeVisible();
+    await expect.element(screen.getByText("Answer before tools")).toBeVisible();
+    await expect.element(screen.getByText("Answer between tools")).toBeVisible();
+    await heading.click();
+    await expect.element(screen.getByText("Initial investigation")).not.toBeInTheDocument();
+    await expect.element(screen.getByText("Follow-up investigation")).not.toBeInTheDocument();
+    await expect.element(screen.getByText("Answer before tools")).toBeVisible();
+    await expect.element(screen.getByText("Answer between tools")).toBeVisible();
+    await expect.element(screen.getByText("Final answer")).toBeVisible();
+  });
+
   it("keeps the worked-for heading in place when expanded at the bottom", async () => {
     const props = baseProps();
     const runId = RunId.make("completed-run");
+    rememberTimelinePosition(
+      props.routeThreadKey,
+      {
+        rowId: "entry-final",
+        offsetWithinRow: 0,
+        scrollOffset: 0,
+        atEnd: true,
+        disclosures: {
+          runs: new Set(),
+          workGroups: new Set(["work-group:first-thought", "work-group:second-thought"]),
+          attempts: new Set(),
+          workGroupState: { scrollPositions: new Map(), expandedEntries: new Set() },
+        },
+      },
+      true,
+    );
     const container = document.createElement("div");
     // Keep the heading on screen so Playwright does not scroll it before clicking.
     container.style.cssText =
@@ -231,7 +301,35 @@ describe("MessagesTimeline work rows", () => {
           ...Array.from({ length: 12 }, (_, index) =>
             message(`Earlier context ${index}`, {}, `context-${index}`),
           ),
-          message("Progress details\n\n".repeat(50), { role: "assistant", runId }, "progress"),
+          work("first-thought", {
+            runId,
+            itemType: "reasoning",
+            tone: "thinking",
+            detail: "Initial investigation\n\n".repeat(50),
+            toolLifecycleStatus: "completed",
+          }),
+          work("first-thought-tail", {
+            runId,
+            itemType: "reasoning",
+            tone: "thinking",
+            detail: "Initial findings\n\n".repeat(50),
+            toolLifecycleStatus: "completed",
+          }),
+          message("Progress details", { role: "assistant", runId }, "progress"),
+          work("second-thought", {
+            runId,
+            itemType: "reasoning",
+            tone: "thinking",
+            detail: "Follow-up investigation\n\n".repeat(50),
+            toolLifecycleStatus: "completed",
+          }),
+          work("second-thought-tail", {
+            runId,
+            itemType: "reasoning",
+            tone: "thinking",
+            detail: "Follow-up findings\n\n".repeat(50),
+            toolLifecycleStatus: "completed",
+          }),
           message("Done", { role: "assistant", runId }, "final"),
         ]}
       />,
@@ -241,6 +339,7 @@ describe("MessagesTimeline work rows", () => {
     // LegendList keeps rows click-through until its initial scroll settles on animation
     // frames, which the fake clock below would freeze.
     await expect.element(heading).toHaveStyle({ pointerEvents: "auto" });
+    await expect.element(screen.getByText("Progress details")).toBeVisible();
     const viewport = props.listRef.current!.getScrollableNode()!;
     // Legend keeps rows transparent and unclickable until its initial scroll settles.
     await vi.waitFor(() => {
@@ -272,7 +371,13 @@ describe("MessagesTimeline work rows", () => {
       ...Array.from({ length: 12 }, (_, index) =>
         message(`Earlier context ${index}`, {}, `context-${index}`),
       ),
-      message("Progress details\n\n".repeat(50), { role: "assistant", runId }, "progress"),
+      work("progress-thought", {
+        runId,
+        itemType: "reasoning",
+        tone: "thinking",
+        detail: "Progress details\n\n".repeat(50),
+        toolLifecycleStatus: "completed",
+      }),
       message("Done", { role: "assistant", runId }, "final"),
     ];
     await using screen = await render(<MessagesTimeline {...props} timelineEntries={entries} />, {
