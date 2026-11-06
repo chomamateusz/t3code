@@ -73,6 +73,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { Tool } from "effect/ai";
+import { HttpClient, HttpClientResponse } from "effect/http";
 import { formatClaudeResumeCompactionQuestion } from "@t3tools/shared/claudeCompaction";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
@@ -97,6 +98,7 @@ import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   type ClaudeModelCatalog,
 } from "../../provider/ClaudeModelCatalog.ts";
+import fleetLimitsSample from "../../provider/fleetProxyLimits.fixture.json" with { type: "json" };
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
@@ -3164,6 +3166,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly forkSession?: ClaudeAdapterV2.ClaudeAgentSdkQueryRunnerShape["forkSession"];
     readonly allocateSessionId?: Effect.Effect<string>;
     readonly promptSuggestions?: boolean;
+    readonly fleetProxyHttpClient?: HttpClient.HttpClient;
   }) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -3227,6 +3230,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         path: yield* Path.Path,
         random: yield* SecureRandom.SecureRandom,
         idAllocator,
+        ...(options?.fleetProxyHttpClient === undefined
+          ? {}
+          : { fleetProxyHttpClient: options.fleetProxyHttpClient }),
         continuationRequests: {
           offer: (request) =>
             Effect.sync(() => {
@@ -7629,6 +7635,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             )
           : null,
       );
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
+      ),
+    ),
+  );
+
+  const FLEET_PROXY_ATTEMPT = RunAttemptId.make("attempt-fleet-proxy-limit");
+  const UNDATED_RATE_LIMIT =
+    "API Error: Request rejected (429) · This request would exceed your account's rate limit. Please try again later.";
+
+  const makeFleetProxyLimitsHarness = Effect.fn(function* (options?: {
+    readonly beforeResponse?: Effect.Effect<void>;
+    readonly interrupt?: Effect.Effect<void>;
+  }) {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const homePath = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-fleet-" });
+    const authorizations: Array<string | undefined> = [];
+    const blockedLimits = {
+      ...fleetLimitsSample,
+      credentials: fleetLimitsSample.credentials.filter(
+        (credential) => credential.label !== "claude-0128af49",
+      ),
+    };
+    const harness = yield* makeWakeHarnessWithOptions({
+      settings: { ...DEFAULT_CLAUDE_SETTINGS, homePath },
+      environment: {
+        ANTHROPIC_BASE_URL: "http://fleet-proxy.test:8317",
+        ANTHROPIC_AUTH_TOKEN: "fleet-client-key",
+      },
+      fleetProxyHttpClient: HttpClient.make((request) =>
+        Effect.sync(() => {
+          authorizations.push(request.headers.authorization);
+        }).pipe(
+          Effect.andThen(options?.beforeResponse ?? Effect.void),
+          Effect.as(HttpClientResponse.fromWeb(request, Response.json(blockedLimits))),
+        ),
+      ),
+      ...(options?.interrupt === undefined ? {} : { interrupt: options.interrupt }),
+    });
+    return { harness, authorizations };
+  });
+
+  const offerRateLimitResult = Effect.fn(function* (
+    harness: Effect.Success<typeof makeWakeHarness>,
+    result: string,
+  ) {
+    const now = yield* DateTime.now;
+    yield* harness.runtime.startTurn(
+      makeClaudeTestTurnInput({
+        threadId: harness.threadId,
+        providerThread: harness.providerThread,
+        now,
+        attemptId: FLEET_PROXY_ATTEMPT,
+        text: "Continue.",
+        attachments: [],
+      }),
+    );
+    yield* Queue.offerAll(harness.sdkMessages, [
+      makeAssistantErrorFrame({
+        uuid: "00000000-0000-4000-8000-000000000656",
+        error: "rate_limit",
+        text: result,
+      }),
+      makeResultFrame({
+        uuid: "00000000-0000-4000-8000-000000000657",
+        result,
+        terminalReason: "api_error",
+        isError: true,
+        apiErrorStatus: 429,
+      }),
+    ]);
+    return now;
+  });
+
+  const offerDirectRateLimit = Effect.fn(function* (
+    harness: Effect.Success<typeof makeWakeHarness>,
+    result: string,
+  ) {
+    const now = yield* offerRateLimitResult(harness, result);
+    const terminal = yield* Queue.take(harness.terminalReceipts);
+    assert.equal(terminal.status, "failed");
+    if (terminal.status !== "failed") throw new Error("Expected a failed terminal.");
+    return { terminal, now };
+  });
+
+  it.effect("dates an undated 429 from the fleet proxy's limits", () =>
+    Effect.gen(function* () {
+      const { harness, authorizations } = yield* makeFleetProxyLimitsHarness();
+      const { terminal } = yield* offerDirectRateLimit(harness, UNDATED_RATE_LIMIT);
+      assert.equal(terminal.failure.class, "usage_limit");
+      assert.equal(terminal.failure.message, "Claude API rate limit reached. Try again later.");
+      assert.equal(terminal.failure.resetAt, "2026-11-06T14:20:30.000Z");
+      assert.deepEqual(authorizations, ["Bearer fleet-client-key"]);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
+      ),
+    ),
+  );
+
+  it.effect("settles a turn stopped during the fleet proxy lookup as interrupted", () =>
+    Effect.gen(function* () {
+      const requested = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const interruptStarted = yield* Deferred.make<void>();
+      const { harness, authorizations } = yield* makeFleetProxyLimitsHarness({
+        beforeResponse: Deferred.succeed(requested, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+        ),
+        interrupt: Deferred.succeed(interruptStarted, undefined).pipe(Effect.asVoid),
+      });
+      yield* offerRateLimitResult(harness, UNDATED_RATE_LIMIT);
+      yield* Deferred.await(requested);
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      yield* harness.runtime
+        .interruptTurn({
+          providerThread: harness.providerThread,
+          providerTurnId: idAllocator.derive.providerTurn({
+            driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
+            nativeTurnId: `turn:${FLEET_PROXY_ATTEMPT}`,
+          }),
+        })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(interruptStarted);
+      yield* Deferred.succeed(release, undefined);
+      const terminal = yield* Queue.take(harness.terminalReceipts);
+      assert.equal(terminal.status, "interrupted");
+      assert.isNull(terminal.failure);
+      assert.lengthOf(authorizations, 1);
+      assert.notInclude(JSON.stringify(harness.events), "usage_limit");
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
+      ),
+    ),
+  );
+
+  it.effect("keeps a reset the CLI already reported over the fleet proxy's", () =>
+    Effect.gen(function* () {
+      const { harness, authorizations } = yield* makeFleetProxyLimitsHarness();
+      const { terminal, now } = yield* offerDirectRateLimit(
+        harness,
+        "API Error: Request rejected (429) · All credentials for model claude-sonnet-4-6 are cooling down (reset after 4m 6s)",
+      );
+      assert.equal(terminal.failure.class, "usage_limit");
+      assert.equal(
+        terminal.failure.resetAt,
+        DateTime.formatIso(DateTime.makeUnsafe(DateTime.toEpochMillis(now) + 246_000)),
+      );
+      assert.deepEqual(authorizations, []);
     }).pipe(
       Effect.provide(
         Layer.mergeAll(

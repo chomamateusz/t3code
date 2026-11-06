@@ -441,20 +441,29 @@ const SettingsEnv = Schema.Struct({
   CLAUDE_CODE_GATEWAY_MODEL_DISCOVERY_TIMEOUT_MS: Schema.optional(Schema.Unknown),
 });
 const decodeSettingsEnv = Schema.decodeUnknownEffect(
-  fromLenientJson(Schema.Struct({ env: Schema.optional(SettingsEnv) })),
+  fromLenientJson(
+    Schema.Struct({
+      env: Schema.optional(SettingsEnv),
+      apiKeyHelper: Schema.optional(Schema.Unknown),
+    }),
+  ),
 );
 
-/** The `env` values T3 Code reads from Claude's user and managed settings; later files win. */
-export const readClaudeSettingsEnv = Effect.fn("readClaudeSettingsEnv")(function* (
+export const readClaudeApiSettings = Effect.fn("readClaudeApiSettings")(function* (
   config: Pick<ClaudeSettings, "homePath">,
   cwd: string | undefined,
   environment: NodeJS.ProcessEnv,
-): Effect.fn.Return<typeof SettingsEnv.Type, never, FileSystem.FileSystem | Path.Path> {
+): Effect.fn.Return<
+  { readonly env: typeof SettingsEnv.Type; readonly apiKeyHelper: string | undefined },
+  never,
+  FileSystem.FileSystem | Path.Path
+> {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const platform = yield* HostProcess.Platform;
   const configDirPath = yield* resolveClaudeConfigDirPath(config, environment, cwd);
   const settingsEnv: typeof SettingsEnv.Type = {};
+  let apiKeyHelper: string | undefined;
   for (const settingsPath of claudeSettingsPaths(
     path,
     configDirPath,
@@ -468,9 +477,17 @@ export const readClaudeSettingsEnv = Effect.fn("readClaudeSettingsEnv")(function
     if (contents === undefined) continue;
     const parsed = yield* decodeSettingsEnv(contents).pipe(Effect.orElseSucceed(() => undefined));
     Object.assign(settingsEnv, parsed?.env);
+    if (typeof parsed?.apiKeyHelper === "string") apiKeyHelper = parsed.apiKeyHelper;
   }
-  return settingsEnv;
+  return { env: settingsEnv, apiKeyHelper };
 });
+
+/** The `env` values T3 Code reads from Claude's user and managed settings; later files win. */
+export const readClaudeSettingsEnv = (
+  config: Pick<ClaudeSettings, "homePath">,
+  cwd: string | undefined,
+  environment: NodeJS.ProcessEnv,
+) => readClaudeApiSettings(config, cwd, environment).pipe(Effect.map((settings) => settings.env));
 
 // Claude's --add-dir is repeatable and variadic; parseCliArgs keeps only one value.
 export function claudeLaunchArgDirectories(launchArgs?: string): ReadonlyArray<string> {

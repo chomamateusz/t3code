@@ -1,0 +1,207 @@
+{
+  "object": "fleet.limits",
+  "generated_at": "2026-11-06T11:53:49Z",
+  "proxy_version": "fleet-f2fc6f47",
+  "client": { "name": "macbook-pro" },
+  "models": [
+    { "id": "claude-3-5-haiku-20241022", "providers": ["claude"] },
+    { "id": "claude-3-7-sonnet-20250219", "providers": ["claude"] },
+    { "id": "claude-fable-5", "providers": ["claude"] },
+    { "id": "claude-fable-5-1", "providers": ["claude"] },
+    { "id": "claude-haiku-4-5-20251001", "providers": ["claude"] },
+    { "id": "claude-haiku-5-5", "providers": ["claude"] },
+    { "id": "claude-opus-4-1-20250805", "providers": ["claude"] },
+    { "id": "claude-opus-4-20250514", "providers": ["claude"] },
+    { "id": "claude-opus-4-5-20251101", "providers": ["claude"] },
+    { "id": "claude-opus-4-6", "providers": ["claude"] },
+    { "id": "claude-opus-4-7", "providers": ["claude"] },
+    { "id": "claude-opus-4-8", "providers": ["claude"] },
+    { "id": "claude-opus-5", "providers": ["claude"] },
+    { "id": "claude-opus-5-5", "providers": ["claude"] },
+    { "id": "claude-sonnet-4-20250514", "providers": ["claude"] },
+    { "id": "claude-sonnet-4-5-20250929", "providers": ["claude"] },
+    { "id": "claude-sonnet-4-6", "providers": ["claude"] },
+    { "id": "claude-sonnet-5", "providers": ["claude"] },
+    { "id": "claude-sonnet-5-5", "providers": ["claude"] },
+    { "id": "codex-auto-review", "providers": ["codex"] },
+    { "id": "gpt-5.6-luna", "providers": ["codex"] },
+    { "id": "gpt-5.6-sol", "providers": ["codex"] },
+    { "id": "gpt-5.6-terra", "providers": ["codex"] },
+    { "id": "gpt-6-astra", "providers": ["codex"] },
+    { "id": "gpt-6-chat-thinking", "providers": ["codex"] },
+    { "id": "gpt-6-luna", "providers": ["codex"] },
+    { "id": "gpt-6-sol", "providers": ["codex"] },
+    { "id": "gpt-6.1-sol", "providers": ["codex"] },
+    { "id": "gpt-6.1-terra", "providers": ["codex"] },
+    { "id": "gpt-image-1.5", "providers": ["codex"] },
+    { "id": "gpt-image-2", "providers": ["codex"] },
+    { "id": "gpt-image-2.5", "providers": ["codex"] },
+    { "id": "gpt-image-2.5-flare", "providers": ["codex"] },
+    { "id": "gpt-image-2.5-sunburst", "providers": ["codex"] }
+  ],
+  "exclusions": [],
+  "credentials": [
+    {
+      "label": "claude-0128af49",
+      "provider": "claude",
+      "plan": null,
+      "state": "active",
+      "bars": [
+        {
+          "id": "weekly_all",
+          "percent": 38,
+          "status": "allowed",
+          "resets_at": "2026-11-09T19:00:00Z",
+          "sampled_at": "2026-11-06T11:53:46Z",
+          "reset_passed": false
+        },
+        {
+          "id": "weekly_fable",
+          "percent": 47,
+          "status": "allowed",
+          "resets_at": "2026-11-09T19:00:00Z",
+          "sampled_at": "2026-11-06T11:53:01Z",
+          "reset_passed": false
+        }
+      ],
+      "cooldowns": []
+    },
+    {
+      "label": "claude-032ce27c",
+      "provider": "claude",
+      "plan": null,
+      "state": "disabled",
+      "bars": [],
+      "cooldowns": []
+    },
+    {
+      "label": "claude-6f83155b",
+      "provider": "claude",
+      "plan": null,
+      "state": "cooldown",
+      "bars": [
+        {
+          "id": "weekly_all",
+          "percent": 1,
+          "status": "allowed",
+          "resets_at": "2026-11-13T11:00:00Z",
+          "sampled_at": "2026-11-06T11:44:03Z",
+          "reset_passed": false
+        },
+        {
+          "id": "weekly_fable",
+          "percent": 2,
+          "status": "allowed",
+          "resets_at": "2026-11-13T11:00:00Z",
+          "sampled_at": "2026-11-06T11:44:03Z",
+          "reset_passed": false
+        },
+        {
+          "id": "session_5h",
+          "percent": 100,
+          "status": "rejected",
+          "resets_at": "2026-11-06T14:20:00Z",
+          "sampled_at": "2026-11-06T11:44:03Z",
+          "reset_passed": false
+        }
+      ],
+      "cooldowns": [
+        {
+          "scope": "credential",
+          "model": null,
+          "reason": "credential_quota",
+          "until": "2026-11-06T14:20:30Z",
+          "http_status": null
+        },
+        {
+          "scope": "model",
+          "model": "claude-fable-5-1",
+          "reason": "credential_quota",
+          "until": "2026-11-06T14:20:30Z",
+          "http_status": null
+        },
+        {
+          "scope": "model",
+          "model": "claude-haiku-5-5",
+          "reason": "credential_quota",
+          "until": "2026-11-06T14:20:30Z",
+          "http_status": null
+        },
+        {
+          "scope": "model",
+          "model": "claude-opus-5-5",
+          "reason": "credential_quota",
+          "until": "2026-11-06T14:20:30Z",
+          "http_status": null
+        },
+        {
+          "scope": "model",
+          "model": "claude-sonnet-5-5",
+          "reason": "quota",
+          "until": "2026-11-06T14:20:30Z",
+          "http_status": 429
+        }
+      ]
+    },
+    {
+      "label": "claude-dfb6a006",
+      "provider": "claude",
+      "plan": null,
+      "state": "active",
+      "bars": [
+        {
+          "id": "weekly_all",
+          "percent": 100,
+          "status": "rejected",
+          "resets_at": "2026-11-08T16:00:00Z",
+          "sampled_at": "2026-11-06T11:49:03Z",
+          "reset_passed": false
+        },
+        {
+          "id": "weekly_fable",
+          "percent": 100,
+          "status": "rejected",
+          "resets_at": "2026-11-08T16:00:00Z",
+          "sampled_at": "2026-11-06T11:49:03Z",
+          "reset_passed": false
+        }
+      ],
+      "cooldowns": []
+    },
+    {
+      "label": "codex-28862b33",
+      "provider": "codex",
+      "plan": "pro",
+      "state": "active",
+      "bars": [
+        {
+          "id": "weekly_all",
+          "percent": 48,
+          "status": null,
+          "resets_at": "2026-11-11T08:42:18Z",
+          "sampled_at": "2026-11-06T11:40:24Z",
+          "reset_passed": false
+        }
+      ],
+      "credits": { "has_credits": true, "unlimited": false, "balance": 13314.98 },
+      "cooldowns": []
+    }
+  ],
+  "summary": {
+    "claude": {
+      "usable_credentials": 2,
+      "bars": {
+        "session_5h": { "percent": 0, "resets_at": null },
+        "weekly_all": { "percent": 38, "resets_at": "2026-11-09T19:00:00Z" },
+        "weekly_fable": { "percent": 47, "resets_at": "2026-11-09T19:00:00Z" }
+      }
+    },
+    "codex": {
+      "usable_credentials": 1,
+      "bars": {
+        "session_5h": { "percent": 0, "resets_at": null },
+        "weekly_all": { "percent": 48, "resets_at": "2026-11-11T08:42:18Z" }
+      }
+    }
+  }
+}

@@ -159,6 +159,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         scopedLimitNames,
         onUsageLimits: (update) => snapshot.applyUsageLimits(update),
         modelCatalog,
+        fleetProxyHttpClient: httpClient,
       },
     ).pipe(
       Effect.mapError(

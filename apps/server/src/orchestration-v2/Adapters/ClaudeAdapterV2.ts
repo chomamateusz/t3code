@@ -36,6 +36,7 @@ import {
   type ClaudeModelLedger,
 } from "../../provider/ClaudeTurnTokenUsage.ts";
 import { toMcpElicitationResponse } from "../../provider/CodexMcpElicitation.ts";
+import { resolveFleetProxyResetAt } from "../../provider/fleetProxyLimits.ts";
 import {
   type CanUseTool,
   type ElicitationRequest,
@@ -155,6 +156,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import { HttpClient } from "effect/http";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { snapshotMcpApp } from "../../mcpApps/McpAppSnapshot.ts";
@@ -4858,6 +4860,7 @@ export interface ClaudeAdapterV2Options {
   readonly queryRunner: ClaudeAgentSdkQueryRunnerShape;
   readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
   readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
+  readonly fleetProxyHttpClient?: HttpClient.HttpClient;
   readonly continuationRequests?: {
     readonly offer: (
       request: ProviderContinuationRequests.ProviderContinuationRequest,
@@ -10096,17 +10099,44 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     failureHint,
                     usageLimited,
                   );
-            const terminalFailure =
+            const knownResetAt =
               resultFailure?.class === "usage_limit"
-                ? { ...resultFailure, resetAt: resetAt ?? resultFailure.resetAt ?? null }
+                ? (resetAt ?? resultFailure.resetAt ?? null)
+                : null;
+            const fleetProxyHttpClient = adapterOptions.fleetProxyHttpClient;
+            const lookUpFleetProxy =
+              resultFailure?.class === "usage_limit" &&
+              knownResetAt === null &&
+              fleetProxyHttpClient !== undefined;
+            const usageLimitResetAt = lookUpFleetProxy
+              ? yield* resolveFleetProxyResetAt({
+                  model: context.input.modelSelection.model,
+                  settings: adapterOptions.settings,
+                  cwd: context.input.runtimePolicy.cwd ?? undefined,
+                  environment: adapterOptions.environment,
+                  now: completedAt,
+                }).pipe(
+                  Effect.provideService(FileSystem.FileSystem, fileSystem),
+                  Effect.provideService(Path.Path, path),
+                  Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+                  Effect.provideService(HttpClient.HttpClient, fleetProxyHttpClient),
+                )
+              : knownResetAt;
+            const interruptedDuringLookup =
+              lookUpFleetProxy && (yield* Ref.get(interruptedTurns)).has(context.providerTurnId);
+            const terminalFailure = interruptedDuringLookup
+              ? null
+              : resultFailure?.class === "usage_limit"
+                ? { ...resultFailure, resetAt: usageLimitResetAt }
                 : resultFailure;
             yield* finalizeActiveTurn({
               context,
-              status: interrupted
-                ? "interrupted"
-                : limitedCompaction !== null
-                  ? "failed"
-                  : terminalStatusFromResult(message, failureHint),
+              status:
+                interrupted || interruptedDuringLookup
+                  ? "interrupted"
+                  : limitedCompaction !== null
+                    ? "failed"
+                    : terminalStatusFromResult(message, failureHint),
               completedAt,
               result: message,
               ...(terminalFailure === null ? {} : { failure: terminalFailure }),
@@ -12394,7 +12424,10 @@ export type ClaudeAdapterV2DriverEnv =
 export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
   function* (
     input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
-    hooks: Pick<ClaudeAdapterV2Options, "scopedLimitNames" | "onUsageLimits" | "modelCatalog"> = {},
+    hooks: Pick<
+      ClaudeAdapterV2Options,
+      "scopedLimitNames" | "onUsageLimits" | "modelCatalog" | "fleetProxyHttpClient"
+    > = {},
   ) {
     const { instanceId, environment, enabled, config } = input;
     const fileSystem = yield* FileSystem.FileSystem;
