@@ -102,7 +102,6 @@ import {
   selectProjectGroupingSettings,
 } from "@t3tools/client-runtime/state/project-grouping";
 import {
-  projectGroupsSpanEnvironments,
   resolveSidebarProjectScopeKeys,
   getSidebarProjectSettingsKey,
   type SidebarProjectSnapshot,
@@ -176,7 +175,6 @@ import {
   resolveThreadRouteTarget,
 } from "../threadRoutes";
 import type { SidebarThreadSummary } from "../types";
-import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { cn } from "~/lib/utils";
 import {
   buildDraftActionMenuItems,
@@ -1265,20 +1263,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     scrollSidebarToTop(sidebarContentRef.current);
   };
   const revealActiveRow = useActiveRowReveal(routeReveal, routeRowThreadKey);
-  const showProjectEnvironments = projectGroupsSpanEnvironments(machineProjectGroups);
-  const scratchMachineLabelFor = (
-    thread: Pick<SidebarThreadSummary, "environmentId" | "projectId">,
-  ) => {
-    if (!showProjectEnvironments) return null;
-    const project = projectByKey.get(`${thread.environmentId}:${thread.projectId}`);
-    if (
-      !project ||
-      !isScratchProject(project, serverConfigs.get(thread.environmentId)?.scratchWorkspaceRoot)
-    ) {
-      return null;
-    }
-    return environmentLabelById.get(thread.environmentId) ?? null;
-  };
+  const rowMachineLabelFor = (thread: Pick<SidebarThreadSummary, "environmentId">) =>
+    (scopedEnvironmentIds?.size ?? environments.length) > 1
+      ? (environmentLabelById.get(thread.environmentId) ?? null)
+      : null;
   const scopedProjectGroups = machineProjectGroups.filter((project) =>
     projectScopeKeys.includes(project.projectKey),
   );
@@ -3344,7 +3332,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             environmentMachine={
                               environmentMachineById.get(thread.environmentId) ?? "server"
                             }
-                            scratchMachineLabel={scratchMachineLabelFor(thread)}
+                            machineLabel={rowMachineLabelFor(thread)}
                             project={
                               projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ??
                               null

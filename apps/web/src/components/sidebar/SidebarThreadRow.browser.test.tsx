@@ -13,7 +13,12 @@ vi.mock("../../state/session", { spy: true });
 
 const noop = () => undefined;
 
-function Row(props: { readonly title: string }) {
+function Row(props: {
+  readonly title: string;
+  readonly variant?: "card" | "folder";
+  readonly branch?: string;
+  readonly machineLabel?: string;
+}) {
   return (
     <ul style={{ width: 280 }}>
       <SortableThreadRow
@@ -25,8 +30,9 @@ function Row(props: { readonly title: string }) {
           environmentId: EnvironmentId.make("local"),
           projectId: ProjectId.make("project"),
           title: props.title,
+          branch: props.branch ?? null,
         })}
-        variant="folder"
+        variant={props.variant ?? "folder"}
         variantAction="settle"
         settlementSupported
         snoozeSupported
@@ -44,7 +50,7 @@ function Row(props: { readonly title: string }) {
         currentEnvironmentId="local"
         environmentLabel={null}
         environmentMachine="laptop"
-        scratchMachineLabel={null}
+        machineLabel={props.machineLabel ?? null}
         project={null}
         projectDisplayName={null}
         providerEntryByInstanceId={new Map()}
@@ -93,4 +99,19 @@ it("keeps the folder row title width when hover reveals Snooze and Settle", asyn
   await userEvent.hover(screen.getByText("Outside"));
   await expect.poll(() => getComputedStyle(actions).opacity).toBe("0");
   expect(titleElement.getBoundingClientRect().width).toBe(restWidth);
+});
+
+it("shows the machine instead of the branch when the filter spans machines", async () => {
+  vi.mocked(useEnvironmentScope).mockReturnValue(true);
+  await using screen = await render(
+    <Row title="Thread" variant="card" branch="main" machineLabel="MacBook Pro (Mateusz)" />,
+  );
+  await expect.element(screen.getByText("MacBook Pro (Mateusz)")).toBeVisible();
+  expect(screen.getByTestId("sidebar-row-card").element().textContent).not.toContain("main");
+});
+
+it("shows the branch when the filter is one machine", async () => {
+  vi.mocked(useEnvironmentScope).mockReturnValue(true);
+  await using screen = await render(<Row title="Thread" variant="card" branch="main" />);
+  await expect.element(screen.getByText("main")).toBeVisible();
 });
