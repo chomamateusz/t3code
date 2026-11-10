@@ -49,6 +49,20 @@ describe("resolveVersion", () => {
     expect(resolved.tag).toBe("v0.1.9-local.stack.20261110.11");
   });
 
+  it.each([
+    ["an older series date", ["v0.1.9-local.stack.20261111.1"], "20261110"],
+    ["an upstream stable that went backwards", ["v0.1.10-local.stack.20261101.3"], "20261110"],
+    ["a peeled tag with a newer series date", ["v0.1.9-local.stack.20261110.4", "v0.1.9-local.stack.20261201.1^{}"], "20261110"],
+  ])("refuses a version that would not be newer after %s", (_case, forkTags, seriesDate) => {
+    const tags = forkTags.map((tag) => `abcd\trefs/tags/${tag}`);
+    expect(() => resolveVersion({ upstreamReleases, forkTags: tags, seriesDate })).toThrow("would not be newer than the existing tag");
+  });
+
+  it("allows a newer series date after higher build numbers and ignores tags installers cannot run", () => {
+    const forkTags = ["v0.1.9-local.stack.20261109.40", "v0.1.9-local.stack.20261110.3-rc", "v0.1.9-local.stack.20261112.07", "v9.9.9-fork.1"];
+    expect(resolveVersion({ upstreamReleases, forkTags, seriesDate: "20261110" }).version).toBe("0.1.9-local.stack.20261110.1");
+  });
+
   it("refuses a malformed series date", () => {
     expect(() => resolveVersion({ upstreamReleases, forkTags: [], seriesDate: "2026-11-10" })).toThrow("YYYYMMDD");
   });

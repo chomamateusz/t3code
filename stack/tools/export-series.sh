@@ -15,7 +15,15 @@ if test -n "$(git -C "$repo" rev-list --merges "$base..$tip")"; then
 fi
 count=$(git -C "$repo" rev-list --count "$base..$tip")
 test "$count" -gt 0
-series_date=$(TZ=UTC git -C "$repo" log -1 --format=%cd --date=format-local:%Y%m%d "$tip")
+series_date=$(date -u +%Y%m%d)
+if test -f "$stack/series-date"; then
+  previous=$(cat "$stack/series-date")
+  if [[ ! "$previous" =~ ^[0-9]{8}$ ]]; then
+    printf '%s/series-date must be YYYYMMDD, got %s\n' "$stack" "$previous" >&2
+    exit 1
+  fi
+  if test "$previous" -gt "$series_date"; then series_date=$previous; fi
+fi
 staging=$(mktemp -d "$stack/.export.XXXXXXXX")
 trap 'rm -rf "$staging"' EXIT
 # User and system config must not change the bytes of the exported patches.
