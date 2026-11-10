@@ -50,7 +50,7 @@ Each run warns when the installed file differs from `stack/workflow/stack-build.
 
 ## What a run produces
 
-- A release `v<version>` on the fork, tagged on the `local/stack` commit it used, with `t3-<version>-linux-x64.tar.gz`, `SHA256SUMS` and `build-manifest.json` (`version`, `upstreamSha`, `stackSha`, `seriesDate`, `buildNumber`, `runUrl`). The release job runs nothing from this branch. Re-running it is safe: it removes leftover drafts for the tag, and when the tag is already published with the same manifest commits and `SHA256SUMS` it finishes without changes; any other existing tag fails the job.
+- A release `v<version>` on the fork, tagged on the `local/stack` commit it used, with `t3-<version>-linux-x64.tar.gz`, `SHA256SUMS` and `build-manifest.json` (`version`, `upstreamSha`, `stackSha`, `seriesDate`, `buildNumber`, `runUrl`). The release job runs nothing from this branch. Re-running it is safe: it removes leftover drafts for the tag, and when the tag already points at the same stack commit and its release carries exactly the three assets, with the same manifest commits, `SHA256SUMS` and archive digest, it finishes without changes; any other existing tag fails the job and names what differed.
 - A build provenance attestation for each of the three release assets.
 - A `stack-result` artifact (`stack-result.json`) with `status` (`success`, `skipped`, `failed`, `cancelled`), `stage` for a failed or cancelled run, and `workflowDrift` (`true` when the installed workflow differs from `workflow/stack-build.yml`; the run continues). The report job writes it even when its own tooling cannot be set up.
 

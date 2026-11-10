@@ -506,29 +506,46 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          status=0
-          git ls-remote --exit-code --tags "https://github.com/$GITHUB_REPOSITORY.git" "refs/tags/$TAG" || status=$?
-          if [[ "$status" -eq 2 ]]; then
+          refs=$(git ls-remote --tags "https://github.com/$GITHUB_REPOSITORY.git" "refs/tags/$TAG" "refs/tags/$TAG^{}")
+          tag_commit=$(awk -v ref="refs/tags/$TAG" '$2 == ref { direct = $1 } $2 == ref "^{}" { peeled = $1 } END { print (peeled != "" ? peeled : direct) }' <<< "$refs")
+          if [[ -z "$tag_commit" ]]; then
             echo "published=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [[ "$status" -ne 0 ]]; then exit "$status"; fi
-          existing="$RUNNER_TEMP/existing-release"
-          if ! gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .id > /dev/null \
-            || ! gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p build-manifest.json -p SHA256SUMS -D "$existing"; then
-            echo "::error::Tag $TAG exists without a published release carrying build-manifest.json and SHA256SUMS" >&2
+          if [[ "$tag_commit" != "$STACK_SHA" ]]; then
+            echo "::error::Tag $TAG points at commit $tag_commit, this run built stack commit $STACK_SHA" >&2
             exit 1
           fi
-          if jq -e --arg version "$VERSION" --arg upstreamSha "$UPSTREAM_SHA" --arg stackSha "$STACK_SHA" \
-              '.version == $version and .upstreamSha == $upstreamSha and .stackSha == $stackSha' \
-              "$existing/build-manifest.json" > /dev/null \
-            && cmp -s "$existing/SHA256SUMS" release-assets/SHA256SUMS; then
-            echo "::notice title=Already published::$TAG is published from the same commits and archive; nothing to do."
-            echo "published=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          archive="t3-$VERSION-linux-x64.tar.gz"
+          if ! release=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG"); then
+            echo "::error::Tag $TAG exists on $STACK_SHA without a published release" >&2
+            exit 1
           fi
-          echo "::error::Tag $TAG already exists with a different build" >&2
-          exit 1
+          assets=$(jq -r '[.assets[].name] | sort | join(", ")' <<< "$release")
+          expected=$(jq -rn --arg archive "$archive" '[$archive, "SHA256SUMS", "build-manifest.json"] | sort | join(", ")')
+          if [[ "$assets" != "$expected" ]]; then
+            echo "::error::Release $TAG carries assets [$assets], expected exactly [$expected]" >&2
+            exit 1
+          fi
+          existing="$RUNNER_TEMP/existing-release"
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$archive" -p SHA256SUMS -p build-manifest.json -D "$existing"
+          differences=$(jq -r --arg version "$VERSION" --arg upstreamSha "$UPSTREAM_SHA" --arg stackSha "$STACK_SHA" \
+            '. as $manifest | $ARGS.named | to_entries[] | select($manifest[.key] != .value) | "build-manifest.json \(.key) is \($manifest[.key] | tojson), this run has \(.value)"' \
+            "$existing/build-manifest.json") || differences="build-manifest.json is not a JSON object"
+          if ! cmp -s "$existing/SHA256SUMS" release-assets/SHA256SUMS; then
+            differences+=$'\n'"SHA256SUMS is $(jq -Rsc . "$existing/SHA256SUMS"), this run has $(jq -Rsc . release-assets/SHA256SUMS)"
+          fi
+          published_sha256=$(sha256sum "$existing/$archive" | cut -d' ' -f1)
+          if [[ "$published_sha256" != "$ARCHIVE_SHA256" ]]; then
+            differences+=$'\n'"$archive has sha256 $published_sha256, this run built $ARCHIVE_SHA256"
+          fi
+          differences=$(sed '/^$/d' <<< "$differences")
+          if [[ -n "$differences" ]]; then
+            echo "::error::Release $TAG already exists with a different build: ${differences//$'\n'/; }" >&2
+            exit 1
+          fi
+          echo "::notice title=Already published::$TAG is published from the same commits and archive; nothing to do."
+          echo "published=true" >> "$GITHUB_OUTPUT"
 
       - name: Attest build provenance
         if: steps.existing.outputs.published == 'false'
