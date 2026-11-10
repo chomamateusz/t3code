@@ -1,6 +1,8 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
 
+import type { SidebarThreadReadAction } from "./Sidebar.logic";
+
 export type ThreadActionMenuId =
   | "find"
   | "new-thread-on-branch"
@@ -82,7 +84,7 @@ export interface ThreadActionMenuState {
   readonly isSnoozed: boolean;
   readonly canSnoozeNow: boolean;
   readonly isRegeneratingTitle: boolean;
-  readonly isUnread: boolean;
+  readonly readAction: SidebarThreadReadAction | null;
   /** Archive rejects attached providers, so disable it while running. */
   readonly isRunning: boolean;
   readonly supports: {
@@ -115,6 +117,11 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
     "copy-thread-id",
   ].includes(action);
 }
+
+const READ_ACTION_ITEMS = {
+  "mark-read": { id: "mark-read", label: "Mark read", icon: "mail-check" },
+  "mark-unread": { id: "mark-unread", label: "Mark unread", icon: "mail-open" },
+} as const satisfies Record<SidebarThreadReadAction, ContextMenuItem<ThreadActionMenuId>>;
 
 export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
@@ -180,9 +187,7 @@ export function buildThreadActionMenuItems(
           },
         ]
       : []),
-    state.isUnread
-      ? { id: "mark-read" as const, label: "Mark read", icon: "mail-check" }
-      : { id: "mark-unread" as const, label: "Mark unread", icon: "mail-open" },
+    ...(state.readAction === null ? [] : [READ_ACTION_ITEMS[state.readAction]]),
     ...(state.canShareWithGuest
       ? [{ id: "share-guest" as const, label: "Share with guest", icon: "user-plus" }]
       : []),

@@ -2082,6 +2082,13 @@ describe("sidebar project thread badges", () => {
       wokeAt: null,
       expected: null,
     },
+    {
+      name: "an unseen wake without a completed turn",
+      patch: { latestRun: null },
+      lastVisitedAt: visited,
+      wokeAt: wake,
+      expected: "mark-read",
+    },
   ] as const)("offers $expected for $name", ({ patch, lastVisitedAt, wokeAt, expected }) => {
     expect(
       resolveSidebarThreadReadAction({ ...baseThread(), ...patch }, { lastVisitedAt, wokeAt }),

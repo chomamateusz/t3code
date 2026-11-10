@@ -83,6 +83,9 @@ viewing. Discarding an unsent draft from the sidebar works the same way: Undo br
 back its text and attachments. `mod+z` triggers the most recent Undo, even from the composer; see
 [Keybindings](./keybindings.md#commands-with-special-behavior).
 
+**Mark read**, in a thread card's hover actions or its menu, clears **Done** and **Woke** as if you
+had opened the thread. **Mark unread** brings **Done** back.
+
 On web and desktop, you can also drag files from your computer onto any thread row:
 the thread opens and the files are attached in its composer, ready for
 your next message. The same per-message file limits apply as when attaching
@@ -131,12 +134,6 @@ continues to use settlement time.
 If dragging is unavailable for one environment, update the T3 Code server running in that
 environment. Pinned and active reordering require server support. Threads from older servers keep
 their default order until the server is updated.
-
-On web and desktop, hovering or focusing a thread card shows **Mark read** next to **Snooze**
-while the thread has a finished turn or a wake you have not seen, and **Mark unread** once you
-have seen its latest finished turn. Mark read clears **Done** and **Woke** on all your devices, as
-opening the thread would, without leaving the thread you are in. The thread's menu offers the
-same choice.
 
 To generate a fresh title from the conversation, open a thread's menu and choose
 **Regenerate title**. The action is unavailable while title generation is in progress

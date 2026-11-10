@@ -451,6 +451,7 @@ function ReadActionButton(props: {
             type="button"
             aria-label={label}
             onClick={props.onClick}
+            onPointerDown={(event) => event.stopPropagation()}
             onDoubleClick={(event) => event.stopPropagation()}
             className="inline-flex h-full cursor-pointer items-center gap-0.5 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
           />

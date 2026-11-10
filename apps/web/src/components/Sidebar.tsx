@@ -2785,7 +2785,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               isSnoozed,
               canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
               isRegeneratingTitle,
-              isUnread: readThreadReadAction(threadRef) === "mark-read",
+              readAction: readThreadReadAction(threadRef),
               isRunning: !threadRuntimeCanArchive(thread.runtime),
               canShareWithGuest: appAtomRegistry.get(
                 canShareWithGuestAtom(threadRef.environmentId),

@@ -12,7 +12,7 @@ const baseState: ThreadActionMenuState = {
   isSnoozed: false,
   canSnoozeNow: true,
   isRegeneratingTitle: false,
-  isUnread: false,
+  readAction: "mark-unread",
   isRunning: false,
   supports: {
     settlement: true,
@@ -27,16 +27,20 @@ const baseState: ThreadActionMenuState = {
 };
 
 describe("buildThreadActionMenuItems", () => {
-  it.each([false, true])(
-    "disables both lifecycle directions without permission (reversed: %s)",
-    (reversed) => {
+  it.each([
+    { reversed: false, readAction: "mark-unread", readItem: "Mark unread" },
+    { reversed: true, readAction: "mark-read", readItem: "Mark read" },
+    { reversed: false, readAction: null, readItem: undefined },
+  ] as const)(
+    "disables both lifecycle directions without permission (reversed: $reversed, read action: $readAction)",
+    ({ reversed, readAction, readItem }) => {
       const items = buildThreadActionMenuItems({
         ...baseState,
         canOperate: false,
         isPinned: reversed,
         isSettled: reversed,
         isSnoozed: reversed,
-        isUnread: reversed,
+        readAction,
       });
       const expected = reversed
         ? [
@@ -60,10 +64,9 @@ describe("buildThreadActionMenuItems", () => {
             "delete",
           ];
       expect(items.filter((item) => item.disabled).map((item) => item.id)).toEqual(expected);
-      expect(items.find((item) => item.id.startsWith("mark-"))).toMatchObject(
-        reversed
-          ? { id: "mark-read", label: "Mark read" }
-          : { id: "mark-unread", label: "Mark unread" },
+      const readItems = items.filter((item) => item.id.startsWith("mark-"));
+      expect(readItems.map((item) => [item.label, item.disabled ?? false])).toEqual(
+        readItem === undefined ? [] : [[readItem, false]],
       );
       expect(
         items.find((item) => item.id === "snooze")?.children?.every((child) => child.disabled) ??
