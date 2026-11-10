@@ -45,6 +45,7 @@ Integration details:
 - The badge legend and the per-state counts are reachable by hover and keyboard focus only; touch devices have no way to open them.
 - When a modifier is released while a native context menu holds the keyboard, the switch keeps the modifier face until the next key event; the click still follows the click's own modifier flags.
 - legacyProjectCwdPreferenceKey lives in sidebarProjectRow.ts and uiStateStore re-exports it, because uiStateStore already imports that module.
+- The project row icon carries the same name as the folder header, so the upstream drag test (Sidebar.drag.browser.test.tsx) now looks for the folder row through its sidebar-project-folder test id.
 
 Port to 965ddc1d6c:
 - Upstream #33131 removed the legacy sidebar setting (legacySidebarEnabled) and the useBoringSidebarEnabled hook. The project row's Group threads by project item reads boringSidebarEnabled through useClientSettings and writes only boringSidebarEnabled, like upstream's Labs toggle; the project-row browser test mocks useClientSettings instead of the removed hook.
@@ -112,6 +113,7 @@ Tests:
 Model/harness: GPT-6 / Codex; badge legend follow-up: Claude Opus 5.5 / Claude Code; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code; icon order, tooltip and mode switch: Claude Opus 5.5 / Claude Code (implementation and fix waves), reviews by Claude Opus 5.5 and gpt-6.1-sol, orchestration and judging by Claude Fable 5.2.
 ---
  .../web/src/components/ProjectComboboxRow.tsx |  18 -
+ .../components/Sidebar.drag.browser.test.tsx  |   4 +-
  apps/web/src/components/Sidebar.logic.test.ts | 385 ++++++++-
  apps/web/src/components/Sidebar.logic.ts      | 286 ++++++-
  apps/web/src/components/Sidebar.tsx           | 531 +++++-------
@@ -133,7 +135,7 @@ Model/harness: GPT-6 / Codex; badge legend follow-up: Claude Opus 5.5 / Claude C
  apps/web/src/uiStateStore.test.ts             | 260 +++++-
  apps/web/src/uiStateStore.ts                  | 223 ++++-
  docs/user/thread-sidebar.md                   |  54 ++
- 22 files changed, 4709 insertions(+), 530 deletions(-)
+ 23 files changed, 4712 insertions(+), 531 deletions(-)
  delete mode 100644 apps/web/src/components/ProjectComboboxRow.tsx
  create mode 100644 apps/web/src/components/settings/ProjectManualOrderList.browser.test.tsx
  create mode 100644 apps/web/src/components/settings/ProjectManualOrderList.tsx
@@ -169,6 +171,21 @@ index 0ecc4ece2d0c22889694e468f5221a92d4b279aa..00000000000000000000000000000000
 -    </span>
 -  );
 -}
+diff --git a/apps/web/src/components/Sidebar.drag.browser.test.tsx b/apps/web/src/components/Sidebar.drag.browser.test.tsx
+index b6494d089ae1cbf90482a3f68630d34321c0be99..63d0891b4a77e00392f6518facbf37935fa4fe9d 100644
+--- a/apps/web/src/components/Sidebar.drag.browser.test.tsx
++++ b/apps/web/src/components/Sidebar.drag.browser.test.tsx
+@@ -49,7 +49,9 @@ it("keeps the title when dragging a search result from a collapsed folder", asyn
+     // AppRoot brings its own router.
+     router: false,
+   });
+-  const folder = page.getByRole("button", { name: /^render/ });
++  const folder = page
++    .getByTestId("sidebar-project-folder")
++    .getByRole("button", { name: /^render/ });
+   await expect.element(folder).toHaveAttribute("aria-expanded", "true");
+   await userEvent.click(folder);
+   await expect.element(page.getByText(second.title, { exact: true })).not.toBeInTheDocument();
 diff --git a/apps/web/src/components/Sidebar.logic.test.ts b/apps/web/src/components/Sidebar.logic.test.ts
 index 1364bb23f081bab643b13ba815627950085707b7..15c8e0347658300584f295f4be68d509d513202e 100644
 --- a/apps/web/src/components/Sidebar.logic.test.ts
