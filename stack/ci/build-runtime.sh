@@ -7,7 +7,7 @@ if test "$#" -ne 4; then
   printf 'usage: %s <source-archive> <build-dir> <version> <expected-tree>\n' "${0##*/}" >&2
   exit 2
 fi
-CI=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+STACK_CI=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 SOURCE_ARCHIVE=$(realpath -e "$1")
 BUILD=$(realpath -m "$2")
 VERSION=$3
@@ -34,7 +34,7 @@ PNPM_VERSION=$(python3 -I -c 'import json; print(json.load(open("package.json"))
 PNPM_VERSION=${PNPM_VERSION#pnpm@}
 PNPM_VERSION=${PNPM_VERSION%%+*}
 [[ "$PNPM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-NODE_BIN=$(bash "$CI/fetch-node.sh" "$NODE_VERSION" "$BUILD/toolchain")
+NODE_BIN=$(bash "$STACK_CI/fetch-node.sh" "$NODE_VERSION" "$BUILD/toolchain")
 export PATH="$NODE_BIN:$PATH"
 npm install --prefix "$BUILD/toolchain/pnpm" --ignore-scripts --no-package-lock "pnpm@$PNPM_VERSION"
 export PATH="$BUILD/toolchain/pnpm/node_modules/.bin:$PATH"
@@ -58,14 +58,14 @@ cargo build --locked --release --manifest-path native/resource-monitor/Cargo.tom
 cp "$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/release/t3-resource-monitor" "$BUILD/out/resource-monitor/linux-x64/t3-resource-monitor"
 node scripts/build-cli-archive.ts --platform linux --arch x64 --version "$VERSION" --resource-monitor-dir "$BUILD/out/resource-monitor" --output-dir "$BUILD/out"
 ARCHIVE="$BUILD/out/t3-$VERSION-linux-x64.tar.gz"
-python3 -I "$CI/materialize-archive.py" "$ARCHIVE"
-node "$CI/verify-bundle.mjs" "$BUILD/out/server/bin.mjs" "$BUILD/out/exe/t3" "$VERSION" | tee "$BUILD/out/fork-markers.txt"
+python3 -I "$STACK_CI/materialize-archive.py" "$ARCHIVE"
+node "$STACK_CI/verify-bundle.mjs" "$BUILD/out/server/bin.mjs" "$BUILD/out/exe/t3" "$VERSION" | tee "$BUILD/out/fork-markers.txt"
 node scripts/smoke-cli-archive.ts --archive "$ARCHIVE" --expect-version "$VERSION"
 mkdir "$BUILD/out/verified"
 tar -xzf "$ARCHIVE" -C "$BUILD/out/verified" --strip-components=1
 "$BUILD/out/verified/t3" --version | tee "$BUILD/out/version.txt"
-node "$CI/verify-bundle.mjs" "$BUILD/out/server/bin.mjs" "$BUILD/out/verified/t3" "$VERSION" | tee "$BUILD/out/archive-markers.txt"
-node "$CI/verify-native.mjs" "$BUILD/out/verified"
+node "$STACK_CI/verify-bundle.mjs" "$BUILD/out/server/bin.mjs" "$BUILD/out/verified/t3" "$VERSION" | tee "$BUILD/out/archive-markers.txt"
+node "$STACK_CI/verify-native.mjs" "$BUILD/out/verified"
 git diff --stat | tee "$BUILD/out/version-stamp-diff.txt"
 git diff --exit-code -- . ':!apps/server/package.json' ':!apps/web/package.json' ':!apps/desktop/package.json' ':!packages/contracts/package.json'
 cd "$BUILD/out"
