@@ -693,7 +693,7 @@ index 8f8b944e2fa1ce73444ca9f27e41d37da76b07af..fdd8b9af2e1ca40c29b5d3eb0885a10e
      return { status: "failed" };
    }
 diff --git a/docs/user/composer.md b/docs/user/composer.md
-index 32de36e13b8424de67ae4db321ef632e36b70743..1f97651e566fdb32fa83c87e27d7eb47685fe16d 100644
+index df880e49c6ca5a65395046bf7eb594d2a8afe1ba..cc0f2a17f9367981ecefd4fb352ac1cd7bc473e2 100644
 --- a/docs/user/composer.md
 +++ b/docs/user/composer.md
 @@ -58,6 +58,10 @@ also send files to T3 Code through another app's system share sheet.

@@ -56,13 +56,13 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  3 files changed, 382 insertions(+), 53 deletions(-)
 
 diff --git a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
-index 29fdcccd9c1724e4cef9e3238d60b1dacaba7cca..40220f4073e8436352fd0cab3cf0f86f1a1a98aa 100644
+index 0ca1f46f5d7eacf5b47c47ac21789c33db1fb269..0afed295ebdad3344faa536cbe6e3c5de69b0b1a 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
 +++ b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
-@@ -217,9 +217,79 @@ const TASK_ID = ScheduledTaskId.make("task-1");
- const AUTOMATION_PROMPT = "Triage the inbox\n\nLabel every new issue and close duplicates.";
+@@ -279,9 +279,79 @@ describe("MessagesTimeline work rows", () => {
+     });
+   });
  
- describe("MessagesTimeline work rows", () => {
 +  it("keeps assistant text visible when tool work settles, expands and folds again", async () => {
 +    setup();
 +    const props = baseProps();
@@ -139,7 +139,7 @@ index 29fdcccd9c1724e4cef9e3238d60b1dacaba7cca..40220f4073e8436352fd0cab3cf0f86f
      const container = document.createElement("div");
      // Keep the heading on screen so Playwright does not scroll it before clicking.
      container.style.cssText =
-@@ -231,7 +301,35 @@ describe("MessagesTimeline work rows", () => {
+@@ -293,7 +363,35 @@ describe("MessagesTimeline work rows", () => {
            ...Array.from({ length: 12 }, (_, index) =>
              message(`Earlier context ${index}`, {}, `context-${index}`),
            ),
@@ -176,7 +176,7 @@ index 29fdcccd9c1724e4cef9e3238d60b1dacaba7cca..40220f4073e8436352fd0cab3cf0f86f
            message("Done", { role: "assistant", runId }, "final"),
          ]}
        />,
-@@ -241,6 +339,7 @@ describe("MessagesTimeline work rows", () => {
+@@ -303,6 +401,7 @@ describe("MessagesTimeline work rows", () => {
      // LegendList keeps rows click-through until its initial scroll settles on animation
      // frames, which the fake clock below would freeze.
      await expect.element(heading).toHaveStyle({ pointerEvents: "auto" });
@@ -184,7 +184,7 @@ index 29fdcccd9c1724e4cef9e3238d60b1dacaba7cca..40220f4073e8436352fd0cab3cf0f86f
      const viewport = props.listRef.current!.getScrollableNode()!;
      // Legend keeps rows transparent and unclickable until its initial scroll settles.
      await vi.waitFor(() => {
-@@ -272,7 +371,13 @@ describe("MessagesTimeline work rows", () => {
+@@ -334,7 +433,13 @@ describe("MessagesTimeline work rows", () => {
        ...Array.from({ length: 12 }, (_, index) =>
          message(`Earlier context ${index}`, {}, `context-${index}`),
        ),

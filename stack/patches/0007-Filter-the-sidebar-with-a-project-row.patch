@@ -910,10 +910,10 @@ index 2b9c1febc643945202db5fe541d44e0a0930f97e..3a0630ed64979ea81667689501b14318
    thread: Pick<SidebarThreadSummary, "latestRun" | "runtime">,
  ): string | null {
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfae46bb78b 100644
+index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e3812599761c65 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -61,18 +61,10 @@ import {
+@@ -60,18 +60,10 @@ import {
  } from "@t3tools/contracts";
  import type { OlderSettledScope } from "@t3tools/client-runtime/state/threads";
  
@@ -933,7 +933,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
    useRef,
    useState,
    useSyncExternalStore,
-@@ -112,19 +104,27 @@ import {
+@@ -111,19 +103,27 @@ import {
    selectProjectGroupingSettings,
  } from "@t3tools/client-runtime/state/project-grouping";
  import {
@@ -964,7 +964,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
  import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
  import {
    getThreadKeysToDeselectAfterDelete,
-@@ -136,7 +136,6 @@ import {
+@@ -135,7 +135,6 @@ import {
    useThreadActions,
  } from "../hooks/useThreadActions";
  import { useHandleNewThread } from "../hooks/useHandleNewThread";
@@ -972,7 +972,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
  import { useProjectPin } from "../hooks/useProjectGroupUpdate";
  import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
  import { useTerminalFocus } from "../hooks/useTerminalFocus";
-@@ -179,8 +178,6 @@ import {
+@@ -178,8 +177,6 @@ import {
  } from "../threadRoutes";
  import type { SidebarThreadSummary } from "../types";
  import { cn } from "~/lib/utils";
@@ -981,7 +981,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
  import {
    buildDraftActionMenuItems,
    buildThreadActionMenuItems,
-@@ -194,20 +191,19 @@ import {
+@@ -193,20 +190,19 @@ import {
    buildBulkTitleRegenerationContextMenuItem,
    buildBulkUnpinContextMenuItem,
    deleteSelectedThreadEntries,
@@ -1003,7 +1003,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
    searchSidebarThreads,
    shouldCreateNewThreadInCurrentProject,
    shouldNavigateAfterThreadPark,
-@@ -236,7 +232,6 @@ import {
+@@ -235,7 +231,6 @@ import {
    snoozeWakeLabel,
    type SnoozePreset,
  } from "./Sidebar.snooze";
@@ -1011,7 +1011,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
  import { deriveProviderEntriesByEnvironment } from "../providerInstances";
  import { useStableCallback } from "../hooks/useStableCallback";
  import {
-@@ -247,21 +242,10 @@ import {
+@@ -246,21 +241,10 @@ import {
  import { stackedThreadToast, toastManager } from "./ui/toast";
  import { copyThreadReference } from "../lib/copyThreadReference";
  import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
@@ -1035,7 +1035,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
  import { TooltipProvider } from "./ui/tooltip";
  import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
  import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
-@@ -695,8 +679,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
+@@ -694,8 +678,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
        );
      } else {
        const section = resolveSidebarThreadSection({
@@ -1045,7 +1045,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
          pinned: thread.pinnedAt != null,
        });
        (section === "snoozed"
-@@ -867,19 +850,6 @@ function useSidebarLookups() {
+@@ -866,19 +849,6 @@ function useSidebarLookups() {
    };
  }
  
@@ -1065,7 +1065,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
  function canOperateThreads(
    threads: ReadonlyArray<Pick<SidebarThreadSummary, "environmentId">>,
  ): boolean {
-@@ -1032,17 +1002,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1031,17 +1001,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const projectGroupsRef = useRef(projectGroups);
    const persistedProjectScopeKeys = useUiStateStore((store) => store.sidebarProjectScopeKeys);
    const setPersistedProjectScopeKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
@@ -1088,7 +1088,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
    const chosenEnvironmentScope = resolveSidebarEnvironmentScope({
      environments,
      keys: persistedEnvironmentScopeKeys,
-@@ -1053,9 +1023,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1052,9 +1022,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
        : new Set(chosenEnvironmentScope.map((environment) => environment.environmentId));
    const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
    const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
@@ -1098,7 +1098,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
    // Hold dropped rows until server placement is confirmed; block another pickup from replacing the hold.
    const [optimisticDrop, setOptimisticDrop] = useState<SidebarOptimisticDrop | null>(null);
    const threadSearchInputRef = useRef<HTMLInputElement>(null);
-@@ -1121,29 +1088,40 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1120,29 +1087,40 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      chosenEnvironmentIds,
      { projects, settings: projectGroupingSettings, primaryEnvironmentId },
    );
@@ -1160,7 +1160,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
    const threads = useQuietThreadShells();
    const routeRowThreadKey =
      routeThreadRef === null
-@@ -1176,86 +1154,135 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1175,86 +1153,135 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      delegatedUnderParent,
      findThread: (key) => threads.find((candidate) => threadShellKey(candidate) === key),
    });
@@ -1349,7 +1349,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
        ? {}
        : { projectIds: scopedProjectRefs.map((projectRef) => projectRef.projectId) },
    );
-@@ -1300,15 +1327,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1299,15 +1326,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      setProjectGroupPinned,
      toggleProjectGroupPin,
    } = useProjectPin();
@@ -1370,7 +1370,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
        openProjectSettings(projectGroup);
      },
    );
-@@ -1405,12 +1434,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1404,12 +1433,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      delegatedUnderParent,
      routeRowThreadKey,
      folderGroups: boringSidebarEnabled
@@ -1387,7 +1387,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
        : null,
      keepEmptyFolders: (group) =>
        scopedProjectGroups.length > 0 || (group.pinned && !group.archived),
-@@ -2696,12 +2723,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2695,12 +2722,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                  AuthOrchestrationOperateScope,
                ),
                branch: thread.branch ?? null,
@@ -1403,7 +1403,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
                      }
                    : null,
                isPinned,
-@@ -2746,9 +2774,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2745,9 +2773,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            case "filter-by-project":
              if (threadProjectGroup) {
                setProjectScopeKeys(
@@ -1419,7 +1419,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
                );
              }
              return;
-@@ -3078,206 +3109,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3076,206 +3107,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    onChange={setEnvironmentScopeKeys}
                  />
                }
@@ -1641,7 +1641,7 @@ index b7f1fe8cf5cd71e04264328c05e649ab49876119..84f7aef63b648bd294c2acf63fac5dfa
                }
                onNewProject={openAddProjectCommandPalette}
                onNewThread={handleNewThreadClick}
-@@ -3746,6 +3592,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3744,6 +3590,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                  </>
                ) : (
                  sidebarEmptyThreadsLabel({
