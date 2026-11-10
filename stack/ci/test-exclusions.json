@@ -1,0 +1,10 @@
+[
+  {
+    "package": "t3",
+    "name": "storage cleanup reports and local file policies > compares the checked-out branch without a full status",
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "reason": "git 2.56.0 on the ubuntu-24.04 runner reports a gitfile pointing at a removed repository as \"gitfile does not point to a valid repository\"; storageCleanup.ts only recognises \"not a git repository\", so the cleanup reports failed instead of kept. Upstream CI on git 2.55.0 passes.",
+    "evidence": "https://github.com/chomamateusz/t3code/actions/runs/42898839136",
+    "removeWhen": "storageCleanup.ts recognises the git 2.56 message, or the test passes on the ubuntu-24.04 runner without this entry."
+  }
+]

@@ -18,6 +18,7 @@ The workflow runs from the fork's `main` (where the owner installs it) and takes
   - `build-runtime.sh`, `container-build.sh`: build the Linux x64 runtime inside `ubuntu:22.04`.
   - `run-acceptance.sh`, `accept-fresh.sh`, `verify-*.mjs`, `fork-markers.json`: accept the runtime in fresh `ubuntu:22.04` and `ubuntu:24.04` containers, including checks that fork changes reached the bundle.
   - `classify-run.ts`: writes the run result (`stack-result` artifact and step summary).
+  - `test-exclusions.json`, `test-exclusions.ts`: upstream tests the server and web test jobs skip because they fail only on the fork's runners, never because of our patches. Each entry carries the evidence (a run URL) that the test fails without our patches or for a reason outside our control. Remove an entry when its `removeWhen` condition holds, for example when upstream handles the case or the test passes on the runner again.
 - `workflow/stack-build.yml`: the source of `.github/workflows/stack-build.yml` on the fork's `main`.
 
 ## Export a series
