@@ -203,7 +203,12 @@ export function sidebarMarkerId(marker: SidebarListMarker): string {
 }
 
 export type SidebarListItem =
-  | { readonly kind: "thread"; readonly key: string; readonly section: SidebarSection }
+  | {
+      readonly kind: "thread";
+      readonly key: string;
+      readonly section: SidebarSection;
+      readonly projectFolder?: string;
+    }
   | { readonly kind: "marker"; readonly marker: SidebarListMarker };
 
 export function sidebarListItemId(item: SidebarListItem): string {
@@ -257,6 +262,38 @@ export function resolveSidebarDropTarget(
     else activeOrder.push(item.key);
   }
   return { section, pinnedOrder, activeOrder };
+}
+
+/**
+ * Maps a drop within the dragged card's own folder onto the whole active order, next to the
+ * card it was dropped on. `activeOrder` also holds threads no folder shows.
+ */
+export function resolveSidebarFolderDropTarget(
+  items: readonly SidebarListItem[],
+  activeKey: string,
+  overId: string,
+  activeOrder: readonly string[],
+): SidebarDropTarget | null {
+  const folderOf = (id: string) => {
+    const item = items.find((candidate) => sidebarListItemId(candidate) === id);
+    return item?.kind === "thread" ? item.projectFolder : undefined;
+  };
+  const folder = folderOf(activeKey);
+  if (folder === undefined || folderOf(overId) !== folder) return null;
+  const folderKeys = items.flatMap((item) =>
+    item.kind === "thread" && item.projectFolder === folder ? [item.key] : [],
+  );
+  const pinnedOrder = items.flatMap((item) =>
+    item.kind === "thread" && item.section === "pinned" ? [item.key] : [],
+  );
+  const from = folderKeys.indexOf(activeKey);
+  const to = folderKeys.indexOf(overId);
+  if (from === to) return { section: "active", pinnedOrder, activeOrder };
+  const order = activeOrder.filter((key) => key !== activeKey);
+  const overIndex = order.indexOf(overId);
+  if (overIndex === -1 || !activeOrder.includes(activeKey)) return null;
+  order.splice(to < from ? overIndex : overIndex + 1, 0, activeKey);
+  return { section: "active", pinnedOrder, activeOrder: order };
 }
 
 type SidebarThreadDropPlan =

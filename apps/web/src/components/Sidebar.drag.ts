@@ -236,6 +236,13 @@ export function createSidebarSortingStrategy(input: {
   }
 
   return (args) => {
+    const dragged = items[args.activeIndex];
+    if (dragged?.kind === "thread" && dragged.projectFolder !== undefined) {
+      const over = items[args.overIndex];
+      return over?.kind === "thread" && over.projectFolder === dragged.projectFolder
+        ? verticalListSortingStrategy(args)
+        : stationary;
+    }
     if (
       previous?.rects !== args.rects ||
       previous.activeIndex !== args.activeIndex ||

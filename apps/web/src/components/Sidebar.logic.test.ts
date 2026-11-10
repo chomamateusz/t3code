@@ -31,6 +31,8 @@ import {
   shouldRecedeSidebarThread,
   sortInboxThreadsByReturn,
   resolveSidebarDropTarget,
+  resolveSidebarFolderDropTarget,
+  sidebarMarkerId,
   planSidebarThreadDrop,
   resolveSidebarReorderableThreadKeys,
   sortPinnedThreadsForSidebar,
@@ -1171,6 +1173,94 @@ describe("Working shelf (beta)", () => {
         activeReorderableKeys: new Set(["a2"]),
       });
       expect(above.kind === "move-active" && above.assignments[0]!.orderKey < "m").toBe(true);
+    });
+
+    it("reorders a grouped card only within its folder, as the ungrouped list would store it", () => {
+      const activeOrder = ["a1", "b1", "a2", "hidden", "b2", "a3"];
+      const activeKeysById = new Map([
+        ["a1", "c"],
+        ["b1", "d"],
+        ["a2", "f"],
+        ["hidden", "h"],
+        ["b2", "k"],
+        ["a3", "m"],
+      ]);
+      const inFolder = (key: string, projectFolder: string): SidebarListItem => ({
+        kind: "thread",
+        key,
+        section: "active",
+        projectFolder,
+      });
+      const grouped: readonly SidebarListItem[] = [
+        marker("pinned-header"),
+        row("p1", "pinned"),
+        marker("pinned-divider"),
+        marker("active-placeholder"),
+        inFolder("b1", "beta"),
+        inFolder("b2", "beta"),
+        inFolder("a1", "alpha"),
+        inFolder("a2", "alpha"),
+        inFolder("a3", "alpha"),
+        marker("settled-header"),
+        row("s1", "settled"),
+      ];
+      const flat: readonly SidebarListItem[] = [
+        marker("pinned-header"),
+        row("p1", "pinned"),
+        marker("pinned-divider"),
+        marker("active-placeholder"),
+        ...activeOrder.map((key) => row(key, "active")),
+        marker("settled-header"),
+        row("s1", "settled"),
+      ];
+      const plan = (
+        activeKey: string,
+        target: Parameters<typeof planSidebarThreadDrop>[0]["target"],
+      ) =>
+        planSidebarThreadDrop({
+          activeKey,
+          activeSection: "active",
+          target,
+          pinnedOrder: ["p1"],
+          pinnedKeysById: new Map([["p1", "m"]]),
+          activeOrder,
+          activeKeysById,
+          activeReorderableKeys: new Set(activeOrder),
+        });
+      const folderDrop = (activeKey: string, overId: string) =>
+        resolveSidebarFolderDropTarget(grouped, activeKey, overId, activeOrder);
+
+      for (const [activeKey, groupedOver, flatOver] of [
+        ["a3", "a1", "a1"],
+        ["a1", "a2", "a2"],
+        ["a1", "a3", "a3"],
+        ["b2", "b1", "b1"],
+      ] as const) {
+        const folderPlan = plan(activeKey, folderDrop(activeKey, groupedOver)!);
+        expect(folderPlan.kind).toBe("move-active");
+        expect(folderPlan).toEqual(
+          plan(activeKey, resolveSidebarDropTarget(flat, activeKey, flatOver)!),
+        );
+      }
+      expect(plan("a3", folderDrop("a3", "a1")!)).toMatchObject({
+        order: ["a3", "a1", "b1", "a2", "hidden", "b2"],
+        assignments: [{ id: "a3", orderKey: expect.any(String) }],
+      });
+
+      expect(plan("a2", folderDrop("a2", "a2")!)).toEqual({ kind: "none" });
+      for (const overId of [
+        "b1",
+        "p1",
+        "s1",
+        "hidden",
+        sidebarMarkerId("pinned-divider"),
+        sidebarMarkerId("active-placeholder"),
+        sidebarMarkerId("settled-header"),
+      ]) {
+        expect(folderDrop("a2", overId)).toBeNull();
+      }
+      expect(folderDrop("p1", "a1")).toBeNull();
+      expect(folderDrop("s1", "a1")).toBeNull();
     });
 
     describe("reordering with cached offline configuration", () => {

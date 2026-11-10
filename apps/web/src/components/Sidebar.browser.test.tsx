@@ -111,16 +111,26 @@ describe("grouped sidebar", () => {
     );
     vi.mocked(useProjects).mockReturnValue(projects);
     vi.mocked(readProjects).mockReturnValue(projects);
-    vi.mocked(useQuietThreadShells).mockReturnValue(
-      projects.map((entry) =>
+    vi.mocked(useQuietThreadShells).mockReturnValue([
+      ...projects.map((entry) =>
         makeThreadFixture({
           id: ThreadId.make(`thread-${entry.id}`),
           environmentId: entry.environmentId,
           projectId: entry.id,
           title: `Task in ${entry.id}`,
+          activeOrderKey: "m",
+          latestUserAuthoredMessageAt: "2026-01-02T00:00:00.000Z",
         }),
       ),
-    );
+      makeThreadFixture({
+        id: ThreadId.make("thread-alpha-later"),
+        environmentId: projects[0]!.environmentId,
+        projectId: projects[0]!.id,
+        title: "Later task in alpha",
+        activeOrderKey: "t",
+        latestUserAuthoredMessageAt: "2026-01-03T00:00:00.000Z",
+      }),
+    ]);
     vi.mocked(useHandleNewThread).mockReturnValue({
       activeDraftThread: null,
       activeThread: null,
@@ -137,13 +147,18 @@ describe("grouped sidebar", () => {
     const alpha = screen.getByRole("button", { name: /^alpha/ });
     const beta = screen.getByRole("button", { name: /^beta/ });
 
-    await expect.element(screen.getByTestId("sidebar-row-card").nth(1)).toBeVisible();
-    expect(screen.getByTestId("sidebar-row-card").elements()).toHaveLength(2);
+    await expect.element(screen.getByTestId("sidebar-row-card").nth(2)).toBeVisible();
     expect(screen.getByTestId("sidebar-row-folder").elements()).toHaveLength(0);
     expect(
       beta.element().compareDocumentPosition(alpha.element()) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    for (const card of screen.getByTestId("sidebar-row-card").elements()) {
+    const cards = screen.getByTestId("sidebar-row-card").elements();
+    expect(cards.map((card) => card.textContent)).toEqual([
+      expect.stringContaining("Task in beta"),
+      expect.stringContaining("Task in alpha"),
+      expect.stringContaining("Later task in alpha"),
+    ]);
+    for (const card of [cards[0]!, cards[1]!]) {
       expect(
         card.closest("li")?.previousElementSibling?.matches("[data-testid=sidebar-project-folder]"),
       ).toBe(true);

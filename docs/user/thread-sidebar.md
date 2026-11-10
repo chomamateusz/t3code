@@ -231,9 +231,11 @@ clicking, or press Alt+Enter on a focused folder, to close every folder when it 
 every folder when it is closed. A closed folder shows how many threads it holds and the same
 badge as its project icon for the hidden threads. Use the pen button on a folder, or right-click
 it, to start a thread in that project.
-Pinned threads stay above the folders, and Snoozed and Settled stay below them. In this mode you
-can drag a thread onto the composer to mention it, but not within the sidebar, and the Working
-section is off. Each device keeps its own choice.
+Pinned threads stay above the folders, and Snoozed and Settled stay below them. Threads in a
+folder keep your saved active order, so thread activity does not move them. Drag a thread within
+its folder to change that order; it is saved like a reorder in the ungrouped list. In this mode a
+thread cannot be dragged into another folder or section, but you can drag it onto the composer to
+mention it. The Working section is off. Each device keeps its own choice.
 
 ## Settle finished work
 

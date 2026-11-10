@@ -530,6 +530,64 @@ describe("sidebar drag projection", () => {
     expect(byTime.get("w")).toEqual(stationary);
   });
 
+  it("opens room only among the dragged card's own project folder", () => {
+    const inFolder = (key: string, projectFolder: string): SidebarListItem => ({
+      kind: "thread",
+      key,
+      section: "active",
+      projectFolder,
+    });
+    const items = [
+      pinnedHeader,
+      thread("p", "pinned"),
+      divider,
+      marker("active-placeholder"),
+      inFolder("b1", "beta"),
+      inFolder("a1", "alpha"),
+      inFolder("a2", "alpha"),
+      inFolder("a3", "alpha"),
+      settledHeader,
+      thread("s", "settled"),
+    ];
+    const strategy = createSidebarSortingStrategy({
+      items,
+      settledOrder: ["s"],
+      settledExpanded: true,
+      boundaryLabelHeight: 24,
+    });
+    const peerOffsets = (active: string, over: string) => {
+      const args = layout(items, active, over);
+      let folderHeadersAbove = 0;
+      for (const [index, item] of items.entries()) {
+        if (sidebarListItemId(item) === "b1" || sidebarListItemId(item) === "a1") {
+          folderHeadersAbove += 1;
+        }
+        const rect = args.rects[index]!;
+        rect.top += folderHeadersAbove * 33;
+        rect.bottom += folderHeadersAbove * 33;
+      }
+      return Object.fromEntries(
+        items.flatMap((item, index) =>
+          index === args.activeIndex
+            ? []
+            : [[sidebarListItemId(item), strategy({ ...args, index })?.y]],
+        ),
+      );
+    };
+    const unmoved = (active: string) =>
+      Object.fromEntries(
+        items.flatMap((item) =>
+          sidebarListItemId(item) === active ? [] : [[sidebarListItemId(item), 0]],
+        ),
+      );
+
+    expect(peerOffsets("a3", "a1")).toEqual({ ...unmoved("a3"), a1: 83, a2: 83 });
+    expect(peerOffsets("a1", "a3")).toEqual({ ...unmoved("a1"), a2: -83, a3: -83 });
+    for (const over of ["b1", "p", "s", sidebarMarkerId("pinned-divider")]) {
+      expect(peerOffsets("a2", over)).toEqual(unmoved("a2"));
+    }
+  });
+
   it("updates the projection when the target or measured geometry changes", () => {
     const strategy = createSidebarSortingStrategy({
       items: pinned,

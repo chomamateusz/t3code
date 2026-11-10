@@ -393,6 +393,7 @@ function SnoozeMenuButton(props: {
                   type="button"
                   aria-label="Snooze thread"
                   onClick={(event) => event.stopPropagation()}
+                  onPointerDown={(event) => event.stopPropagation()}
                   onDoubleClick={(event) => event.stopPropagation()}
                   className="inline-flex h-full cursor-pointer items-center gap-0.5 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
                 />
@@ -1568,6 +1569,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                 type="button"
                                 aria-label="Discard draft"
                                 onClick={handleDiscardDraftClick}
+                                onPointerDown={(event) => event.stopPropagation()}
                                 className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
                               />
                             }
