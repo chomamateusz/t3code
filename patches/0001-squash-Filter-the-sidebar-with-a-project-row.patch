@@ -1,0 +1,2977 @@
+From 975e154c36013730aaa9f3f99fd89620759046ed Mon Sep 17 00:00:00 2001
+From: Mateusz Choma <chomamateusz@gmail.com>
+Date: Tue, 10 Nov 2026 17:23:23 +0100
+Subject: [PATCH 1/2] =?UTF-8?q?squash!=20=F0=9F=97=82=EF=B8=8F=20Filter=20?=
+ =?UTF-8?q?the=20sidebar=20with=20a=20project=20row?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Behaviours:
+- Order project icons by a per-device preference with three values. Name (the default) puts pinned projects first, then display name, then project key; thread timestamps never influence it, so a thread update neither reorders nor re-renders the row while thread counts still update. Latest activity keeps the previous order: pinned, latest thread activity falling back to project update time, display name, project key. Manual puts pinned projects first, then the stored manual project order (the same uiStateStore.projectOrder that the upstream Project order → Manual setting reads), then projects not in that order by display name. The +N popup lists projects in the same order and the fit rule is unchanged.
+- Persist the icon order in the UI state store next to the project filter, restore it with the rest of that store and sanitize unknown values to Name. No contract changes.
+- Rank a project in the manual order by its logical group on every machine: sidebarProjectManualRanks maps each member's physical project key to the earliest stored position of any key of the unscoped group (its members' physical keys and legacy cwd keys). The icon row and the grouped folder headers sort through one shared function, sortSidebarProjectGroups, with these ranks, so narrowing the view to one machine or to several keeps the manual order. The stored order is read only while Manual is selected, so the other orders never react to it.
+- Show Project icon order in Settings → Labs directly below Boring sidebar, with a Name (A–Z) / Latest activity / Manual select, a reset button while it is not Name, and a settings search entry. While Manual is selected, show a sortable list directly under the row: every open project group from all machines in the effective order, each with a drag handle named "Reorder <project>, position <n>", the project favicon, the name and a quiet pin marker for pinned projects. The list is not rendered for the other orders.
+- A drop in that list, by mouse, touch or keyboard (Space, arrow keys, Space), moves exactly the dragged project through reorderProjects. Every key that resolves to it (its members' physical keys and the legacy cwd keys that match only it) moves together next to the target project's ranking key; every other stored key keeps its relative order, including pinned projects, projects on offline machines and legacy keys that match no listed project. A legacy cwd key that matches more than one listed group is first replaced at its position by the physical keys of every group it matched, in display order, and is never a drag or target key. Listed projects without a stored key are appended after the stored order by name before a move. Pinned-first applies only when sorting for display; a drop across the pinned boundary stays within the dragged project's section.
+- Lay out the project icon tooltip as sections: the name with a Selected, Shown or Hidden chip; a muted line with the machine icon and names (only when the row shows machines) and the thread count; the non-zero badge states in priority order as coloured dot, count and label; the click, ⌘/Ctrl click and right-click shortcuts as a keycap grid; and the badge legend with the eight live swatches and the colour, number and dot rule. The +N tooltip shows the hidden-project count, the selected count when any, and the same coloured counts line. Accessible names keep their per-state counts. Tooltip content is a component that renders only while its tooltip is open.
+- Expose per-state badge entries (state, count, label, colour) from the shared badge summary; the description string is built from them.
+- Remove the separate badge legend: its popover, meanings table and request listeners, the legend-request module, the command palette action Show project badge legend, and the legend-only styles.
+- Replace the ⋯ menu with one 28 px mode switch. Its face is an eye for Show selected and a destructively tinted crossed eye for Hide selected; a click switches between them. While ⌘ (Ctrl off macOS) is held anywhere in the app the face is a group icon, pressed with the primary tint while grouping is on, and a click toggles Group threads by project through the boringSidebarEnabled client setting. While the left ⌥ (left Alt) is held the face is a gear and a click opens Settings → Labs at the Boring sidebar row. The selection modifier wins when both are held, a window blur or a paste resets the face, and only the switch re-renders when a modifier changes. The click action comes from the click event's own modifier flags; a settings click also needs the tracked left Alt. Enter and Space switch the mode, modifier+Enter toggles grouping and left Alt+Enter opens the settings.
+- With only the right Alt held the switch keeps its plain face and a click or Enter does the plain action. Outside macOS the switch ignores AltGr (the AltGraph key state): it shows neither the group nor the gear face and does the plain action. On macOS, where Firefox reports AltGraph for both Option keys, the left Option key still shows the gear face.
+- The switch tooltip lists the three actions with keycaps (Click, ⌘/Ctrl Click, Left ⌥/Left Alt Click) and its accessible name states the current face, with aria-pressed on the group face.
+- Open a menu with Show selected / Hide selected, Group threads by project and Sidebar settings from the switch on right-click, the ContextMenu key, Shift+F10 and a touch long-press (which swallows the following click), through the shared native or DOM context menu. The row freezes and row tooltips stay off while it is open. Clear selection remains the × button.
+- Update the user guide: icon order with its setting and the Manual list, the switch with its modifier actions and menu, the left-Alt rule, and the legend in the icon tooltip.
+
+Integration details:
+- The badge legend and the per-state counts are reachable by hover and keyboard focus only; touch devices have no way to open them.
+- When a modifier is released while a native context menu holds the keyboard, the switch keeps the modifier face until the next key event; the click still follows the click's own modifier flags.
+- legacyProjectCwdPreferenceKey lives in sidebarProjectRow.ts and uiStateStore re-exports it, because uiStateStore already imports that module.
+
+Files:
+apps/web:
+- apps/web/src/components/CommandPalette.tsx
+- apps/web/src/components/Sidebar.logic.test.ts
+- apps/web/src/components/Sidebar.logic.ts
+- apps/web/src/components/Sidebar.tsx
+- apps/web/src/components/settings/LabsSettingsPanel.tsx
+- apps/web/src/components/settings/ProjectManualOrderList.browser.test.tsx
+- apps/web/src/components/settings/ProjectManualOrderList.tsx
+- apps/web/src/components/settings/settingsSearch.ts
+- apps/web/src/components/sidebar/SidebarProjectModeSwitch.tsx
+- apps/web/src/components/sidebar/SidebarProjectRow.browser.test.tsx
+- apps/web/src/components/sidebar/SidebarProjectRow.css
+- apps/web/src/components/sidebar/SidebarProjectRow.tsx
+- apps/web/src/hooks/useSidebarProjectRowData.ts
+- apps/web/src/shortcutModifierState.ts
+- apps/web/src/sidebarBadgeLegend.browser.test.tsx (deleted)
+- apps/web/src/sidebarBadgeLegend.ts (deleted)
+- apps/web/src/sidebarProjectRow.test.ts
+- apps/web/src/sidebarProjectRow.ts
+- apps/web/src/uiStateStore.test.ts
+- apps/web/src/uiStateStore.ts
+docs:
+- docs/user/thread-sidebar.md
+
+Tests:
+- apps/web/src/sidebarProjectRow.test.ts: the order cases cover Name, Latest activity and Manual; the manual ranks hold in the all-machines, one-machine and two-machine views through the real snapshot and scoping functions; a drop moves only the dragged project with offline keys, legacy keys, a legacy key shared by two groups, and pinned or unplaced projects.
+- apps/web/src/uiStateStore.test.ts: the order preference persists, restores and sanitizes.
+- apps/web/src/components/sidebar/SidebarProjectRow.browser.test.tsx: mode switch click, modifier faces (selection modifier, left and right Alt, AltGraph off macOS, an Option key reporting AltGraph on macOS), blur reset, keyboard actions, the secondary menu, and the icon order in the rendered row.
+- apps/web/src/components/settings/ProjectManualOrderList.browser.test.tsx: a keyboard drop writes the stored order.
+- Changed-files gate on the finished branch (node scripts/check-changed.ts 7b7c82aae2, 25 files): format, lint, knip 1/2 and 2/2, typecheck of 2 packages, 370 tests in 14 files and the React compiler check on 14 files all passed.
+- The tree of this commit alone passes the apps/web typecheck.
+- One integrated pass in the development client on demo data: tooltip layout, switch faces and actions, the Settings → Labs row and Manual list by keyboard, the secondary menu. Mouse and touch dragging and the touch long-press were not exercised; no installed-client pass.
+
+Model/harness: Claude Opus 5.5 / Claude Code (implementation and fix waves); reviews by Claude Opus 5.5 and gpt-6.1-sol; orchestration and judging by Claude Fable 5.2.
+---
+ apps/web/src/components/CommandPalette.tsx    |  21 +-
+ apps/web/src/components/Sidebar.logic.test.ts |  15 +
+ apps/web/src/components/Sidebar.logic.ts      |  30 +-
+ apps/web/src/components/Sidebar.tsx           |   6 +
+ .../components/settings/LabsSettingsPanel.tsx |  59 +++-
+ .../ProjectManualOrderList.browser.test.tsx   |  67 ++++
+ .../settings/ProjectManualOrderList.tsx       | 123 +++++++
+ .../src/components/settings/settingsSearch.ts |   8 +
+ .../sidebar/SidebarProjectModeSwitch.tsx      | 217 +++++++++++++
+ .../SidebarProjectRow.browser.test.tsx        | 249 +++++++++-----
+ .../components/sidebar/SidebarProjectRow.css  | 184 ++++++++---
+ .../components/sidebar/SidebarProjectRow.tsx  | 306 ++++++++----------
+ .../web/src/hooks/useSidebarProjectRowData.ts |  88 +++--
+ apps/web/src/shortcutModifierState.ts         |  67 +++-
+ .../src/sidebarBadgeLegend.browser.test.tsx   |  33 --
+ apps/web/src/sidebarBadgeLegend.ts            |  30 --
+ apps/web/src/sidebarProjectRow.test.ts        | 277 ++++++++++++++--
+ apps/web/src/sidebarProjectRow.ts             | 242 ++++++++++++--
+ apps/web/src/uiStateStore.test.ts             |  10 +-
+ apps/web/src/uiStateStore.ts                  |  30 +-
+ docs/user/thread-sidebar.md                   |  25 +-
+ 21 files changed, 1590 insertions(+), 497 deletions(-)
+ create mode 100644 apps/web/src/components/settings/ProjectManualOrderList.browser.test.tsx
+ create mode 100644 apps/web/src/components/settings/ProjectManualOrderList.tsx
+ create mode 100644 apps/web/src/components/sidebar/SidebarProjectModeSwitch.tsx
+ delete mode 100644 apps/web/src/sidebarBadgeLegend.browser.test.tsx
+ delete mode 100644 apps/web/src/sidebarBadgeLegend.ts
+
+diff --git a/apps/web/src/components/CommandPalette.tsx b/apps/web/src/components/CommandPalette.tsx
+index e86135f641..489f4d4ff7 100644
+--- a/apps/web/src/components/CommandPalette.tsx
++++ b/apps/web/src/components/CommandPalette.tsx
+@@ -64,7 +64,6 @@ import {
+   FolderGit2Icon,
+   FolderIcon,
+   FolderPlusIcon,
+-  InfoIcon,
+   MessageSquareDashedIcon,
+   LinkIcon,
+   MessageSquareIcon,
+@@ -104,11 +103,6 @@ import {
+   queueWorkspaceFocusFromPalette,
+   restoreWorkspaceFocusFromPalette,
+ } from "../lib/workspaceFocus";
+-import {
+-  isSidebarBadgeLegendAvailable,
+-  openQueuedSidebarBadgeLegend,
+-  queueSidebarBadgeLegendFromPalette,
+-} from "../sidebarBadgeLegend";
+ import {
+   composerPromptLink,
+   copyPromptLink,
+@@ -370,7 +364,7 @@ function CommandPaletteDialog(props: {
+       data-palette-mode={props.mode}
+       data-testid="command-palette"
+       finalFocus={() => {
+-        if (restoreWorkspaceFocusFromPalette() || openQueuedSidebarBadgeLegend()) return false;
++        if (restoreWorkspaceFocusFromPalette()) return false;
+         const returnFocus = getCommandPaletteReturnFocus();
+         if (returnFocus === false) return false;
+         const composer = composerHandleRef?.current;
+@@ -1757,19 +1751,6 @@ function OpenCommandPaletteDialog(props: {
+     },
+   });
+ 
+-  if (isSidebarBadgeLegendAvailable()) {
+-    actionItems.push({
+-      kind: "action",
+-      value: "action:project-badge-legend",
+-      searchTerms: ["project", "badge", "legend", "status", "colour", "color", "dot", "order"],
+-      title: "Show project badge legend",
+-      icon: <InfoIcon className={ITEM_ICON_CLASS} />,
+-      run: async () => {
+-        queueSidebarBadgeLegendFromPalette();
+-      },
+-    });
+-  }
+-
+   // Every group, so an archived project's thread still opens its own settings.
+   const currentProjectGroup =
+     (contextualProjectRef
+diff --git a/apps/web/src/components/Sidebar.logic.test.ts b/apps/web/src/components/Sidebar.logic.test.ts
+index 07944142e9..49cf6c4370 100644
+--- a/apps/web/src/components/Sidebar.logic.test.ts
++++ b/apps/web/src/components/Sidebar.logic.test.ts
+@@ -1800,6 +1800,21 @@ describe("sidebar project thread badges", () => {
+     expect(summarizeSidebarProjectBadge(badge.counts)?.description).toBe(
+       "1 approval · 1 needs input · 1 request · 1 failed · 1 limited · 1 woke · 1 done · 1 working",
+     );
++    expect(
++      summarizeSidebarProjectBadge({
++        approval: 0,
++        input: 0,
++        request: 2,
++        failed: 0,
++        limited: 0,
++        woke: 0,
++        done: 0,
++        working: 3,
++      })?.entries,
++    ).toEqual([
++      { state: "request", count: 2, label: "requests", className: "text-guest-foreground" },
++      { state: "working", count: 3, label: "working", className: "text-info-foreground" },
++    ]);
+     const many = buildSidebarProjectBadges(
+       groups,
+       Array.from({ length: 10 }, () => threads[0]!),
+diff --git a/apps/web/src/components/Sidebar.logic.ts b/apps/web/src/components/Sidebar.logic.ts
+index a2c5bbf1fe..2421cb42c9 100644
+--- a/apps/web/src/components/Sidebar.logic.ts
++++ b/apps/web/src/components/Sidebar.logic.ts
+@@ -976,28 +976,32 @@ function emptySidebarProjectBadgeCounts() {
+   return { approval: 0, input: 0, request: 0, failed: 0, limited: 0, woke: 0, done: 0, working: 0 };
+ }
+ 
++function sidebarProjectBadgeEntries(counts: SidebarProjectBadgeCounts) {
++  return PROJECT_BADGE_STATES.filter((state) => counts[state] > 0).map((state) => ({
++    state,
++    count: counts[state],
++    label: `${PROJECT_BADGE_LABELS[state]}${state === "request" && counts[state] !== 1 ? "s" : ""}`,
++    className: SIDEBAR_TOP_STATUS[state].className,
++  }));
++}
++
+ export function summarizeSidebarProjectBadge(counts: SidebarProjectBadgeCounts) {
+-  const state = PROJECT_BADGE_STATES.find((state) => counts[state] > 0);
+-  if (state === undefined) return null;
+-  const count = PROJECT_BADGE_STATES.reduce(
+-    (sum, state) => sum + (state === "working" ? 0 : counts[state]),
++  const entries = sidebarProjectBadgeEntries(counts);
++  const urgent = entries[0];
++  if (urgent === undefined) return null;
++  const count = entries.reduce(
++    (sum, entry) => sum + (entry.state === "working" ? 0 : entry.count),
+     0,
+   );
+   return {
+     count,
+     label: count === 0 ? null : count > 9 ? "9+" : String(count),
+-    className: SIDEBAR_TOP_STATUS[state].className,
+-    description: PROJECT_BADGE_STATES.filter((state) => counts[state] > 0)
+-      .map(
+-        (state) =>
+-          `${counts[state]} ${PROJECT_BADGE_LABELS[state]}${state === "request" && counts[state] !== 1 ? "s" : ""}`,
+-      )
+-      .join(" · "),
++    className: urgent.className,
++    entries,
++    description: entries.map((entry) => `${entry.count} ${entry.label}`).join(" · "),
+   };
+ }
+ 
+-export type SidebarProjectBadgeState = (typeof PROJECT_BADGE_STATES)[number];
+-
+ export const SIDEBAR_PROJECT_BADGE_LEGEND = PROJECT_BADGE_STATES.map((state) => ({
+   state,
+   label: PROJECT_BADGE_LABELS[state].charAt(0).toUpperCase() + PROJECT_BADGE_LABELS[state].slice(1),
+diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
+index 5b7ef6f31a..30f00233be 100644
+--- a/apps/web/src/components/Sidebar.tsx
++++ b/apps/web/src/components/Sidebar.tsx
+@@ -122,6 +122,7 @@ import {
+   toggleSidebarProjectSelection,
+ } from "../sidebarProjectRow";
+ import { ConnectedSidebarProjectRow } from "./sidebar/SidebarProjectRow";
++import { searchableSetting } from "./settings/settingsSearch";
+ import { startNewThreadInSidebarFilter } from "../newThreadActions";
+ import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
+ import {
+@@ -1325,6 +1326,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+     setProjectGroupPinned,
+     toggleProjectGroupPin,
+   } = useProjectPin();
++  const openSidebarSettings = useStableCallback(() => {
++    if (isMobile) setOpenMobile(false);
++    void router.navigate({ to: "/settings/labs", hash: searchableSetting("boring-sidebar").id });
++  });
+   const handleProjectSettings = useStableCallback(
+     (
+       event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>,
+@@ -3106,6 +3111,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                   onToggle={toggleRowProject}
+                   onClear={clearRowSelection}
+                   onModeChange={changeRowMode}
++                  onOpenSidebarSettings={openSidebarSettings}
+                   onProjectSettings={handleProjectSettings}
+                   canPinProject={canPinProject}
+                   onToggleProjectPin={toggleProjectGroupPin}
+diff --git a/apps/web/src/components/settings/LabsSettingsPanel.tsx b/apps/web/src/components/settings/LabsSettingsPanel.tsx
+index 38be7d6115..e281438070 100644
+--- a/apps/web/src/components/settings/LabsSettingsPanel.tsx
++++ b/apps/web/src/components/settings/LabsSettingsPanel.tsx
+@@ -4,10 +4,23 @@ import { managedCapabilityDenial } from "@t3tools/contracts";
+ 
+ import { hasCloudPublicConfig } from "~/cloud/publicConfig";
+ import { useT3ConnectAuthPrompt } from "../clerk/useT3ConnectAuthPrompt";
++import {
++  SIDEBAR_PROJECT_ICON_ORDERS,
++  isSidebarProjectIconOrder,
++  type SidebarProjectIconOrder,
++} from "../../sidebarProjectRow";
++import { useUiStateStore } from "../../uiStateStore";
+ import { Button } from "../ui/button";
++import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+ import { Switch } from "../ui/switch";
++import { ProjectManualOrderList } from "./ProjectManualOrderList";
+ import { ScopedSwitch } from "./ScopedSwitch";
+-import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
++import {
++  SettingResetButton,
++  SettingsPageContainer,
++  SettingsRow,
++  SettingsSection,
++} from "./settingsLayout";
+ import { searchableSetting } from "./settingsSearch";
+ import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
+ import { useOptionalSettingsScope, useSettingsScope } from "./SettingsScopeContext";
+@@ -19,6 +32,7 @@ export function LabsSettingsPanel() {
+     <SettingsPageContainer>
+       <SettingsSection id="beta" title="Beta">
+         <BoringSidebarRow />
++        <ProjectIconOrderRow />
+         {/* Clerk is only mounted when this build has T3 Connect. */}
+         {hasCloudPublicConfig() ? <GuestLinksRowWithSignIn /> : <GuestLinksRow />}
+         <LinkedEnvironmentsRow />
+@@ -54,6 +68,49 @@ function BoringSidebarRow() {
+   );
+ }
+ 
++const PROJECT_ICON_ORDER_LABELS: Record<SidebarProjectIconOrder, string> = {
++  name: "Name (A–Z)",
++  activity: "Latest activity",
++  manual: "Manual",
++};
++
++function ProjectIconOrderRow() {
++  const order = useUiStateStore((state) => state.sidebarProjectIconOrder);
++  const setOrder = useUiStateStore((state) => state.setSidebarProjectIconOrder);
++  return (
++    <SettingsRow
++      {...searchableSetting("project-icon-order")}
++      description="Order of project icons in the sidebar filter row. Pinned projects come first; Manual follows the order you drag here."
++      resetAction={
++        order === "name" ? null : (
++          <SettingResetButton label="project icon order" onClick={() => setOrder("name")} />
++        )
++      }
++      control={
++        <Select
++          value={order}
++          onValueChange={(value) => {
++            if (isSidebarProjectIconOrder(value)) setOrder(value);
++          }}
++        >
++          <SelectTrigger size="sm" className="w-full sm:w-44" aria-label="Project icon order">
++            <SelectValue>{PROJECT_ICON_ORDER_LABELS[order]}</SelectValue>
++          </SelectTrigger>
++          <SelectPopup align="end" alignItemWithTrigger={false}>
++            {SIDEBAR_PROJECT_ICON_ORDERS.map((value) => (
++              <SelectItem hideIndicator key={value} value={value}>
++                {PROJECT_ICON_ORDER_LABELS[value]}
++              </SelectItem>
++            ))}
++          </SelectPopup>
++        </Select>
++      }
++    >
++      {order === "manual" ? <ProjectManualOrderList /> : null}
++    </SettingsRow>
++  );
++}
++
+ function BoringSidebarMultilineRow() {
+   const settings = useScopedSettings();
+   const updateSettings = useUpdateScopedSettings();
+diff --git a/apps/web/src/components/settings/ProjectManualOrderList.browser.test.tsx b/apps/web/src/components/settings/ProjectManualOrderList.browser.test.tsx
+new file mode 100644
+index 0000000000..b78f3870da
+--- /dev/null
++++ b/apps/web/src/components/settings/ProjectManualOrderList.browser.test.tsx
+@@ -0,0 +1,67 @@
++import { expect, it, vi } from "vite-plus/test";
++import { userEvent } from "vite-plus/test/browser";
++
++import type { SidebarProjectSnapshot } from "~/sidebarProjectGrouping";
++
++const fixtures = vi.hoisted(() => {
++  const project = (name: string, pinned: boolean) =>
++    ({
++      id: name,
++      environmentId: "local",
++      title: name,
++      workspaceRoot: `/projects/${name}`,
++      projectKey: name,
++      displayName: name,
++      pinned,
++      archived: false,
++      updatedAt: "2026-11-01T00:00:00.000Z",
++      memberProjects: [
++        { physicalProjectKey: `local:/projects/${name}`, workspaceRoot: `/projects/${name}` },
++      ],
++      memberProjectRefs: [{ environmentId: "local", projectId: name }],
++    }) as unknown as SidebarProjectSnapshot;
++  return { projects: [project("Pinned", true), project("Alpha", false), project("Zulu", false)] };
++});
++
++vi.mock(import("../ProjectFavicon"), () => ({ ProjectFavicon: () => <span /> }));
++vi.mock(import("~/hooks/useSidebarProjectRowData"), async () => {
++  const { buildSidebarProjectActivity, sidebarProjectManualRanks } =
++    await import("~/sidebarProjectRow");
++  const { selectSidebarProjectManualOrder, useUiStateStore } = await import("~/uiStateStore");
++  return {
++    useSidebarProjectIconOrder: () => ({
++      projects: fixtures.projects,
++      activity: buildSidebarProjectActivity(
++        fixtures.projects,
++        [],
++        "manual",
++        sidebarProjectManualRanks(
++          fixtures.projects,
++          useUiStateStore(selectSidebarProjectManualOrder),
++        ),
++      ),
++    }),
++  } as never;
++});
++
++import { render } from "../../../test/render";
++import { useUiStateStore } from "~/uiStateStore";
++import { ProjectManualOrderList } from "./ProjectManualOrderList";
++
++it("moves a project up by keyboard and stores the manual order", async () => {
++  useUiStateStore.setState({ sidebarProjectIconOrder: "manual", projectOrder: [] });
++  await using screen = await render(<ProjectManualOrderList />);
++  await userEvent.click(screen.getByRole("button", { name: "Reorder Zulu, position 3" }));
++  await userEvent.keyboard(" ");
++  await userEvent.keyboard("{ArrowUp}");
++  await userEvent.keyboard(" ");
++
++  await expect
++    .element(screen.getByRole("button", { name: "Reorder Zulu, position 2" }))
++    .toBeVisible();
++  expect(useUiStateStore.getState().projectOrder).toEqual([
++    "local:/projects/Zulu",
++    "local:/projects/Alpha",
++    "local:/projects/Pinned",
++  ]);
++});
+diff --git a/apps/web/src/components/settings/ProjectManualOrderList.tsx b/apps/web/src/components/settings/ProjectManualOrderList.tsx
+new file mode 100644
+index 0000000000..18c507c8a4
+--- /dev/null
++++ b/apps/web/src/components/settings/ProjectManualOrderList.tsx
+@@ -0,0 +1,123 @@
++import {
++  DndContext,
++  type DragEndEvent,
++  KeyboardSensor,
++  PointerSensor,
++  closestCenter,
++  useSensor,
++  useSensors,
++} from "@dnd-kit/core";
++import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
++import {
++  SortableContext,
++  sortableKeyboardCoordinates,
++  useSortable,
++  verticalListSortingStrategy,
++} from "@dnd-kit/sortable";
++import { CSS } from "@dnd-kit/utilities";
++import { GripVerticalIcon, PinIcon } from "lucide-react";
++
++import { useSidebarProjectIconOrder } from "~/hooks/useSidebarProjectRowData";
++import { cn } from "~/lib/utils";
++import type { SidebarProjectSnapshot } from "~/sidebarProjectGrouping";
++import { sidebarProjectManualMove } from "~/sidebarProjectRow";
++import { useUiStateStore } from "~/uiStateStore";
++import { ProjectFavicon } from "../ProjectFavicon";
++
++export function ProjectManualOrderList() {
++  const { projects, activity } = useSidebarProjectIconOrder();
++  const manualOrder = useUiStateStore((state) => state.projectOrder);
++  const reorderProjects = useUiStateStore((state) => state.reorderProjects);
++  const projectByKey = new Map(projects.map((project) => [project.projectKey, project]));
++  const ordered = activity.flatMap((entry) => projectByKey.get(entry.projectKey) ?? []);
++  const pinnedKeys = ordered.filter((project) => project.pinned).map(projectKeyOf);
++  const unpinnedKeys = ordered.filter((project) => !project.pinned).map(projectKeyOf);
++  const sensors = useSensors(
++    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
++    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
++  );
++
++  const handleDragEnd = (event: DragEndEvent) => {
++    if (event.over === null) return;
++    const move = sidebarProjectManualMove(
++      ordered,
++      manualOrder,
++      String(event.active.id),
++      String(event.over.id),
++    );
++    if (move !== null) reorderProjects(...move);
++  };
++
++  if (ordered.length === 0) return null;
++  return (
++    <DndContext
++      sensors={sensors}
++      collisionDetection={closestCenter}
++      modifiers={[restrictToVerticalAxis, restrictToParentElement]}
++      onDragEnd={handleDragEnd}
++    >
++      <ol aria-label="Manual project order" className="mt-2 border-t border-border/50 py-1">
++        <SortableContext items={pinnedKeys} strategy={verticalListSortingStrategy}>
++          {ordered.slice(0, pinnedKeys.length).map((project, index) => (
++            <SortableProjectRow key={project.projectKey} project={project} position={index + 1} />
++          ))}
++        </SortableContext>
++        <SortableContext items={unpinnedKeys} strategy={verticalListSortingStrategy}>
++          {ordered.slice(pinnedKeys.length).map((project, index) => (
++            <SortableProjectRow
++              key={project.projectKey}
++              project={project}
++              position={pinnedKeys.length + index + 1}
++            />
++          ))}
++        </SortableContext>
++      </ol>
++    </DndContext>
++  );
++}
++
++function projectKeyOf(project: SidebarProjectSnapshot) {
++  return project.projectKey;
++}
++
++function SortableProjectRow({
++  project,
++  position,
++}: {
++  readonly project: SidebarProjectSnapshot;
++  readonly position: number;
++}) {
++  const {
++    attributes,
++    listeners,
++    setNodeRef,
++    setActivatorNodeRef,
++    transform,
++    transition,
++    isDragging,
++  } = useSortable({ id: project.projectKey });
++
++  return (
++    <li
++      ref={setNodeRef}
++      style={{ transform: CSS.Translate.toString(transform), transition }}
++      className={cn("flex items-center gap-2 py-1", isDragging && "relative z-10 bg-background")}
++    >
++      <button
++        type="button"
++        ref={setActivatorNodeRef}
++        {...attributes}
++        {...listeners}
++        aria-label={`Reorder ${project.displayName}, position ${position}`}
++        className="flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground/70 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:cursor-grabbing"
++      >
++        <GripVerticalIcon className="size-3.5" />
++      </button>
++      <ProjectFavicon project={project} className="size-4 shrink-0" />
++      <span className="min-w-0 truncate text-xs text-foreground">{project.displayName}</span>
++      {project.pinned ? (
++        <PinIcon role="img" aria-label="Pinned" className="size-3 shrink-0 text-muted-foreground" />
++      ) : null}
++    </li>
++  );
++}
+diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
+index b728629da1..5510aa6753 100644
+--- a/apps/web/src/components/settings/settingsSearch.ts
++++ b/apps/web/src/components/settings/settingsSearch.ts
+@@ -473,6 +473,14 @@ export const SETTINGS_SEARCH_ITEMS = [
+     targetId: "boring-sidebar",
+     searchTerms: ["beta boring sidebar folder rows multiline branch pull request details"],
+   },
++  {
++    id: "project-icon-order",
++    title: "Project icon order",
++    to: "/settings/labs",
++    searchTerms: [
++      "beta sidebar filter row project icons sort alphabetical name latest activity manual drag arrange",
++    ],
++  },
+   {
+     id: "tool-call-visibility",
+     title: "Tool calls in chat",
+diff --git a/apps/web/src/components/sidebar/SidebarProjectModeSwitch.tsx b/apps/web/src/components/sidebar/SidebarProjectModeSwitch.tsx
+new file mode 100644
+index 0000000000..28093f4a03
+--- /dev/null
++++ b/apps/web/src/components/sidebar/SidebarProjectModeSwitch.tsx
+@@ -0,0 +1,217 @@
++import { settlePromise } from "@t3tools/client-runtime/state/runtime";
++import { EyeIcon, EyeOffIcon, ListTreeIcon, SettingsIcon } from "lucide-react";
++import { useRef, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
++
++import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
++import { readLocalApi } from "../../localApi";
++import { useAltKeySideState, useShortcutModifierState } from "../../shortcutModifierState";
++import type { SidebarProjectFilterMode } from "../../sidebarProjectRow";
++import { Kbd } from "../ui/kbd";
++import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
++
++const LONG_PRESS_MS = 500;
++const LONG_PRESS_MOVE_TOLERANCE = 10;
++
++type ModeSwitchAction = "include" | "exclude" | "group" | "settings";
++
++function oppositeMode(mode: SidebarProjectFilterMode): SidebarProjectFilterMode {
++  return mode === "include" ? "exclude" : "include";
++}
++
++export function SidebarProjectModeSwitch({
++  mode,
++  isMac,
++  tooltipDisabled,
++  onModeChange,
++  onOpenSettings,
++  onMenuOpenChange,
++}: {
++  readonly mode: SidebarProjectFilterMode;
++  readonly isMac: boolean;
++  readonly tooltipDisabled: boolean;
++  readonly onModeChange: (mode: SidebarProjectFilterMode) => void;
++  readonly onOpenSettings: () => void;
++  readonly onMenuOpenChange: (open: boolean) => void;
++}) {
++  const grouped = useClientSettings((settings) => settings.boringSidebarEnabled);
++  const modifiers = useShortcutModifierState();
++  const altSide = useAltKeySideState();
++  const menuOpen = useRef(false);
++  const suppressClick = useRef(false);
++  const longPress = useRef<{ timer: number; x: number; y: number } | null>(null);
++  const selectionModifier = isMac ? "⌘" : "Ctrl";
++  const altModifier = isMac ? "Left ⌥" : "Left Alt";
++  const modifierAction = (
++    event: { readonly metaKey: boolean; readonly ctrlKey: boolean; readonly altKey: boolean },
++    eventAltGraph = false,
++  ): ModeSwitchAction | null => {
++    // macOS has no AltGr key, yet Firefox reports AltGraph for both Option keys.
++    if (!isMac && (altSide.altGraphKey || eventAltGraph)) return null;
++    if (isMac ? event.metaKey : event.ctrlKey) return "group";
++    return event.altKey && altSide.leftAltKey ? "settings" : null;
++  };
++  const face = modifierAction(modifiers) ?? mode;
++
++  const run = (action: ModeSwitchAction) => {
++    switch (action) {
++      case "include":
++      case "exclude":
++        if (action !== mode) onModeChange(action);
++        return;
++      case "group":
++        void updateClientSettings({ boringSidebarEnabled: !grouped });
++        return;
++      case "settings":
++        onOpenSettings();
++        return;
++    }
++  };
++
++  const openMenu = (position: { x: number; y: number }) => {
++    const api = readLocalApi();
++    if (!api || menuOpen.current) return;
++    menuOpen.current = true;
++    onMenuOpenChange(true);
++    void (async () => {
++      const clicked = await settlePromise(() =>
++        api.contextMenu.show<ModeSwitchAction>(
++          [
++            { id: "include", label: "Show selected", checked: mode === "include" },
++            { id: "exclude", label: "Hide selected", checked: mode === "exclude" },
++            {
++              id: "group",
++              label: "Group threads by project",
++              checked: grouped,
++              separatorBefore: true,
++            },
++            { id: "settings", label: "Sidebar settings", icon: "settings", separatorBefore: true },
++          ],
++          position,
++        ),
++      );
++      menuOpen.current = false;
++      onMenuOpenChange(false);
++      if (clicked._tag === "Failure" || clicked.value === null) return;
++      run(clicked.value);
++    })();
++  };
++
++  const cancelLongPress = () => {
++    if (longPress.current) window.clearTimeout(longPress.current.timer);
++    longPress.current = null;
++  };
++
++  const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
++    suppressClick.current = false;
++    cancelLongPress();
++    if (event.pointerType !== "touch") return;
++    const button = event.currentTarget;
++    const position = { x: event.clientX, y: event.clientY };
++    // iOS Safari sends no contextmenu event for a long press.
++    longPress.current = {
++      ...position,
++      timer: window.setTimeout(() => {
++        longPress.current = null;
++        if (!button.isConnected) return;
++        suppressClick.current = true;
++        openMenu(position);
++      }, LONG_PRESS_MS),
++    };
++  };
++
++  const onPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
++    const pending = longPress.current;
++    if (
++      pending &&
++      Math.hypot(event.clientX - pending.x, event.clientY - pending.y) > LONG_PRESS_MOVE_TOLERANCE
++    ) {
++      cancelLongPress();
++    }
++  };
++
++  const onClick = (event: MouseEvent<HTMLButtonElement>) => {
++    if (suppressClick.current) {
++      suppressClick.current = false;
++      return;
++    }
++    if ((isMac && event.ctrlKey) || event.button !== 0) return;
++    run(modifierAction(event, event.getModifierState("AltGraph")) ?? oppositeMode(mode));
++  };
++
++  const onContextMenu = (event: MouseEvent<HTMLButtonElement>) => {
++    event.preventDefault();
++    if (longPress.current) {
++      cancelLongPress();
++      suppressClick.current = true;
++    }
++    openMenu({ x: event.clientX, y: event.clientY });
++  };
++
++  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
++    if (event.nativeEvent.isComposing) return;
++    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
++      event.preventDefault();
++      const rect = event.currentTarget.getBoundingClientRect();
++      openMenu({ x: rect.left, y: rect.bottom });
++    } else if (event.key === "Enter") {
++      const action = modifierAction(event, event.getModifierState("AltGraph"));
++      if (action === null) return;
++      event.preventDefault();
++      run(action);
++    }
++  };
++
++  const label =
++    face === "group"
++      ? "Group threads by project"
++      : face === "settings"
++        ? "Sidebar settings"
++        : face === "exclude"
++          ? "Hiding selected projects"
++          : "Showing selected projects";
++  const Icon =
++    face === "group"
++      ? ListTreeIcon
++      : face === "settings"
++        ? SettingsIcon
++        : face === "exclude"
++          ? EyeOffIcon
++          : EyeIcon;
++
++  return (
++    <Tooltip disabled={tooltipDisabled}>
++      <TooltipTrigger
++        render={
++          <button
++            type="button"
++            data-project-row="mode-switch"
++            data-face={face}
++            data-pressed={(face === "group" && grouped) || undefined}
++            aria-label={label}
++            aria-pressed={face === "group" ? grouped : undefined}
++            onClick={onClick}
++            onContextMenu={onContextMenu}
++            onKeyDown={onKeyDown}
++            onPointerDown={onPointerDown}
++            onPointerMove={onPointerMove}
++            onPointerUp={cancelLongPress}
++            onPointerCancel={cancelLongPress}
++            onPointerLeave={cancelLongPress}
++          />
++        }
++      >
++        <Icon className="size-4" />
++      </TooltipTrigger>
++      <TooltipPopup side="bottom">
++        <div data-project-row="keys">
++          <Kbd>Click</Kbd>
++          <span>Show selected ↔ Hide selected</span>
++          <Kbd>{selectionModifier} Click</Kbd>
++          <span>Group by project</span>
++          <Kbd>{altModifier} Click</Kbd>
++          <span>Sidebar settings</span>
++        </div>
++      </TooltipPopup>
++    </Tooltip>
++  );
++}
+diff --git a/apps/web/src/components/sidebar/SidebarProjectRow.browser.test.tsx b/apps/web/src/components/sidebar/SidebarProjectRow.browser.test.tsx
+index 373323c4f3..5c556e97df 100644
+--- a/apps/web/src/components/sidebar/SidebarProjectRow.browser.test.tsx
++++ b/apps/web/src/components/sidebar/SidebarProjectRow.browser.test.tsx
+@@ -20,7 +20,11 @@ import {
+ import type { SidebarProjectBadge } from "../Sidebar.logic";
+ import { SidebarProjectRow } from "./SidebarProjectRow";
+ import { useUiStateStore } from "../../uiStateStore";
+-import { isSidebarBadgeLegendAvailable, openSidebarBadgeLegend } from "../../sidebarBadgeLegend";
++import type { SidebarProjectIconOrder } from "../../sidebarProjectRow";
++
++const settingsMock = vi.hoisted(() => ({
++  updateClientSettings: vi.fn(async (_patch: { readonly boringSidebarEnabled: boolean }) => {}),
++}));
+ 
+ vi.mock(import("../ProjectFavicon"), () => ({ ProjectFavicon: () => <span /> }));
+ vi.mock(import("../../hooks/useSettings"), () => ({
+@@ -28,9 +32,20 @@ vi.mock(import("../../hooks/useSettings"), () => ({
+     select(DEFAULT_CLIENT_SETTINGS)) as never,
+   getClientSettings: () => DEFAULT_CLIENT_SETTINGS,
+   subscribeClientSettings: () => () => undefined,
+-  updateClientSettings: async () => undefined,
++  updateClientSettings: settingsMock.updateClientSettings as never,
+ }));
+ 
++function setup() {
++  settingsMock.updateClientSettings.mockClear();
++  useUiStateStore.setState({
++    sidebarProjectScopeKeys: [],
++    sidebarProjectExcludeKeys: [],
++    sidebarProjectFilterMode: "include",
++  });
++}
++
++const selectionModifier = () => (isMacPlatform(navigator.platform) ? "Meta" : "Control");
++
+ function makeProject(name: string): SidebarProjectSnapshot {
+   const project = {
+     id: ProjectId.make(name),
+@@ -59,7 +74,13 @@ function makeProject(name: string): SidebarProjectSnapshot {
+   };
+ }
+ 
+-function ProjectList({ badges = [] }: { readonly badges?: readonly SidebarProjectBadge[] }) {
++function ProjectList({
++  badges = [],
++  onOpenSidebarSettings = () => undefined,
++}: {
++  readonly badges?: readonly SidebarProjectBadge[];
++  readonly onOpenSidebarSettings?: () => void;
++}) {
+   const projects = ["Alpha", "Beta", "Gamma", "Delta", "Echo", "Foxtrot"].map(makeProject);
+   const state = useUiStateStore();
+   const mode = state.sidebarProjectFilterMode;
+@@ -111,6 +132,7 @@ function ProjectList({ badges = [] }: { readonly badges?: readonly SidebarProjec
+             availableKeys,
+           })
+         }
++        onOpenSidebarSettings={onOpenSidebarSettings}
+         onProjectSettings={(event) => event.preventDefault()}
+       />
+       <ul aria-label="Visible threads">
+@@ -131,7 +153,7 @@ function ProjectList({ badges = [] }: { readonly badges?: readonly SidebarProjec
+ }
+ 
+ it("filters through plain and modifier selections, hide mode and overflow search", async () => {
+-  const modifier = isMacPlatform(navigator.platform) ? "Meta" : "Control";
++  const modifier = selectionModifier();
+   useUiStateStore.setState({
+     sidebarProjectScopeKeys: ["Remote"],
+     sidebarProjectExcludeKeys: ["Remote-hidden"],
+@@ -157,17 +179,13 @@ it("filters through plain and modifier selections, hide mode and overflow search
+   await expect.element(threads.getByText("Alpha thread")).toBeVisible();
+   expect(useUiStateStore.getState().sidebarProjectScopeKeys).toEqual(["Remote"]);
+   await screen.getByRole("button", { name: /^Beta(?:, hidden)?$/, exact: true }).click();
+-  await screen.getByRole("button", { name: "Project filter options" }).click();
+-  await page.getByRole("menuitem", { name: /Clear selection\s*1/ }).click();
++  await screen.getByRole("button", { name: "Clear project selection" }).click();
+   await expect.element(threads.getByText("Alpha thread")).toBeVisible();
+   expect(useUiStateStore.getState().sidebarProjectScopeKeys).toEqual(["Remote"]);
+-  await userEvent.keyboard("{Escape}");
+   await screen.getByRole("button", { name: /^Beta(?:, hidden)?$/, exact: true }).click();
+-  await screen.getByRole("button", { name: "Project filter options" }).click();
+-  await page.getByRole("menuitemradio", { name: "Hide selected" }).click();
++  await screen.getByRole("button", { name: "Showing selected projects" }).click();
+   await expect.element(threads.getByText("Alpha thread")).toBeVisible();
+   await expect.element(threads.getByText("Beta thread")).not.toBeInTheDocument();
+-  await userEvent.keyboard("{Escape}");
+   await screen.getByRole("combobox", { name: /more projects/ }).click();
+   await page.getByRole("combobox", { name: "Search project row" }).fill("Foxtrot");
+   await page.getByRole("option", { name: "Foxtrot" }).click();
+@@ -289,9 +307,7 @@ it("shows the combined badge of hidden projects on +N", async () => {
+   expect(badgeBox.top).toBeGreaterThanOrEqual(moreBox.top - 1);
+   await expect.element(badge as HTMLElement).toBeVisible();
+   await more.hover();
+-  await expect
+-    .element(page.getByText("2 more projects · 1 approval · 1 done · 3 working", { exact: true }))
+-    .toBeVisible();
++  await expect.element(page.getByText("2 more projects", { exact: true })).toBeVisible();
+ });
+ 
+ it("shows a working dot on +N when hidden projects are only working", async () => {
+@@ -311,42 +327,142 @@ it("shows a working dot on +N when hidden projects are only working", async () =
+   expect(badge?.className).toBe("text-info-foreground");
+ });
+ 
+-it("explains the badges from the options menu and from a legend request", async () => {
+-  useUiStateStore.setState({
+-    sidebarProjectScopeKeys: [],
+-    sidebarProjectExcludeKeys: [],
+-    sidebarProjectFilterMode: "include",
+-  });
++it("switches the mode on click, grouping with the selection modifier and settings with left Alt only", async () => {
++  setup();
++  const modifier = selectionModifier();
++  const onOpenSidebarSettings = vi.fn();
++  {
++    await using screen = await render(
++      <ProjectList onOpenSidebarSettings={onOpenSidebarSettings} />,
++    );
++    await screen.getByRole("button", { name: "Showing selected projects" }).click();
++    expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("exclude");
++    await screen.getByRole("button", { name: "Hiding selected projects" }).click();
++    expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("include");
++
++    await userEvent.keyboard("{AltRight>}");
++    const showing = screen.getByRole("button", { name: "Showing selected projects" });
++    await expect.element(showing).toHaveAttribute("data-face", "include");
++    await showing.click();
++    await userEvent.keyboard("{/AltRight}");
++    expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("exclude");
++    expect(onOpenSidebarSettings).not.toHaveBeenCalled();
++    await screen.getByRole("button", { name: "Hiding selected projects" }).click();
++
++    await userEvent.keyboard(`{${modifier}>}`);
++    await screen.getByRole("button", { name: "Group threads by project" }).click();
++    await userEvent.keyboard(`{/${modifier}}`);
++    expect(settingsMock.updateClientSettings).toHaveBeenCalledExactlyOnceWith({
++      boringSidebarEnabled: true,
++    });
++    await userEvent.keyboard("{Alt>}");
++    await screen.getByRole("button", { name: "Sidebar settings" }).click();
++    await userEvent.keyboard("{/Alt}");
++    expect(onOpenSidebarSettings).toHaveBeenCalledOnce();
++    expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("include");
++
++    screen.getByRole("button", { name: "Showing selected projects" }).element().focus();
++    await userEvent.keyboard(`{${modifier}>}{Enter}{/${modifier}}`);
++    expect(settingsMock.updateClientSettings).toHaveBeenCalledTimes(2);
++    await userEvent.keyboard("{Alt>}{Enter}{/Alt}");
++    expect(onOpenSidebarSettings).toHaveBeenCalledTimes(2);
++    await userEvent.keyboard("{Enter}");
++    expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("exclude");
++  }
++  {
++    using _platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux x86_64");
++    await using screen = await render(<ProjectList />);
++    const hiding = screen.getByRole("button", { name: "Hiding selected projects" });
++    const altGraph = { altKey: true, ctrlKey: true };
++    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Control", ...altGraph }));
++    window.dispatchEvent(
++      new KeyboardEvent("keydown", {
++        key: "AltGraph",
++        code: "AltRight",
++        modifierAltGraph: true,
++        ...altGraph,
++      }),
++    );
++    await expect.element(hiding).toHaveAttribute("data-face", "exclude");
++    hiding
++      .element()
++      .dispatchEvent(
++        new MouseEvent("click", { bubbles: true, modifierAltGraph: true, ...altGraph }),
++      );
++    expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("include");
++    window.dispatchEvent(new KeyboardEvent("keyup", { key: "AltGraph", code: "AltRight" }));
++    window.dispatchEvent(new KeyboardEvent("keyup", { key: "Control" }));
++    expect(settingsMock.updateClientSettings).toHaveBeenCalledTimes(2);
++  }
++  {
++    using _platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
++    await using screen = await render(<ProjectList />);
++    window.dispatchEvent(
++      new KeyboardEvent("keydown", {
++        key: "Alt",
++        code: "AltLeft",
++        altKey: true,
++        modifierAltGraph: true,
++      }),
++    );
++    await expect
++      .element(screen.getByRole("button", { name: "Sidebar settings" }))
++      .toHaveAttribute("data-face", "settings");
++    window.dispatchEvent(new KeyboardEvent("keyup", { key: "Alt", code: "AltLeft" }));
++  }
++});
++
++it("shows the held modifier's action anywhere and resets it when the window loses focus", async () => {
++  setup();
++  const modifier = selectionModifier();
+   await using screen = await render(<ProjectList />);
+-  const options = screen.getByRole("button", { name: "Project filter options" });
+-  options.element().focus();
+-  await userEvent.keyboard("{Enter}");
+-  await page.getByRole("menuitem", { name: "Badge legend" }).click();
+-  const legend = page.getByRole("dialog", { name: "Project badges" });
+-  await expect.element(legend).toBeVisible();
+-  const rows = [...legend.element().querySelectorAll("li")].map((row) => ({
+-    label: row.children[1]?.textContent,
+-    badge: row.querySelector('[data-project-row="thread-badge"]')?.className,
+-    count: row.querySelector('[data-project-row="thread-badge"]')?.textContent,
+-  }));
+-  expect(rows).toEqual([
+-    { label: "Approval", badge: "text-warning-foreground", count: "1" },
+-    { label: "Needs input", badge: "text-indigo-600 dark:text-indigo-300", count: "1" },
+-    { label: "Request", badge: "text-guest-foreground", count: "1" },
+-    { label: "Failed", badge: "text-error-foreground", count: "1" },
+-    { label: "Limited", badge: "text-warning-foreground", count: "1" },
+-    { label: "Woke", badge: "text-warning-foreground", count: "1" },
+-    { label: "Done", badge: "text-success-foreground", count: "1" },
+-    { label: "Working", badge: "text-info-foreground", count: "" },
+-  ]);
+-  await userEvent.keyboard("{Escape}");
+-  await expect.element(legend).not.toBeInTheDocument();
+-  await expect.element(options).toHaveFocus();
++  const showing = screen.getByRole("button", { name: "Showing selected projects" });
++  await expect.element(showing).toBeVisible();
++  await userEvent.keyboard(`{${modifier}>}`);
++  await expect
++    .element(screen.getByRole("button", { name: "Group threads by project" }))
++    .toHaveAttribute("aria-pressed", "false");
++  await userEvent.keyboard("{Alt>}");
++  await expect
++    .element(screen.getByRole("button", { name: "Group threads by project" }))
++    .toBeVisible();
++  await userEvent.keyboard(`{/${modifier}}`);
++  await expect.element(screen.getByRole("button", { name: "Sidebar settings" })).toBeVisible();
++  window.dispatchEvent(new Event("blur"));
++  await expect.element(showing).toBeVisible();
++  await userEvent.keyboard("{/Alt}");
++  await expect.element(showing).toBeVisible();
++});
+ 
+-  openSidebarBadgeLegend();
+-  await expect.element(legend).toBeVisible();
+-  await userEvent.keyboard("{Escape}");
+-  await expect.element(legend).not.toBeInTheDocument();
++it("opens the switch's secondary menu from the keyboard with its three actions", async () => {
++  setup();
++  const onOpenSidebarSettings = vi.fn();
++  await using screen = await render(<ProjectList onOpenSidebarSettings={onOpenSidebarSettings} />);
++  const showing = screen.getByRole("button", { name: "Showing selected projects" });
++  showing.element().focus();
++  await userEvent.keyboard("{Shift>}{F10}{/Shift}");
++  await expect
++    .element(page.getByRole("menuitemradio", { name: "Show selected" }))
++    .toHaveAttribute("aria-checked", "true");
++  await expect
++    .element(page.getByRole("menuitemradio", { name: "Group threads by project" }))
++    .toHaveAttribute("aria-checked", "false");
++  await page.getByRole("menuitemradio", { name: "Hide selected" }).click();
++  expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("exclude");
++
++  const hiding = screen.getByRole("button", { name: "Hiding selected projects" });
++  hiding.element().focus();
++  await userEvent.keyboard("{ContextMenu}");
++  await page.getByRole("menuitemradio", { name: "Group threads by project" }).click();
++  expect(settingsMock.updateClientSettings).toHaveBeenCalledExactlyOnceWith({
++    boringSidebarEnabled: true,
++  });
++
++  hiding.element().focus();
++  await userEvent.keyboard("{Shift>}{F10}{/Shift}");
++  await page.getByRole("menuitem", { name: "Sidebar settings" }).click();
++  expect(onOpenSidebarSettings).toHaveBeenCalledOnce();
++  expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("exclude");
+ });
+ 
+ function BareRow({
+@@ -376,36 +492,17 @@ function BareRow({
+         onToggle={() => undefined}
+         onClear={() => undefined}
+         onModeChange={() => undefined}
++        onOpenSidebarSettings={() => undefined}
+         onProjectSettings={() => undefined}
+       />
+     </div>
+   );
+ }
+ 
+-it("offers no legend without projects and never opens it on its own later", async () => {
+-  const projects = ["Alpha", "Beta"].map(makeProject);
+-  await using screen = await render(<BareRow projects={[]} />);
+-  expect(screen.container.querySelector('[data-project-row="root"]')).toBeNull();
+-  expect(isSidebarBadgeLegendAvailable()).toBe(false);
+-  openSidebarBadgeLegend();
+-
+-  await screen.rerender(<BareRow projects={projects} />);
+-  await expect.element(screen.getByRole("group", { name: "Filter projects" })).toBeVisible();
+-  expect(isSidebarBadgeLegendAvailable()).toBe(true);
+-  const legend = page.getByRole("dialog", { name: "Project badges" });
+-  await expect.element(legend).not.toBeInTheDocument();
+-
+-  openSidebarBadgeLegend();
+-  await expect.element(legend).toBeVisible();
+-  await screen.rerender(<BareRow projects={[]} />);
+-  await expect.element(legend).not.toBeInTheDocument();
+-  expect(isSidebarBadgeLegendAvailable()).toBe(false);
+-  await screen.rerender(<BareRow projects={projects} />);
+-  await expect.element(screen.getByRole("group", { name: "Filter projects" })).toBeVisible();
+-  await expect.element(legend).not.toBeInTheDocument();
+-});
+-
+-it("moves a project ahead when its activity breaks a name-ordered tie", async () => {
++it.each<{ order: SidebarProjectIconOrder; expected: string[] }>([
++  { order: "name", expected: ["Alpha", "Zulu"] },
++  { order: "activity", expected: ["Zulu", "Alpha"] },
++])("orders icons by $order when newer activity breaks a name tie", async ({ order, expected }) => {
+   const projects = [
+     { ...makeProject("Zulu"), projectKey: "a" },
+     { ...makeProject("Alpha"), projectKey: "b" },
+@@ -418,9 +515,9 @@ it("moves a project ahead when its activity breaks a name-ordered tie", async ()
+     updatedAt: tiedAt,
+   }));
+   const source = Atom.make(threads);
+-  const activity = Atom.make((get) => buildSidebarProjectActivity(projects, get(source))).pipe(
+-    Atom.withEquality(sameSidebarProjectActivity),
+-  );
++  const activity = Atom.make((get) =>
++    buildSidebarProjectActivity(projects, get(source), order),
++  ).pipe(Atom.withEquality(sameSidebarProjectActivity));
+   const registry = AtomRegistry.make();
+   const release = registry.mount(activity);
+   await using screen = await render(
+@@ -433,9 +530,11 @@ it("moves a project ahead when its activity breaks a name-ordered tie", async ()
+   try {
+     await expect.element(screen.getByRole("button", { name: "Alpha", exact: true })).toBeVisible();
+     expect(iconLabels()).toEqual(["Alpha", "Zulu"]);
++    const tiedActivity = registry.get(activity);
+     registry.set(source, [{ ...threads[0]!, updatedAt: "2026-11-03T11:00:00.000Z" }, threads[1]!]);
++    expect(registry.get(activity) === tiedActivity).toBe(order === "name");
+     await screen.rerender(<BareRow projects={projects} activity={registry.get(activity)} />);
+-    await vi.waitFor(() => expect(iconLabels()).toEqual(["Zulu", "Alpha"]));
++    await vi.waitFor(() => expect(iconLabels()).toEqual(expected));
+   } finally {
+     release();
+     registry.dispose();
+diff --git a/apps/web/src/components/sidebar/SidebarProjectRow.css b/apps/web/src/components/sidebar/SidebarProjectRow.css
+index 57f7150789..8f11ab36b7 100644
+--- a/apps/web/src/components/sidebar/SidebarProjectRow.css
++++ b/apps/web/src/components/sidebar/SidebarProjectRow.css
+@@ -21,7 +21,7 @@
+ [data-project-row="icon"],
+ [data-project-row="more"],
+ [data-project-row="clear"],
+-[data-project-row="menu"] {
++[data-project-row="mode-switch"] {
+   position: relative;
+   display: grid;
+   place-items: center;
+@@ -130,19 +130,33 @@
+   box-shadow: inset 0 0 0 1px var(--border);
+ }
+ 
+-[data-project-row="menu"] {
++[data-project-row="mode-switch"] {
+   width: 28px;
++  touch-action: manipulation;
++  user-select: none;
++  -webkit-touch-callout: none;
+ }
+ 
+-[data-project-row="dot"] {
+-  position: absolute;
+-  top: 4px;
+-  right: 4px;
+-  width: 6px;
+-  height: 6px;
+-  border-radius: 50%;
+-  background: var(--destructive);
+-  box-shadow: 0 0 0 2px var(--sidebar);
++[data-project-row="root"] [data-project-row="mode-switch"][data-face="exclude"] {
++  background: color-mix(in srgb, var(--destructive) 10%, transparent);
++  color: var(--destructive);
++  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--destructive) 55%, transparent);
++}
++
++[data-project-row="root"] [data-project-row="mode-switch"][data-face="exclude"]:hover {
++  background: color-mix(in srgb, var(--destructive) 16%, transparent);
++}
++
++[data-project-row="root"]
++  [data-project-row="mode-switch"]:is([data-face="group"], [data-face="settings"]) {
++  background: var(--sidebar-row-hover);
++  color: var(--sidebar-foreground);
++}
++
++[data-project-row="root"] [data-project-row="mode-switch"][data-pressed] {
++  background: color-mix(in srgb, var(--primary) 20%, transparent);
++  color: color-mix(in srgb, var(--primary) 60%, var(--sidebar-foreground));
++  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 70%, transparent);
+ }
+ 
+ [data-project-row="checkbox"] {
+@@ -166,7 +180,8 @@
+ }
+ 
+ @media (prefers-reduced-motion: no-preference) {
+-  [data-project-row="icon"] {
++  [data-project-row="icon"],
++  [data-project-row="mode-switch"] {
+     transition: background-color 120ms;
+   }
+ 
+@@ -177,33 +192,6 @@
+   }
+ }
+ 
+-[data-project-row="radio"] {
+-  display: grid;
+-  place-items: center;
+-  flex: none;
+-  width: 14px;
+-  height: 14px;
+-  border: 1px solid var(--border);
+-  border-radius: 50%;
+-}
+-
+-[data-project-row="radio"][data-selected] {
+-  color: var(--primary);
+-  border-color: currentColor;
+-}
+-
+-[data-project-row="radio"][data-selected][data-mode="exclude"] {
+-  color: var(--destructive);
+-}
+-
+-[data-project-row="radio"][data-selected]::after {
+-  content: "";
+-  width: 6px;
+-  height: 6px;
+-  border-radius: 50%;
+-  background: currentColor;
+-}
+-
+ [data-project-row="popup-icon"] {
+   position: relative;
+   display: grid;
+@@ -246,31 +234,125 @@
+   padding: 0;
+ }
+ 
+-[data-project-row="legend"] {
++[data-project-row="tooltip"] {
+   display: grid;
+-  gap: 4px;
+-  font-size: 12px;
++  gap: 2px;
++  padding-block: 2px;
++}
++
++[data-project-row="tooltip-header"] {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++}
++
++[data-project-row="tooltip-title"] {
++  min-width: 0;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++  font-weight: 500;
++}
++
++[data-project-row="tooltip-state"] {
++  flex: none;
++  margin-left: auto;
++  padding-inline: 6px;
++  border-radius: 4px;
++  font-size: 11px;
+   line-height: 16px;
++  font-weight: 500;
++  background: color-mix(in srgb, var(--popover-foreground) 8%, transparent);
++  color: var(--muted-foreground);
++}
++
++[data-project-row="tooltip-state"][data-state="Selected"] {
++  background: color-mix(in srgb, var(--primary) 18%, transparent);
++  color: color-mix(in srgb, var(--primary) 60%, var(--popover-foreground));
++}
++
++[data-project-row="tooltip-state"][data-state="Hidden"] {
++  background: color-mix(in srgb, var(--destructive) 14%, transparent);
++  color: var(--destructive-foreground);
++}
++
++[data-project-row="tooltip-meta"] {
++  display: flex;
++  align-items: center;
++  gap: 4px;
++  min-width: 0;
++  color: var(--muted-foreground);
++}
++
++[data-project-row="tooltip-counts"] {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 2px 12px;
++}
++
++[data-project-row="tooltip-counts"] > span {
++  display: inline-flex;
++  align-items: center;
++  gap: 4px;
++  font-variant-numeric: tabular-nums;
++}
++
++[data-project-row="tooltip-dot"] {
++  flex: none;
++  width: 6px;
++  height: 6px;
++  border-radius: 50%;
++  background: currentColor;
++}
++
++[data-project-row="tooltip-count-label"] {
++  color: var(--popover-foreground);
++}
++
++[data-project-row="tooltip-divider"] {
++  margin: 4px -8px;
++  border: 0;
++  border-top: 1px solid var(--border);
+ }
+ 
+-[data-project-row="legend"] ul {
++[data-project-row="keys"] {
+   display: grid;
+-  grid-template-columns: 14px auto 1fr;
+-  column-gap: 8px;
+-  row-gap: 2px;
+-  margin-block: 4px;
++  grid-template-columns: max-content 1fr;
++  align-items: center;
++  gap: 3px 8px;
+ }
+ 
+-[data-project-row="legend"] li {
+-  display: contents;
++[data-project-row="tooltip-note"] {
++  font-size: 11px;
++  color: var(--muted-foreground);
+ }
+ 
+-[data-project-row="legend-swatch"] {
++[data-project-row="tooltip-legend"] {
++  display: grid;
++  grid-template-columns: 1fr 1fr;
++  gap: 3px 14px;
++  margin-block: 2px 4px;
++}
++
++[data-project-row="tooltip-legend"] > span {
++  display: flex;
++  align-items: center;
++  gap: 6px;
++}
++
++[data-project-row="tooltip-swatch"] {
+   display: grid;
+   place-items: center;
++  flex: none;
++  width: 14px;
+   height: 16px;
+ }
+ 
+-[data-project-row="legend-swatch"] [data-project-row="thread-badge"] {
++[data-project-row="tooltip-swatch"] [data-project-row="thread-badge"] {
+   position: static;
++  box-shadow: none;
++}
++
++[data-project-row="tooltip-swatch"] [data-project-row="thread-badge"] > span {
++  color: var(--popover);
+ }
+diff --git a/apps/web/src/components/sidebar/SidebarProjectRow.tsx b/apps/web/src/components/sidebar/SidebarProjectRow.tsx
+index 353c2f044c..f8680c9de9 100644
+--- a/apps/web/src/components/sidebar/SidebarProjectRow.tsx
++++ b/apps/web/src/components/sidebar/SidebarProjectRow.tsx
+@@ -1,12 +1,10 @@
+ import type { EnvironmentId, ResolvedKeybindingsConfig } from "@t3tools/contracts";
+ import { useSidebarProjectRowData } from "../../hooks/useSidebarProjectRowData";
+-import { CheckIcon, EyeIcon, EyeOffIcon, InfoIcon, MoreHorizontalIcon, XIcon } from "lucide-react";
+-import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
++import { CheckIcon, LaptopIcon, XIcon } from "lucide-react";
++import { memo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+ 
+-import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
+ import { observeResize } from "../../lib/observeResize";
+ import { isMacPlatform } from "../../lib/utils";
+-import { onSidebarBadgeLegendRequest } from "../../sidebarBadgeLegend";
+ import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
+ import { fitSidebarProjectRow, type SidebarProjectFilterMode } from "../../sidebarProjectRow";
+ import {
+@@ -14,7 +12,6 @@ import {
+   SIDEBAR_PROJECT_BADGE_LEGEND,
+   summarizeSidebarProjectBadge,
+   type SidebarProjectBadge,
+-  type SidebarProjectBadgeState,
+ } from "../Sidebar.logic";
+ import { ProjectFavicon } from "../ProjectFavicon";
+ import { isProjectPinShortcut, ProjectPinButton } from "../ProjectPinButton";
+@@ -28,29 +25,15 @@ import {
+   ComboboxSearchInput,
+   ComboboxTrigger,
+ } from "../ui/combobox";
+-import {
+-  Menu,
+-  MenuCheckboxItem,
+-  MenuGroup,
+-  MenuGroupLabel,
+-  MenuItem,
+-  MenuPopup,
+-  MenuRadioGroup,
+-  MenuRadioItem,
+-  MenuSeparator,
+-  MenuTrigger,
+-} from "../ui/menu";
+-import { Popover, PopoverPopup, PopoverTitle } from "../ui/popover";
+-import { useSidebar } from "../ui/sidebar";
++import { Kbd } from "../ui/kbd";
+ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
++import { SidebarProjectModeSwitch } from "./SidebarProjectModeSwitch";
+ import "./SidebarProjectRow.css";
+ 
++type ProjectBadgeSummary = ReturnType<typeof summarizeSidebarProjectBadge>;
++
+ const ProjectThreadBadge = memo(
+-  function ProjectThreadBadge({
+-    badge,
+-  }: {
+-    readonly badge: ReturnType<typeof summarizeSidebarProjectBadge>;
+-  }) {
++  function ProjectThreadBadge({ badge }: { readonly badge: ProjectBadgeSummary }) {
+     if (badge === null) return null;
+     return (
+       <span
+@@ -70,40 +53,105 @@ const ProjectThreadBadge = memo(
+     previous.badge?.description === next.badge?.description,
+ );
+ 
+-const BADGE_MEANINGS = {
+-  approval: "An action waits for your approval",
+-  input: "An agent asked you a question",
+-  request: "A guest message waits for you",
+-  failed: "The last run failed",
+-  limited: "Stopped by a usage limit",
+-  woke: "A snoozed thread woke up",
+-  done: "Finished, not opened yet",
+-  working: "Running now",
+-} satisfies Record<SidebarProjectBadgeState, string>;
++function ProjectBadgeCounts({ badge }: { readonly badge: ProjectBadgeSummary }) {
++  if (badge === null) return null;
++  return (
++    <div data-project-row="tooltip-counts">
++      {badge.entries.map((entry) => (
++        <span key={entry.state} className={entry.className}>
++          <span data-project-row="tooltip-dot" />
++          {entry.count} <span data-project-row="tooltip-count-label">{entry.label}</span>
++        </span>
++      ))}
++    </div>
++  );
++}
+ 
+ function ProjectBadgeLegend() {
+   return (
+-    <div data-project-row="legend">
+-      <PopoverTitle>Project badges</PopoverTitle>
+-      <ul>
++    <>
++      <div data-project-row="tooltip-note">Badges</div>
++      <div data-project-row="tooltip-legend">
+         {SIDEBAR_PROJECT_BADGE_LEGEND.map((entry) => (
+-          <li key={entry.state}>
+-            <span data-project-row="legend-swatch">
++          <span key={entry.state}>
++            <span data-project-row="tooltip-swatch">
+               <ProjectThreadBadge badge={entry.badge} />
+             </span>
+-            <span className="font-medium">{entry.label}</span>
+-            <span className="text-muted-foreground">{BADGE_MEANINGS[entry.state]}</span>
+-          </li>
++            {entry.label}
++          </span>
+         ))}
+-      </ul>
+-      <p>Colour: the most urgent state, top of this list first.</p>
+-      <p>Hover an icon for exact counts.</p>
+-      <p>Number: threads needing you, all but Working, up to 9+.</p>
+-      <p>Dot without a number: only working threads.</p>
+-      <p>
+-        Order: pinned, then latest thread activity, then name. Selected projects stay in the row.
+-      </p>
+-      <p>+N: projects that do not fit, with their combined badge.</p>
++      </div>
++      <div data-project-row="tooltip-note">
++        Colour: most urgent state · Number: threads needing you · Dot: only working
++      </div>
++    </>
++  );
++}
++
++function ProjectIconTooltip({
++  project,
++  state,
++  showMachines,
++  threadCount,
++  badge,
++  selectionModifier,
++}: {
++  readonly project: SidebarProjectSnapshot;
++  readonly state: "Selected" | "Shown" | "Hidden";
++  readonly showMachines: boolean;
++  readonly threadCount: number;
++  readonly badge: ProjectBadgeSummary;
++  readonly selectionModifier: string;
++}) {
++  const machineNames = showMachines
++    ? [...new Set(project.memberProjects.map((member) => member.environmentLabel).filter(Boolean))]
++    : [];
++  return (
++    <div data-project-row="tooltip">
++      <div data-project-row="tooltip-header">
++        <span data-project-row="tooltip-title">{project.displayName}</span>
++        <span data-project-row="tooltip-state" data-state={state}>
++          {state}
++        </span>
++      </div>
++      <div data-project-row="tooltip-meta">
++        {machineNames.length > 0 ? <LaptopIcon aria-hidden className="size-3 flex-none" /> : null}
++        <span>
++          {machineNames.length > 0 ? `${machineNames.join(", ")} · ` : ""}
++          {threadCount} threads
++        </span>
++      </div>
++      <ProjectBadgeCounts badge={badge} />
++      <hr data-project-row="tooltip-divider" />
++      <div data-project-row="keys">
++        <Kbd>Click</Kbd>
++        <span>only this</span>
++        <Kbd>{selectionModifier} Click</Kbd>
++        <span>add or remove</span>
++        <Kbd>Right-click</Kbd>
++        <span>project settings</span>
++      </div>
++      <hr data-project-row="tooltip-divider" />
++      <ProjectBadgeLegend />
++    </div>
++  );
++}
++
++function OverflowTooltip({
++  count,
++  selectedCount,
++  badge,
++}: {
++  readonly count: number;
++  readonly selectedCount: number;
++  readonly badge: ProjectBadgeSummary;
++}) {
++  return (
++    <div data-project-row="tooltip">
++      <div data-project-row="tooltip-title">
++        {count} more projects{selectedCount > 0 ? `, ${selectedCount} selected` : ""}
++      </div>
++      <ProjectBadgeCounts badge={badge} />
+     </div>
+   );
+ }
+@@ -125,6 +173,7 @@ interface SidebarProjectRowProps {
+   readonly onToggle: (key: string, additive: boolean) => void;
+   readonly onClear: () => void;
+   readonly onModeChange: (mode: SidebarProjectFilterMode) => void;
++  readonly onOpenSidebarSettings: () => void;
+   readonly onProjectSettings: (
+     event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>,
+     project: SidebarProjectSnapshot,
+@@ -142,27 +191,16 @@ export const SidebarProjectRow = memo(
+     onToggle,
+     onClear,
+     onModeChange,
++    onOpenSidebarSettings,
+     onProjectSettings,
+     canPinProject,
+     onToggleProjectPin,
+     keybindings,
+   }: SidebarProjectRowProps) {
+-    const grouped = useClientSettings((settings) => settings.boringSidebarEnabled);
+     const isMac = isMacPlatform(navigator.platform);
+     const selectionModifier = isMac ? "⌘" : "Ctrl";
+     const highlightedProjectKey = useRef<string | null>(null);
+-    const menuButtonRef = useRef<HTMLButtonElement>(null);
+-    const [legendOpen, setLegendOpen] = useState(false);
+     const hasProjects = projects.length > 0;
+-    // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers this row for command palette legend requests only while it renders, and closes the legend when it stops
+-    useEffect(() => {
+-      if (!hasProjects) return;
+-      const unsubscribe = onSidebarBadgeLegendRequest(() => setLegendOpen(true));
+-      return () => {
+-        unsubscribe();
+-        setLegendOpen(false);
+-      };
+-    }, [hasProjects]);
+     const [width, setWidth] = useState<number | null>(null);
+     const [query, setQuery] = useState("");
+     const [interaction, setInteraction] = useState<{
+@@ -218,6 +256,7 @@ export const SidebarProjectRow = memo(
+     const filteredProjects = orderedProjects.filter((project) =>
+       project.displayName.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+     );
++    const tooltipsDisabled = interaction.overflowOpen || interaction.menuOpen;
+     const updateInteraction = (
+       field: "pointerOver" | "overflowOpen" | "menuOpen",
+       value: boolean,
+@@ -291,16 +330,9 @@ export const SidebarProjectRow = memo(
+                   : selected.size > 0
+                     ? "Hidden"
+                     : "Shown";
+-            const machineNames = [
+-              ...new Set(
+-                project.memberProjects.map((member) => member.environmentLabel).filter(Boolean),
+-              ),
+-            ];
++            const badge = badgeByKey.get(key) ?? null;
+             return (
+-              <Tooltip
+-                key={key}
+-                disabled={interaction.overflowOpen || interaction.menuOpen || legendOpen}
+-              >
++              <Tooltip key={key} disabled={tooltipsDisabled}>
+                 <TooltipTrigger
+                   render={
+                     <button
+@@ -321,19 +353,17 @@ export const SidebarProjectRow = memo(
+                   <span data-project-row="favicon">
+                     <ProjectFavicon project={project} className="size-4" />
+                   </span>
+-                  <ProjectThreadBadge badge={badgeByKey.get(key) ?? null} />
++                  <ProjectThreadBadge badge={badge} />
+                 </TooltipTrigger>
+                 <TooltipPopup side="bottom">
+-                  <div className="font-medium">{projectLabel(project)}</div>
+-                  <div className="text-muted-foreground">
+-                    {showMachines && machineNames.length > 0 ? `${machineNames.join(", ")} · ` : ""}
+-                    {activityByKey.get(key)?.threadCount ?? 0} threads
+-                  </div>
+-                  <div>{state}</div>
+-                  <div className="text-muted-foreground">
+-                    Click: only this · {selectionModifier}-click: add or remove · Right-click:
+-                    settings
+-                  </div>
++                  <ProjectIconTooltip
++                    project={project}
++                    state={state}
++                    showMachines={showMachines}
++                    threadCount={activityByKey.get(key)?.threadCount ?? 0}
++                    badge={badge}
++                    selectionModifier={selectionModifier}
++                  />
+                 </TooltipPopup>
+               </Tooltip>
+             );
+@@ -369,7 +399,7 @@ export const SidebarProjectRow = memo(
+               );
+             }}
+           >
+-            <Tooltip disabled={interaction.overflowOpen || interaction.menuOpen || legendOpen}>
++            <Tooltip disabled={tooltipsDisabled}>
+               <TooltipTrigger
+                 render={
+                   <ComboboxTrigger
+@@ -387,7 +417,13 @@ export const SidebarProjectRow = memo(
+                 +{layout.overflow.length}
+                 <ProjectThreadBadge badge={overflowBadge} />
+               </TooltipTrigger>
+-              <TooltipPopup side="bottom">{overflowLabel}</TooltipPopup>
++              <TooltipPopup side="bottom">
++                <OverflowTooltip
++                  count={layout.overflow.length}
++                  selectedCount={overflowSelectedCount}
++                  badge={overflowBadge}
++                />
++              </TooltipPopup>
+             </Tooltip>
+             <ComboboxPopup
+               align="start"
+@@ -455,88 +491,14 @@ export const SidebarProjectRow = memo(
+             <XIcon className="size-3.5" />
+           </button>
+         ) : null}
+-        <Menu
+-          open={interaction.menuOpen}
+-          onOpenChange={(open) => updateInteraction("menuOpen", open)}
+-        >
+-          <MenuTrigger
+-            render={
+-              <button
+-                ref={menuButtonRef}
+-                type="button"
+-                data-project-row="menu"
+-                aria-label="Project filter options"
+-              />
+-            }
+-          >
+-            <MoreHorizontalIcon className="size-4" />
+-            {mode === "exclude" && selected.size > 0 ? <span data-project-row="dot" /> : null}
+-          </MenuTrigger>
+-          <MenuPopup align="end">
+-            <MenuGroup>
+-              <MenuGroupLabel>Selected projects</MenuGroupLabel>
+-              <MenuRadioGroup
+-                value={mode}
+-                onValueChange={(value) => onModeChange(value === "exclude" ? "exclude" : "include")}
+-              >
+-                <MenuRadioItem value="include">
+-                  <span className="flex items-center gap-2">
+-                    <span
+-                      data-project-row="radio"
+-                      data-selected={mode === "include" || undefined}
+-                      aria-hidden
+-                    />
+-                    <span className="flex-1">Show only selected</span>
+-                    <EyeIcon className="size-4" />
+-                  </span>
+-                </MenuRadioItem>
+-                <MenuRadioItem value="exclude">
+-                  <span className="flex items-center gap-2">
+-                    <span
+-                      data-project-row="radio"
+-                      data-selected={mode === "exclude" || undefined}
+-                      data-mode="exclude"
+-                      aria-hidden
+-                    />
+-                    <span className="flex-1">Hide selected</span>
+-                    <EyeOffIcon className="size-4" />
+-                  </span>
+-                </MenuRadioItem>
+-              </MenuRadioGroup>
+-            </MenuGroup>
+-            <MenuSeparator />
+-            <MenuCheckboxItem
+-              checked={grouped}
+-              onCheckedChange={(checked) => {
+-                void updateClientSettings({ boringSidebarEnabled: checked });
+-              }}
+-            >
+-              Group threads by project
+-            </MenuCheckboxItem>
+-            <MenuSeparator />
+-            <MenuItem disabled={selected.size === 0} onClick={onClear}>
+-              <XIcon />
+-              <span className="flex-1">Clear selection</span>
+-              <span className="text-muted-foreground">{selected.size}</span>
+-            </MenuItem>
+-            <MenuSeparator />
+-            <MenuItem onClick={() => setLegendOpen(true)}>
+-              <InfoIcon />
+-              Badge legend
+-            </MenuItem>
+-          </MenuPopup>
+-        </Menu>
+-        <Popover open={legendOpen} onOpenChange={setLegendOpen}>
+-          <PopoverPopup
+-            anchor={menuButtonRef}
+-            align="end"
+-            width="md"
+-            padding="compact"
+-            finalFocus={menuButtonRef}
+-          >
+-            <ProjectBadgeLegend />
+-          </PopoverPopup>
+-        </Popover>
++        <SidebarProjectModeSwitch
++          mode={mode}
++          isMac={isMac}
++          tooltipDisabled={tooltipsDisabled}
++          onModeChange={onModeChange}
++          onOpenSettings={onOpenSidebarSettings}
++          onMenuOpenChange={(open) => updateInteraction("menuOpen", open)}
++        />
+       </div>
+     );
+   },
+@@ -549,6 +511,7 @@ export const SidebarProjectRow = memo(
+     previous.onToggle === next.onToggle &&
+     previous.onClear === next.onClear &&
+     previous.onModeChange === next.onModeChange &&
++    previous.onOpenSidebarSettings === next.onOpenSidebarSettings &&
+     previous.onProjectSettings === next.onProjectSettings &&
+     previous.canPinProject === next.canPinProject &&
+     previous.onToggleProjectPin === next.onToggleProjectPin &&
+@@ -564,14 +527,5 @@ export const ConnectedSidebarProjectRow = memo(function ConnectedSidebarProjectR
+   readonly environmentIds: ReadonlySet<EnvironmentId> | null;
+ }) {
+   const data = useSidebarProjectRowData(environmentIds);
+-  const { isMobile, open, setOpen } = useSidebar();
+-  const hasProjects = data.projects.length > 0;
+-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a legend request expands the collapsed desktop sidebar so its anchor is on screen; gated like the row's listener so it never offers the legend on its own
+-  useEffect(() => {
+-    if (!hasProjects) return;
+-    return onSidebarBadgeLegendRequest(() => {
+-      if (!isMobile && !open) setOpen(true);
+-    });
+-  }, [hasProjects, isMobile, open, setOpen]);
+   return <SidebarProjectRow {...props} {...data} />;
+ });
+diff --git a/apps/web/src/hooks/useSidebarProjectRowData.ts b/apps/web/src/hooks/useSidebarProjectRowData.ts
+index 6fbe0ce4da..13217179a2 100644
+--- a/apps/web/src/hooks/useSidebarProjectRowData.ts
++++ b/apps/web/src/hooks/useSidebarProjectRowData.ts
+@@ -10,7 +10,7 @@ import {
+   sameSidebarProjectBadges,
+   sameSidebarProjectBadgeThreads,
+ } from "../components/Sidebar.logic";
+-import { useUiStateStore } from "../uiStateStore";
++import { selectSidebarProjectManualOrder, useUiStateStore } from "../uiStateStore";
+ import { Atom } from "effect/reactivity";
+ 
+ import { scopeSidebarProjectGroupsToEnvironment } from "../sidebarEnvironmentScope";
+@@ -18,7 +18,11 @@ import {
+   buildSidebarProjectSnapshots,
+   type SidebarProjectSnapshot,
+ } from "../sidebarProjectGrouping";
+-import { buildSidebarProjectActivity, sameSidebarProjectActivity } from "../sidebarProjectRow";
++import {
++  buildSidebarProjectActivity,
++  sameSidebarProjectActivity,
++  sidebarProjectManualRanks,
++} from "../sidebarProjectRow";
+ import { environmentProjects } from "../state/projects";
+ import { environmentPresentations, environmentSummaries } from "../state/presentation";
+ import { primaryEnvironmentIdAtom } from "../state/primaryEnvironment";
+@@ -27,15 +31,20 @@ import { shallow } from "zustand/vanilla/shallow";
+ import { environmentThreadShells } from "../state/threads";
+ import { getClientSettings, subscribeClientSettings } from "./useSettings";
+ 
+-const localVisitsAtom = Atom.make((get) => {
+-  get.addFinalizer(
+-    useUiStateStore.subscribe((state, previous) => {
+-      if (state.threadLastVisitedAtById !== previous.threadLastVisitedAtById)
+-        get.setSelf(state.threadLastVisitedAtById);
+-    }),
+-  );
+-  return useUiStateStore.getState().threadLastVisitedAtById;
+-});
++function uiStateAtom<T>(select: (state: ReturnType<typeof useUiStateStore.getState>) => T) {
++  return Atom.make((get) => {
++    get.addFinalizer(
++      useUiStateStore.subscribe((state, previous) => {
++        if (select(state) !== select(previous)) get.setSelf(select(state));
++      }),
++    );
++    return select(useUiStateStore.getState());
++  });
++}
++
++const localVisitsAtom = uiStateAtom((state) => state.threadLastVisitedAtById);
++const iconOrderAtom = uiStateAtom((state) => state.sidebarProjectIconOrder);
++const manualOrderAtom = uiStateAtom(selectSidebarProjectManualOrder);
+ 
+ function createProjectBadgesAtom(
+   projectsAtom: Atom.Atom<readonly SidebarProjectSnapshot[]>,
+@@ -84,36 +93,42 @@ const loadedEnvironmentIdsAtom = Atom.make(
+   ),
+ );
+ 
++const unscopedProjectGroupsAtom = Atom.make((get) => {
++  const environments = get(environmentSummaries.identitiesAtom);
++  const labels = new Map(
++    environments.map((environment) => [environment.environmentId, environment.label]),
++  );
++  return buildSidebarProjectSnapshots({
++    projects: get(environmentProjects.projectsAtom),
++    settings: get(groupingSettingsAtom),
++    groupScratchProjects: true,
++    primaryEnvironmentId: get(primaryEnvironmentIdAtom),
++    resolveEnvironmentLabel: (id) => labels.get(id) ?? null,
++  });
++});
++
++const manualRanksAtom = Atom.make((get) =>
++  sidebarProjectManualRanks(get(unscopedProjectGroupsAtom), get(manualOrderAtom)),
++);
++
+ const projectRowAtoms = Atom.family((key: string) => {
+   const environmentIds =
+     key === "" ? null : new Set(key.split("\n").map((id) => EnvironmentId.make(id)));
+-  const projectsAtom = Atom.make((get) => {
+-    const rawProjects = get(environmentProjects.projectsAtom);
+-    const environments = get(environmentSummaries.identitiesAtom);
+-    const primaryEnvironmentId = get(primaryEnvironmentIdAtom);
+-    const settings = get(groupingSettingsAtom);
+-    const labels = new Map(
+-      environments.map((environment) => [environment.environmentId, environment.label]),
+-    );
+-    const groups = buildSidebarProjectSnapshots({
+-      projects: rawProjects,
+-      settings,
+-      groupScratchProjects: true,
+-      primaryEnvironmentId,
+-      resolveEnvironmentLabel: (id) => labels.get(id) ?? null,
+-    });
+-    return pickableProjectGroups(
+-      scopeSidebarProjectGroupsToEnvironment(groups, environmentIds, {
+-        projects: rawProjects,
+-        settings,
+-        primaryEnvironmentId,
++  const projectsAtom = Atom.make((get) =>
++    pickableProjectGroups(
++      scopeSidebarProjectGroupsToEnvironment(get(unscopedProjectGroupsAtom), environmentIds, {
++        projects: get(environmentProjects.projectsAtom),
++        settings: get(groupingSettingsAtom),
++        primaryEnvironmentId: get(primaryEnvironmentIdAtom),
+       }),
+-    );
+-  });
++    ),
++  );
+   const activityAtom = Atom.make((get) =>
+     buildSidebarProjectActivity(
+       get(projectsAtom),
+       get(environmentThreadShells.quietThreadShellsAtom),
++      get(iconOrderAtom),
++      get(manualRanksAtom),
+     ),
+   ).pipe(Atom.withEquality(sameSidebarProjectActivity));
+   return {
+@@ -123,6 +138,13 @@ const projectRowAtoms = Atom.family((key: string) => {
+   };
+ });
+ 
++export function useSidebarProjectIconOrder() {
++  const atoms = projectRowAtoms(environmentIdsKey([]));
++  const projects = useAtomValue(atoms.projectsAtom);
++  const activity = useAtomValue(atoms.activityAtom);
++  return { projects, activity };
++}
++
+ export function useSidebarProjectRowData(environmentIds: ReadonlySet<EnvironmentId> | null) {
+   const atoms = projectRowAtoms(
+     environmentIdsKey(environmentIds === null ? [] : [...environmentIds].sort()),
+diff --git a/apps/web/src/shortcutModifierState.ts b/apps/web/src/shortcutModifierState.ts
+index 5a76d7f508..abb8a0deb8 100644
+--- a/apps/web/src/shortcutModifierState.ts
++++ b/apps/web/src/shortcutModifierState.ts
+@@ -27,27 +27,62 @@ function areShortcutModifierStatesEqual(
+   );
+ }
+ 
++export interface AltKeySideState {
++  leftAltKey: boolean;
++  altGraphKey: boolean;
++}
++
++const EMPTY_ALT_KEY_SIDE_STATE: AltKeySideState = { leftAltKey: false, altGraphKey: false };
++
++function areAltKeySideStatesEqual(left: AltKeySideState, right: AltKeySideState): boolean {
++  return left.leftAltKey === right.leftAltKey && left.altGraphKey === right.altGraphKey;
++}
++
+ export function useShortcutModifierState(ignoreEditable = false): ShortcutModifierState {
+-  const [state, setState] = useState(EMPTY_SHORTCUT_MODIFIER_STATE);
+-  const stateRef = useRef(EMPTY_SHORTCUT_MODIFIER_STATE);
++  return useHeldKeyState(
++    EMPTY_SHORTCUT_MODIFIER_STATE,
++    shortcutModifierStateAfterKeyboardEvent,
++    areShortcutModifierStatesEqual,
++    ignoreEditable,
++  );
++}
+ 
+-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window key, focus, paste and blur listeners that track held shortcut modifiers
++/** Option/Alt + letter types characters, so actions bound to Alt listen to the left key only. */
++export function useAltKeySideState(): AltKeySideState {
++  return useHeldKeyState(
++    EMPTY_ALT_KEY_SIDE_STATE,
++    altKeySideStateAfterKeyboardEvent,
++    areAltKeySideStatesEqual,
++    false,
++  );
++}
++
++function useHeldKeyState<TState>(
++  empty: TState,
++  stateAfterKeyboardEvent: (current: TState, event: KeyboardEvent) => TState,
++  areEqual: (left: TState, right: TState) => boolean,
++  ignoreEditable: boolean,
++): TState {
++  const [state, setState] = useState(empty);
++  const stateRef = useRef(empty);
++
++  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window key, focus, paste and blur listeners that track held keys
+   useEffect(() => {
+-    const updateState = (next: ShortcutModifierState) => {
+-      if (areShortcutModifierStatesEqual(stateRef.current, next)) return;
++    const updateState = (next: TState) => {
++      if (areEqual(stateRef.current, next)) return;
+       stateRef.current = next;
+       setState(next);
+     };
+     const onKeyboardEvent = (event: KeyboardEvent) => {
+       updateState(
+         ignoreEditable && isEditableFocused(event.target)
+-          ? EMPTY_SHORTCUT_MODIFIER_STATE
+-          : shortcutModifierStateAfterKeyboardEvent(stateRef.current, event),
++          ? empty
++          : stateAfterKeyboardEvent(stateRef.current, event),
+       );
+     };
+     // Dictation tools can omit Meta keyup after synthetic paste, leaving jump hints stuck.
+     const onResetEvent = () => {
+-      updateState(EMPTY_SHORTCUT_MODIFIER_STATE);
++      updateState(empty);
+     };
+ 
+     const onFocus = (event: FocusEvent) => {
+@@ -65,11 +100,25 @@ export function useShortcutModifierState(ignoreEditable = false): ShortcutModifi
+       window.removeEventListener("paste", onResetEvent, true);
+       window.removeEventListener("blur", onResetEvent);
+     };
+-  }, [ignoreEditable]);
++  }, [empty, stateAfterKeyboardEvent, areEqual, ignoreEditable]);
+ 
+   return state;
+ }
+ 
++function altKeySideStateAfterKeyboardEvent(
++  current: AltKeySideState,
++  event: KeyboardEvent,
++): AltKeySideState {
++  const next = {
++    leftAltKey:
++      event.code === "AltLeft"
++        ? event.type === "keydown"
++        : current.leftAltKey && (event.code === "AltRight" || event.altKey),
++    altGraphKey: event.getModifierState("AltGraph"),
++  };
++  return areAltKeySideStatesEqual(current, next) ? current : next;
++}
++
+ function normalizeModifierKey(key: string): keyof ShortcutModifierState | null {
+   switch (key) {
+     case "Meta":
+diff --git a/apps/web/src/sidebarBadgeLegend.browser.test.tsx b/apps/web/src/sidebarBadgeLegend.browser.test.tsx
+deleted file mode 100644
+index f5277327f7..0000000000
+--- a/apps/web/src/sidebarBadgeLegend.browser.test.tsx
++++ /dev/null
+@@ -1,33 +0,0 @@
+-import { expect, it, vi } from "vite-plus/test";
+-import { page, userEvent } from "vite-plus/test/browser";
+-
+-import { render } from "../test/render";
+-import { openCommandPalette } from "./commandPaletteBus";
+-import { useCommandPaletteStore } from "./commandPaletteStore";
+-import { CommandPalette } from "./components/CommandPalette";
+-import { onSidebarBadgeLegendRequest } from "./sidebarBadgeLegend";
+-
+-vi.mock("./state/entities", async (original) => ({
+-  ...(await original<typeof import("./state/entities")>()),
+-  useProjects: () => [],
+-  useVisibleThreadShells: () => [],
+-}));
+-
+-it("offers the project badge legend in the palette only while a project row listens", async () => {
+-  useCommandPaletteStore.setState(useCommandPaletteStore.getInitialState(), true);
+-  await using _screen = await render(<CommandPalette>{null}</CommandPalette>);
+-  openCommandPalette({ query: "badge legend" });
+-  await expect
+-    .element(page.getByPlaceholder("Search commands, projects, and threads..."))
+-    .toHaveFocus();
+-  expect(page.getByRole("option", { name: /Show project badge legend/ }).all()).toHaveLength(0);
+-  await userEvent.keyboard("{Escape}");
+-  await expect.element(page.getByTestId("command-palette")).not.toBeInTheDocument();
+-
+-  const openLegend = vi.fn();
+-  using _listener = { [Symbol.dispose]: onSidebarBadgeLegendRequest(openLegend) };
+-  openCommandPalette({ query: "badge legend" });
+-  await page.getByRole("option", { name: /Show project badge legend/ }).click();
+-  await expect.element(page.getByTestId("command-palette")).not.toBeInTheDocument();
+-  await vi.waitFor(() => expect(openLegend).toHaveBeenCalledOnce());
+-});
+diff --git a/apps/web/src/sidebarBadgeLegend.ts b/apps/web/src/sidebarBadgeLegend.ts
+deleted file mode 100644
+index d31dc60033..0000000000
+--- a/apps/web/src/sidebarBadgeLegend.ts
++++ /dev/null
+@@ -1,30 +0,0 @@
+-const listeners = new Set<() => void>();
+-let queuedFromPalette = false;
+-
+-export function onSidebarBadgeLegendRequest(listener: () => void) {
+-  listeners.add(listener);
+-  return () => {
+-    listeners.delete(listener);
+-  };
+-}
+-
+-export function isSidebarBadgeLegendAvailable() {
+-  return listeners.size > 0;
+-}
+-
+-export function openSidebarBadgeLegend() {
+-  for (const listener of listeners) listener();
+-}
+-
+-export function queueSidebarBadgeLegendFromPalette() {
+-  queuedFromPalette = true;
+-}
+-
+-/** Runs at the palette's focus restoration milestone so the palette cannot take focus back. */
+-export function openQueuedSidebarBadgeLegend(): boolean {
+-  if (!queuedFromPalette) return false;
+-  queuedFromPalette = false;
+-  if (!isSidebarBadgeLegendAvailable()) return false;
+-  window.requestAnimationFrame(openSidebarBadgeLegend);
+-  return true;
+-}
+diff --git a/apps/web/src/sidebarProjectRow.test.ts b/apps/web/src/sidebarProjectRow.test.ts
+index a1ec978473..4292e3c0c7 100644
+--- a/apps/web/src/sidebarProjectRow.test.ts
++++ b/apps/web/src/sidebarProjectRow.test.ts
+@@ -1,6 +1,7 @@
+ import { describe, expect, it } from "vite-plus/test";
+ import { EnvironmentId, ProjectId } from "@t3tools/contracts";
+ 
++import { scopeSidebarProjectGroupsToEnvironment } from "./sidebarEnvironmentScope";
+ import { buildSidebarProjectSnapshots } from "./sidebarProjectGrouping";
+ 
+ import {
+@@ -11,13 +12,19 @@ import {
+   fitSidebarProjectRow,
+   includeSidebarProjectSelection,
+   isInSidebarProjectScope,
++  legacyProjectCwdPreferenceKey,
+   revealSidebarProject,
+   sameSidebarProjectActivity,
++  SIDEBAR_PROJECT_ICON_ORDERS,
++  sidebarProjectManualMove,
++  sidebarProjectManualRanks,
+   sidebarProjectMemberScope,
++  sortSidebarProjectGroups,
+   switchSidebarProjectMode,
+   toggleSidebarProjectKey,
+   toggleSidebarProjectSelection,
+ } from "./sidebarProjectRow";
++import { reorderProjects, useUiStateStore } from "./uiStateStore";
+ 
+ describe("sidebar project activity", () => {
+   it("orders and counts scoped members, falling back to project activity only without threads", () => {
+@@ -27,6 +34,7 @@ describe("sidebar project activity", () => {
+         displayName: "Shared",
+         pinned: false,
+         updatedAt: "2026-10-30T12:00:00Z",
++        memberProjects: [],
+         memberProjectRefs: [
+           { environmentId: "mac", projectId: "a" },
+           { environmentId: "linux", projectId: "a" },
+@@ -37,6 +45,7 @@ describe("sidebar project activity", () => {
+         displayName: "Empty",
+         pinned: false,
+         updatedAt: "2026-10-30T11:00:00Z",
++        memberProjects: [],
+         memberProjectRefs: [{ environmentId: "mac", projectId: "b" }],
+       },
+     ];
+@@ -61,7 +70,7 @@ describe("sidebar project activity", () => {
+         archivedAt: null,
+       },
+     ];
+-    const activity = buildSidebarProjectActivity(projects, threads);
++    const activity = buildSidebarProjectActivity(projects, threads, "activity");
+     expect(activity).toEqual([
+       { projectKey: "empty", threadCount: 0, lastActivity: Date.parse("2026-10-30T11:00:00Z") },
+       { projectKey: "shared", threadCount: 2, lastActivity: Date.parse("2026-10-30T10:00:00Z") },
+@@ -72,6 +81,7 @@ describe("sidebar project activity", () => {
+         memberProjectRefs: project.memberProjectRefs.filter((ref) => ref.environmentId === "mac"),
+       })),
+       threads,
++      "activity",
+     );
+     expect(scoped[1]).toEqual({
+       projectKey: "shared",
+@@ -79,26 +89,29 @@ describe("sidebar project activity", () => {
+       lastActivity: Date.parse("2026-10-30T09:00:00Z"),
+     });
+ 
+-    const unchangedOrder = buildSidebarProjectActivity(projects, [
+-      { ...threads[0]!, updatedAt: "2026-10-30T10:30:00Z" },
+-      ...threads.slice(1),
+-    ]);
++    const unchangedOrder = buildSidebarProjectActivity(
++      projects,
++      [{ ...threads[0]!, updatedAt: "2026-10-30T10:30:00Z" }, ...threads.slice(1)],
++      "activity",
++    );
+     expect(sameSidebarProjectActivity(activity, unchangedOrder)).toBe(true);
+-    const reordered = buildSidebarProjectActivity(projects, [
+-      { ...threads[0]!, updatedAt: "2026-10-30T12:30:00Z" },
+-      ...threads.slice(1),
+-    ]);
++    const reordered = buildSidebarProjectActivity(
++      projects,
++      [{ ...threads[0]!, updatedAt: "2026-10-30T12:30:00Z" }, ...threads.slice(1)],
++      "activity",
++    );
+     expect(sameSidebarProjectActivity(activity, reordered)).toBe(false);
+     expect(sameSidebarProjectActivity(activity, scoped)).toBe(false);
+   });
+ 
+-  it("orders pinned first, then latest activity, then display name, and reports a broken tie", () => {
++  it("orders pinned first, then by name, latest activity or the manual order, and reports a changed order", () => {
+     const projects = [
+       {
+         projectKey: "a",
+         displayName: "Zulu",
+         pinned: false,
+         updatedAt: "2026-11-03T09:00:00Z",
++        memberProjects: [{ physicalProjectKey: "mac:/a", workspaceRoot: "/a" }],
+         memberProjectRefs: [{ environmentId: "mac", projectId: "a" }],
+       },
+       {
+@@ -106,28 +119,256 @@ describe("sidebar project activity", () => {
+         displayName: "Alpha",
+         pinned: false,
+         updatedAt: "2026-11-03T09:00:00Z",
++        memberProjects: [{ physicalProjectKey: "mac:/b", workspaceRoot: "/b" }],
+         memberProjectRefs: [{ environmentId: "mac", projectId: "b" }],
+       },
++      {
++        projectKey: "c",
++        displayName: "Alpha",
++        pinned: false,
++        updatedAt: "2026-11-03T09:00:00Z",
++        memberProjects: [{ physicalProjectKey: "mac:/c", workspaceRoot: "/c" }],
++        memberProjectRefs: [{ environmentId: "mac", projectId: "c" }],
++      },
+     ];
+     const threads = (zuluActiveAt: string) => [
+       { environmentId: "mac", projectId: "a", updatedAt: zuluActiveAt, archivedAt: null },
+       { environmentId: "mac", projectId: "b", updatedAt: "2026-11-03T10:00:00Z", archivedAt: null },
++      { environmentId: "mac", projectId: "c", updatedAt: "2026-11-03T10:00:00Z", archivedAt: null },
+     ];
+     const keys = (activity: readonly { readonly projectKey: string }[]) =>
+       activity.map((entry) => entry.projectKey);
++    const alphaPinned = [projects[0]!, { ...projects[1]!, pinned: true }, projects[2]!];
+ 
+-    const tied = buildSidebarProjectActivity(projects, threads("2026-11-03T10:00:00Z"));
+-    expect(keys(tied)).toEqual(["b", "a"]);
+-    const zuluNewer = buildSidebarProjectActivity(projects, threads("2026-11-03T11:00:00Z"));
+-    expect(keys(zuluNewer)).toEqual(["a", "b"]);
++    const byName = buildSidebarProjectActivity(projects, threads("2026-11-03T10:00:00Z"), "name");
++    expect(keys(byName)).toEqual(["b", "c", "a"]);
++    const byNameZuluNewer = buildSidebarProjectActivity(
++      projects,
++      threads("2026-11-03T11:00:00Z"),
++      "name",
++    );
++    expect(keys(byNameZuluNewer)).toEqual(["b", "c", "a"]);
++    expect(sameSidebarProjectActivity(byName, byNameZuluNewer)).toBe(true);
++    const byNamePinned = buildSidebarProjectActivity(
++      [projects[0]!, projects[1]!, { ...projects[2]!, pinned: true }],
++      threads("2026-11-03T11:00:00Z"),
++      "name",
++    );
++    expect(keys(byNamePinned)).toEqual(["c", "b", "a"]);
++    expect(sameSidebarProjectActivity(byNameZuluNewer, byNamePinned)).toBe(false);
++
++    const tied = buildSidebarProjectActivity(projects, threads("2026-11-03T10:00:00Z"), "activity");
++    expect(keys(tied)).toEqual(["b", "c", "a"]);
++    const zuluNewer = buildSidebarProjectActivity(
++      projects,
++      threads("2026-11-03T11:00:00Z"),
++      "activity",
++    );
++    expect(keys(zuluNewer)).toEqual(["a", "b", "c"]);
+     expect(sameSidebarProjectActivity(tied, zuluNewer)).toBe(false);
++    const activityPinned = buildSidebarProjectActivity(
++      alphaPinned,
++      threads("2026-11-03T11:00:00Z"),
++      "activity",
++    );
++    expect(keys(activityPinned)).toEqual(["b", "a", "c"]);
++    expect(sameSidebarProjectActivity(zuluNewer, activityPinned)).toBe(false);
+ 
+-    const alphaPinned = buildSidebarProjectActivity(
+-      [projects[0]!, { ...projects[1]!, pinned: true }],
++    const manualRanks = sidebarProjectManualRanks(projects, [
++      legacyProjectCwdPreferenceKey("/c"),
++      "mac:/a",
++      "mac:/gone",
++    ]);
++    const manual = buildSidebarProjectActivity(
++      projects,
++      threads("2026-11-03T10:00:00Z"),
++      "manual",
++      manualRanks,
++    );
++    expect(keys(manual)).toEqual(["c", "a", "b"]);
++    const manualZuluNewer = buildSidebarProjectActivity(
++      projects,
++      threads("2026-11-03T11:00:00Z"),
++      "manual",
++      manualRanks,
++    );
++    expect(sameSidebarProjectActivity(manual, manualZuluNewer)).toBe(true);
++    const manualPinned = buildSidebarProjectActivity(
++      alphaPinned,
+       threads("2026-11-03T11:00:00Z"),
++      "manual",
++      manualRanks,
+     );
+-    expect(keys(alphaPinned)).toEqual(["b", "a"]);
+-    expect(sameSidebarProjectActivity(zuluNewer, alphaPinned)).toBe(false);
++    expect(keys(manualPinned)).toEqual(["b", "c", "a"]);
++    expect(sameSidebarProjectActivity(manualZuluNewer, manualPinned)).toBe(false);
++
++    for (const order of SIDEBAR_PROJECT_ICON_ORDERS) {
++      const groups = sortSidebarProjectGroups(
++        alphaPinned,
++        threads("2026-11-03T11:00:00Z"),
++        order,
++        manualRanks,
++      );
++      expect(keys(groups)).toEqual(
++        keys(
++          buildSidebarProjectActivity(
++            alphaPinned,
++            threads("2026-11-03T11:00:00Z"),
++            order,
++            manualRanks,
++          ),
++        ),
++      );
++    }
++  });
++
++  it("moves a project within its section of the manual order", () => {
++    const group = (projectKey: string, pinned: boolean, ...roots: string[]) => ({
++      projectKey,
++      displayName: projectKey,
++      pinned,
++      updatedAt: "2026-11-03T09:00:00Z",
++      memberProjects: roots.map((root) => ({
++        physicalProjectKey: `mac:${root}`,
++        workspaceRoot: root,
++      })),
++      memberProjectRefs: [],
++    });
++    const groups = [
++      group("pinned", true, "/pinned"),
++      group("zulu", false, "/zulu"),
++      group("alpha", false, "/alpha"),
++      group("shared", false, "/shared", "/shared-copy"),
++    ];
++    const stored = [
++      "mac:/zulu",
++      "linux:/offline",
++      legacyProjectCwdPreferenceKey("/alpha"),
++      "mac:/shared-copy",
++      "mac:/alpha",
++    ];
++    const sortManually = (projectOrder: readonly string[], listed = groups) =>
++      sortSidebarProjectGroups(
++        listed,
++        [],
++        "manual",
++        sidebarProjectManualRanks(listed, projectOrder),
++      );
++    const moveAndSort = (activeKey: string, overKey: string, listed = groups, order = stored) => {
++      const move = sidebarProjectManualMove(listed, order, activeKey, overKey);
++      if (move === null) return null;
++      const { projectOrder } = reorderProjects(
++        { ...useUiStateStore.getInitialState(), projectOrder: order },
++        ...move,
++      );
++      return {
++        projectOrder,
++        keys: sortManually(projectOrder, listed).map((entry) => entry.projectKey),
++      };
++    };
++
++    expect(sortManually(stored)).toEqual(groups);
++    expect(moveAndSort("zulu", "alpha")).toEqual({
++      projectOrder: [
++        "linux:/offline",
++        legacyProjectCwdPreferenceKey("/alpha"),
++        "mac:/zulu",
++        "mac:/shared-copy",
++        "mac:/alpha",
++        "mac:/pinned",
++      ],
++      keys: ["pinned", "alpha", "zulu", "shared"],
++    });
++    expect(moveAndSort("alpha", "shared")).toEqual({
++      projectOrder: [
++        "mac:/zulu",
++        "linux:/offline",
++        "mac:/shared-copy",
++        legacyProjectCwdPreferenceKey("/alpha"),
++        "mac:/alpha",
++        "mac:/pinned",
++      ],
++      keys: ["pinned", "zulu", "shared", "alpha"],
++    });
++    expect(moveAndSort("shared", "pinned")?.keys).toEqual(["pinned", "shared", "zulu", "alpha"]);
++    expect(moveAndSort("pinned", "zulu")).toBeNull();
++    expect(moveAndSort("alpha", "alpha")).toBeNull();
++
++    const notesOn = (projectKey: string, machine: string) => ({
++      ...group(projectKey, false),
++      memberProjects: [{ physicalProjectKey: `${machine}:/notes`, workspaceRoot: "/notes" }],
++    });
++    const sameRoot = [
++      group("first", false, "/first"),
++      notesOn("laptop", "mac"),
++      notesOn("server", "linux"),
++    ];
++    const legacyOnly = ["/first", "/notes"].map(legacyProjectCwdPreferenceKey);
++    expect(sortManually(legacyOnly, sameRoot).map((entry) => entry.projectKey)).toEqual([
++      "first",
++      "laptop",
++      "server",
++    ]);
++    expect(moveAndSort("laptop", "server", sameRoot, legacyOnly)).toEqual({
++      projectOrder: [legacyProjectCwdPreferenceKey("/first"), "linux:/notes", "mac:/notes"],
++      keys: ["first", "server", "laptop"],
++    });
++    expect(moveAndSort("server", "first", sameRoot, legacyOnly)?.keys).toEqual([
++      "server",
++      "first",
++      "laptop",
++    ]);
++  });
++
++  it("keeps the manual order of logical projects when the view narrows to another machine", () => {
++    const project = (name: string, environmentId: EnvironmentId) => ({
++      id: ProjectId.make(`${name}-${environmentId}`),
++      environmentId,
++      title: name,
++      workspaceRoot: `/${environmentId}/${name}`,
++      repositoryIdentity: {
++        canonicalKey: `github.com/example/${name}`,
++        locator: {
++          source: "git-remote" as const,
++          remoteName: "origin",
++          remoteUrl: `https://github.com/example/${name}.git`,
++        },
++      },
++      defaultModelSelection: null,
++      createdAt: "2026-01-01T00:00:00Z",
++      updatedAt: "2026-01-01T00:00:00Z",
++      scripts: [],
++    });
++    const local = EnvironmentId.make("local");
++    const remote = EnvironmentId.make("remote");
++    const input = {
++      projects: [local, remote].flatMap((id) => [project("alpha", id), project("zulu", id)]),
++      settings: {
++        sidebarProjectGroupingMode: "repository" as const,
++        sidebarProjectGroupingOverrides: {},
++      },
++      primaryEnvironmentId: local,
++    };
++    const unscoped = buildSidebarProjectSnapshots({
++      ...input,
++      resolveEnvironmentLabel: () => null,
++    });
++    const localKey = (name: string) =>
++      unscoped
++        .find((group) => group.displayName === name)!
++        .memberProjects.find((member) => member.environmentId === local)!.physicalProjectKey;
++    const ranks = sidebarProjectManualRanks(unscoped, [localKey("zulu"), localKey("alpha")]);
++    const names = (environmentIds: ReadonlySet<EnvironmentId> | null) =>
++      sortSidebarProjectGroups(
++        scopeSidebarProjectGroupsToEnvironment(unscoped, environmentIds, input),
++        [],
++        "manual",
++        ranks,
++      ).map((group) => group.displayName);
++
++    expect(names(null)).toEqual(["zulu", "alpha"]);
++    expect(names(new Set([remote]))).toEqual(["zulu", "alpha"]);
++    expect(names(new Set([local, remote]))).toEqual(["zulu", "alpha"]);
+   });
+ });
+ 
+diff --git a/apps/web/src/sidebarProjectRow.ts b/apps/web/src/sidebarProjectRow.ts
+index 131d2f9a34..e232ff826e 100644
+--- a/apps/web/src/sidebarProjectRow.ts
++++ b/apps/web/src/sidebarProjectRow.ts
+@@ -1,3 +1,5 @@
++import { normalizeProjectPathForComparison } from "@t3tools/client-runtime/state/projects";
++
+ import {
+   resolveSidebarProjectScopeKey,
+   resolveSidebarProjectScopeKeys,
+@@ -5,30 +7,150 @@ import {
+ 
+ export type SidebarProjectFilterMode = "include" | "exclude";
+ 
++export const SIDEBAR_PROJECT_ICON_ORDERS = ["name", "activity", "manual"] as const;
++export type SidebarProjectIconOrder = (typeof SIDEBAR_PROJECT_ICON_ORDERS)[number];
++
++export function isSidebarProjectIconOrder(value: unknown): value is SidebarProjectIconOrder {
++  return SIDEBAR_PROJECT_ICON_ORDERS.some((order) => order === value);
++}
++
++const LEGACY_PROJECT_CWD_PREFERENCE_PREFIX = "legacy-project-cwd:";
++
++export function legacyProjectCwdPreferenceKey(cwd: string): string {
++  return `${LEGACY_PROJECT_CWD_PREFERENCE_PREFIX}${normalizeProjectPathForComparison(cwd)}`;
++}
++
+ export interface SidebarProjectActivity {
+   readonly projectKey: string;
+   readonly threadCount: number;
+   readonly lastActivity: number;
+ }
+ 
+-export function buildSidebarProjectActivity(
+-  groups: ReadonlyArray<{
+-    readonly projectKey: string;
+-    readonly displayName: string;
+-    readonly pinned: boolean;
+-    readonly updatedAt: string;
+-    readonly memberProjectRefs: ReadonlyArray<{
+-      readonly environmentId: string;
+-      readonly projectId: string;
+-    }>;
+-  }>,
+-  threads: ReadonlyArray<{
++interface SidebarProjectOrderMember {
++  readonly physicalProjectKey: string;
++  readonly workspaceRoot: string;
++}
++
++interface SidebarProjectOrderGroup {
++  readonly projectKey: string;
++  readonly displayName: string;
++  readonly pinned: boolean;
++  readonly updatedAt: string;
++  readonly memberProjects: ReadonlyArray<SidebarProjectOrderMember>;
++  readonly memberProjectRefs: ReadonlyArray<{
+     readonly environmentId: string;
+     readonly projectId: string;
+-    readonly archivedAt: string | null;
+-    readonly updatedAt: string;
+-  }>,
+-): SidebarProjectActivity[] {
++  }>;
++}
++
++interface SidebarProjectOrderThread {
++  readonly environmentId: string;
++  readonly projectId: string;
++  readonly archivedAt: string | null;
++  readonly updatedAt: string;
++}
++
++interface SidebarProjectIconSortEntry<TGroup extends SidebarProjectOrderGroup> {
++  readonly group: TGroup;
++  readonly activity: SidebarProjectActivity;
++}
++
++type SidebarProjectManualGroup = Pick<SidebarProjectOrderGroup, "memberProjects">;
++
++export type SidebarProjectManualRanks = ReadonlyMap<string, number>;
++
++const NO_MANUAL_RANKS: SidebarProjectManualRanks = new Map();
++const UNRANKED = Number.MAX_SAFE_INTEGER;
++
++function sidebarProjectManualKeys(group: SidebarProjectManualGroup): ReadonlySet<string> {
++  return new Set(
++    group.memberProjects.flatMap((member) => [
++      member.physicalProjectKey,
++      legacyProjectCwdPreferenceKey(member.workspaceRoot),
++    ]),
++  );
++}
++
++function firstIndexByKey(manualOrder: readonly string[]): ReadonlyMap<string, number> {
++  const indexByKey = new Map<string, number>();
++  for (const [index, key] of manualOrder.entries()) {
++    if (!indexByKey.has(key)) indexByKey.set(key, index);
++  }
++  return indexByKey;
++}
++
++function storedManualRank(
++  group: SidebarProjectManualGroup,
++  indexByKey: ReadonlyMap<string, number>,
++): number | undefined {
++  const indexes = [...sidebarProjectManualKeys(group)].flatMap((key) => indexByKey.get(key) ?? []);
++  return indexes.length === 0 ? undefined : Math.min(...indexes);
++}
++
++/** Takes groups before machine scoping: a scoped group may hold none of the stored keys. */
++export function sidebarProjectManualRanks(
++  unscopedGroups: ReadonlyArray<SidebarProjectManualGroup>,
++  manualOrder: readonly string[],
++): SidebarProjectManualRanks {
++  if (manualOrder.length === 0) return NO_MANUAL_RANKS;
++  const indexByKey = firstIndexByKey(manualOrder);
++  return new Map(
++    unscopedGroups.flatMap((group) => {
++      const rank = storedManualRank(group, indexByKey);
++      return rank === undefined
++        ? []
++        : group.memberProjects.map((member) => [member.physicalProjectKey, rank] as const);
++    }),
++  );
++}
++
++function manualRankOf(group: SidebarProjectManualGroup, ranks: SidebarProjectManualRanks) {
++  return Math.min(
++    UNRANKED,
++    ...group.memberProjects.map((member) => ranks.get(member.physicalProjectKey) ?? UNRANKED),
++  );
++}
++
++function compareByName(
++  left: Pick<SidebarProjectOrderGroup, "displayName" | "projectKey">,
++  right: Pick<SidebarProjectOrderGroup, "displayName" | "projectKey">,
++) {
++  return (
++    left.displayName.localeCompare(right.displayName) ||
++    left.projectKey.localeCompare(right.projectKey)
++  );
++}
++
++function compareSidebarProjectIcons(
++  order: SidebarProjectIconOrder,
++  manualRanks: SidebarProjectManualRanks,
++) {
++  type Entry = SidebarProjectIconSortEntry<SidebarProjectOrderGroup>;
++  const byName = (left: Entry, right: Entry) =>
++    Number(right.group.pinned) - Number(left.group.pinned) ||
++    compareByName(left.group, right.group);
++  switch (order) {
++    case "name":
++      return byName;
++    case "activity":
++      return (left: Entry, right: Entry) =>
++        Number(right.group.pinned) - Number(left.group.pinned) ||
++        right.activity.lastActivity - left.activity.lastActivity ||
++        byName(left, right);
++    case "manual":
++      return (left: Entry, right: Entry) =>
++        Number(right.group.pinned) - Number(left.group.pinned) ||
++        manualRankOf(left.group, manualRanks) - manualRankOf(right.group, manualRanks) ||
++        byName(left, right);
++  }
++}
++
++function sortSidebarProjectEntries<TGroup extends SidebarProjectOrderGroup>(
++  groups: ReadonlyArray<TGroup>,
++  threads: ReadonlyArray<SidebarProjectOrderThread>,
++  order: SidebarProjectIconOrder,
++  manualRanks: SidebarProjectManualRanks,
++): SidebarProjectIconSortEntry<TGroup>[] {
+   const groupKeyByMember = new Map(
+     groups.flatMap((group) =>
+       group.memberProjectRefs.map(
+@@ -58,14 +180,86 @@ export function buildSidebarProjectActivity(
+         }),
+       },
+     }))
+-    .sort(
+-      (left, right) =>
+-        Number(right.group.pinned) - Number(left.group.pinned) ||
+-        right.activity.lastActivity - left.activity.lastActivity ||
+-        left.group.displayName.localeCompare(right.group.displayName) ||
+-        left.group.projectKey.localeCompare(right.group.projectKey),
+-    )
+-    .map((entry) => entry.activity);
++    .sort(compareSidebarProjectIcons(order, manualRanks));
++}
++
++export function buildSidebarProjectActivity(
++  groups: ReadonlyArray<SidebarProjectOrderGroup>,
++  threads: ReadonlyArray<SidebarProjectOrderThread>,
++  order: SidebarProjectIconOrder,
++  manualRanks: SidebarProjectManualRanks = NO_MANUAL_RANKS,
++): SidebarProjectActivity[] {
++  return sortSidebarProjectEntries(groups, threads, order, manualRanks).map(
++    (entry) => entry.activity,
++  );
++}
++
++export function sortSidebarProjectGroups<TGroup extends SidebarProjectOrderGroup>(
++  groups: ReadonlyArray<TGroup>,
++  threads: ReadonlyArray<SidebarProjectOrderThread>,
++  order: SidebarProjectIconOrder,
++  manualRanks: SidebarProjectManualRanks,
++): TGroup[] {
++  return sortSidebarProjectEntries(groups, threads, order, manualRanks).map((entry) => entry.group);
++}
++
++/** A legacy cwd key can match one path on two machines; splitting it lets a drop move just one. */
++function splitSharedManualKeys(
++  orderedGroups: ReadonlyArray<SidebarProjectManualGroup>,
++  manualOrder: readonly string[],
++): string[] {
++  const ownersByKey = new Map<string, SidebarProjectManualGroup[]>();
++  for (const group of orderedGroups) {
++    for (const key of sidebarProjectManualKeys(group)) {
++      ownersByKey.set(key, [...(ownersByKey.get(key) ?? []), group]);
++    }
++  }
++  return [
++    ...new Set(
++      manualOrder.flatMap((key) => {
++        const owners = ownersByKey.get(key) ?? [];
++        return owners.length > 1
++          ? owners.flatMap((group) =>
++              group.memberProjects.map((member) => member.physicalProjectKey),
++            )
++          : [key];
++      }),
++    ),
++  ];
++}
++
++export function sidebarProjectManualMove(
++  orderedGroups: ReadonlyArray<
++    Pick<SidebarProjectOrderGroup, "projectKey" | "displayName" | "pinned" | "memberProjects">
++  >,
++  manualOrder: readonly string[],
++  activeKey: string,
++  overKey: string,
++): [current: string[], dragged: string[], target: string[]] | null {
++  const activeIndex = orderedGroups.findIndex((group) => group.projectKey === activeKey);
++  const droppedIndex = orderedGroups.findIndex((group) => group.projectKey === overKey);
++  if (activeIndex < 0 || droppedIndex < 0) return null;
++  const pinned = orderedGroups[activeIndex]!.pinned;
++  const sectionStart = pinned ? 0 : orderedGroups.findIndex((group) => !group.pinned);
++  const sectionEnd = pinned
++    ? orderedGroups.findLastIndex((group) => group.pinned)
++    : orderedGroups.length - 1;
++  const overIndex = Math.min(sectionEnd, Math.max(sectionStart, droppedIndex));
++  if (activeIndex === overIndex) return null;
++  const storedOrder = splitSharedManualKeys(orderedGroups, manualOrder);
++  const indexByKey = firstIndexByKey(storedOrder);
++  const current = [
++    ...storedOrder,
++    ...orderedGroups
++      .filter((group) => storedManualRank(group, indexByKey) === undefined)
++      .toSorted(compareByName)
++      .flatMap((group) => group.memberProjects.map((member) => member.physicalProjectKey)),
++  ];
++  const draggedKeys = sidebarProjectManualKeys(orderedGroups[activeIndex]!);
++  const overKeys = sidebarProjectManualKeys(orderedGroups[overIndex]!);
++  const target = current.find((key) => overKeys.has(key));
++  if (target === undefined) return null;
++  return [current, current.filter((key) => draggedKeys.has(key)), [target]];
+ }
+ 
+ export function sameSidebarProjectActivity(
+diff --git a/apps/web/src/uiStateStore.test.ts b/apps/web/src/uiStateStore.test.ts
+index c33b6877a1..56b81c6ff0 100644
+--- a/apps/web/src/uiStateStore.test.ts
++++ b/apps/web/src/uiStateStore.test.ts
+@@ -28,6 +28,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
+     sidebarEnvironmentScopeKeys: [],
+     sidebarProjectExcludeKeys: [],
+     sidebarProjectFilterMode: "include",
++    sidebarProjectIconOrder: "name",
+     threadLastVisitedAtById: {},
+     threadChangedFilesExpandedById: {},
+     defaultAdvertisedEndpointKey: null,
+@@ -227,7 +228,7 @@ describe("parsePersistedState", () => {
+   });
+ 
+   it.each([undefined, null, [], "invalid", 42])(
+-    "ignores invalid project scope maps and mode %s",
++    "ignores invalid project scope maps, mode and icon order %s",
+     (value) => {
+       const parsed = parsePersistedState({
+         sidebarEnvironmentScopeKeys: ["__proto__"],
+@@ -238,7 +239,11 @@ describe("parsePersistedState", () => {
+           PersistedUiState["sidebarProjectFilterMode"]
+         >,
+         sidebarProjectExcludeKeys: value as unknown as string[],
++        sidebarProjectIconOrder: value as unknown as NonNullable<
++          PersistedUiState["sidebarProjectIconOrder"]
++        >,
+       });
++      expect(parsed.sidebarProjectIconOrder).toBe("name");
+       expect(parsed.sidebarProjectScopeKeys).toEqual([]);
+       expect(parsed).not.toHaveProperty("sidebarProjectScopesByEnvironment");
+       expect(parsed.sidebarProjectFilterMode).toBe("include");
+@@ -301,6 +306,7 @@ describe("parsePersistedState", () => {
+       sidebarEnvironmentScopeKeys: [],
+       sidebarProjectExcludeKeys: [],
+       sidebarProjectFilterMode: "include",
++      sidebarProjectIconOrder: "name",
+       pullRequestMergeMethod: "merge",
+       threadChangedFilesExpandedById: {
+         "environment:thread-1": {
+@@ -389,6 +395,7 @@ describe("uiStateStore persistence", () => {
+         },
+       },
+       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
++      sidebarProjectIconOrder: "activity",
+     });
+ 
+     persistState(state);
+@@ -410,6 +417,7 @@ describe("uiStateStore persistence", () => {
+       sidebarEnvironmentScopeKeys: [],
+       sidebarProjectExcludeKeys: [],
+       sidebarProjectFilterMode: "include",
++      sidebarProjectIconOrder: "activity",
+       threadChangedFilesExpansionVersion: 2,
+       threadChangedFilesExpandedById: {
+         "environment:thread-1": {
+diff --git a/apps/web/src/uiStateStore.ts b/apps/web/src/uiStateStore.ts
+index 597305d07b..5c3d9dc589 100644
+--- a/apps/web/src/uiStateStore.ts
++++ b/apps/web/src/uiStateStore.ts
+@@ -1,12 +1,14 @@
+ import { Debouncer } from "@tanstack/react-pacer";
+ import type { PullRequestMergeMethod } from "@t3tools/contracts";
+ import { create } from "zustand";
+-import { normalizeProjectPathForComparison } from "@t3tools/client-runtime/state/projects";
+ 
+ import {
++  isSidebarProjectIconOrder,
++  legacyProjectCwdPreferenceKey,
+   revealSidebarProject,
+   switchSidebarProjectMode,
+   type SidebarProjectFilterMode,
++  type SidebarProjectIconOrder,
+   type SidebarProjectSelection,
+ } from "./sidebarProjectRow";
+ 
+@@ -39,6 +41,7 @@ export interface PersistedUiState {
+   sidebarEnvironmentScopeKeys?: string[];
+   sidebarProjectExcludeKeys?: string[];
+   sidebarProjectFilterMode?: SidebarProjectFilterMode;
++  sidebarProjectIconOrder?: SidebarProjectIconOrder;
+   sidebarProjectScopesByEnvironment?: Record<string, SidebarProjectSelection>;
+   threadChangedFilesExpansionVersion?: number;
+   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
+@@ -52,6 +55,7 @@ export interface UiProjectState {
+   sidebarEnvironmentScopeKeys: string[];
+   sidebarProjectExcludeKeys: string[];
+   sidebarProjectFilterMode: SidebarProjectFilterMode;
++  sidebarProjectIconOrder: SidebarProjectIconOrder;
+ }
+ 
+ export interface UiThreadState {
+@@ -77,19 +81,17 @@ const initialState: UiState = {
+   sidebarEnvironmentScopeKeys: [],
+   sidebarProjectExcludeKeys: [],
+   sidebarProjectFilterMode: "include",
++  sidebarProjectIconOrder: "name",
+   threadLastVisitedAtById: {},
+   threadChangedFilesExpandedById: {},
+   defaultAdvertisedEndpointKey: null,
+   pullRequestMergeMethod: "merge",
+ };
+ 
+-const LEGACY_PROJECT_CWD_PREFERENCE_PREFIX = "legacy-project-cwd:";
+ const LEGACY_PROJECT_EXPANSION_DEFAULT_KEY = "legacy-project-expansion-default";
+ let legacyKeysCleanedUp = false;
+ 
+-export function legacyProjectCwdPreferenceKey(cwd: string): string {
+-  return `${LEGACY_PROJECT_CWD_PREFERENCE_PREFIX}${normalizeProjectPathForComparison(cwd)}`;
+-}
++export { legacyProjectCwdPreferenceKey };
+ 
+ function sanitizeStringArray(value: unknown): string[] {
+   if (!Array.isArray(value)) {
+@@ -218,6 +220,9 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
+         ? [...(selection?.exclude ?? [])]
+         : topLevelSelection.exclude,
+     sidebarProjectFilterMode,
++    sidebarProjectIconOrder: isSidebarProjectIconOrder(parsed.sidebarProjectIconOrder)
++      ? parsed.sidebarProjectIconOrder
++      : initialState.sidebarProjectIconOrder,
+     pullRequestMergeMethod: isPullRequestMergeMethod(parsed.pullRequestMergeMethod)
+       ? parsed.pullRequestMergeMethod
+       : initialState.pullRequestMergeMethod,
+@@ -300,6 +305,7 @@ export function persistState(state: UiState): void {
+         sidebarEnvironmentScopeKeys: state.sidebarEnvironmentScopeKeys,
+         sidebarProjectExcludeKeys: state.sidebarProjectExcludeKeys,
+         sidebarProjectFilterMode: state.sidebarProjectFilterMode,
++        sidebarProjectIconOrder: state.sidebarProjectIconOrder,
+         threadChangedFilesExpansionVersion: THREAD_CHANGED_FILES_EXPANSION_VERSION,
+         threadChangedFilesExpandedById: state.threadChangedFilesExpandedById,
+         pullRequestMergeMethod: state.pullRequestMergeMethod,
+@@ -457,6 +463,18 @@ export function setSidebarProjectFilterMode(
+   };
+ }
+ 
++function setSidebarProjectIconOrder(state: UiState, order: SidebarProjectIconOrder): UiState {
++  return state.sidebarProjectIconOrder === order
++    ? state
++    : { ...state, sidebarProjectIconOrder: order };
++}
++
++const NO_MANUAL_PROJECT_ORDER: readonly string[] = [];
++
++export function selectSidebarProjectManualOrder(state: UiState): readonly string[] {
++  return state.sidebarProjectIconOrder === "manual" ? state.projectOrder : NO_MANUAL_PROJECT_ORDER;
++}
++
+ function sidebarEnvironmentScopeStorageKey(keys: readonly string[]): string | null {
+   const sorted = [...new Set(keys)].sort();
+   return sorted.length < 2 ? (sorted[0] ?? null) : JSON.stringify(sorted);
+@@ -600,6 +618,7 @@ interface UiStateStore extends UiState {
+     mode: SidebarProjectFilterMode,
+     scope: Parameters<typeof switchSidebarProjectMode>[3],
+   ) => void;
++  setSidebarProjectIconOrder: (order: SidebarProjectIconOrder) => void;
+   revealSidebarProjectScope: (
+     projectKey: string,
+     revealEnvironment: boolean,
+@@ -632,6 +651,7 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
+     set((state) => setSidebarProjectExcludeKeys(state, projectKeys)),
+   setSidebarProjectFilterMode: (mode, scope) =>
+     set((state) => setSidebarProjectFilterMode(state, mode, scope)),
++  setSidebarProjectIconOrder: (order) => set((state) => setSidebarProjectIconOrder(state, order)),
+   revealSidebarProjectScope: (projectKey, revealEnvironment, availableKeys, resolvedSelection) =>
+     set((state) =>
+       revealSidebarProjectScope(
+diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
+index 12af9b9aa8..40250daff9 100644
+--- a/docs/user/thread-sidebar.md
++++ b/docs/user/thread-sidebar.md
+@@ -182,21 +182,30 @@ for projects on other machines stay saved.
+ select only the focused project; **⌘/Ctrl+Enter** adds or removes it. The current
+ Show only or Hide mode is preserved, including when choosing a project in **+N**.
+ Right-click an icon to open its project settings. **+N** opens the remaining
+-projects with a search field. Pinned projects come first; pin a project in **+N**
++projects with a search field. Pinned projects come first, then the others by name;
++to order them by latest thread activity or in your own order instead, change **Settings → Labs → Project
++icon order**. With **Manual**, drag projects in the list below that setting, or move a focused
++handle with Space and the arrow keys; projects you have not placed yet follow by name. This choice
++is saved on each device. Pin a project in **+N**
+ or use the pin shortcut while its icon or search result is focused. Archived projects
+ are left out of the filter choices.
+ Project badges count threads needing attention; a static dot means only working threads, and **+N** combines the projects that do not fit in the row.
+-For a key to the badge colours and the icon order, choose **Badge legend** in the **⋯** menu or
+-**Show project badge legend** in the command palette.
+-
+-In the **⋯** menu, choose **Show only selected** or **Hide selected**. Switching
++Hover an icon for its counts per state and a key to the badge colours.
++
++The eye button at the end of the row switches between **Show selected** and **Hide
++selected**; in Hide mode it turns red. Hold **⌘** (Ctrl outside macOS) and click it
++to turn **Group threads by project** on or off, or hold the left **⌥** (left Alt) and click it to
++open the sidebar settings. The right ⌥ and AltGr type characters, so they leave the button alone.
++The button shows the action while you hold the key.
++Right-click it, press Shift+F10, or long-press it on a touch screen for a menu with
++the same three actions. Switching
+ modes restores that mode's saved selection if any of its projects are visible.
+ Otherwise, it adds the current visible selection to that mode's saved projects on
+ other machines. Both modes keep their saved selections. One project filter is shared across
+ all machine selections. Changing machines keeps the filter; projects unavailable
+ on the selected machines have no effect. If none of the Show only projects is
+-available, all threads on the selected machines are shown. **×** or **Clear
+-selection** clears only the visible selection. Choose **All machines**, then clear the project selection to remove
++available, all threads on the selected machines are shown. **×** clears only the
++visible selection. Choose **All machines**, then clear the project selection to remove
+ selections across machines. The thread menu's **Filter by project** selects that
+ project among the visible projects and switches to Show only. From Hide, it keeps
+ the saved Show only selections on other machines and leaves the Hide list saved.
+@@ -204,7 +213,7 @@ the saved Show only selections on other machines and leaves the Hide list saved.
+ reveals its project. Opening a thread in an archived project clears visible Show only
+ selections so the thread can appear, while keeping selections for unavailable projects.
+ 
+-**Group threads by project** in the same menu controls the same setting as
++**Group threads by project** on the eye button controls the same setting as
+ **Settings → Labs → Boring sidebar (group by project)**.
+ 
+ ### Group threads by project (beta)
+-- 
+2.50.1 (Apple Git-155)
+
