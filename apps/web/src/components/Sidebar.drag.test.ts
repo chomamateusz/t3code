@@ -220,6 +220,7 @@ describe("sidebar collision detection", () => {
       inFolder("b1", "beta"),
       inFolder("a1", "alpha"),
       inFolder("a2", "alpha"),
+      inFolder("c1", "gamma"),
       settledHeader,
       marker("settled-placeholder"),
     ];
@@ -227,6 +228,7 @@ describe("sidebar collision detection", () => {
     const headerSpaceAbove = new Map([
       ["b1", 33],
       ["a1", 33],
+      ["c1", 33],
       [sidebarListItemId(settledHeader), 300],
     ]);
     let shift = 0;
@@ -238,15 +240,15 @@ describe("sidebar collision detection", () => {
     const rectOf = (id: string) =>
       rects[items.findIndex((item) => sidebarListItemId(item) === id)]!;
     const detector = createSidebarCollisionDetection(
-      (id) => resolveSidebarFolderDropTarget(items, "a1", id, ["b1", "a1", "a2"]) !== null,
+      (id) => resolveSidebarFolderDropTarget(items, "a1", id, ["b1", "a1", "a2", "c1"]) !== null,
       { items },
     );
-    const overAt = (y: number) => {
+    const overAt = (y: number, grabOffset = rectOf("a1").height / 2) => {
       const source = rectOf("a1");
       const collisionRect = {
         ...source,
-        top: y - source.height / 2,
-        bottom: y + source.height / 2,
+        top: y - grabOffset,
+        bottom: y - grabOffset + source.height,
       };
       return detector({
         active: {
@@ -273,6 +275,7 @@ describe("sidebar collision detection", () => {
     const collapsedFolderHeaderY = ownLast.bottom + 17;
 
     expect(overAt(ownLast.top + ownLast.height / 2)).toBe("a2");
+    expect(overAt(ownLast.bottom - 2, 2)).toBe("a2");
     expect(overAt(ownLast.bottom + 2)).toBeUndefined();
     expect(overAt(collapsedFolderHeaderY)).toBeUndefined();
     expect(overAt(rectOf("a1").top - 17)).toBeUndefined();
