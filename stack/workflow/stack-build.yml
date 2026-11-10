@@ -52,13 +52,14 @@ jobs:
           path: local-stack
           persist-credentials: false
 
-      - name: Check out the installed workflow
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          path: installed
-          sparse-checkout: .github/workflows/stack-build.yml
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
+      # actions/checkout fails on this ref: it carries upstream's .repos gitlinks without a .gitmodules entry.
+      - name: Fetch the installed workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p installed/.github/workflows
+          gh api "repos/${GITHUB_REPOSITORY}/contents/.github/workflows/stack-build.yml?ref=${GITHUB_SHA}" \
+            -H "Accept: application/vnd.github.raw" > installed/.github/workflows/stack-build.yml
 
       - name: Compare the installed workflow with its source
         id: drift
