@@ -132,6 +132,12 @@ If dragging is unavailable for one environment, update the T3 Code server runnin
 environment. Pinned and active reordering require server support. Threads from older servers keep
 their default order until the server is updated.
 
+On web and desktop, hovering or focusing a thread card shows **Mark read** next to **Snooze**
+while the thread has a finished turn or a wake you have not seen, and **Mark unread** once you
+have seen its latest finished turn. Mark read clears **Done** and **Woke** on all your devices, as
+opening the thread would, without leaving the thread you are in. The thread's menu offers the
+same choice.
+
 To generate a fresh title from the conversation, open a thread's menu and choose
 **Regenerate title**. The action is unavailable while title generation is in progress
 or when the connected environment needs a server update.

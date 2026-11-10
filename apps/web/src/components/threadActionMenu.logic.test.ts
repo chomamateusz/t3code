@@ -12,6 +12,7 @@ const baseState: ThreadActionMenuState = {
   isSnoozed: false,
   canSnoozeNow: true,
   isRegeneratingTitle: false,
+  isUnread: false,
   isRunning: false,
   supports: {
     settlement: true,
@@ -35,6 +36,7 @@ describe("buildThreadActionMenuItems", () => {
         isPinned: reversed,
         isSettled: reversed,
         isSnoozed: reversed,
+        isUnread: reversed,
       });
       const expected = reversed
         ? [
@@ -58,6 +60,11 @@ describe("buildThreadActionMenuItems", () => {
             "delete",
           ];
       expect(items.filter((item) => item.disabled).map((item) => item.id)).toEqual(expected);
+      expect(items.find((item) => item.id.startsWith("mark-"))).toMatchObject(
+        reversed
+          ? { id: "mark-read", label: "Mark read" }
+          : { id: "mark-unread", label: "Mark unread" },
+      );
       expect(
         items.find((item) => item.id === "snooze")?.children?.every((child) => child.disabled) ??
           true,

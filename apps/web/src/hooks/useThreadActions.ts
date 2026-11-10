@@ -22,7 +22,13 @@ import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
 import { useRouter } from "@tanstack/react-router";
 
-import { getFallbackThreadIdAfterDelete, pinOrderKeyBetween } from "../components/Sidebar.logic";
+import {
+  getFallbackThreadIdAfterDelete,
+  pinOrderKeyBetween,
+  resolveSidebarThreadReadAction,
+  resolveThreadLastVisitedAt,
+  type SidebarThreadReadAction,
+} from "../components/Sidebar.logic";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { environmentSession, readEnvironmentScope } from "../state/session";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -217,6 +223,41 @@ function useMarkThreadUnread() {
   };
 }
 
+// Sends what the open thread's visit tracker (createThreadVisitTracker) would, minus the open.
+function useMarkThreadRead() {
+  const visitThreadMutation = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
+  const markThreadVisited = useUiStateStore((state) => state.markThreadVisited);
+  return (target: ScopedThreadRef) => {
+    const thread = readThreadShell(target);
+    if (!thread) return;
+    const wokeAt = threadWokeAt(thread, { now: new Date().toISOString() });
+    const visitedAt =
+      wokeAt !== null && Date.parse(wokeAt) > Date.parse(thread.updatedAt)
+        ? wokeAt
+        : thread.updatedAt;
+    if (thread.lastVisitedAt === undefined) {
+      markThreadVisited(scopedThreadKey(target), visitedAt);
+      return;
+    }
+    void visitThreadMutation({
+      environmentId: target.environmentId,
+      input: { threadId: target.threadId, visitedAt },
+    });
+  };
+}
+
+export function readThreadReadAction(target: ScopedThreadRef): SidebarThreadReadAction | null {
+  const thread = readThreadShell(target);
+  if (!thread) return null;
+  return resolveSidebarThreadReadAction(thread, {
+    lastVisitedAt: resolveThreadLastVisitedAt(
+      thread.lastVisitedAt,
+      useUiStateStore.getState().threadLastVisitedAtById[scopedThreadKey(target)],
+    ),
+    wokeAt: threadWokeAt(thread, { now: new Date().toISOString() }),
+  });
+}
+
 export function useAcknowledgeThreadWoke() {
   const visitThreadMutation = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
   const markThreadVisited = useUiStateStore((state) => state.markThreadVisited);
@@ -311,6 +352,7 @@ export function useThreadActions() {
     reportFailure: false,
   });
   const markThreadUnread = useMarkThreadUnread();
+  const markThreadRead = useMarkThreadRead();
   const createProjectFromThread = useAtomCommand(projectEnvironment.createFromThread, {
     reportFailure: false,
   });
@@ -964,6 +1006,7 @@ export function useThreadActions() {
     reorderPinnedThread,
     reorderActiveThread,
     markThreadUnread,
+    markThreadRead,
     setThreadAutoSettle,
     turnThreadIntoProject: (target: ScopedThreadRef) =>
       createProjectFromThread({

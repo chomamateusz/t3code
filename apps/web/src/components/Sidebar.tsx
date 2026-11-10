@@ -137,6 +137,7 @@ import {
 } from "../threadSelectionStore";
 import {
   canTurnThreadIntoProject,
+  readThreadReadAction,
   useAcknowledgeThreadWoke,
   useThreadActions,
 } from "../hooks/useThreadActions";
@@ -224,6 +225,7 @@ import {
   useThreadJumpHintsVisible,
   type SidebarListItem,
   type SidebarSection,
+  type SidebarThreadReadAction,
   resolveSidebarRowThreadId,
 } from "./Sidebar.logic";
 import {
@@ -966,6 +968,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     reorderPinnedThread,
     reorderActiveThread,
     markThreadUnread,
+    markThreadRead,
     archiveThread,
     deleteThread,
   } = useThreadActions();
@@ -1037,6 +1040,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((s) => s.rangeSelectTo);
   const acknowledgeWoke = useAcknowledgeThreadWoke();
+  const applyThreadReadAction = useStableCallback(
+    (threadRef: ScopedThreadRef, action: SidebarThreadReadAction) => {
+      if (action === "mark-read") markThreadRead(threadRef);
+      else markThreadUnread(threadRef);
+    },
+  );
   const routeTarget = useThreadRouteTarget();
   const routeDraftThread = useComposerDraftStore((store) =>
     routeTarget?.kind === "draft" ? store.getDraftSession(routeTarget.draftId) : null,
@@ -2776,6 +2785,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               isSnoozed,
               canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
               isRegeneratingTitle,
+              isUnread: readThreadReadAction(threadRef) === "mark-read",
               isRunning: !threadRuntimeCanArchive(thread.runtime),
               canShareWithGuest: appAtomRegistry.get(
                 canShareWithGuestAtom(threadRef.environmentId),
@@ -2926,8 +2936,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             }
             return;
           }
+          case "mark-read":
           case "mark-unread":
-            markThreadUnread(threadRef);
+            applyThreadReadAction(threadRef, clicked.value);
             return;
           case "copy-path":
             if (!threadWorkspacePath) {
@@ -3403,6 +3414,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             onUnsnooze={attemptUnsnooze}
                             onUnpin={attemptUnpin}
                             onAcknowledgeWoke={acknowledgeWoke}
+                            onReadAction={applyThreadReadAction}
                             onFileDropThreads={handleThreadFileDrop}
                           />
                         );

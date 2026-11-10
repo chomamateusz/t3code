@@ -944,6 +944,17 @@ export function resolveSidebarThreadTopStatus(
   return { status, isUnread, isWoke, topStatus };
 }
 
+export type SidebarThreadReadAction = "mark-read" | "mark-unread";
+
+export function resolveSidebarThreadReadAction(
+  thread: Parameters<typeof resolveSidebarThreadTopStatus>[0],
+  input: Parameters<typeof resolveSidebarThreadTopStatus>[1],
+): SidebarThreadReadAction | null {
+  const { isUnread, isWoke } = resolveSidebarThreadTopStatus(thread, input);
+  if (isUnread || isWoke) return "mark-read";
+  return thread.latestRun?.completedAt ? "mark-unread" : null;
+}
+
 const PROJECT_BADGE_STATES = [
   "approval",
   "input",

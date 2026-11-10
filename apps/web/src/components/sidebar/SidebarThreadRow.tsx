@@ -44,6 +44,8 @@ import {
   CircleDotDashedIcon,
   ClockIcon,
   GitBranchIcon,
+  MailCheckIcon,
+  MailOpenIcon,
   MessageCircleQuestionIcon,
   PinIcon,
   PinOffIcon,
@@ -83,8 +85,10 @@ import {
   animateSidebarLayoutChanges,
   resolveSidebarRowAccessibility,
   type SidebarDropVerb,
+  resolveSidebarThreadReadAction,
   resolveSidebarThreadTopStatus,
   resolveThreadLastVisitedAt,
+  type SidebarThreadReadAction,
   shouldRecedeSidebarThread,
   resolveWorkingStartedAt,
   useRetainedValue,
@@ -429,6 +433,36 @@ function SnoozeMenuButton(props: {
   );
 }
 
+const READ_ACTION_BUTTONS = {
+  "mark-read": { label: "Mark read", Icon: MailCheckIcon },
+  "mark-unread": { label: "Mark unread", Icon: MailOpenIcon },
+} as const;
+
+function ReadActionButton(props: {
+  action: SidebarThreadReadAction;
+  onClick: (event: ReactMouseEvent) => void;
+}) {
+  const { label, Icon } = READ_ACTION_BUTTONS[props.action];
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={label}
+            onClick={props.onClick}
+            onDoubleClick={(event) => event.stopPropagation()}
+            className="inline-flex h-full cursor-pointer items-center gap-0.5 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
+          />
+        }
+      >
+        <Icon className="size-3" />
+      </TooltipTrigger>
+      <TooltipPopup>{label}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 type SortableThreadRowBag = Pick<
   ReturnType<typeof useSortable>,
   "listeners" | "setNodeRef" | "transform" | "transition" | "isDragging"
@@ -586,6 +620,7 @@ type SidebarThreadRowProps = {
   onUnsnooze: (threadRef: ScopedThreadRef) => void;
   onUnpin: (threadRef: ScopedThreadRef) => void;
   onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
+  onReadAction: (threadRef: ScopedThreadRef, action: SidebarThreadReadAction) => void;
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
 };
 
@@ -638,6 +673,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     onContextMenu,
     onAcknowledgeWoke,
     onFileDropThreads,
+    onReadAction,
     onRenameTitleChange,
     onSettle,
     onActionSweepStart,
@@ -724,6 +760,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     isSelected,
   });
   const isWokeStatus = topStatus?.icon === "woke";
+  const readAction = resolveSidebarThreadReadAction(thread, {
+    lastVisitedAt,
+    wokeAt: props.wokeAt,
+  });
 
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
     effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
@@ -819,6 +859,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         addFolders: () => {},
       })
     : null;
+  const handleReadActionClick = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (readAction !== null) onReadAction(threadRef, readAction);
+  };
   const handleSettleClick = (event: ReactMouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1502,7 +1547,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
                     )}
                   </span>
-                  {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
+                  {props.settlementSupported ||
+                  showSnoozeButton ||
+                  hasUnsentDraft ||
+                  readAction !== null ? (
                     <span
                       className={cn(
                         // Mouse clicks leave Settle focused; focus-within would pin controls over
@@ -1527,6 +1575,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           </TooltipTrigger>
                           <TooltipPopup side="top">Discard draft</TooltipPopup>
                         </Tooltip>
+                      ) : null}
+                      {readAction !== null ? (
+                        <ReadActionButton action={readAction} onClick={handleReadActionClick} />
                       ) : null}
                       {showSnoozeButton ? (
                         <SnoozeMenuButton

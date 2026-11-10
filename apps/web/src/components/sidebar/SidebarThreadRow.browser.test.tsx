@@ -71,6 +71,7 @@ function Row(props: {
         onUnsnooze={noop}
         onUnpin={noop}
         onAcknowledgeWoke={noop}
+        onReadAction={noop}
       />
       <li>Outside</li>
     </ul>

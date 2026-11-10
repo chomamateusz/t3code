@@ -120,6 +120,7 @@ vi.mock("./useSettings", () => ({
 }));
 vi.mock("./useThreadActions", () => ({
   canTurnThreadIntoProject: () => false,
+  readThreadReadAction: () => null,
   useThreadActions: () =>
     Object.fromEntries(
       [

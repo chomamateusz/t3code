@@ -17,6 +17,7 @@ import {
   resolveSidebarSweepKeys,
   resolveSidebarThreadStatus,
   resolveSidebarThreadTopStatus,
+  resolveSidebarThreadReadAction,
   buildSidebarProjectBadges,
   countSidebarProjectBadgeThreads,
   sidebarBadgeWakeClock,
@@ -2026,6 +2027,65 @@ describe("sidebar project thread badges", () => {
     expect(badgeClock).toBe(thread.snoozedUntil);
     expect(countSidebarProjectBadgeThreads([thread], { now: badgeClock! }).woke).toBe(1);
     expect(sidebarBadgeWakeClock([stillSnoozed], now)).toBeNull();
+  });
+
+  const afterCompletion = "2026-03-09T10:05:30.000Z";
+  const wake = "2026-03-09T10:06:00.000Z";
+  it.each([
+    {
+      name: "an unseen completion",
+      patch: {},
+      lastVisitedAt: visited,
+      wokeAt: null,
+      expected: "mark-read",
+    },
+    {
+      name: "a wake after the visit",
+      patch: {},
+      lastVisitedAt: afterCompletion,
+      wokeAt: wake,
+      expected: "mark-read",
+    },
+    {
+      name: "a seen completion",
+      patch: {},
+      lastVisitedAt: afterCompletion,
+      wokeAt: null,
+      expected: "mark-unread",
+    },
+    { name: "a seen wake", patch: {}, lastVisitedAt: now, wokeAt: wake, expected: "mark-unread" },
+    {
+      name: "a settled wake",
+      patch: { settledOverride: "settled" },
+      lastVisitedAt: afterCompletion,
+      wokeAt: wake,
+      expected: "mark-unread",
+    },
+    {
+      name: "a completion never opened",
+      patch: {},
+      lastVisitedAt: undefined,
+      wokeAt: null,
+      expected: "mark-unread",
+    },
+    {
+      name: "no turn",
+      patch: { latestRun: null },
+      lastVisitedAt: visited,
+      wokeAt: null,
+      expected: null,
+    },
+    {
+      name: "a first turn still running",
+      patch: { latestRun: makeLatestRun({ completedAt: null }) },
+      lastVisitedAt: visited,
+      wokeAt: null,
+      expected: null,
+    },
+  ] as const)("offers $expected for $name", ({ patch, lastVisitedAt, wokeAt, expected }) => {
+    expect(
+      resolveSidebarThreadReadAction({ ...baseThread(), ...patch }, { lastVisitedAt, wokeAt }),
+    ).toBe(expected);
   });
 
   it.each([
