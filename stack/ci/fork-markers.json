@@ -1,0 +1,25 @@
+{
+  "server": [
+    { "name": "session TTL", "pattern": "DEFAULT_SESSION_TTL = (?:[\\w$]+\\.)?days\\(3650\\);" },
+    { "name": "fleet reset endpoint", "pattern": "v1/fleet/limits" },
+    { "name": "all-time scanner", "pattern": "retentionCutoffMs: 0" },
+    { "name": "persistent usage cache", "pattern": "SCAN_CACHE_FILE_NAME = \"usage-scan-cache-v11\\.json\"" },
+    { "name": "retained transcript history", "pattern": "const hasRetainedHistory = fileCache\\s*\\.entries\\(\\)" },
+    { "name": "deleted transcript aggregation", "pattern": "retainedFiles\\.push\\(\\{" }
+  ],
+  "serverAbsent": ["CACHE_RETENTION_DAYS"],
+  "web": [
+    { "name": "click model", "pattern": "add or remove" },
+    {
+      "name": "superseded-reply exclusion",
+      "pattern": "\\.has\\(([$\\w]+)\\.attempt\\.id\\)\\|\\|[$\\w]+\\.has\\(\\1\\.id\\)\\|\\|[$\\w]+\\.has\\(\\1\\.attempt\\.runId\\)"
+    },
+    { "name": "project badge legend", "pattern": "Show project badge legend" },
+    { "name": "machine filter scope", "pattern": "sidebarEnvironmentScopeKeys" },
+    { "name": "machine filter label", "pattern": "All machines" },
+    { "name": "project row filter", "pattern": "Show only selected" },
+    { "name": "needs input", "pattern": "needs input" },
+    { "name": "snooze", "pattern": "Snooze thread" },
+    { "name": "swipe navigation setting", "pattern": "historySwipeNavigation" }
+  ]
+}

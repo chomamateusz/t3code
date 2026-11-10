@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { resolve, join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { DatabaseSync } from 'node:sqlite';
+
+const root = resolve(process.argv[2]);
+const require = createRequire(join(root, 'native-probe.cjs'));
+const database = new DatabaseSync(':memory:');
+assert.equal(database.prepare('select 42 as value').get().value, 42);
+database.close();
+console.log('node:sqlite: in-memory query passed');
+const pty = require('node-pty');
+const output = await new Promise((resolveOutput, reject) => {
+  let text = '';
+  const terminal = pty.spawn('/bin/sh', ['-c', 'printf T3_PTY_OK'], { cwd: root, env: process.env });
+  terminal.onData((chunk) => { text += chunk; });
+  terminal.onExit(({ exitCode }) => exitCode === 0 ? resolveOutput(text) : reject(new Error(`pty exit ${exitCode}: ${text}`)));
+});
+assert(output.includes('T3_PTY_OK'));
+console.log('node-pty: native spawn passed');
+const fff = require('@ff-labs/fff-node');
+const ffi = require('ffi-rs');
+const binary = fff.findBinary();
+assert(binary, 'fff native binary missing');
+ffi.open({ library: 't3_native_probe', path: binary });
+ffi.close('t3_native_probe');
+console.log('fff/ffi-rs: native library opened and closed');
+require('@napi-rs/keyring');
+console.log('keyring: native module loaded (no credential-store access)');
+const monitor = spawnSync(join(root, 'resource-monitor/linux-x64/t3-resource-monitor'), [], { input: '{"version":3,"type":"shutdown"}\n', encoding: 'utf8', timeout: 10000 });
+assert.equal(monitor.error, undefined);
+assert.equal(monitor.status, 0, monitor.stderr);
+const hello = JSON.parse(monitor.stdout.trim().split('\n')[0]);
+assert.equal(hello.type, 'hello');
+assert.equal(hello.platform, 'linux');
+assert.equal(hello.arch, 'x86_64');
+console.log('resource monitor: Linux x86_64 hello and clean shutdown passed');
