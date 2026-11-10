@@ -83,6 +83,26 @@ describe("apply-series.sh", () => {
     }
   });
 
+  it("names the paths a patch fails on when the source lacks the blobs for a 3-way merge", () => {
+    const { root, stack } = fixture();
+    const upstream = join(root, "upstream");
+    try {
+      mkdirSync(upstream);
+      git(upstream, "init", "-q", "-b", "main");
+      commitFile(upstream, "a.txt", "one\nzwei\nthree\n", "upstream without the carried base");
+      const run = apply(stack, upstream, join(root, "result.json"));
+      expect(run.status).toBe(1);
+      expect(JSON.parse(readFileSync(join(root, "result.json"), "utf8"))).toMatchObject({
+        status: "failed",
+        failedIndex: 1,
+        failedPatch: "0001-Shout-the-second-line.patch",
+        conflictedPaths: ["a.txt"],
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("refuses a dirty source checkout", () => {
     const { root, stack, source } = fixture();
     try {

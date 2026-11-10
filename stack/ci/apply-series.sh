@@ -46,14 +46,21 @@ subject=''
 if test -n "$failed_patch"; then
   subject=$(git mailinfo -k /dev/null /dev/null < "$stack/patches/$failed_patch" | sed -n 's/^Subject: //p')
 fi
-{
-  git -C "$source" diff --name-only --diff-filter=U
+failing_paths() {
   sed -nE \
     -e 's/^error: patch failed: (.*):[0-9]+$/\1/p' \
     -e 's/^error: (.*): (does not exist in index|already exists in index|already exists in working directory|patch does not apply|does not match index)$/\1/p' \
-    -e 's/^CONFLICT \([^)]*\): .* in (.*)$/\1/p' \
-    "$log"
+    -e 's/^CONFLICT \([^)]*\): .* in (.*)$/\1/p'
+}
+{
+  git -C "$source" diff --name-only --diff-filter=U
+  failing_paths < "$log"
 } | LC_ALL=C sort -u > "$log.paths"
+# The blob-less fetch leaves git am without the preimages for a 3-way merge, so it names no paths.
+if test ! -s "$log.paths" && test -n "$failed_patch"; then
+  { git -C "$source" apply --check "$stack/patches/$failed_patch" 2>&1 >/dev/null || true; } \
+    | failing_paths | LC_ALL=C sort -u > "$log.paths"
+fi
 jq -n \
   --arg upstreamSha "$upstream_sha" \
   --arg patch "$failed_patch" \
