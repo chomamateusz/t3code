@@ -426,10 +426,10 @@ index c360265f81e310e38e01310e99fd738d41aa6275..408b371aa24fb8150ae93f003799719e
      expect(searchSettings("wsl")).toEqual([]);
      expect(searchSettings("update track")).toEqual([]);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index f7492035874da0a0818343e556f24c4dc18a669c..a184db711430cb2390e10a1440361cae8d81a7d3 100644
+index ffd0822bbb149dcc5936de6627886094ccf04380..d3682404200870f99e131dd8f4f3cba4391276a4 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -818,6 +818,13 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -826,6 +826,13 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: ["confirmation desktop app exit direct hold double click press twice"],
      desktopOnly: true,
    },

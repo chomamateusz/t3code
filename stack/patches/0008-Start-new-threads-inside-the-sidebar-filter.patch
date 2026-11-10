@@ -485,10 +485,10 @@ index cc8fd9091ded8f3059ad536c1de0e683837c0b59..3d4a2d4769ea529ffabd3d31a129a4a3
        return openWithIntent({ kind: "change-theme" });
    }
 diff --git a/apps/web/src/components/CommandPalette.tsx b/apps/web/src/components/CommandPalette.tsx
-index 5d361311cdbac9632ffb9b9f403bd58766d6742c..e86135f641cc9be9f3f34cfdc1caa6ea2f2b76d4 100644
+index 6352b577eb70a2a8bf472198473602c767fcc7f1..489f4d4ff71c7d40e74f762e77d6cc3350fcf937 100644
 --- a/apps/web/src/components/CommandPalette.tsx
 +++ b/apps/web/src/components/CommandPalette.tsx
-@@ -94,6 +94,9 @@ import { useAtomValue } from "@effect/atom-react";
+@@ -93,6 +93,9 @@ import { useAtomValue } from "@effect/atom-react";
  
  import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
  import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
@@ -498,7 +498,7 @@ index 5d361311cdbac9632ffb9b9f403bd58766d6742c..e86135f641cc9be9f3f34cfdc1caa6ea
  import { useHandleNewThread } from "../hooks/useHandleNewThread";
  import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
  import { copyThreadReference } from "../lib/copyThreadReference";
-@@ -424,6 +427,11 @@ function OpenCommandPaletteDialog(props: {
+@@ -418,6 +421,11 @@ function OpenCommandPaletteDialog(props: {
    const linkedEnvironmentId = linkedThreadSearch?.linkedThreads?.environmentId ?? null;
    const hidingAnywhere = useAnyEnvironmentHiding();
    const linkedThreadRefs = useEnvironmentThreadRefs(linkedEnvironmentId);
@@ -510,7 +510,7 @@ index 5d361311cdbac9632ffb9b9f403bd58766d6742c..e86135f641cc9be9f3f34cfdc1caa6ea
    const [searchState, dispatchSearch] = useReducer(reduceCommandPaletteSearchState, null, () => {
      const view = props.initialContext ? null : openIntentView(props.openIntent);
      return view
-@@ -514,6 +522,8 @@ function OpenCommandPaletteDialog(props: {
+@@ -508,6 +516,8 @@ function OpenCommandPaletteDialog(props: {
    const providersByEnvironment = useEnvironmentProviders();
    const { changeThemeItem, changeAppearanceItem, themeEditorItem } = useCommandPaletteThemeItems();
    const currentView = viewStack.at(-1)?.view ?? null;
@@ -519,7 +519,7 @@ index 5d361311cdbac9632ffb9b9f403bd58766d6742c..e86135f641cc9be9f3f34cfdc1caa6ea
    const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
    const [browseGeneration, setBrowseGeneration] = useState(0);
    const [browseNavigation] = useState(createBrowseNavigationCoordinator);
-@@ -552,11 +562,12 @@ function OpenCommandPaletteDialog(props: {
+@@ -546,11 +556,12 @@ function OpenCommandPaletteDialog(props: {
      ...targetProject,
      displayName: group.displayName,
    }));
@@ -537,7 +537,7 @@ index 5d361311cdbac9632ffb9b9f403bd58766d6742c..e86135f641cc9be9f3f34cfdc1caa6ea
    );
    const { canPinProjectGroup, toggleProjectGroupPin } = useProjectPin();
    // A row's target record can change when another machine's copy loads, so the kept
-@@ -659,7 +670,10 @@ function OpenCommandPaletteDialog(props: {
+@@ -653,7 +664,10 @@ function OpenCommandPaletteDialog(props: {
          )
        : "";
    const canBrowsePaths =
@@ -549,7 +549,7 @@ index 5d361311cdbac9632ffb9b9f403bd58766d6742c..e86135f641cc9be9f3f34cfdc1caa6ea
    const browsePath = getFilesystemBrowsePath(query, browseEnvironmentPlatform, canBrowsePaths);
    const isBrowsing = browsePath.isBrowsing;
    const browseDirectoryPath = browsePath.directoryPath;
-@@ -830,6 +844,22 @@ function OpenCommandPaletteDialog(props: {
+@@ -824,6 +838,22 @@ function OpenCommandPaletteDialog(props: {
      true,
    );
  
@@ -572,7 +572,7 @@ index 5d361311cdbac9632ffb9b9f403bd58766d6742c..e86135f641cc9be9f3f34cfdc1caa6ea
    const openingOrderThreadItems = useOrderWhileOpen(
      (() => {
        const isScratch = (project: CommandPaletteProject) =>
-@@ -863,7 +893,6 @@ function OpenCommandPaletteDialog(props: {
+@@ -857,7 +887,6 @@ function OpenCommandPaletteDialog(props: {
          },
        });
        if (scratchTargetEnvironmentId === null) return projectItems;
@@ -580,7 +580,7 @@ index 5d361311cdbac9632ffb9b9f403bd58766d6742c..e86135f641cc9be9f3f34cfdc1caa6ea
        const noProjectIndex = newThreadNoProjectIndex(
          projectPickerEntries.map(({ group, targetProject, isPreferred }) => ({
            isScratch: isScratchProject(
-@@ -891,15 +920,63 @@ function OpenCommandPaletteDialog(props: {
+@@ -885,15 +914,63 @@ function OpenCommandPaletteDialog(props: {
      rowOrderKey("new-thread-in"),
      true,
    );
@@ -651,7 +651,7 @@ index 5d361311cdbac9632ffb9b9f403bd58766d6742c..e86135f641cc9be9f3f34cfdc1caa6ea
  
    const {
      threadItems: allThreadItems,
-@@ -929,6 +1006,10 @@ function OpenCommandPaletteDialog(props: {
+@@ -923,6 +1000,10 @@ function OpenCommandPaletteDialog(props: {
    });
  
    function popView(): void {
@@ -662,7 +662,7 @@ index 5d361311cdbac9632ffb9b9f403bd58766d6742c..e86135f641cc9be9f3f34cfdc1caa6ea
      browseNavigation.invalidate();
      setAddProjectCloneFlow(null);
      setNewProjectFlow(null);
-@@ -1304,7 +1385,7 @@ function OpenCommandPaletteDialog(props: {
+@@ -1298,7 +1379,7 @@ function OpenCommandPaletteDialog(props: {
        title: "New thread in...",
        icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
        addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
@@ -671,7 +671,7 @@ index 5d361311cdbac9632ffb9b9f403bd58766d6742c..e86135f641cc9be9f3f34cfdc1caa6ea
      });
    }
  
-@@ -1780,19 +1861,20 @@ function OpenCommandPaletteDialog(props: {
+@@ -1761,19 +1842,20 @@ function OpenCommandPaletteDialog(props: {
        : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
          ? addProjectEntryGroups()
          : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
@@ -705,7 +705,7 @@ index 5d361311cdbac9632ffb9b9f403bd58766d6742c..e86135f641cc9be9f3f34cfdc1caa6ea
  
    const isLinkedThreadSearch =
      linkedThreadSearch?.linkedThreads !== undefined && deferredQuery === linkedThreadSearch.query;
-@@ -1800,7 +1882,7 @@ function OpenCommandPaletteDialog(props: {
+@@ -1781,7 +1863,7 @@ function OpenCommandPaletteDialog(props: {
      activeGroups,
      query: deferredQuery,
      isInSubmenu: currentView !== null,
@@ -714,7 +714,7 @@ index 5d361311cdbac9632ffb9b9f403bd58766d6742c..e86135f641cc9be9f3f34cfdc1caa6ea
        ? {
            allOptions: {
              rootGroups,
-@@ -2412,7 +2494,26 @@ function OpenCommandPaletteDialog(props: {
+@@ -2393,7 +2475,26 @@ function OpenCommandPaletteDialog(props: {
            },
          ];
  
@@ -839,18 +839,18 @@ index b948ed74b279b110c3903853e9f6a2e5d0d21c88..947a7a9fea8a928af87e7756cb2eb196
      } else {
        expect(openCommandPalette).not.toHaveBeenCalled();
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 7304f2d1410a6ae33dda752e684b49ca1a925e80..bc5297ad001e72be4e8ce2359f14d4afe7a992af 100644
+index 84f7aef63b648bd294c2acf63fac5dfae46bb78b..29f65864726756552c09f2dac44657b62fe045d2 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -124,6 +124,7 @@ import {
-   toggleSidebarProjectSelection,
+@@ -125,6 +125,7 @@ import {
  } from "../sidebarProjectRow";
  import { ConnectedSidebarProjectRow } from "./sidebar/SidebarProjectRow";
+ import { searchableSetting } from "./settings/settingsSearch";
 +import { startNewThreadInSidebarFilter } from "../newThreadActions";
  import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
  import {
    getThreadKeysToDeselectAfterDelete,
-@@ -194,6 +195,7 @@ import {
+@@ -195,6 +196,7 @@ import {
    isInSidebarScope,
    isSidebarNestedLinkClick,
    isTrailingDoubleClick,
@@ -858,7 +858,7 @@ index 7304f2d1410a6ae33dda752e684b49ca1a925e80..bc5297ad001e72be4e8ce2359f14d4af
    orderItemsByPreferredIds,
    planSidebarThreadDrop,
    resolveAdjacentThreadId,
-@@ -204,7 +206,6 @@ import {
+@@ -205,7 +207,6 @@ import {
    resolveSidebarReorderableThreadKeys,
    resolveSidebarThreadShelfState,
    searchSidebarThreads,
@@ -866,7 +866,7 @@ index 7304f2d1410a6ae33dda752e684b49ca1a925e80..bc5297ad001e72be4e8ce2359f14d4af
    shouldNavigateAfterThreadPark,
    sidebarListItemId,
    sidebarThreadKeyAtY,
-@@ -3055,13 +3056,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3060,13 +3061,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const showJumpHints = useThreadJumpHintsVisible(shouldShowJumpHintsNow);
  
    const handleNewThreadClick = (event?: ReactMouseEvent) => {
@@ -881,7 +881,7 @@ index 7304f2d1410a6ae33dda752e684b49ca1a925e80..bc5297ad001e72be4e8ce2359f14d4af
        if (isMobile) setOpenMobile(false);
        // With no current or open project, such as when every project is archived, pick one.
        void startNewThreadFromContext({
-@@ -3075,7 +3070,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3080,7 +3075,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
        return;
      }
      if (isMobile) setOpenMobile(false);
@@ -897,7 +897,7 @@ index 7304f2d1410a6ae33dda752e684b49ca1a925e80..bc5297ad001e72be4e8ce2359f14d4af
    };
  
    const newThreadShortcutLabel =
-@@ -3121,16 +3123,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3127,16 +3129,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                }
                onNewProject={openAddProjectCommandPalette}
                onNewThread={handleNewThreadClick}
@@ -2792,7 +2792,7 @@ index 9b2e59f76d7e0b73b816c178b756d2910e8b91b6..447727d927801a94877156efd6bc3a20
        "preview.toggle": (event) => {
          claim(event);
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index c28e6697d6050dd4f7d37bb312b454928a6e2e18..d60be0a0704495f6f6dbb90442c08c3e653262d3 100644
+index 62ef1667a120381276e8a42ec844e4161ae5b19e..73d94c6748633f0156654983908cffda13961022 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -5,12 +5,27 @@ need a separate branch and working directory.

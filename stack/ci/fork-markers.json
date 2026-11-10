@@ -14,10 +14,13 @@
       "name": "superseded-reply exclusion",
       "pattern": "\\.has\\(([$\\w]+)\\.attempt\\.id\\)\\|\\|[$\\w]+\\.has\\(\\1\\.id\\)\\|\\|[$\\w]+\\.has\\(\\1\\.attempt\\.runId\\)"
     },
-    { "name": "project badge legend", "pattern": "Show project badge legend" },
+    { "name": "project badge legend", "pattern": "Number: threads needing you" },
     { "name": "machine filter scope", "pattern": "sidebarEnvironmentScopeKeys" },
     { "name": "machine filter label", "pattern": "All machines" },
-    { "name": "project row filter", "pattern": "Show only selected" },
+    { "name": "project row filter", "pattern": "Showing selected projects" },
+    { "name": "project row filter mode", "pattern": "Show selected" },
+    { "name": "project icon order setting", "pattern": "Project icon order" },
+    { "name": "full thread card badge", "pattern": "data-thread-badge" },
     { "name": "needs input", "pattern": "needs input" },
     { "name": "snooze", "pattern": "Snooze thread" },
     { "name": "swipe navigation setting", "pattern": "historySwipeNavigation" }
