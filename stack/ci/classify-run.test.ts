@@ -10,6 +10,7 @@ const prepareOutputs = {
   stack_sha: "2".repeat(40),
   series_date: "20261110",
   build_number: "2",
+  macos_signing: "true",
 };
 
 function needs(results: Record<string, string>, outputs: Record<string, string> = prepareOutputs) {
@@ -21,6 +22,7 @@ function needs(results: Record<string, string>, outputs: Record<string, string> 
     test_server: "success",
     build_linux_x64: "success",
     accept_linux_x64: "success",
+    build_macos_arm64: "success",
     release: "success",
     ...results,
   };
@@ -47,6 +49,20 @@ describe("classifyRun", () => {
     expect(result.stage).toBeNull();
     expect(result.version).toBe("0.1.9-local.stack.20261110.2");
     expect(result.workflowDrift).toBe(false);
+    expect(result.macosSigning).toBe(true);
+  });
+
+  it("accepts a skipped macOS build only when the signing secrets are absent", () => {
+    const unsigned = classifyRun({
+      needs: needs({ build_macos_arm64: "skipped" }, { ...prepareOutputs, macos_signing: "false" }),
+      applyResult: undefined,
+      runUrl,
+    });
+    expect(unsigned.status).toBe("success");
+    expect(summaryMarkdown(unsigned)).toContain("not built (no signing secrets)");
+    const missing = classifyRun({ needs: needs({ build_macos_arm64: "skipped", release: "skipped" }), applyResult: undefined, runUrl });
+    expect(missing.status).toBe("failed");
+    expect(missing.stage).toBe("build");
   });
 
   it("carries workflow drift without failing the run", () => {
@@ -94,7 +110,7 @@ describe("classifyRun", () => {
   });
 
   it("reports a quiet skip with its reason", () => {
-    const skipped = Object.fromEntries(["quality", "test", "test_web", "test_server", "build_linux_x64", "accept_linux_x64", "release"].map((job) => [job, "skipped"]));
+    const skipped = Object.fromEntries(["quality", "test", "test_web", "test_server", "build_linux_x64", "accept_linux_x64", "build_macos_arm64", "release"].map((job) => [job, "skipped"]));
     const result = classifyRun({
       needs: needs(skipped, { ...prepareOutputs, skip: "true", skip_reason: "already built" }),
       applyResult: undefined,

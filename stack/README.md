@@ -17,6 +17,7 @@ The workflow runs from the fork's `main` (where the owner installs it) and takes
   - `should-skip.ts`: skips the run when the newest stack release was built from the same upstream and stack commits.
   - `build-runtime.sh`, `container-build.sh`: build the Linux x64 runtime inside `ubuntu:22.04`.
   - `run-acceptance.sh`, `accept-fresh.sh`, `verify-*.mjs`, `fork-markers.json`: accept the runtime in fresh `ubuntu:22.04` and `ubuntu:24.04` containers, including checks that fork changes reached the bundle.
+  - `sign-macos-app.sh`, `verify-macos-release.ts`, `macos-signing.json`: sign the macOS arm64 app with the owner's self-signed identity and check the release files. `macos-signing.json` holds the bundle id, the SHA-1 of the signing certificate (the `certificate leaf` hash in the installed apps' designated requirement) and the update repository.
   - `classify-run.ts`: writes the run result (`stack-result` artifact and step summary).
   - `test-exclusions.json`, `test-exclusions.ts`: upstream tests the server and web test jobs skip because they fail only on the fork's runners, never because of our patches. Each entry carries the evidence (a run URL) that the test fails without our patches or for a reason outside our control. Remove an entry when its `removeWhen` condition holds, for example when upstream handles the case or the test passes on the runner again.
 - `workflow/stack-build.yml`: the source of `.github/workflows/stack-build.yml` on the fork's `main`.
@@ -49,11 +50,27 @@ git push origin main
 
 Each run warns when the installed file differs from `stack/workflow/stack-build.yml`.
 
+## macOS app
+
+The `build_macos_arm64` job runs only when both repository Actions secrets are set: `STACK_MACOS_CERT_P12_BASE64` (the `.p12` export of the "T3 Code Local Signing" identity, base64) and `STACK_MACOS_CERT_PASSWORD`. With neither set, the job is skipped and the release carries only the Linux runtime. With one of them set, `prepare` fails.
+
+The certificate is self-signed: there is no Apple team, no notarization and no trust on the runner. The job builds the app unsigned with upstream's `scripts/build-desktop-artifact.ts` (update feed and allowlist set to this repository), signs the unpacked app with `codesign --force --deep` by the certificate's SHA-1 from a temporary keychain, then repackages the signed app with `electron-builder --prepackaged`, which writes the zip, dmg, block maps and `latest-mac.yml` without signing again. It fails unless the app in both the zip and the dmg passes `codesign --verify --deep --strict`, has the designated requirement `identifier "<bundleId>" and certificate leaf = H"<leafSha1>"`, carries the release version and an `app-update.yml` that points at this repository's releases, and `latest-mac.yml` matches the files. Installed apps accept an update only when its signature satisfies their designated requirement, so a new signing certificate needs a manual reinstall from the dmg on every Mac.
+
+A release is one version for the fleet: with the secrets set, a failed macOS build means no release.
+
+## Offering a release to installed apps
+
+The workflow publishes every release as a prerelease. Installed apps ask GitHub for the release marked latest, which is never a prerelease, so they do not see a new build until it is promoted:
+
+```sh
+gh release edit v<version> -R chomamateusz/t3code --prerelease=false --latest
+```
+
 ## What a run produces
 
-- A release `v<version>` on the fork, tagged on the `local/stack` commit it used, with `t3-<version>-linux-x64.tar.gz`, `SHA256SUMS` and `build-manifest.json` (`version`, `upstreamSha`, `stackSha`, `seriesDate`, `buildNumber`, `runUrl`). The release job runs nothing from this branch. Re-running it is safe: it removes leftover drafts for the tag, and when the tag already points at the same stack commit and its release carries exactly the three assets, with the same manifest commits, `SHA256SUMS` and archive digest, it finishes without changes; any other existing tag fails the job and names what differed.
-- A build provenance attestation for each of the three release assets.
-- A `stack-result` artifact (`stack-result.json`) with `status` (`success`, `skipped`, `failed`, `cancelled`), `stage` for a failed or cancelled run, and `workflowDrift` (`true` when the installed workflow differs from `workflow/stack-build.yml`; the run continues). The report job writes it even when its own tooling cannot be set up.
+- A prerelease `v<version>` on the fork, tagged on the `local/stack` commit it used, with `t3-<version>-linux-x64.tar.gz`, `SHA256SUMS` and `build-manifest.json` (`version`, `upstreamSha`, `stackSha`, `seriesDate`, `buildNumber`, `runUrl`). With the macOS app it also carries `T3-Code-<version>-arm64.zip`, `.zip.blockmap`, `.dmg` (and `.dmg.blockmap` when electron-builder writes one) and `latest-mac.yml`; `SHA256SUMS` lists every file except the manifest, and the manifest gains `macos.assets` (name and sha256 of each macOS file). The release job runs nothing from this branch. Re-running it is safe: it removes leftover drafts for the tag, and when the tag already points at the same stack commit and its release carries exactly the same assets, with the same manifest commits and `SHA256SUMS`, and the published files match those sums, it finishes without changes; any other existing tag fails the job and names what differed.
+- A build provenance attestation for each release asset.
+- A `stack-result` artifact (`stack-result.json`) with `status` (`success`, `skipped`, `failed`, `cancelled`), `stage` for a failed or cancelled run, `workflowDrift` (`true` when the installed workflow differs from `workflow/stack-build.yml`; the run continues) and `macosSigning` (whether the macOS app was due). The report job writes it even when its own tooling cannot be set up.
 
 Stages:
 
@@ -62,7 +79,7 @@ Stages:
 | `prepare` | failed before the series was applied, for a reason other than a patch conflict: checkout, tool download, upstream lookup, version resolution |
 | `apply` | a patch did not apply to upstream `main`; `apply.failedPatch` and `apply.conflictedPaths` say where. The series needs carrying onto the new upstream |
 | `test` | quality checks or tests failed on the applied source |
-| `build` | building the Linux x64 runtime failed |
+| `build` | building the Linux x64 runtime failed, or building, signing or verifying the macOS arm64 app failed |
 | `accept` | the runtime failed acceptance in a fresh `ubuntu:22.04` or `ubuntu:24.04` container |
 | `release` | attesting or publishing the release failed |
 

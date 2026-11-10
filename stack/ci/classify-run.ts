@@ -7,6 +7,7 @@ type PipelineStage = Exclude<Stage, "apply">;
 type Status = "success" | "skipped" | "failed" | "cancelled";
 
 const ORDER: readonly PipelineStage[] = ["prepare", "test", "build", "accept", "release"];
+const MACOS_JOB = "build_macos_arm64";
 
 export function stageOfJob(job: string): PipelineStage {
   if (job === "prepare") return "prepare";
@@ -39,6 +40,9 @@ export function classifyRun(input: { needs: unknown; applyResult: unknown; runUr
   const failedJobs = jobsWith("failure");
   const cancelledJobs = jobsWith("cancelled");
   const applyFailed = isRecord(input.applyResult) && input.applyResult.status === "failed";
+  const macosSigning = outputs?.macos_signing === "true";
+  const passed = ([job, result]: [string, string]) =>
+    result === "success" || (result === "skipped" && job === MACOS_JOB && !macosSigning);
 
   let status: Status;
   let stage: Stage | null = null;
@@ -55,11 +59,11 @@ export function classifyRun(input: { needs: unknown; applyResult: unknown; runUr
   } else if (outputs?.skip === "true") {
     status = "skipped";
     reason = stringField(outputs, "skip_reason");
-  } else if ([...results.values()].every((result) => result === "success")) {
+  } else if ([...results].every(passed)) {
     status = "success";
   } else {
     status = "failed";
-    stage = earliestStage([...results].filter(([, value]) => value !== "success").map(([job]) => job)) ?? null;
+    stage = earliestStage([...results].filter((entry) => !passed(entry)).map(([job]) => job)) ?? null;
     reason = "a required job did not run";
   }
   if (stage === "prepare" && applyFailed) stage = "apply";
@@ -77,6 +81,7 @@ export function classifyRun(input: { needs: unknown; applyResult: unknown; runUr
     seriesDate: stringField(outputs, "series_date"),
     buildNumber: stringField(outputs, "build_number"),
     workflowDrift: outputs?.workflow_drift === "true",
+    macosSigning,
     runUrl: input.runUrl,
     apply: stage === "apply" && isRecord(input.applyResult) ? input.applyResult : null,
   };
@@ -90,6 +95,7 @@ export function summaryMarkdown(result: RunResult): string {
   if (result.version) lines.push(`- version: \`${result.version}\``);
   if (result.upstreamSha) lines.push(`- upstream: \`${result.upstreamSha}\``);
   if (result.stackSha) lines.push(`- stack: \`${result.stackSha}\``);
+  if (result.status === "success") lines.push(`- macOS app: ${result.macosSigning ? "built and signed" : "not built (no signing secrets)"}`);
   if (result.workflowDrift) lines.push("- workflow drift: the installed workflow differs from `stack/workflow/stack-build.yml`");
   if (result.failedJobs.length > 0) lines.push(`- failed jobs: ${result.failedJobs.map((job) => `\`${job}\``).join(", ")}`);
   if (result.cancelledJobs.length > 0) lines.push(`- cancelled jobs: ${result.cancelledJobs.map((job) => `\`${job}\``).join(", ")}`);
