@@ -3317,6 +3317,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             }
                             thread={thread}
                             variant={rowVariant}
+                            inProjectFolder={folderRow !== undefined}
                             navigationParent={
                               folderRow ??
                               (section === "working" ||

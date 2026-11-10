@@ -109,6 +109,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     var(--sidebar)
   );
   --sidebar-row-content-inset: 0.625rem;
+  --sidebar-folder-icon-size: 1rem;
+  --sidebar-folder-gap: 0.625rem;
+  --sidebar-folder-child-indent: calc(var(--sidebar-folder-icon-size) + var(--sidebar-folder-gap));
   --command-shell-inset: 0.5rem;
   --command-content-inset: 1rem;
   --floating-content-inset: 0.75rem;
