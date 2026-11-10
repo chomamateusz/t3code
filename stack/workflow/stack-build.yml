@@ -529,8 +529,8 @@ jobs:
           fi
           existing="$RUNNER_TEMP/existing-release"
           gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$archive" -p SHA256SUMS -p build-manifest.json -D "$existing"
-          differences=$(jq -r --arg version "$VERSION" --arg upstreamSha "$UPSTREAM_SHA" --arg stackSha "$STACK_SHA" \
-            '. as $manifest | $ARGS.named | to_entries[] | select($manifest[.key] != .value) | "build-manifest.json \(.key) is \($manifest[.key] | tojson), this run has \(.value)"' \
+          differences=$(jq -r -s --arg version "$VERSION" --arg upstreamSha "$UPSTREAM_SHA" --arg stackSha "$STACK_SHA" \
+            'if length == 1 and (.[0] | type) == "object" then .[0] else error("not one object") end | . as $manifest | $ARGS.named | to_entries[] | select($manifest[.key] != .value) | "build-manifest.json \(.key) is \($manifest[.key] | tojson), this run has \(.value)"' \
             "$existing/build-manifest.json") || differences="build-manifest.json is not a JSON object"
           if ! cmp -s "$existing/SHA256SUMS" release-assets/SHA256SUMS; then
             differences+=$'\n'"SHA256SUMS is $(jq -Rsc . "$existing/SHA256SUMS"), this run has $(jq -Rsc . release-assets/SHA256SUMS)"
