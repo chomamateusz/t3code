@@ -44,7 +44,6 @@ jobs:
       stack_sha: ${{ steps.refs.outputs.stack_sha }}
       source_tree: ${{ steps.apply.outputs.tree }}
       workflow_drift: ${{ steps.drift.outputs.drift }}
-      macos_signing: ${{ steps.macos.outputs.signing }}
     steps:
       - name: Check out the stack branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -70,22 +69,6 @@ jobs:
           else
             echo "::warning title=Workflow drift::.github/workflows/stack-build.yml on ${GITHUB_REF_NAME} differs from stack/workflow/stack-build.yml on ${STACK_BRANCH}. Install the stack branch copy."
             echo "drift=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Check the macOS signing secrets
-        id: macos
-        env:
-          CERT_P12_BASE64: ${{ secrets.STACK_MACOS_CERT_P12_BASE64 }}
-          CERT_PASSWORD: ${{ secrets.STACK_MACOS_CERT_PASSWORD }}
-        run: |
-          if [[ -n "$CERT_P12_BASE64" && -n "$CERT_PASSWORD" ]]; then
-            echo "signing=true" >> "$GITHUB_OUTPUT"
-          elif [[ -z "$CERT_P12_BASE64" && -z "$CERT_PASSWORD" ]]; then
-            echo "::notice title=No macOS build::STACK_MACOS_CERT_P12_BASE64 and STACK_MACOS_CERT_PASSWORD are not set; the release carries only the Linux x64 runtime."
-            echo "signing=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "::error title=macOS signing secrets::Only one of STACK_MACOS_CERT_P12_BASE64 and STACK_MACOS_CERT_PASSWORD is set. Set both or neither." >&2
-            exit 1
           fi
 
       - name: Install tool Node.js
@@ -184,6 +167,30 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 3
+
+  macos_signing:
+    name: Check the macOS signing secrets
+    if: github.repository == 'chomamateusz/t3code'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      signing: ${{ steps.check.outputs.signing }}
+    steps:
+      - name: Check the macOS signing secrets
+        id: check
+        env:
+          CERT_P12_BASE64: ${{ secrets.STACK_MACOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.STACK_MACOS_CERT_PASSWORD }}
+        run: |
+          if [[ -n "$CERT_P12_BASE64" && -n "$CERT_PASSWORD" ]]; then
+            echo "signing=true" >> "$GITHUB_OUTPUT"
+          elif [[ -z "$CERT_P12_BASE64" && -z "$CERT_PASSWORD" ]]; then
+            echo "::notice title=No macOS build::STACK_MACOS_CERT_P12_BASE64 and STACK_MACOS_CERT_PASSWORD are not set; the release carries only the Linux x64 runtime."
+            echo "signing=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error title=macOS signing secrets::Only one of STACK_MACOS_CERT_P12_BASE64 and STACK_MACOS_CERT_PASSWORD is set. Set both or neither." >&2
+            exit 1
+          fi
 
   quality:
     name: Quality checks
@@ -477,8 +484,8 @@ jobs:
 
   build_macos_arm64:
     name: Build macOS arm64 app
-    needs: [prepare, quality, test, test_web, test_server]
-    if: needs.prepare.outputs.macos_signing == 'true'
+    needs: [prepare, macos_signing, quality, test, test_web, test_server]
+    if: needs.macos_signing.outputs.signing == 'true'
     runs-on: macos-26
     timeout-minutes: 60
     outputs:
@@ -518,10 +525,10 @@ jobs:
           [[ ${#stages[@]} -eq 1 ]]
           apps=("${stages[0]}"/dist/mac*/*.app)
           [[ ${#apps[@]} -eq 1 ]]
-          mkdir "$RUNNER_TEMP/unsigned"
+          mkdir "$RUNNER_TEMP/unsigned" "$RUNNER_TEMP/stage"
           tar -C "$(dirname "${apps[0]}")" -cf "$RUNNER_TEMP/unsigned/app.tar" "$(basename "${apps[0]}")"
           rm -rf "${stages[0]}/dist"
-          tar -C "$(dirname "${stages[0]}")" -cf "$RUNNER_TEMP/unsigned/stage.tar" app
+          tar -C "$(dirname "${stages[0]}")" -cf "$RUNNER_TEMP/stage/stage.tar" app
           echo "stage=${stages[0]}" >> "$GITHUB_OUTPUT"
 
       # Archives keep the bundle's symlinks and modes, which the artifact service drops.
@@ -530,21 +537,26 @@ jobs:
         with:
           name: macos-arm64-unsigned
           overwrite: true
-          path: ${{ runner.temp }}/unsigned/*.tar
+          path: ${{ runner.temp }}/unsigned/app.tar
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 3
 
-  # Signing runs on a fresh runner before any code from the source or this branch, so neither can read the identity.
+      - name: Upload the electron-builder stage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: macos-arm64-stage
+          overwrite: true
+          path: ${{ runner.temp }}/stage/stage.tar
+          if-no-files-found: error
+          retention-days: 3
+
+  # A job that references a secret holds it for every step, so this job runs only pinned actions and its own inline steps.
   build_macos_arm64_signed:
     name: Sign macOS arm64 app
     needs: [prepare, build_macos_arm64]
     runs-on: macos-26
-    timeout-minutes: 45
-    outputs:
-      sums_sha256: ${{ steps.collect.outputs.sums_sha256 }}
+    timeout-minutes: 20
     env:
-      VERSION: ${{ needs.prepare.outputs.version }}
-      STAGE: ${{ needs.build_macos_arm64.outputs.stage }}
       SIGNING_CONFIG: local-stack/stack/ci/macos-signing.json
     steps:
       - name: Check out the stack branch
@@ -563,9 +575,7 @@ jobs:
       - name: Unpack the unsigned app
         id: unpack
         run: |
-          [[ "$STAGE" =~ ^"$RUNNER_TEMP"/desktop-tmp/t3code-desktop-mac-stage-[^/]+/app$ ]]
-          mkdir -p "$(dirname "$STAGE")" "$RUNNER_TEMP/macos-app"
-          tar -C "$(dirname "$STAGE")" -xf "$RUNNER_TEMP/unsigned/stage.tar"
+          mkdir "$RUNNER_TEMP/macos-app"
           tar -C "$RUNNER_TEMP/macos-app" -xf "$RUNNER_TEMP/unsigned/app.tar"
           rm -r "$RUNNER_TEMP/unsigned"
           shopt -s nullglob
@@ -626,10 +636,66 @@ jobs:
             exit 1
           fi
 
+      - name: Pack the signed app
+        env:
+          APP: ${{ steps.unpack.outputs.app }}
+        run: |
+          mkdir "$RUNNER_TEMP/signed"
+          tar -C "$(dirname "$APP")" -cf "$RUNNER_TEMP/signed/app.tar" "$(basename "$APP")"
+
+      - name: Upload the signed app
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: macos-arm64-signed
+          overwrite: true
+          path: ${{ runner.temp }}/signed/app.tar
+          if-no-files-found: error
+          retention-days: 3
+
+  build_macos_arm64_packaged:
+    name: Package macOS arm64 app
+    needs: [prepare, build_macos_arm64, build_macos_arm64_signed]
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      STAGE: ${{ needs.build_macos_arm64.outputs.stage }}
+    steps:
+      - name: Check out the stack branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.prepare.outputs.stack_sha }}
+          path: local-stack
+          persist-credentials: false
+
       - name: Set up the applied source
         uses: ./local-stack/stack/ci/actions/setup-source
         with:
           tree: ${{ needs.prepare.outputs.source_tree }}
+
+      - name: Download the electron-builder stage
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: macos-arm64-stage
+          path: ${{ runner.temp }}/stage
+
+      - name: Download the signed app
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: macos-arm64-signed
+          path: ${{ runner.temp }}/signed
+
+      - name: Unpack the stage and the signed app
+        id: unpack
+        run: |
+          [[ "$STAGE" =~ ^"$RUNNER_TEMP"/desktop-tmp/t3code-desktop-mac-stage-[^/]+/app$ ]]
+          mkdir -p "$(dirname "$STAGE")" "$RUNNER_TEMP/macos-app"
+          tar -C "$(dirname "$STAGE")" -xf "$RUNNER_TEMP/stage/stage.tar"
+          tar -C "$RUNNER_TEMP/macos-app" -xf "$RUNNER_TEMP/signed/app.tar"
+          shopt -s nullglob
+          apps=("$RUNNER_TEMP"/macos-app/*.app)
+          [[ ${#apps[@]} -eq 1 ]]
+          echo "app=${apps[0]}" >> "$GITHUB_OUTPUT"
 
       # Signing changes the app after electron-builder hashed it into latest-mac.yml, so the signed app is packaged again.
       - name: Package the signed app
@@ -646,40 +712,74 @@ jobs:
           done
           ls -l "$RUNNER_TEMP/macos-release"
 
-      - name: Verify the signed release files
-        working-directory: source
-        run: |
-          node "$GITHUB_WORKSPACE/local-stack/stack/ci/verify-macos-release.ts" --dir "$RUNNER_TEMP/macos-release" \
-            --version "$VERSION" --config "$GITHUB_WORKSPACE/$SIGNING_CONFIG" --work "$RUNNER_TEMP/macos-verify" --source "$PWD"
-
-      - name: Write checksums
-        id: collect
-        run: |
-          cd "$RUNNER_TEMP/macos-release"
-          shasum -a 256 -- * > "$RUNNER_TEMP/macos-sums"
-          mv "$RUNNER_TEMP/macos-sums" SHA256SUMS
-          cat SHA256SUMS
-          echo "sums_sha256=$(shasum -a 256 SHA256SUMS | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload app
+      - name: Upload the release files
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: macos-arm64-app
+          name: macos-arm64-release
           overwrite: true
           path: ${{ runner.temp }}/macos-release/*
           if-no-files-found: error
           compression-level: 0
-          retention-days: 14
+          retention-days: 3
+
+  # Packaging ran source code that could rewrite anything on its runner, so the files are checked on a runner it never touched.
+  build_macos_arm64_verified:
+    name: Verify macOS arm64 app
+    needs: [prepare, build_macos_arm64_packaged]
+    runs-on: macos-26
+    timeout-minutes: 30
+    outputs:
+      sums_sha256: ${{ steps.digest.outputs.sums_sha256 }}
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Download the release files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: macos-arm64-release
+          path: ${{ runner.temp }}/macos-release
+
+      - name: Record the checksums
+        id: digest
+        run: |
+          mkdir "$RUNNER_TEMP/macos-sums"
+          (cd "$RUNNER_TEMP/macos-release" && shasum -a 256 -- *) > "$RUNNER_TEMP/macos-sums/SHA256SUMS"
+          cat "$RUNNER_TEMP/macos-sums/SHA256SUMS"
+          echo "sums_sha256=$(shasum -a 256 "$RUNNER_TEMP/macos-sums/SHA256SUMS" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the stack branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.prepare.outputs.stack_sha }}
+          path: local-stack
+          persist-credentials: false
+
+      - name: Install tool Node.js
+        run: bash local-stack/stack/ci/fetch-node.sh "$TOOL_NODE_VERSION" "$RUNNER_TEMP/tool-node" >> "$GITHUB_PATH"
+
+      - name: Verify the release files
+        run: |
+          node local-stack/stack/ci/verify-macos-release.ts --dir "$RUNNER_TEMP/macos-release" \
+            --version "$VERSION" --config local-stack/stack/ci/macos-signing.json --work "$RUNNER_TEMP/macos-verify"
+
+      - name: Upload the checksums
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: macos-arm64-sums
+          overwrite: true
+          path: ${{ runner.temp }}/macos-sums/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 3
 
   release:
     name: Publish fork release
-    needs: [prepare, build_linux_x64, accept_linux_x64, build_macos_arm64_signed]
+    needs: [prepare, macos_signing, build_linux_x64, accept_linux_x64, build_macos_arm64_verified]
     if: >-
       !cancelled()
       && needs.build_linux_x64.result == 'success'
       && needs.accept_linux_x64.result == 'success'
-      && (needs.build_macos_arm64_signed.result == 'success'
-        || (needs.build_macos_arm64_signed.result == 'skipped' && needs.prepare.outputs.macos_signing == 'false'))
+      && (needs.build_macos_arm64_verified.result == 'success'
+        || (needs.build_macos_arm64_verified.result == 'skipped' && needs.macos_signing.outputs.signing == 'false'))
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -694,8 +794,8 @@ jobs:
       SERIES_DATE: ${{ needs.prepare.outputs.series_date }}
       BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
       ARCHIVE_SHA256: ${{ needs.build_linux_x64.outputs.archive_sha256 }}
-      MACOS: ${{ needs.build_macos_arm64_signed.result == 'success' }}
-      MACOS_SUMS_SHA256: ${{ needs.build_macos_arm64_signed.outputs.sums_sha256 }}
+      MACOS: ${{ needs.build_macos_arm64_verified.result == 'success' }}
+      MACOS_SUMS_SHA256: ${{ needs.build_macos_arm64_verified.outputs.sums_sha256 }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Download runtime
@@ -721,15 +821,22 @@ jobs:
         if: env.MACOS == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: macos-arm64-app
+          name: macos-arm64-release
           path: macos-app
 
-      - name: Check the macOS app against the build
+      - name: Download the verified macOS checksums
+        if: env.MACOS == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: macos-arm64-sums
+          path: macos-app
+
+      - name: Check the macOS app against the verification
         if: env.MACOS == 'true'
         run: |
           actual=$(sha256sum macos-app/SHA256SUMS | cut -d' ' -f1)
           if [[ ! "$MACOS_SUMS_SHA256" =~ ^[0-9a-f]{64}$ || "$actual" != "$MACOS_SUMS_SHA256" ]]; then
-            echo "::error::macOS SHA256SUMS has sha256 $actual, the build job produced ${MACOS_SUMS_SHA256:-nothing}" >&2
+            echo "::error::macOS SHA256SUMS has sha256 $actual, the verification job recorded ${MACOS_SUMS_SHA256:-nothing}" >&2
             exit 1
           fi
           listed=$(awk '{ print $2 }' macos-app/SHA256SUMS | LC_ALL=C sort)
@@ -874,7 +981,7 @@ jobs:
   report:
     name: Report
     if: always() && github.repository == 'chomamateusz/t3code'
-    needs: [prepare, quality, test, test_web, test_server, build_linux_x64, accept_linux_x64, build_macos_arm64, build_macos_arm64_signed, release]
+    needs: [prepare, macos_signing, quality, test, test_web, test_server, build_linux_x64, accept_linux_x64, build_macos_arm64, build_macos_arm64_signed, build_macos_arm64_packaged, build_macos_arm64_verified, release]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -922,12 +1029,13 @@ jobs:
             apply=$(cat results/apply-result.json)
           fi
           jq -n --argjson needs "$NEEDS" --argjson applyResult "$apply" --arg runUrl "$RUN_URL" '
-            def stage_of: if . == "prepare" or . == "release" then . elif startswith("build_") then "build" elif startswith("accept_") then "accept" else "test" end;
+            def stage_of: if . == "macos_signing" then "prepare" elif . == "prepare" or . == "release" then . elif startswith("build_") then "build" elif startswith("accept_") then "accept" else "test" end;
             def earliest: map(stage_of) as $stages | ["prepare", "test", "build", "accept", "release"] | map(select(. as $stage | $stages | index($stage))) | first;
             def jobs_with($result): $needs | to_entries | map(select(.value.result == $result) | .key);
             ($needs.prepare.outputs // {}) as $outputs
+            | ($needs.macos_signing.outputs.signing // "") as $signing
             | def output($key): $outputs[$key] | if type == "string" and . != "" then . else null end;
-            def passed: .value.result == "success" or (.value.result == "skipped" and (.key | startswith("build_macos_")) and $outputs.macos_signing != "true");
+            def passed: .value.result == "success" or (.value.result == "skipped" and (.key | startswith("build_macos_")) and $signing != "true");
             jobs_with("failure") as $failed
             | jobs_with("cancelled") as $cancelled
             | (if ($failed | length) > 0 then {status: "failed", stage: ($failed | earliest), reason: null}
@@ -951,7 +1059,7 @@ jobs:
                 seriesDate: output("series_date"),
                 buildNumber: output("build_number"),
                 workflowDrift: ($outputs.workflow_drift == "true"),
-                macosSigning: ($outputs.macos_signing == "true"),
+                macosSigning: ($signing == "true"),
                 runUrl: $runUrl,
                 apply: (if $stage == "apply" then $applyResult else null end)
               }' > stack-result.json

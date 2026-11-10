@@ -9,7 +9,7 @@ type Status = "success" | "skipped" | "failed" | "cancelled";
 const ORDER: readonly PipelineStage[] = ["prepare", "test", "build", "accept", "release"];
 
 export function stageOfJob(job: string): PipelineStage {
-  if (job === "prepare") return "prepare";
+  if (job === "prepare" || job === "macos_signing") return "prepare";
   if (job === "release") return "release";
   if (job.startsWith("build_")) return "build";
   if (job.startsWith("accept_")) return "accept";
@@ -39,7 +39,8 @@ export function classifyRun(input: { needs: unknown; applyResult: unknown; runUr
   const failedJobs = jobsWith("failure");
   const cancelledJobs = jobsWith("cancelled");
   const applyFailed = isRecord(input.applyResult) && input.applyResult.status === "failed";
-  const macosSigning = outputs?.macos_signing === "true";
+  const signingJob = input.needs.macos_signing;
+  const macosSigning = isRecord(signingJob) && isRecord(signingJob.outputs) && signingJob.outputs.signing === "true";
   const passed = ([job, result]: [string, string]) =>
     result === "success" || (result === "skipped" && job.startsWith("build_macos_") && !macosSigning);
 

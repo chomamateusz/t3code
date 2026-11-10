@@ -10,12 +10,12 @@ const prepareOutputs = {
   stack_sha: "2".repeat(40),
   series_date: "20261110",
   build_number: "2",
-  macos_signing: "true",
 };
 
-function needs(results: Record<string, string>, outputs: Record<string, string> = prepareOutputs) {
+function needs(results: Record<string, string>, outputs: Record<string, string> = prepareOutputs, signing = "true") {
   const all: Record<string, string> = {
     prepare: "success",
+    macos_signing: "success",
     quality: "success",
     test: "success",
     test_web: "success",
@@ -24,11 +24,16 @@ function needs(results: Record<string, string>, outputs: Record<string, string> 
     accept_linux_x64: "success",
     build_macos_arm64: "success",
     build_macos_arm64_signed: "success",
+    build_macos_arm64_packaged: "success",
+    build_macos_arm64_verified: "success",
     release: "success",
     ...results,
   };
   return Object.fromEntries(
-    Object.entries(all).map(([job, result]) => [job, { result, outputs: job === "prepare" ? outputs : {} }]),
+    Object.entries(all).map(([job, result]) => [
+      job,
+      { result, outputs: job === "prepare" ? outputs : job === "macos_signing" && result === "success" ? { signing } : {} },
+    ]),
   );
 }
 
@@ -54,16 +59,26 @@ describe("classifyRun", () => {
   });
 
   it("accepts a skipped macOS build only when the signing secrets are absent", () => {
+    const macosSkipped = {
+      build_macos_arm64: "skipped",
+      build_macos_arm64_signed: "skipped",
+      build_macos_arm64_packaged: "skipped",
+      build_macos_arm64_verified: "skipped",
+    };
     const unsigned = classifyRun({
-      needs: needs({ build_macos_arm64: "skipped", build_macos_arm64_signed: "skipped" }, { ...prepareOutputs, macos_signing: "false" }),
+      needs: needs(macosSkipped, prepareOutputs, "false"),
       applyResult: undefined,
       runUrl,
     });
     expect(unsigned.status).toBe("success");
     expect(summaryMarkdown(unsigned)).toContain("not built (no signing secrets)");
-    const missing = classifyRun({ needs: needs({ build_macos_arm64: "skipped", build_macos_arm64_signed: "skipped", release: "skipped" }), applyResult: undefined, runUrl });
+    const missing = classifyRun({ needs: needs({ ...macosSkipped, release: "skipped" }), applyResult: undefined, runUrl });
     expect(missing.status).toBe("failed");
     expect(missing.stage).toBe("build");
+    const oneSecret = classifyRun({ needs: needs({ macos_signing: "failure", ...macosSkipped, release: "skipped" }), applyResult: undefined, runUrl });
+    expect(oneSecret.status).toBe("failed");
+    expect(oneSecret.stage).toBe("prepare");
+    expect(oneSecret.macosSigning).toBe(false);
   });
 
   it("carries workflow drift without failing the run", () => {
@@ -96,6 +111,7 @@ describe("classifyRun", () => {
     [{ build_linux_x64: "failure", accept_linux_x64: "skipped" }, "build"],
     [{ build_macos_arm64: "failure" }, "build"],
     [{ build_macos_arm64_signed: "failure", release: "skipped" }, "build"],
+    [{ build_macos_arm64_verified: "failure", release: "skipped" }, "build"],
     [{ accept_linux_x64: "failure", release: "skipped" }, "accept"],
     [{ release: "failure" }, "release"],
     [{ test_web: "failure", release: "failure" }, "test"],
@@ -112,7 +128,7 @@ describe("classifyRun", () => {
   });
 
   it("reports a quiet skip with its reason", () => {
-    const skipped = Object.fromEntries(["quality", "test", "test_web", "test_server", "build_linux_x64", "accept_linux_x64", "build_macos_arm64", "build_macos_arm64_signed", "release"].map((job) => [job, "skipped"]));
+    const skipped = Object.fromEntries(["quality", "test", "test_web", "test_server", "build_linux_x64", "accept_linux_x64", "build_macos_arm64", "build_macos_arm64_signed", "build_macos_arm64_packaged", "build_macos_arm64_verified", "release"].map((job) => [job, "skipped"]));
     const result = classifyRun({
       needs: needs(skipped, { ...prepareOutputs, skip: "true", skip_reason: "already built" }),
       applyResult: undefined,

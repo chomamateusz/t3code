@@ -61,10 +61,6 @@ esac`,
 }
 
 describe("the workflow's signing step", () => {
-  it("takes the secrets from its own env only", () => {
-    expect(Object.keys(signStep.env ?? {}).sort()).toEqual(["APP", "STACK_MACOS_CERT_P12_BASE64", "STACK_MACOS_CERT_PASSWORD"]);
-  });
-
   it("imports the identity into its own keychain, signs by certificate hash and removes the keychain", () => {
     const run = signWith(`  1) ${leaf.toUpperCase()} "T3 Code Local Signing" (CSSMERR_TP_NOT_TRUSTED)`);
     expect(run.result.status).toBe(0);

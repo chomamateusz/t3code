@@ -30,6 +30,7 @@ export interface AppFacts {
   readonly shortVersion: string;
   readonly bundleVersion: string;
   readonly appUpdateYml: string;
+  readonly packageJson: string;
 }
 
 export interface FileFacts {
@@ -154,6 +155,18 @@ export function manifestProblems(manifest: UpdateManifest, files: ReadonlyMap<st
   return problems;
 }
 
+export function asarFile(archive: Buffer, name: string): Buffer {
+  const headerSize = archive.readUInt32LE(4);
+  let entry: unknown = JSON.parse(archive.toString("utf8", 16, 16 + archive.readInt32LE(12)));
+  for (const part of name.split("/")) entry = isRecord(entry) && isRecord(entry.files) ? entry.files[part] : undefined;
+  if (!isRecord(entry) || typeof entry.offset !== "string" || typeof entry.size !== "number" || entry.unpacked) {
+    throw new Error(`app.asar has no packed ${name}`);
+  }
+  const start = 8 + headerSize + Number(entry.offset);
+  if (!Number.isSafeInteger(start) || start + entry.size > archive.length) throw new Error(`app.asar ${name} lies outside the archive`);
+  return archive.subarray(start, start + entry.size);
+}
+
 export function appProblems(label: string, facts: AppFacts, config: SigningConfig, version: string): string[] {
   const problems: string[] = [];
   const expected = expectedRequirement(config);
@@ -175,6 +188,16 @@ export function appProblems(label: string, facts: AppFacts, config: SigningConfi
   for (const key of ["host", "protocol", "channel"]) {
     if (feed.has(key)) problems.push(`${label}: app-update.yml sets ${key}`);
   }
+  let allowed: unknown;
+  try {
+    const metadata: unknown = JSON.parse(facts.packageJson);
+    allowed = isRecord(metadata) ? metadata.t3codeAllowedUpdateRepository : undefined;
+  } catch (error) {
+    return [...problems, `${label}: app.asar package.json: ${error instanceof Error ? error.message : String(error)}`];
+  }
+  if (allowed !== config.updateRepository) {
+    problems.push(`${label}: app.asar package.json t3codeAllowedUpdateRepository is ${JSON.stringify(allowed) ?? "missing"}, expected ${config.updateRepository}`);
+  }
   return problems;
 }
 
@@ -195,7 +218,7 @@ function plistValue(app: string, key: string): string {
   return run("plutil", ["-extract", key, "raw", "-o", "-", join(app, "Contents/Info.plist")]).trim();
 }
 
-function inspectApp(label: string, app: string, config: SigningConfig, version: string, source: string | undefined) {
+function inspectApp(label: string, app: string, config: SigningConfig, version: string) {
   run("codesign", ["--verify", "--deep", "--strict", "--verbose=2", app]);
   const facts: AppFacts = {
     requirement: designatedRequirement(run("codesign", ["-d", "-r-", app])),
@@ -203,17 +226,17 @@ function inspectApp(label: string, app: string, config: SigningConfig, version: 
     shortVersion: plistValue(app, "CFBundleShortVersionString"),
     bundleVersion: plistValue(app, "CFBundleVersion"),
     appUpdateYml: readFileSync(join(app, "Contents/Resources/app-update.yml"), "utf8"),
+    packageJson: asarFile(readFileSync(join(app, "Contents/Resources/app.asar")), "package.json").toString("utf8"),
   };
   const problems = appProblems(label, facts, config, version);
-  if (source) run("node", ["scripts/verify-fork-update-feed.ts", join(app, "Contents/Resources")], source);
   const hash = cdHash(run("codesign", ["-d", "--verbose=4", app]));
   if (!hash) problems.push(`${label}: codesign reports no CDHash`);
   console.log(`${label}: ${facts.requirement}; version ${facts.shortVersion}; CDHash ${hash}`);
   return { problems, hash };
 }
 
-function verifyRelease(options: { dir: string; version: string; config: SigningConfig; work: string; source: string | undefined }) {
-  const { dir, version, config, work, source } = options;
+function verifyRelease(options: { dir: string; version: string; config: SigningConfig; work: string }) {
+  const { dir, version, config, work } = options;
   if (!VERSION.test(version)) throw new Error(`invalid version ${version}`);
   const names = readdirSync(dir).sort();
   const problems = releaseFileProblems(names, version);
@@ -231,10 +254,10 @@ function verifyRelease(options: { dir: string; version: string; config: SigningC
   mkdirSync(unzipped, { recursive: true });
   mkdirSync(mount, { recursive: true });
   run("ditto", ["-x", "-k", join(dir, zip), unzipped]);
-  const fromZip = inspectApp("zip", onlyApp(unzipped), config, version, source);
+  const fromZip = inspectApp("zip", onlyApp(unzipped), config, version);
   run("hdiutil", ["attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount, join(dir, dmg)]);
   try {
-    const fromDmg = inspectApp("dmg", onlyApp(mount), config, version, source);
+    const fromDmg = inspectApp("dmg", onlyApp(mount), config, version);
     problems.push(...fromZip.problems, ...fromDmg.problems);
     if (fromZip.hash !== fromDmg.hash) problems.push(`the zip app (CDHash ${fromZip.hash}) and the dmg app (CDHash ${fromDmg.hash}) differ`);
   } finally {
@@ -250,18 +273,16 @@ if (import.meta.main) {
       version: { type: "string" },
       config: { type: "string" },
       work: { type: "string" },
-      source: { type: "string" },
     },
   });
   if (!values.dir || !values.version || !values.config || !values.work) {
-    throw new Error("Usage: verify-macos-release.ts --dir <release-files> --version <version> --config <macos-signing.json> --work <empty-dir> [--source <applied-source>]");
+    throw new Error("Usage: verify-macos-release.ts --dir <release-files> --version <version> --config <macos-signing.json> --work <empty-dir>");
   }
   const problems = verifyRelease({
     dir: values.dir,
     version: values.version,
     config: readSigningConfig(readFileSync(values.config, "utf8")),
     work: values.work,
-    source: values.source,
   });
   if (problems.length > 0) {
     for (const problem of problems) console.error(`::error title=macOS release check::${problem}`);

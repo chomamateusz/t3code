@@ -52,9 +52,16 @@ Each run warns when the installed file differs from `stack/workflow/stack-build.
 
 ## macOS app
 
-The macOS jobs run only when both repository Actions secrets are set: `STACK_MACOS_CERT_P12_BASE64` (the `.p12` export of the "T3 Code Local Signing" identity, base64) and `STACK_MACOS_CERT_PASSWORD`. With neither set, both jobs are skipped and the release carries only the Linux runtime. With one of them set, `prepare` fails.
+The macOS jobs run only when both repository Actions secrets are set: `STACK_MACOS_CERT_P12_BASE64` (the `.p12` export of the "T3 Code Local Signing" identity, base64) and `STACK_MACOS_CERT_PASSWORD`. The `macos_signing` job checks them; with neither set, the macOS jobs are skipped and the release carries only the Linux runtime; with one of them set, `macos_signing` fails. The skip check looks only at the upstream and stack commits, so after setting the secrets, dispatch the workflow with `force` to get the first macOS app without waiting for a new commit.
 
-The certificate is self-signed: there is no Apple team, no notarization and no trust on the runner. `build_macos_arm64` builds the app unsigned with upstream's `scripts/build-desktop-artifact.ts` (update feed and allowlist set to this repository) and hands over the unpacked app and the electron-builder stage. `build_macos_arm64_signed` signs the app on a fresh runner with `codesign --force --deep` by the certificate's SHA-1 from a temporary keychain. That step is inline in the workflow and runs before any code from the source or this branch, so neither can read the identity; the keychain is gone before the job sets up the source. The job then repackages the signed app with `electron-builder --prepackaged`, which writes the zip, dmg, block maps and `latest-mac.yml` without signing again, and fails unless the app in both the zip and the dmg passes `codesign --verify --deep --strict`, has the designated requirement `identifier "<bundleId>" and certificate leaf = H"<leafSha1>"`, carries the release version and an `app-update.yml` that points at this repository's releases, and `latest-mac.yml` matches the files. Installed apps accept an update only when its signature satisfies their designated requirement, so a new signing certificate needs a manual reinstall from the dmg on every Mac.
+The certificate is self-signed: there is no Apple team, no notarization and no trust on the runner. A job that references a secret holds it on its runner for every step, so only two jobs reference the secrets, and neither runs code from the source, its dependencies or this branch: `macos_signing`, a single inline step without a checkout, and `build_macos_arm64_signed`, which runs only pinned checkout and artifact actions and inline steps. The macOS app takes four jobs:
+
+1. `build_macos_arm64` builds the app unsigned with upstream's `scripts/build-desktop-artifact.ts` (update feed and allowlist set to this repository) and uploads the app and the electron-builder stage.
+2. `build_macos_arm64_signed` reads the certificate's SHA-1 from `macos-signing.json`, signs the app with `codesign --force --deep` from a temporary keychain and uploads it. Archives keep the bundle's symlinks and modes.
+3. `build_macos_arm64_packaged` repackages the signed app with `electron-builder --prepackaged`, which writes the zip, dmg, block maps and `latest-mac.yml` without signing again.
+4. `build_macos_arm64_verified` runs on a fresh runner where no code from the source or its dependencies has run. It records the SHA-256 of the downloaded files' `SHA256SUMS` as its output before running anything else, then fails unless the app in both the zip and the dmg passes `codesign --verify --deep --strict`, has the designated requirement `identifier "<bundleId>" and certificate leaf = H"<leafSha1>"`, carries the release version, an `app-update.yml` that points at this repository's releases and the same repository as `t3codeAllowedUpdateRepository` in `app.asar`, and `latest-mac.yml` matches the files.
+
+The release job publishes the macOS files only when they match the `SHA256SUMS` whose hash the verification job recorded, so the packaging job, which runs upstream code, cannot swap files after the check. Installed apps accept an update only when its signature satisfies their designated requirement, so a new signing certificate needs a manual reinstall from the dmg on every Mac.
 
 A release is one version for the fleet: with the secrets set, a failed macOS build means no release.
 
@@ -76,7 +83,7 @@ Stages:
 
 | stage | meaning |
 | --- | --- |
-| `prepare` | failed before the series was applied, for a reason other than a patch conflict: checkout, tool download, upstream lookup, version resolution |
+| `prepare` | failed before the series was applied, for a reason other than a patch conflict: checkout, tool download, upstream lookup, version resolution; or only one macOS signing secret is set |
 | `apply` | a patch did not apply to upstream `main`; `apply.failedPatch` and `apply.conflictedPaths` say where. The series needs carrying onto the new upstream |
 | `test` | quality checks or tests failed on the applied source |
 | `build` | building the Linux x64 runtime failed, or building, signing or verifying the macOS arm64 app failed |

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   appProblems,
+  asarFile,
   cdHash,
   designatedRequirement,
   expectedRequirement,
@@ -25,7 +26,12 @@ const facts: AppFacts = {
   shortVersion: version,
   bundleVersion: version,
   appUpdateYml,
+  packageJson: '{"name":"t3code","t3codeAllowedUpdateRepository":"chomamateusz/t3code"}',
 };
+const electronAsarArchive = Buffer.from(
+  "BAAAABACAAAMAgAABgIAAHsiZmlsZXMiOnsiZGlzdCI6eyJmaWxlcyI6eyJtYWluLmpzIjp7InNpemUiOjEsIm9mZnNldCI6IjAiLCJpbnRlZ3JpdHkiOnsiYWxnb3JpdGhtIjoiU0hBMjU2IiwiaGFzaCI6IjJkNzExNjQyYjcyNmIwNDQwMTYyN2NhOWZiYWMzMmY1Yzg1MzBmYjE5MDNjYzRkYjAyMjU4NzE3OTIxYTQ4ODEiLCJibG9ja1NpemUiOjQxOTQzMDQsImJsb2NrcyI6WyIyZDcxMTY0MmI3MjZiMDQ0MDE2MjdjYTlmYmFjMzJmNWM4NTMwZmIxOTAzY2M0ZGIwMjI1ODcxNzkyMWE0ODgxIl19fX19LCJwYWNrYWdlLmpzb24iOnsic2l6ZSI6NzEsIm9mZnNldCI6IjEiLCJpbnRlZ3JpdHkiOnsiYWxnb3JpdGhtIjoiU0hBMjU2IiwiaGFzaCI6ImE4MjcyMjljZjBiYTU2N2RmYTkxYmFiM2E3YTRkZDk1MDQ3ZmJlMzJlYjljNjhhOTkzYjY4NTNhZmJhODJkNDIiLCJibG9ja1NpemUiOjQxOTQzMDQsImJsb2NrcyI6WyJhODI3MjI5Y2YwYmE1NjdkZmE5MWJhYjNhN2E0ZGQ5NTA0N2ZiZTMyZWI5YzY4YTk5M2I2ODUzYWZiYTgyZDQyIl19fX19AAB4eyJuYW1lIjoidDNjb2RlIiwidDNjb2RlQWxsb3dlZFVwZGF0ZVJlcG9zaXRvcnkiOiJjaG9tYW1hdGV1c3ovdDNjb2RlIn0=",
+  "base64",
+);
 const manifestText = `version: ${version}
 files:
   - url: ${zip}
@@ -78,11 +84,13 @@ describe("appProblems", () => {
         shortVersion: "0.1.8",
         bundleVersion: version,
         appUpdateYml: appUpdateYml.replace("chomamateusz", "pingdotgg").replace("releaseType: release", "releaseType: prerelease"),
+        packageJson: '{"name":"t3code"}',
       },
       config,
       version,
     );
-    expect(problems).toHaveLength(5);
+    expect(problems).toHaveLength(6);
+    expect(problems.join("\n")).toContain("t3codeAllowedUpdateRepository is missing, expected chomamateusz/t3code");
     expect(problems.join("\n")).toContain("designated requirement");
     expect(problems.join("\n")).toContain("owner is pingdotgg");
     expect(problems.join("\n")).toContain("releaseType is prerelease");
@@ -95,6 +103,18 @@ describe("appProblems", () => {
     expect(appProblems("zip", { ...facts, appUpdateYml: `${appUpdateYml}owner: someone\n` }, config, version)[0]).toContain(
       "duplicate key owner",
     );
+  });
+});
+
+describe("asarFile", () => {
+  it("reads a packed file from an archive @electron/asar wrote", () => {
+    expect(asarFile(electronAsarArchive, "package.json").toString("utf8")).toBe(facts.packageJson);
+    expect(asarFile(electronAsarArchive, "dist/main.js").toString("utf8")).toBe("x");
+  });
+
+  it("refuses a missing or truncated file", () => {
+    expect(() => asarFile(electronAsarArchive, "app-update.yml")).toThrow("no packed app-update.yml");
+    expect(() => asarFile(electronAsarArchive.subarray(0, -1), "package.json")).toThrow("outside the archive");
   });
 });
 
