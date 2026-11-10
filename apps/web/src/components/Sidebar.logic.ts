@@ -512,6 +512,26 @@ export function planSidebarThreadDrop(input: {
   }
 }
 
+// Null when a planned thread is missing: a partial write stores another order and holds the optimistic drop.
+export function resolveSidebarDropWrites<T>(
+  plan: SidebarThreadDropPlan,
+  threadByKey: ReadonlyMap<string, T>,
+): ReadonlyArray<{ readonly thread: T; readonly orderKey: string }> | null {
+  const assignments =
+    plan.kind === "pin"
+      ? plan.extraAssignments
+      : plan.kind === "reorder-pinned" || plan.kind === "move-active"
+        ? plan.assignments
+        : [];
+  const writes: Array<{ readonly thread: T; readonly orderKey: string }> = [];
+  for (const { id, orderKey } of assignments) {
+    const thread = threadByKey.get(id);
+    if (thread === undefined) return null;
+    writes.push({ thread, orderKey });
+  }
+  return writes;
+}
+
 export function applySidebarThreadDrop<
   T extends Pick<
     SidebarThreadSummary,

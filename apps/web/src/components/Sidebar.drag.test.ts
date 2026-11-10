@@ -8,6 +8,7 @@ import {
 } from "./Sidebar.drag";
 import {
   resolveSidebarDropTarget,
+  resolveSidebarFolderDropTarget,
   sidebarListItemId,
   sidebarMarkerId,
   type SidebarListItem,
@@ -204,6 +205,78 @@ describe("sidebar collision detection", () => {
       expect(at(316)).toBe("pinned");
     },
   );
+
+  it("finds a grouped target only while the pointer is over the dragged card's own folder", () => {
+    const inFolder = (key: string, projectFolder: string): SidebarListItem => ({
+      kind: "thread",
+      key,
+      section: "active",
+      projectFolder,
+    });
+    const items = [
+      pinnedHeader,
+      divider,
+      marker("active-placeholder"),
+      inFolder("b1", "beta"),
+      inFolder("a1", "alpha"),
+      inFolder("a2", "alpha"),
+      settledHeader,
+      marker("settled-placeholder"),
+    ];
+    const { rects } = layout(items, "a1", "a2");
+    const headerSpaceAbove = new Map([
+      ["b1", 33],
+      ["a1", 33],
+      [sidebarListItemId(settledHeader), 300],
+    ]);
+    let shift = 0;
+    for (const [index, item] of items.entries()) {
+      shift += headerSpaceAbove.get(sidebarListItemId(item)) ?? 0;
+      rects[index]!.top += shift;
+      rects[index]!.bottom += shift;
+    }
+    const rectOf = (id: string) =>
+      rects[items.findIndex((item) => sidebarListItemId(item) === id)]!;
+    const detector = createSidebarCollisionDetection(
+      (id) => resolveSidebarFolderDropTarget(items, "a1", id, ["b1", "a1", "a2"]) !== null,
+      { items },
+    );
+    const overAt = (y: number) => {
+      const source = rectOf("a1");
+      const collisionRect = {
+        ...source,
+        top: y - source.height / 2,
+        bottom: y + source.height / 2,
+      };
+      return detector({
+        active: {
+          id: "a1",
+          data: { current: {} },
+          rect: { current: { initial: source, translated: collisionRect } },
+        },
+        collisionRect,
+        pointerCoordinates: { x: 130, y },
+        droppableRects: new Map(
+          items.map((item, index) => [sidebarListItemId(item), rects[index]!]),
+        ),
+        droppableContainers: items.map((item, index) => ({
+          id: sidebarListItemId(item),
+          key: sidebarListItemId(item),
+          disabled: false,
+          data: { current: {} },
+          node: { current: null },
+          rect: { current: rects[index]! },
+        })),
+      })[0]?.id;
+    };
+    const ownLast = rectOf("a2");
+    const collapsedFolderHeaderY = ownLast.bottom + 17;
+
+    expect(overAt(ownLast.top + ownLast.height / 2)).toBe("a2");
+    expect(overAt(ownLast.bottom + 2)).toBeUndefined();
+    expect(overAt(collapsedFolderHeaderY)).toBeUndefined();
+    expect(overAt(rectOf("a1").top - 17)).toBeUndefined();
+  });
 
   it("returns no collision if an unsupported target has no source fallback", () => {
     const args = collisionArgs();

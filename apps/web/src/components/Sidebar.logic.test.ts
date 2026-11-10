@@ -32,6 +32,7 @@ import {
   sortInboxThreadsByReturn,
   resolveSidebarDropTarget,
   resolveSidebarFolderDropTarget,
+  resolveSidebarDropWrites,
   sidebarMarkerId,
   planSidebarThreadDrop,
   resolveSidebarReorderableThreadKeys,
@@ -1261,6 +1262,38 @@ describe("Working shelf (beta)", () => {
       }
       expect(folderDrop("p1", "a1")).toBeNull();
       expect(folderDrop("s1", "a1")).toBeNull();
+    });
+
+    it("writes every planned key of a grouped drop, including threads of a collapsed folder", () => {
+      const activeOrder = ["a1", "b1", "a2"];
+      const grouped: readonly SidebarListItem[] = [
+        marker("pinned-header"),
+        marker("pinned-divider"),
+        marker("active-placeholder"),
+        { kind: "thread", key: "a1", section: "active", projectFolder: "alpha" },
+        { kind: "thread", key: "a2", section: "active", projectFolder: "alpha" },
+        marker("settled-header"),
+        marker("settled-placeholder"),
+      ];
+      const plan = planSidebarThreadDrop({
+        activeKey: "a2",
+        activeSection: "active",
+        target: resolveSidebarFolderDropTarget(grouped, "a2", "a1", activeOrder)!,
+        pinnedOrder: [],
+        pinnedKeysById: new Map(),
+        activeOrder,
+        activeKeysById: new Map(activeOrder.map((key) => [key, null])),
+        activeReorderableKeys: new Set(activeOrder),
+      });
+      expect(plan).toMatchObject({ kind: "move-active", order: ["a2", "a1", "b1"] });
+      const planned = plan.kind === "move-active" ? plan.assignments : [];
+      const threadByKey = (keys: readonly string[]) => new Map(keys.map((key) => [key, { key }]));
+
+      expect(resolveSidebarDropWrites(plan, threadByKey(activeOrder))).toEqual(
+        planned.map(({ id, orderKey }) => ({ thread: { key: id }, orderKey })),
+      );
+      expect(planned.map(({ id }) => id).toSorted()).toEqual(["a1", "a2", "b1"]);
+      expect(resolveSidebarDropWrites(plan, threadByKey(["a1", "a2"]))).toBeNull();
     });
 
     describe("reordering with cached offline configuration", () => {

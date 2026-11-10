@@ -209,6 +209,7 @@ import {
   resolveSidebarSweepKeys,
   resolveSidebarDropTarget,
   resolveSidebarFolderDropTarget,
+  resolveSidebarDropWrites,
   resolveSidebarDropVerb,
   resolveSidebarThreadSection,
   resolveSidebarReorderableThreadKeys,
@@ -589,17 +590,18 @@ function useSidebarThreads(input: {
   ] as const) {
     for (const thread of list) sectionByThreadKey.set(threadShellKey(thread), section);
   }
+  const sectionedThreads = [
+    ...pinnedThreads,
+    ...activeThreads,
+    ...workingThreads,
+    ...snoozedThreads,
+    ...settledThreads,
+  ];
   return {
     ...partition,
     threads,
     workingShelfEnabled,
-    searchableThreads: [
-      ...pinnedThreads,
-      ...activeThreads,
-      ...workingThreads,
-      ...snoozedThreads,
-      ...settledThreads,
-    ],
+    searchableThreads: sectionedThreads,
     settledVisibleCount,
     settledCount,
     olderSettledShelf,
@@ -625,6 +627,9 @@ function useSidebarThreads(input: {
     visibleWorkingThreads,
     orderedThreadKeys: orderedThreads.map(threadShellKey),
     threadByKey: new Map(orderedThreads.map((thread) => [threadShellKey(thread), thread] as const)),
+    sectionedThreadByKey: new Map(
+      sectionedThreads.map((thread) => [threadShellKey(thread), thread] as const),
+    ),
     settledThreadKeys: new Set(settledThreads.map(threadShellKey)),
     snoozedThreadKeys: new Set(snoozedThreads.map(threadShellKey)),
     sectionByThreadKey,
@@ -1452,6 +1457,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     visibleWorkingThreads,
     orderedThreadKeys,
     threadByKey,
+    sectionedThreadByKey,
     settledThreadKeys,
     snoozedThreadKeys,
     sectionByThreadKey,
@@ -2264,13 +2270,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         : plan.kind === "reorder-pinned" || plan.kind === "move-active"
           ? plan.assignments
           : [];
+    const keyWrites = resolveSidebarDropWrites(plan, sectionedThreadByKey);
     if (
-      !checkThreadOperations(
-        [activeKey, ...assignments.map(({ id }) => id)].flatMap((key) => {
-          const thread = threadByKey.get(key);
-          return thread ? [thread] : [];
-        }),
-      )
+      keyWrites === null ||
+      !checkThreadOperations([activeThread, ...keyWrites.map(({ thread }) => thread)])
     )
       return;
     const drop = {
@@ -2349,15 +2352,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         case "reorder-pinned":
           break;
       }
-      const keyWrites = plan.kind === "pin" ? plan.extraAssignments : plan.assignments;
-      for (const assignment of keyWrites) {
-        const thread = threadByKey.get(assignment.id);
-        if (thread === undefined) continue;
+      for (const { thread, orderKey } of keyWrites) {
         if (
           !(await run(
             (plan.kind === "move-active" ? reorderActiveThread : reorderPinnedThread)(
               scopeThreadRef(thread.environmentId, thread.id),
-              assignment.orderKey,
+              orderKey,
             ),
             plan.kind === "move-active"
               ? "Failed to reorder active threads"

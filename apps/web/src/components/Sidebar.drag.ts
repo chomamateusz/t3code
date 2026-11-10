@@ -28,6 +28,23 @@ export function restrictBelowSidebarLabel(
   return transform.y < minimumY ? { ...transform, y: minimumY } : transform;
 }
 
+function isWithinFolderCards(
+  y: number,
+  items: readonly SidebarListItem[],
+  folder: string,
+  rects: Parameters<CollisionDetection>[0]["droppableRects"],
+) {
+  let top = Number.POSITIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (const item of items) {
+    const rect = item.kind === "thread" && item.projectFolder === folder && rects.get(item.key);
+    if (!rect) continue;
+    top = Math.min(top, rect.top);
+    bottom = Math.max(bottom, rect.bottom);
+  }
+  return y >= top && y <= bottom;
+}
+
 export function createSidebarCollisionDetection(
   isValidTarget: (id: string) => boolean,
   options: {
@@ -40,10 +57,19 @@ export function createSidebarCollisionDetection(
   let previousPointerY = options.activationY;
   let boundarySection: "pinned" | "active" | undefined;
   return (args) => {
-    let collisions = closestCenter(args);
     const pointer = args.pointerCoordinates;
     const items = options.items;
     const source = items?.find((item) => item.kind === "thread" && item.key === args.active.id);
+    if (
+      items &&
+      pointer &&
+      source?.kind === "thread" &&
+      source.projectFolder !== undefined &&
+      !isWithinFolderCards(pointer.y, items, source.projectFolder, args.droppableRects)
+    ) {
+      return [];
+    }
+    let collisions = closestCenter(args);
     const boundary = args.droppableContainers
       .find((container) => container.id === sidebarMarkerId("pinned-divider"))
       ?.node.current?.querySelector(".sidebar-drag-boundary-label")
