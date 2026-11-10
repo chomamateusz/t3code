@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { isRecord } from "./lib.ts";
@@ -31,6 +31,13 @@ export interface AppFacts {
   readonly bundleVersion: string;
   readonly appUpdateYml: string;
   readonly packageJson: string;
+  readonly looseApp: boolean;
+}
+
+export interface TopLevelEntry {
+  readonly name: string;
+  readonly kind: "directory" | "symlink" | "other";
+  readonly target?: string;
 }
 
 export interface FileFacts {
@@ -159,7 +166,7 @@ export function asarFile(archive: Buffer, name: string): Buffer {
   const headerSize = archive.readUInt32LE(4);
   let entry: unknown = JSON.parse(archive.toString("utf8", 16, 16 + archive.readInt32LE(12)));
   for (const part of name.split("/")) entry = isRecord(entry) && isRecord(entry.files) ? entry.files[part] : undefined;
-  if (!isRecord(entry) || typeof entry.offset !== "string" || typeof entry.size !== "number" || entry.unpacked) {
+  if (!isRecord(entry) || "link" in entry || "files" in entry || typeof entry.offset !== "string" || typeof entry.size !== "number" || entry.unpacked) {
     throw new Error(`app.asar has no packed ${name}`);
   }
   const start = 8 + headerSize + Number(entry.offset);
@@ -195,6 +202,7 @@ export function appProblems(label: string, facts: AppFacts, config: SigningConfi
   } catch (error) {
     return [...problems, `${label}: app.asar package.json: ${error instanceof Error ? error.message : String(error)}`];
   }
+  if (facts.looseApp) problems.push(`${label}: Contents/Resources/app exists, and Electron loads it instead of app.asar`);
   if (allowed !== config.updateRepository) {
     problems.push(`${label}: app.asar package.json t3codeAllowedUpdateRepository is ${JSON.stringify(allowed) ?? "missing"}, expected ${config.updateRepository}`);
   }
@@ -208,28 +216,44 @@ function run(command: string, args: readonly string[], cwd?: string): string {
   return output;
 }
 
-function onlyApp(dir: string): string {
-  const apps = readdirSync(dir).filter((name) => name.endsWith(".app"));
-  if (apps.length !== 1) throw new Error(`expected one .app in ${dir}, found [${apps.join(", ")}]`);
-  return join(dir, apps[0]!);
+export function bundledApp(container: "zip" | "dmg", entries: readonly TopLevelEntry[]): string {
+  const visible = entries.filter((entry) => {
+    if (container === "zip") return true;
+    return !entry.name.startsWith(".") && !(entry.name === "Applications" && entry.kind === "symlink" && entry.target === "/Applications");
+  });
+  const [app] = visible;
+  if (visible.length !== 1 || app!.kind !== "directory" || !app!.name.endsWith(".app")) {
+    const found = visible.map((entry) => `${entry.name} (${entry.kind}${entry.target === undefined ? "" : ` to ${entry.target}`})`);
+    throw new Error(`the ${container} must hold exactly one .app directory, found [${found.join(", ")}]`);
+  }
+  return app!.name;
+}
+
+function topLevel(dir: string): TopLevelEntry[] {
+  return readdirSync(dir).sort().map((name): TopLevelEntry => {
+    const stat = lstatSync(join(dir, name));
+    if (stat.isSymbolicLink()) return { name, kind: "symlink", target: readlinkSync(join(dir, name)) };
+    return { name, kind: stat.isDirectory() ? "directory" : "other" };
+  });
 }
 
 function plistValue(app: string, key: string): string {
-  return run("plutil", ["-extract", key, "raw", "-o", "-", join(app, "Contents/Info.plist")]).trim();
+  return run("/usr/bin/plutil", ["-extract", key, "raw", "-o", "-", join(app, "Contents/Info.plist")]).trim();
 }
 
 function inspectApp(label: string, app: string, config: SigningConfig, version: string) {
-  run("codesign", ["--verify", "--deep", "--strict", "--verbose=2", app]);
+  run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", app]);
   const facts: AppFacts = {
-    requirement: designatedRequirement(run("codesign", ["-d", "-r-", app])),
+    requirement: designatedRequirement(run("/usr/bin/codesign", ["-d", "-r-", app])),
     bundleId: plistValue(app, "CFBundleIdentifier"),
     shortVersion: plistValue(app, "CFBundleShortVersionString"),
     bundleVersion: plistValue(app, "CFBundleVersion"),
     appUpdateYml: readFileSync(join(app, "Contents/Resources/app-update.yml"), "utf8"),
     packageJson: asarFile(readFileSync(join(app, "Contents/Resources/app.asar")), "package.json").toString("utf8"),
+    looseApp: existsSync(join(app, "Contents/Resources/app")),
   };
   const problems = appProblems(label, facts, config, version);
-  const hash = cdHash(run("codesign", ["-d", "--verbose=4", app]));
+  const hash = cdHash(run("/usr/bin/codesign", ["-d", "--verbose=4", app]));
   if (!hash) problems.push(`${label}: codesign reports no CDHash`);
   console.log(`${label}: ${facts.requirement}; version ${facts.shortVersion}; CDHash ${hash}`);
   return { problems, hash };
@@ -253,15 +277,18 @@ function verifyRelease(options: { dir: string; version: string; config: SigningC
   const mount = join(work, "dmg");
   mkdirSync(unzipped, { recursive: true });
   mkdirSync(mount, { recursive: true });
-  run("ditto", ["-x", "-k", join(dir, zip), unzipped]);
-  const fromZip = inspectApp("zip", onlyApp(unzipped), config, version);
-  run("hdiutil", ["attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount, join(dir, dmg)]);
+  run("/usr/bin/ditto", ["-x", "-k", join(dir, zip), unzipped]);
+  const zipApp = bundledApp("zip", topLevel(unzipped));
+  const fromZip = inspectApp("zip", join(unzipped, zipApp), config, version);
+  run("/usr/bin/hdiutil", ["attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount, join(dir, dmg)]);
   try {
-    const fromDmg = inspectApp("dmg", onlyApp(mount), config, version);
+    const dmgApp = bundledApp("dmg", topLevel(mount));
+    const fromDmg = inspectApp("dmg", join(mount, dmgApp), config, version);
     problems.push(...fromZip.problems, ...fromDmg.problems);
+    if (zipApp !== dmgApp) problems.push(`the zip holds ${zipApp}, the dmg holds ${dmgApp}`);
     if (fromZip.hash !== fromDmg.hash) problems.push(`the zip app (CDHash ${fromZip.hash}) and the dmg app (CDHash ${fromDmg.hash}) differ`);
   } finally {
-    run("hdiutil", ["detach", mount, "-force"]);
+    run("/usr/bin/hdiutil", ["detach", mount, "-force"]);
   }
   return problems;
 }

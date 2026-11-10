@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { YAML } from "bun";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { classifyRun } from "./classify-run.ts";
@@ -49,8 +50,16 @@ function secretReferences(node: unknown, path: string, key: string): string[] {
   return [];
 }
 
+const releaseVersion = "0.1.9-local.stack.20261110.2";
+const releaseZip = `T3-Code-${releaseVersion}-arm64.zip`;
+
+function sums(dir: string): string {
+  const names = readdirSync(dir).filter((name) => name !== "SHA256SUMS").sort();
+  return names.map((name) => `${createHash("sha256").update(readFileSync(join(dir, name))).digest("hex")}  ${name}\n`).join("");
+}
+
 const pinnedAction = /^actions\/(?:checkout|download-artifact|upload-artifact)@[0-9a-f]{40}$/;
-const runsCode = /\b(?:node|bun|bunx|npx|npm|pnpm|vp|python3?|ruby|perl|sh|bash|zsh|source|eval|exec)\b|(?:^|[\s;&|("'])\.{1,2}\/|local-stack|source\/|GITHUB_WORKSPACE|\.(?:sh|ts|mts|js|mjs|cjs|py)\b/m;
+const runsCode = /\b(?:node|bun|bunx|npx|npm|pnpm|vp|python3?|ruby|perl|swift|osascript|xcrun|sh|bash|zsh|source|eval|exec)\b|(?:^|[\s;&|("'])\.{1,2}\/|(?:^|[\s;&|(])\.\s+\S|\$\{\{|local-stack|source\/|GITHUB_WORKSPACE|\.(?:sh|ts|mts|js|mjs|cjs|py)\b/m;
 
 describe("secret scope", () => {
   it("references secrets only in the secret check and the signing step", () => {
@@ -60,6 +69,10 @@ describe("secret scope", () => {
       "workflow.jobs.build_macos_arm64_signed.steps[Sign the app].env.STACK_MACOS_CERT_P12_BASE64",
       "workflow.jobs.build_macos_arm64_signed.steps[Sign the app].env.STACK_MACOS_CERT_PASSWORD",
     ]);
+  });
+
+  it("lets no job call a reusable workflow, which could be handed every secret", () => {
+    expect(Object.entries(jobs).filter(([, job]) => "uses" in job || "secrets" in job).map(([name]) => name)).toEqual([]);
   });
 
   it.each(["macos_signing", "build_macos_arm64_signed"])("runs only pinned actions and inline steps in %s", (name) => {
@@ -101,6 +114,35 @@ describe("secret scope", () => {
       "macos-arm64-release",
       "macos-arm64-sums",
     ]);
+  });
+
+  it.each<[string, (dir: string) => void, number]>([
+    ["the verified files", () => {}, 0],
+    ["a file changed after the verification", (dir) => writeFileSync(join(dir, "macos-app", releaseZip), "other"), 1],
+    ["checksums rewritten to match a changed file", (dir) => {
+      writeFileSync(join(dir, "macos-app", releaseZip), "other");
+      writeFileSync(join(dir, "macos-app/SHA256SUMS"), sums(join(dir, "macos-app")));
+    }, 1],
+    ["a file the verification did not list", (dir) => writeFileSync(join(dir, "macos-app/extra.pkg"), "x"), 1],
+  ])("the release check on %s exits %i", (_, change, status) => {
+    const dir = mkdtempSync(join(tmpdir(), "release-check-"));
+    mkdirSync(join(dir, "macos-app"));
+    mkdirSync(join(dir, "release-assets"));
+    writeFileSync(join(dir, "macos-app", releaseZip), "zip");
+    writeFileSync(join(dir, "macos-app", `${releaseZip}.blockmap`), "map");
+    writeFileSync(join(dir, "macos-app", releaseZip.replace(/zip$/, "dmg")), "dmg");
+    writeFileSync(join(dir, "macos-app/latest-mac.yml"), `version: ${releaseVersion}\n`);
+    const verified = sums(join(dir, "macos-app"));
+    writeFileSync(join(dir, "macos-app/SHA256SUMS"), verified);
+    change(dir);
+    const step = jobs.release!.steps.find((candidate) => candidate.name === "Check the macOS app against the verification")!;
+    const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", step.run!], {
+      cwd: dir,
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, VERSION: releaseVersion, MACOS_SUMS_SHA256: createHash("sha256").update(verified).digest("hex") },
+    });
+    expect(result.status).toBe(status);
+    expect(readdirSync(join(dir, "release-assets"))).toHaveLength(status === 0 ? 4 : 0);
   });
 
   it("keeps every intermediate macOS artifact for the same time", () => {

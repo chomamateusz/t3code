@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   appProblems,
   asarFile,
+  bundledApp,
   cdHash,
   designatedRequirement,
   expectedRequirement,
@@ -27,7 +28,20 @@ const facts: AppFacts = {
   bundleVersion: version,
   appUpdateYml,
   packageJson: '{"name":"t3code","t3codeAllowedUpdateRepository":"chomamateusz/t3code"}',
+  looseApp: false,
 };
+
+function asarArchive(header: unknown, data: string): Buffer {
+  const json = Buffer.from(JSON.stringify(header));
+  const padded = Math.ceil(json.length / 4) * 4;
+  const head = Buffer.alloc(16 + padded);
+  head.writeUInt32LE(4, 0);
+  head.writeUInt32LE(8 + padded, 4);
+  head.writeUInt32LE(4 + padded, 8);
+  head.writeInt32LE(json.length, 12);
+  json.copy(head, 16);
+  return Buffer.concat([head, Buffer.from(data)]);
+}
 const electronAsarArchive = Buffer.from(
   "BAAAABACAAAMAgAABgIAAHsiZmlsZXMiOnsiZGlzdCI6eyJmaWxlcyI6eyJtYWluLmpzIjp7InNpemUiOjEsIm9mZnNldCI6IjAiLCJpbnRlZ3JpdHkiOnsiYWxnb3JpdGhtIjoiU0hBMjU2IiwiaGFzaCI6IjJkNzExNjQyYjcyNmIwNDQwMTYyN2NhOWZiYWMzMmY1Yzg1MzBmYjE5MDNjYzRkYjAyMjU4NzE3OTIxYTQ4ODEiLCJibG9ja1NpemUiOjQxOTQzMDQsImJsb2NrcyI6WyIyZDcxMTY0MmI3MjZiMDQ0MDE2MjdjYTlmYmFjMzJmNWM4NTMwZmIxOTAzY2M0ZGIwMjI1ODcxNzkyMWE0ODgxIl19fX19LCJwYWNrYWdlLmpzb24iOnsic2l6ZSI6NzEsIm9mZnNldCI6IjEiLCJpbnRlZ3JpdHkiOnsiYWxnb3JpdGhtIjoiU0hBMjU2IiwiaGFzaCI6ImE4MjcyMjljZjBiYTU2N2RmYTkxYmFiM2E3YTRkZDk1MDQ3ZmJlMzJlYjljNjhhOTkzYjY4NTNhZmJhODJkNDIiLCJibG9ja1NpemUiOjQxOTQzMDQsImJsb2NrcyI6WyJhODI3MjI5Y2YwYmE1NjdkZmE5MWJhYjNhN2E0ZGQ5NTA0N2ZiZTMyZWI5YzY4YTk5M2I2ODUzYWZiYTgyZDQyIl19fX19AAB4eyJuYW1lIjoidDNjb2RlIiwidDNjb2RlQWxsb3dlZFVwZGF0ZVJlcG9zaXRvcnkiOiJjaG9tYW1hdGV1c3ovdDNjb2RlIn0=",
   "base64",
@@ -85,11 +99,13 @@ describe("appProblems", () => {
         bundleVersion: version,
         appUpdateYml: appUpdateYml.replace("chomamateusz", "pingdotgg").replace("releaseType: release", "releaseType: prerelease"),
         packageJson: '{"name":"t3code"}',
+        looseApp: true,
       },
       config,
       version,
     );
-    expect(problems).toHaveLength(6);
+    expect(problems).toHaveLength(7);
+    expect(problems.join("\n")).toContain("Contents/Resources/app exists");
     expect(problems.join("\n")).toContain("t3codeAllowedUpdateRepository is missing, expected chomamateusz/t3code");
     expect(problems.join("\n")).toContain("designated requirement");
     expect(problems.join("\n")).toContain("owner is pingdotgg");
@@ -115,6 +131,36 @@ describe("asarFile", () => {
   it("refuses a missing or truncated file", () => {
     expect(() => asarFile(electronAsarArchive, "app-update.yml")).toThrow("no packed app-update.yml");
     expect(() => asarFile(electronAsarArchive.subarray(0, -1), "package.json")).toThrow("outside the archive");
+  });
+
+  it("refuses an entry Electron would resolve as a link or a directory", () => {
+    const file = { size: facts.packageJson.length, offset: "0" };
+    expect(asarFile(asarArchive({ files: { "package.json": file } }, facts.packageJson), "package.json").toString("utf8")).toBe(facts.packageJson);
+    for (const extra of [{ link: "other.json" }, { files: {} }]) {
+      const archive = asarArchive({ files: { "package.json": { ...file, ...extra }, "other.json": file } }, facts.packageJson);
+      expect(() => asarFile(archive, "package.json")).toThrow("no packed package.json");
+    }
+  });
+});
+
+describe("bundledApp", () => {
+  const app = { name: "T3 Code (Beta).app", kind: "directory" } as const;
+  const applications = { name: "Applications", kind: "symlink", target: "/Applications" } as const;
+
+  it("names the one app of a zip and of a dmg with its Applications link and hidden entries", () => {
+    expect(bundledApp("zip", [app])).toBe(app.name);
+    expect(bundledApp("dmg", [{ name: ".DS_Store", kind: "other" }, { name: ".background", kind: "directory" }, applications, app])).toBe(app.name);
+  });
+
+  it.each<[string, "zip" | "dmg", Parameters<typeof bundledApp>[1]]>([
+    ["an app that is a symlink", "dmg", [applications, { name: app.name, kind: "symlink", target: "/Users/runner/work/_temp/macos-verify/zip/T3 Code (Beta).app" }]],
+    ["a second bundle under another extension case", "dmg", [applications, app, { name: "T3 Code.APP", kind: "directory" }]],
+    ["an installer next to the app", "dmg", [applications, app, { name: "Install.pkg", kind: "other" }]],
+    ["an Applications link that points elsewhere", "dmg", [app, { name: "Applications", kind: "symlink", target: "/tmp/x" }]],
+    ["a hidden file in the zip", "zip", [{ name: ".DS_Store", kind: "other" }, app]],
+    ["no app", "zip", []],
+  ])("refuses %s", (_, container, entries) => {
+    expect(() => bundledApp(container, entries)).toThrow("must hold exactly one .app directory");
   });
 });
 
