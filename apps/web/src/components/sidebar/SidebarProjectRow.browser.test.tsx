@@ -297,7 +297,7 @@ it("shows the combined badge of hidden projects on +N", async () => {
     exact: true,
   });
   await expect.element(more).toBeVisible();
-  const badge = more.element().querySelector('[data-project-row="thread-badge"]');
+  const badge = more.element().querySelector("[data-thread-badge]");
   expect(badge?.textContent).toBe("2");
   expect(badge?.className).toBe("text-warning-foreground");
   const moreBox = more.element().getBoundingClientRect();
@@ -321,7 +321,7 @@ it("shows a working dot on +N when hidden projects are only working", async () =
   );
   const more = screen.getByRole("combobox", { name: "2 more projects · 1 working", exact: true });
   await expect.element(more).toBeVisible();
-  const badge = more.element().querySelector('[data-project-row="thread-badge"]');
+  const badge = more.element().querySelector("[data-thread-badge]");
   expect(badge?.hasAttribute("data-working")).toBe(true);
   expect(badge?.textContent).toBe("");
   expect(badge?.className).toBe("text-info-foreground");

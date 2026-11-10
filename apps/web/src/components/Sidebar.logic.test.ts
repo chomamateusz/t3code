@@ -18,6 +18,8 @@ import {
   resolveSidebarThreadStatus,
   resolveSidebarThreadTopStatus,
   buildSidebarProjectBadges,
+  countSidebarProjectBadgeThreads,
+  sidebarBadgeWakeClock,
   combineSidebarProjectBadges,
   summarizeSidebarProjectBadge,
   sameSidebarProjectBadges,
@@ -39,8 +41,8 @@ import {
   type SidebarSection,
   resolveSidebarDropVerb,
   groupSidebarThreadsByProject,
-  resolveSidebarFolderDot,
   sidebarFolderExpansionKeys,
+  resolveSidebarFolderToggle,
 } from "./Sidebar.logic";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
@@ -1606,6 +1608,53 @@ describe("sidebarFolderExpansionKeys", () => {
     expect(resolveProjectExpanded({ [cwdKey]: false }, keys)).toBe(false);
     expect(resolveProjectExpanded({ [keys[0]!]: true, [cwdKey]: false }, keys)).toBe(true);
   });
+
+  it("toggles one folder, or with all every folder to the clicked folder's new state", () => {
+    const folder = (name: string) => ({
+      projectKey: name,
+      memberProjects: [
+        { physicalProjectKey: `local:/code/${name}`, workspaceRoot: `/code/${name}` },
+      ],
+    });
+    const open = folder("open");
+    const closed = folder("closed");
+    const other = folder("other");
+    const folders = [open, closed, other];
+    const state = { [sidebarFolderExpansionKeys(closed).at(-1)!]: false };
+    const apply = (toggle: { readonly keys: readonly string[]; readonly expanded: boolean }) => {
+      const next = {
+        ...state,
+        ...Object.fromEntries(toggle.keys.map((key) => [key, toggle.expanded])),
+      };
+      return folders.map((entry) =>
+        resolveProjectExpanded(next, sidebarFolderExpansionKeys(entry)),
+      );
+    };
+
+    expect(apply(resolveSidebarFolderToggle(state, open, folders, false))).toEqual([
+      false,
+      false,
+      true,
+    ]);
+    expect(apply(resolveSidebarFolderToggle(state, closed, folders, false))).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(apply(resolveSidebarFolderToggle(state, open, folders, true))).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    expect(apply(resolveSidebarFolderToggle(state, closed, folders, true))).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(resolveSidebarFolderToggle(state, other, folders, true).keys).toEqual(
+      folders.flatMap(sidebarFolderExpansionKeys),
+    );
+  });
 });
 
 describe("groupSidebarThreadsByProject", () => {
@@ -1661,43 +1710,6 @@ describe("groupSidebarThreadsByProject", () => {
       { projectKey: "t3code", threads: ["a", "b"] },
       { projectKey: "fleet", threads: [] },
     ]);
-  });
-});
-
-describe("resolveSidebarFolderDot", () => {
-  it("flags the most urgent hidden thread and stays quiet otherwise", () => {
-    const idle = {
-      hasActionableProposedPlan: false,
-      hasPendingApprovals: false,
-      hasPendingUserInput: false,
-      interactionMode: "default" as const,
-      latestRun: makeLatestRun(),
-      lastVisitedAt: "2026-03-09T10:06:00.000Z",
-      runtime: null,
-    };
-    const runtime = {
-      status: "running" as const,
-      activeRunId: null,
-      providerInstanceId: ProviderInstanceId.make("codex"),
-      providerName: "Codex",
-      lastError: null,
-      updatedAt: "2026-03-09T10:00:00.000Z",
-    };
-    const working = { ...idle, runtime };
-    const unread = { ...idle, lastVisitedAt: "2026-03-09T10:04:00.000Z" };
-    const limited = {
-      ...idle,
-      runtime: { ...runtime, status: "failed" as const, lastErrorClass: "usage_limit" as const },
-    };
-
-    expect(resolveSidebarFolderDot([idle])).toBeNull();
-    // A waiting thread stays quiet even with an unread completion, like its row.
-    expect(
-      resolveSidebarFolderDot([{ ...unread, runtime: { ...runtime, status: "idle" as const } }]),
-    ).toBeNull();
-    expect(resolveSidebarFolderDot([idle, working])).toBe("working");
-    expect(resolveSidebarFolderDot([working, unread])).toBe("unread");
-    expect(resolveSidebarFolderDot([unread, limited])).toBe("attention");
   });
 });
 
@@ -1822,6 +1834,38 @@ describe("sidebar project thread badges", () => {
     );
     expect(summarizeSidebarProjectBadge(many[0]!.counts)).toMatchObject({ count: 10, label: "9+" });
     expect(summarizeSidebarProjectBadge(many[1]!.counts)).toBeNull();
+  });
+
+  it("summarizes a closed folder's hidden threads with the project row badge", () => {
+    const summarize = (threads: readonly ReturnType<typeof baseThread>[]) =>
+      summarizeSidebarProjectBadge(countSidebarProjectBadgeThreads(threads, { now }));
+    const seen = { ...baseThread(), lastVisitedAt: now };
+    const done = baseThread();
+    const working = { ...baseThread(), runtime };
+    const limited = {
+      ...baseThread(),
+      runtime: { ...runtime, status: "failed" as const, lastErrorClass: "usage_limit" as const },
+    };
+
+    expect(summarize([seen])).toBeNull();
+    // A waiting thread stays quiet even with an unread completion, like its row.
+    expect(summarize([{ ...done, runtime: { ...runtime, status: "idle" as const } }])).toBeNull();
+    expect(summarize([seen, working])).toMatchObject({
+      count: 0,
+      label: null,
+      className: "text-info-foreground",
+    });
+    expect(summarize([working, done])).toMatchObject({
+      count: 1,
+      label: "1",
+      className: "text-success-foreground",
+      description: "1 done · 1 working",
+    });
+    expect(summarize([done, limited, working])).toMatchObject({
+      count: 2,
+      label: "2",
+      className: "text-warning-foreground",
+    });
   });
 
   it("excludes settled, archived, deleted and still-snoozed threads but counts early wakes", () => {
@@ -1975,6 +2019,13 @@ describe("sidebar project thread badges", () => {
       buildSidebarProjectBadges(groups, [legacyThread], { ...defaults, localLastVisitedAtById })[0]!
         .counts.woke,
     ).toBe(0);
+
+    const stillSnoozed = { ...thread, snoozedUntil: "2026-03-09T11:00:00.000Z" };
+    const earlierWake = { ...thread, snoozedUntil: "2026-03-09T10:05:00.000Z" };
+    const badgeClock = sidebarBadgeWakeClock([earlierWake, thread, stillSnoozed], now);
+    expect(badgeClock).toBe(thread.snoozedUntil);
+    expect(countSidebarProjectBadgeThreads([thread], { now: badgeClock! }).woke).toBe(1);
+    expect(sidebarBadgeWakeClock([stillSnoozed], now)).toBeNull();
   });
 
   it.each([

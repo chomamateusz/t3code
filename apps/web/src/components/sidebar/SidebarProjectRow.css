@@ -201,37 +201,19 @@
   height: 26px;
 }
 
-[data-project-row="thread-badge"] {
+:is([data-project-row="icon"], [data-project-row="more"], [data-project-row="popup-icon"])
+  > [data-thread-badge] {
   position: absolute;
   z-index: 2;
   top: -1px;
   right: -1px;
-  display: grid;
-  place-items: center;
-  min-width: 12px;
-  height: 12px;
-  padding-inline: 2px;
-  border-radius: 6px;
-  background: currentColor;
   box-shadow: 0 0 0 1px var(--sidebar);
-  font-size: 8px;
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
 }
 
-[data-project-row="thread-badge"] > span {
-  color: var(--sidebar);
-}
-
-[data-project-row="thread-badge"][data-working] {
+:is([data-project-row="icon"], [data-project-row="more"], [data-project-row="popup-icon"])
+  > [data-thread-badge][data-working] {
   top: 1px;
   right: 1px;
-  min-width: 6px;
-  width: 6px;
-  height: 6px;
-  padding: 0;
 }
 
 [data-project-row="tooltip"] {
@@ -348,11 +330,6 @@
   height: 16px;
 }
 
-[data-project-row="tooltip-swatch"] [data-project-row="thread-badge"] {
-  position: static;
-  box-shadow: none;
-}
-
-[data-project-row="tooltip-swatch"] [data-project-row="thread-badge"] > span {
+[data-project-row="tooltip-swatch"] [data-thread-badge] > span {
   color: var(--popover);
 }

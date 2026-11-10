@@ -28,32 +28,10 @@ import {
 import { Kbd } from "../ui/kbd";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SidebarProjectModeSwitch } from "./SidebarProjectModeSwitch";
+import { SidebarThreadBadge, type SidebarThreadBadgeSummary } from "./SidebarThreadBadge";
 import "./SidebarProjectRow.css";
 
-type ProjectBadgeSummary = ReturnType<typeof summarizeSidebarProjectBadge>;
-
-const ProjectThreadBadge = memo(
-  function ProjectThreadBadge({ badge }: { readonly badge: ProjectBadgeSummary }) {
-    if (badge === null) return null;
-    return (
-      <span
-        aria-hidden
-        data-project-row="thread-badge"
-        data-working={badge.count === 0 || undefined}
-        className={badge.className}
-      >
-        {badge.label === null ? null : <span>{badge.label}</span>}
-      </span>
-    );
-  },
-  (previous, next) =>
-    previous.badge?.count === next.badge?.count &&
-    previous.badge?.label === next.badge?.label &&
-    previous.badge?.className === next.badge?.className &&
-    previous.badge?.description === next.badge?.description,
-);
-
-function ProjectBadgeCounts({ badge }: { readonly badge: ProjectBadgeSummary }) {
+function ProjectBadgeCounts({ badge }: { readonly badge: SidebarThreadBadgeSummary }) {
   if (badge === null) return null;
   return (
     <div data-project-row="tooltip-counts">
@@ -75,7 +53,7 @@ function ProjectBadgeLegend() {
         {SIDEBAR_PROJECT_BADGE_LEGEND.map((entry) => (
           <span key={entry.state}>
             <span data-project-row="tooltip-swatch">
-              <ProjectThreadBadge badge={entry.badge} />
+              <SidebarThreadBadge badge={entry.badge} />
             </span>
             {entry.label}
           </span>
@@ -100,7 +78,7 @@ function ProjectIconTooltip({
   readonly state: "Selected" | "Shown" | "Hidden";
   readonly showMachines: boolean;
   readonly threadCount: number;
-  readonly badge: ProjectBadgeSummary;
+  readonly badge: SidebarThreadBadgeSummary;
   readonly selectionModifier: string;
 }) {
   const machineNames = showMachines
@@ -144,7 +122,7 @@ function OverflowTooltip({
 }: {
   readonly count: number;
   readonly selectedCount: number;
-  readonly badge: ProjectBadgeSummary;
+  readonly badge: SidebarThreadBadgeSummary;
 }) {
   return (
     <div data-project-row="tooltip">
@@ -353,7 +331,7 @@ export const SidebarProjectRow = memo(
                   <span data-project-row="favicon">
                     <ProjectFavicon project={project} className="size-4" />
                   </span>
-                  <ProjectThreadBadge badge={badge} />
+                  <SidebarThreadBadge badge={badge} />
                 </TooltipTrigger>
                 <TooltipPopup side="bottom">
                   <ProjectIconTooltip
@@ -415,7 +393,7 @@ export const SidebarProjectRow = memo(
                 }
               >
                 +{layout.overflow.length}
-                <ProjectThreadBadge badge={overflowBadge} />
+                <SidebarThreadBadge badge={overflowBadge} />
               </TooltipTrigger>
               <TooltipPopup side="bottom">
                 <OverflowTooltip
@@ -462,7 +440,7 @@ export const SidebarProjectRow = memo(
                     </span>
                     <span data-project-row="popup-icon">
                       <ProjectFavicon project={project} className="size-4" />
-                      <ProjectThreadBadge badge={badgeByKey.get(project.projectKey) ?? null} />
+                      <SidebarThreadBadge badge={badgeByKey.get(project.projectKey) ?? null} />
                     </span>
                     <span className="min-w-0 flex-1 truncate">{project.displayName}</span>
                     {canPinProject?.(project) && onToggleProjectPin ? (

@@ -58,13 +58,7 @@ function BoringSidebarRow() {
           aria-label="Boring sidebar (group by project)"
         />
       }
-    >
-      {settings.boringSidebarEnabled ? (
-        <div className="mt-2 mb-2 border-l-2 border-border/60 ps-3">
-          <BoringSidebarMultilineRow />
-        </div>
-      ) : null}
-    </SettingsRow>
+    />
   );
 }
 
@@ -80,7 +74,7 @@ function ProjectIconOrderRow() {
   return (
     <SettingsRow
       {...searchableSetting("project-icon-order")}
-      description="Order of project icons in the sidebar filter row. Pinned projects come first; Manual follows the order you drag here."
+      description="Order of project icons in the sidebar filter row and of project folders while threads are grouped. Pinned projects come first; Manual follows the order you drag here."
       resetAction={
         order === "name" ? null : (
           <SettingResetButton label="project icon order" onClick={() => setOrder("name")} />
@@ -108,27 +102,6 @@ function ProjectIconOrderRow() {
     >
       {order === "manual" ? <ProjectManualOrderList /> : null}
     </SettingsRow>
-  );
-}
-
-function BoringSidebarMultilineRow() {
-  const settings = useScopedSettings();
-  const updateSettings = useUpdateScopedSettings();
-  return (
-    <SettingsRow
-      {...searchableSetting("boring-sidebar-multiline")}
-      className="px-0 py-2 sm:px-0"
-      description="Show folder threads on two lines: the title, then the branch, pull request, and agent."
-      control={
-        <Switch
-          checked={settings.boringSidebarMultilineRows}
-          onCheckedChange={(checked) =>
-            updateSettings({ boringSidebarMultilineRows: Boolean(checked) })
-          }
-          aria-label="Two-line folder rows"
-        />
-      }
-    />
   );
 }
 

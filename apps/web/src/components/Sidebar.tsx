@@ -119,12 +119,18 @@ import {
   includeSidebarProjectSelection,
   revealSidebarProject,
   sidebarProjectMemberScope,
+  sidebarProjectManualRanks,
+  sortSidebarProjectGroups,
   toggleSidebarProjectSelection,
 } from "../sidebarProjectRow";
 import { ConnectedSidebarProjectRow } from "./sidebar/SidebarProjectRow";
 import { searchableSetting } from "./settings/settingsSearch";
 import { startNewThreadInSidebarFilter } from "../newThreadActions";
-import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
+import {
+  resolveProjectExpanded,
+  selectSidebarProjectManualOrder,
+  useUiStateStore,
+} from "../uiStateStore";
 import {
   getThreadKeysToDeselectAfterDelete,
   useThreadSelectionStore,
@@ -187,6 +193,7 @@ import {
   filterSidebarV2VisibleThreads,
   groupSidebarThreadsByProject,
   sidebarFolderExpansionKeys,
+  resolveSidebarFolderToggle,
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   deleteSelectedThreadEntries,
@@ -206,6 +213,7 @@ import {
   resolveSidebarThreadShelfState,
   searchSidebarThreads,
   shouldNavigateAfterThreadPark,
+  sidebarBadgeWakeClock,
   sidebarListItemId,
   sidebarThreadKeyAtY,
   sortInboxThreadsByReturn,
@@ -553,6 +561,15 @@ function useSidebarThreads(input: {
               : EMPTY_THREADS,
           };
         });
+  const toggleProjectFolder = useStableCallback((group: SidebarProjectSnapshot, all: boolean) => {
+    const { keys, expanded } = resolveSidebarFolderToggle(
+      projectExpandedById,
+      group,
+      projectFolders?.map((folder) => folder.group) ?? [group],
+      all,
+    );
+    setProjectExpanded(keys, expanded);
+  });
   const orderedThreads = [
     ...pinnedThreads,
     ...(projectFolders === null
@@ -599,10 +616,10 @@ function useSidebarThreads(input: {
     workingShelfExpanded,
     toggleWorkingShelf: () => setWorkingShelfExpanded((value) => !value),
     projectFolders,
-    toggleProjectFolder: (group: SidebarProjectSnapshot) => {
-      const keys = sidebarFolderExpansionKeys(group);
-      setProjectExpanded(keys, !resolveProjectExpanded(projectExpandedById, keys));
-    },
+    toggleProjectFolder,
+    folderBadgeNow:
+      sidebarBadgeWakeClock(threads, partition.snoozeNow) ??
+      new Date(snoozeWakeClock).toISOString(),
     renderedSettledThreads,
     visibleSnoozedThreads,
     visibleWorkingThreads,
@@ -849,6 +866,34 @@ function useSidebarLookups() {
   };
 }
 
+// One machine rebuilds its group snapshots; caching them here, apart from Sidebar's
+// per-render state, keeps the group props of memoized folder headers stable.
+function useChosenMachineScope(
+  lookups: Pick<
+    ReturnType<typeof useSidebarLookups>,
+    "projects" | "projectGroups" | "environments"
+  >,
+) {
+  const { projects, projectGroups, environments } = lookups;
+  const keys = useUiStateStore((store) => store.sidebarEnvironmentScopeKeys);
+  const settings = useClientSettings(selectProjectGroupingSettings);
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const chosenEnvironmentScope = resolveSidebarEnvironmentScope({ environments, keys });
+  const chosenEnvironmentIds =
+    chosenEnvironmentScope.length === 0
+      ? null
+      : new Set(chosenEnvironmentScope.map((environment) => environment.environmentId));
+  return {
+    chosenEnvironmentScope,
+    chosenEnvironmentIds,
+    chosenMachineProjectGroups: scopeSidebarProjectGroupsToEnvironment(
+      projectGroups,
+      chosenEnvironmentIds,
+      { projects, settings, primaryEnvironmentId },
+    ),
+  };
+}
+
 function canOperateThreads(
   threads: ReadonlyArray<Pick<SidebarThreadSummary, "environmentId">>,
 ): boolean {
@@ -983,7 +1028,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     },
   });
   const boringSidebarEnabled = useClientSettings((settings) => settings.boringSidebarEnabled);
-  const folderRowsMultiline = useClientSettings((settings) => settings.boringSidebarMultilineRows);
   const newThreadContext = useHandleNewThread();
   // Row callbacks capture only the handler; the rest of the context changes with the route.
   const { handleNewThread } = newThreadContext;
@@ -1003,23 +1047,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const setPersistedProjectScopeKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
   const persistedProjectExcludeKeys = useUiStateStore((store) => store.sidebarProjectExcludeKeys);
   const projectFilterMode = useUiStateStore((store) => store.sidebarProjectFilterMode);
+  const projectIconOrder = useUiStateStore((store) => store.sidebarProjectIconOrder);
+  const projectManualOrder = useUiStateStore(selectSidebarProjectManualOrder);
   const setProjectExcludeKeys = useUiStateStore((store) => store.setSidebarProjectExcludeKeys);
   const setProjectFilterMode = useUiStateStore((store) => store.setSidebarProjectFilterMode);
   const persistProjectReveal = useUiStateStore((store) => store.revealSidebarProjectScope);
-  const persistedEnvironmentScopeKeys = useUiStateStore(
-    (store) => store.sidebarEnvironmentScopeKeys,
-  );
   const setPersistedEnvironmentScopeKeys = useUiStateStore(
     (store) => store.setSidebarEnvironmentScopeKeys,
   );
-  const chosenEnvironmentScope = resolveSidebarEnvironmentScope({
-    environments,
-    keys: persistedEnvironmentScopeKeys,
-  });
-  const chosenEnvironmentIds =
-    chosenEnvironmentScope.length === 0
-      ? null
-      : new Set(chosenEnvironmentScope.map((environment) => environment.environmentId));
+  const { chosenEnvironmentScope, chosenEnvironmentIds, chosenMachineProjectGroups } =
+    useChosenMachineScope({ projects, projectGroups, environments });
   const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
   const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
   // Hold dropped rows until server placement is confirmed; block another pickup from replacing the hold.
@@ -1082,11 +1119,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   // A scope whose project is gone reads as all projects once every snapshot has
   // loaded. The stored keys are left alone, so the scope returns with its project.
   const scopeGroups = pickableProjectGroups(projectGroups);
-  const chosenMachineProjectGroups = scopeSidebarProjectGroupsToEnvironment(
-    projectGroups,
-    chosenEnvironmentIds,
-    { projects, settings: projectGroupingSettings, primaryEnvironmentId },
-  );
   const storedProjectSelection = {
     include: persistedProjectScopeKeys,
     exclude: persistedProjectExcludeKeys,
@@ -1410,6 +1442,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     toggleWorkingShelf,
     projectFolders,
     toggleProjectFolder,
+    folderBadgeNow,
     renderedSettledThreads,
     visibleSnoozedThreads,
     visibleWorkingThreads,
@@ -1434,7 +1467,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     routeRowThreadKey,
     folderGroups: boringSidebarEnabled
       ? [
-          ...pickableProjectGroups(visibleProjectGroups),
+          ...sortSidebarProjectGroups(
+            visibleProjectGroups.filter((project) => !project.archived),
+            threads,
+            projectIconOrder,
+            sidebarProjectManualRanks(projectGroups, projectManualOrder),
+          ),
           ...visibleProjectGroups.filter((project) => project.archived),
         ]
       : null,
@@ -3263,13 +3301,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         const threadKey = scopedThreadKey(
                           scopeThreadRef(thread.environmentId, thread.id),
                         );
-                        const isCard =
-                          section === "active" || section === "pinned" || section === "working";
-                        const rowVariant = folderRow
-                          ? folderRowsMultiline
-                            ? "folder-multiline"
-                            : "folder"
-                          : isCard
+                        const rowVariant =
+                          section === "active" || section === "pinned" || section === "working"
                             ? "card"
                             : "slim";
                         return (
@@ -3401,6 +3434,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 group={folder.group}
                                 collapsed={folder.collapsed}
                                 hiddenThreads={folder.hiddenThreads}
+                                now={folderBadgeNow}
                                 onToggle={toggleProjectFolder}
                                 onNewThread={startThreadInProjectFolder}
                                 onContextMenu={handleProjectFolderContextMenu}

@@ -1,62 +1,67 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ChevronDownIcon, SquarePenIcon } from "lucide-react";
-import { memo } from "react";
+import { memo, type KeyboardEvent } from "react";
+import { shallow } from "zustand/vanilla/shallow";
 
 import { cn } from "~/lib/utils";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
 import { useUiStateStore } from "../../uiStateStore";
-import { resolveSidebarFolderDot, resolveThreadLastVisitedAt } from "../Sidebar.logic";
+import { countSidebarProjectBadgeThreads, summarizeSidebarProjectBadge } from "../Sidebar.logic";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-
-const FOLDER_DOT_CLASS_NAME = {
-  attention: "bg-warning",
-  failed: "bg-error",
-  unread: "bg-success",
-  working: "bg-info",
-} as const;
-
-const FOLDER_DOT_LABEL = {
-  attention: ", needs you",
-  failed: ", failed",
-  unread: ", done",
-  working: ", working",
-} as const;
+import { SidebarThreadBadge } from "./SidebarThreadBadge";
 
 /** The folder's sidebar tree row; its thread rows name it as their parent. */
 export function sidebarFolderRowId(projectKey: string) {
   return `folder:${projectKey}`;
 }
 
+function isAltActivation(event: KeyboardEvent) {
+  // macOS Option+Space reports a non-breaking space as the key.
+  return event.altKey && (event.key === "Enter" || event.code === "Space");
+}
+
+interface SidebarProjectFolderHeaderProps {
+  readonly group: SidebarProjectSnapshot;
+  readonly collapsed: boolean;
+  readonly hiddenThreads: readonly EnvironmentThreadShell[];
+  readonly now: string;
+  readonly onToggle: (group: SidebarProjectSnapshot, all: boolean) => void;
+  readonly onNewThread: (group: SidebarProjectSnapshot) => void;
+  readonly onContextMenu: (
+    group: SidebarProjectSnapshot,
+    position: { x: number; y: number },
+  ) => void;
+}
+
+// The sidebar rebuilds hiddenThreads on every render, so compare its members.
+function sameFolderHeaderProps(
+  previous: SidebarProjectFolderHeaderProps,
+  next: SidebarProjectFolderHeaderProps,
+) {
+  const { hiddenThreads: previousHidden, ...previousRest } = previous;
+  const { hiddenThreads: nextHidden, ...nextRest } = next;
+  return shallow(previousRest, nextRest) && shallow(previousHidden, nextHidden);
+}
+
 /**
  * A project folder in the boring sidebar. It reads like a shelf header: a trailing
- * count and chevron, with the count and a status dot only while it is closed, so a
- * closed folder still says when a hidden thread needs you.
+ * count and chevron, with the count and the project row's badge only while it is
+ * closed, so a closed folder still says when a hidden thread needs you.
  */
-export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHeader(props: {
-  group: SidebarProjectSnapshot;
-  collapsed: boolean;
-  hiddenThreads: readonly EnvironmentThreadShell[];
-  onToggle: (group: SidebarProjectSnapshot) => void;
-  onNewThread: (group: SidebarProjectSnapshot) => void;
-  onContextMenu: (group: SidebarProjectSnapshot, position: { x: number; y: number }) => void;
-}) {
+export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHeader(
+  props: SidebarProjectFolderHeaderProps,
+) {
   const { group, collapsed, hiddenThreads } = props;
   const rowId = sidebarFolderRowId(group.projectKey);
   const localLastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
-  const dot = collapsed
-    ? resolveSidebarFolderDot(
-        hiddenThreads.map((thread) => ({
-          ...thread,
-          lastVisitedAt: resolveThreadLastVisitedAt(
-            thread.lastVisitedAt,
-            localLastVisitedAtById[
-              scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))
-            ],
-          ),
-        })),
+  const badge = collapsed
+    ? summarizeSidebarProjectBadge(
+        countSidebarProjectBadgeThreads(hiddenThreads, {
+          now: props.now,
+          localLastVisitedAtById,
+        }),
       )
     : null;
   return (
@@ -68,7 +73,12 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
         type="button"
         data-sidebar-row={rowId}
         aria-expanded={!collapsed}
-        onClick={() => props.onToggle(group)}
+        onClick={(event) => props.onToggle(group, event.altKey)}
+        onKeyDown={(event) => {
+          if (!isAltActivation(event)) return;
+          event.preventDefault();
+          props.onToggle(group, true);
+        }}
         onContextMenu={(event) => {
           event.preventDefault();
           props.onContextMenu(group, { x: event.clientX, y: event.clientY });
@@ -79,11 +89,8 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-sidebar-foreground/90">
           {group.displayName}
         </span>
-        {dot ? (
-          <span className={cn("size-1.5 shrink-0 rounded-full", FOLDER_DOT_CLASS_NAME[dot])}>
-            <span className="sr-only">{FOLDER_DOT_LABEL[dot]}</span>
-          </span>
-        ) : null}
+        <SidebarThreadBadge badge={badge} />
+        {badge ? <span className="sr-only">, {badge.description}</span> : null}
         {collapsed && hiddenThreads.length > 0 ? (
           <span className="shrink-0 text-xs tabular-nums text-sidebar-muted-foreground group-hover/project-folder:invisible pointer-coarse:invisible">
             {hiddenThreads.length}
@@ -118,4 +125,4 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
       </span>
     </li>
   );
-});
+}, sameFolderHeaderProps);

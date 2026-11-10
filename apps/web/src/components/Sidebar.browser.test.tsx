@@ -1,4 +1,5 @@
-import { DEFAULT_CLIENT_SETTINGS, EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { getProjectOrderKey } from "@t3tools/client-runtime/state/project-grouping";
+import { DEFAULT_CLIENT_SETTINGS, EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
@@ -6,7 +7,8 @@ import { render } from "../../test/render";
 import { openCommandPalette } from "../commandPaletteBus";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { __setClientSettingsForTests, getClientSettings } from "../hooks/useSettings";
-import { readProjects, useProjects } from "../state/entities";
+import { readProjects, useProjects, useQuietThreadShells } from "../state/entities";
+import { makeThreadFixture } from "../test-fixtures";
 import type { Project } from "../types";
 import { useUiStateStore } from "../uiStateStore";
 import Sidebar from "./Sidebar";
@@ -89,5 +91,72 @@ describe("sidebar header new thread", () => {
       expect(openCommandPalette).not.toHaveBeenCalled();
       expect(startThread).toHaveBeenCalledExactlyOnceWith(currentProjectRef);
     }
+  });
+});
+
+describe("grouped sidebar", () => {
+  it("lists full thread cards under project headers in the icon order and Alt+Enter or Alt+Space toggles every header", async () => {
+    using stack = new DisposableStack();
+    const previousSettings = getClientSettings();
+    stack.defer(() => __setClientSettingsForTests(previousSettings));
+    __setClientSettingsForTests({ ...DEFAULT_CLIENT_SETTINGS, boringSidebarEnabled: true });
+    const projects = [project("alpha"), project("beta")];
+    useUiStateStore.setState(
+      {
+        ...useUiStateStore.getInitialState(),
+        sidebarProjectIconOrder: "manual",
+        projectOrder: projects.toReversed().map(getProjectOrderKey),
+      },
+      true,
+    );
+    vi.mocked(useProjects).mockReturnValue(projects);
+    vi.mocked(readProjects).mockReturnValue(projects);
+    vi.mocked(useQuietThreadShells).mockReturnValue(
+      projects.map((entry) =>
+        makeThreadFixture({
+          id: ThreadId.make(`thread-${entry.id}`),
+          environmentId: entry.environmentId,
+          projectId: entry.id,
+          title: `Task in ${entry.id}`,
+        }),
+      ),
+    );
+    vi.mocked(useHandleNewThread).mockReturnValue({
+      activeDraftThread: null,
+      activeThread: null,
+      defaultProjectRef: null,
+      handleNewThread: vi.fn(),
+      routeDraftId: null,
+      routeThreadRef: null,
+    });
+    await using screen = await render(
+      <SidebarProvider>
+        <Sidebar routeReveal={{ observedKey: null, pendingKey: null }} />
+      </SidebarProvider>,
+    );
+    const alpha = screen.getByRole("button", { name: /^alpha/ });
+    const beta = screen.getByRole("button", { name: /^beta/ });
+
+    await expect.element(screen.getByTestId("sidebar-row-card").nth(1)).toBeVisible();
+    expect(screen.getByTestId("sidebar-row-card").elements()).toHaveLength(2);
+    expect(screen.getByTestId("sidebar-row-folder").elements()).toHaveLength(0);
+    expect(
+      beta.element().compareDocumentPosition(alpha.element()) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    for (const card of screen.getByTestId("sidebar-row-card").elements()) {
+      expect(
+        card.closest("li")?.previousElementSibling?.matches("[data-testid=sidebar-project-folder]"),
+      ).toBe(true);
+    }
+
+    (alpha.element() as HTMLElement).focus();
+    await userEvent.keyboard("{Alt>}{Enter}{/Alt}");
+    await expect.element(alpha).toHaveAttribute("aria-expanded", "false");
+    await expect.element(beta).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("sidebar-row-card").elements()).toHaveLength(0);
+
+    await userEvent.keyboard("{Alt>} {/Alt}");
+    await expect.element(alpha).toHaveAttribute("aria-expanded", "true");
+    await expect.element(beta).toHaveAttribute("aria-expanded", "true");
   });
 });

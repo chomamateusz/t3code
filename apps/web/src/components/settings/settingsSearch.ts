@@ -466,19 +466,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["beta folders project tree classic sidebar"],
   },
   {
-    id: "boring-sidebar-multiline",
-    title: "Two-line folder rows",
-    to: "/settings/labs",
-    // Shown inside the boring sidebar row only while it is on, so search lands on the parent.
-    targetId: "boring-sidebar",
-    searchTerms: ["beta boring sidebar folder rows multiline branch pull request details"],
-  },
-  {
     id: "project-icon-order",
     title: "Project icon order",
     to: "/settings/labs",
     searchTerms: [
-      "beta sidebar filter row project icons sort alphabetical name latest activity manual drag arrange",
+      "beta sidebar filter row project icons sort alphabetical name latest activity manual drag arrange folders grouped headers",
     ],
   },
   {

@@ -42,7 +42,7 @@ import { isLatestRunSettled } from "../session-logic";
 import { observeIntersection } from "../lib/observeIntersection";
 import { deadlineAfter, deadlineStore } from "@t3tools/client-runtime/clock";
 import { useDeadlinePassed } from "../hooks/useDeadline";
-import { legacyProjectCwdPreferenceKey } from "../uiStateStore";
+import { legacyProjectCwdPreferenceKey, resolveProjectExpanded } from "../uiStateStore";
 import { isInSidebarProjectScope } from "../sidebarProjectRow";
 import { parseTimestampDate } from "../timestampFormat";
 
@@ -1070,21 +1070,65 @@ export function buildSidebarProjectBadges(
     const key = groupKeyByMember.get(`${thread.environmentId}:${thread.projectId}`);
     const counts = key === undefined ? undefined : countsByGroup.get(key);
     if (counts === undefined) continue;
-    const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
-    const { topStatus } = resolveSidebarThreadTopStatus(thread, {
-      lastVisitedAt: resolveThreadLastVisitedAt(
-        thread.lastVisitedAt,
-        input.localLastVisitedAtById?.[threadKey],
-      ),
-      wokeAt: threadWokeAt(thread, input),
-    });
-    if (topStatus === null || topStatus.kind === "waiting") continue;
-    counts[topStatus.kind === "preparing" ? "working" : topStatus.kind]++;
+    const state = sidebarProjectBadgeState(thread, input);
+    if (state !== null) counts[state]++;
   }
   return groups.map((group) => ({
     projectKey: group.projectKey,
     counts: countsByGroup.get(group.projectKey)!,
   }));
+}
+
+function sidebarProjectBadgeState(
+  thread: SidebarThreadSummary,
+  input: {
+    readonly now: string;
+    readonly localLastVisitedAtById?: Readonly<Record<string, string>> | undefined;
+  },
+): (typeof PROJECT_BADGE_STATES)[number] | null {
+  const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+  const { topStatus } = resolveSidebarThreadTopStatus(thread, {
+    lastVisitedAt: resolveThreadLastVisitedAt(
+      thread.lastVisitedAt,
+      input.localLastVisitedAtById?.[threadKey],
+    ),
+    wokeAt: threadWokeAt(thread, input),
+  });
+  if (topStatus === null || topStatus.kind === "waiting") return null;
+  return topStatus.kind === "preparing" ? "working" : topStatus.kind;
+}
+
+/** Unlike `buildSidebarProjectBadges`, does not filter: callers pass rows the sidebar already lists. */
+export function countSidebarProjectBadgeThreads(
+  threads: readonly SidebarThreadSummary[],
+  input: {
+    readonly now: string;
+    readonly localLastVisitedAtById?: Readonly<Record<string, string>> | undefined;
+  },
+): SidebarProjectBadgeCounts {
+  const counts = emptySidebarProjectBadgeCounts();
+  for (const thread of threads) {
+    const state = sidebarProjectBadgeState(thread, input);
+    if (state !== null) counts[state]++;
+  }
+  return counts;
+}
+
+/**
+ * Counts the same wakes as `now` but changes only when a wake passes, so memoized
+ * folder headers skip renders that leave every wake where it was.
+ */
+export function sidebarBadgeWakeClock(
+  threads: ReadonlyArray<{ readonly snoozedUntil?: string | null | undefined }>,
+  now: string,
+): string | null {
+  const nowMs = Date.parse(now);
+  let latestMs: number | null = null;
+  for (const thread of threads) {
+    const wakeMs = thread.snoozedUntil == null ? Number.NaN : Date.parse(thread.snoozedUntil);
+    if (wakeMs <= nowMs && (latestMs === null || wakeMs > latestMs)) latestMs = wakeMs;
+  }
+  return latestMs === null ? null : new Date(latestMs).toISOString();
 }
 
 export function sameSidebarProjectBadgeThreads(
@@ -1146,32 +1190,6 @@ export function sameSidebarProjectBadges(
 }
 
 /**
- * The dot on a closed boring-sidebar folder: the most urgent state among its
- * hidden threads. Waiting threads stay quiet, like their rows.
- */
-export function resolveSidebarFolderDot(
-  threads: ReadonlyArray<ThreadStatusInput & SidebarThreadStatusInput>,
-): "attention" | "failed" | "unread" | "working" | null {
-  const statuses = new Set(threads.map(resolveSidebarThreadStatus));
-  if (
-    statuses.has("input") ||
-    statuses.has("approval") ||
-    statuses.has("request") ||
-    statuses.has("limited")
-  ) {
-    return "attention";
-  }
-  if (statuses.has("failed")) return "failed";
-  // Rows show Done only for ready threads, so the dot follows the same rule.
-  const hasUnread = threads.some(
-    (thread) => resolveSidebarThreadStatus(thread) === "ready" && hasUnseenCompletion(thread),
-  );
-  if (hasUnread) return "unread";
-  if (statuses.has("working") || statuses.has("preparing")) return "working";
-  return null;
-}
-
-/**
  * Keys the old per-project sidebar saved folder open state under, most
  * specific first, for `resolveProjectExpanded`. Boring folders read and write
  * the same keys, so a legacy user's closed folders stay closed after regrouping.
@@ -1188,6 +1206,21 @@ export function sidebarFolderExpansionKeys(group: {
     ...group.memberProjects.map((member) => member.physicalProjectKey),
     ...group.memberProjects.map((member) => legacyProjectCwdPreferenceKey(member.workspaceRoot)),
   ];
+}
+
+export function resolveSidebarFolderToggle<
+  TGroup extends Parameters<typeof sidebarFolderExpansionKeys>[0],
+>(
+  projectExpandedById: Readonly<Record<string, boolean>>,
+  clicked: TGroup,
+  folders: readonly TGroup[],
+  all: boolean,
+): { readonly keys: string[]; readonly expanded: boolean } {
+  const clickedKeys = sidebarFolderExpansionKeys(clicked);
+  return {
+    keys: all ? folders.flatMap(sidebarFolderExpansionKeys) : clickedKeys,
+    expanded: !resolveProjectExpanded(projectExpandedById, clickedKeys),
+  };
 }
 
 /**
