@@ -85,14 +85,18 @@ export function resolveVersion(input: {
     .reduce((max, suffix) => Math.max(max, Number(suffix)), 0);
   const buildNumber = highestBuild + 1;
   const version = `${prefix}${buildNumber}`;
-  const highestExisting = highestStackVersion(tags);
+  const highestExisting = highestStackVersion(tags) ?? null;
+  return { version, tag: `v${version}`, upstreamStable, seriesDate: input.seriesDate, buildNumber, highestExisting };
+}
+
+export function requireNewer(resolved: ReturnType<typeof resolveVersion>): void {
+  const { version, highestExisting } = resolved;
   if (highestExisting && compareVersions(version, highestExisting) <= 0) {
     throw new Error(
       `Version ${version} would not be newer than the existing tag v${highestExisting}, so installers would refuse it. ` +
-        `Upstream stable is ${upstreamStable} and stack/series-date is ${input.seriesDate}.`,
+        `Upstream stable is ${resolved.upstreamStable} and stack/series-date is ${resolved.seriesDate}.`,
     );
   }
-  return { version, tag: `v${version}`, upstreamStable, seriesDate: input.seriesDate, buildNumber };
 }
 
 if (import.meta.main) {
@@ -102,13 +106,14 @@ if (import.meta.main) {
       "fork-tags": { type: "string" },
       "series-date": { type: "string" },
       "github-output": { type: "boolean", default: false },
+      "require-newer": { type: "boolean", default: false },
     },
   });
   const upstreamReleasesPath = values["upstream-releases"];
   const forkTagsPath = values["fork-tags"];
   const seriesDate = values["series-date"];
   if (!upstreamReleasesPath || !forkTagsPath || !seriesDate) {
-    throw new Error("Usage: resolve-version.ts --upstream-releases <file> --fork-tags <file> --series-date <YYYYMMDD> [--github-output]");
+    throw new Error("Usage: resolve-version.ts --upstream-releases <file> --fork-tags <file> --series-date <YYYYMMDD> [--github-output] [--require-newer]");
   }
   const resolved = resolveVersion({
     upstreamReleases: parseJsonRecords(readFileSync(upstreamReleasesPath, "utf8")),
@@ -125,4 +130,5 @@ if (import.meta.main) {
     });
   }
   console.log(JSON.stringify(resolved));
+  if (values["require-newer"]) requireNewer(resolved);
 }

@@ -116,6 +116,15 @@ jobs:
           node local-stack/stack/ci/should-skip.ts decide "${manifest[@]}" \
             --upstream-sha "$UPSTREAM_SHA" --stack-sha "$STACK_SHA" --force "$FORCE" --github-output
 
+      - name: Check the version is newer than every stack tag
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          node local-stack/stack/ci/resolve-version.ts \
+            --upstream-releases "$RUNNER_TEMP/upstream-releases.jsonl" \
+            --fork-tags "$RUNNER_TEMP/fork-tags.txt" \
+            --series-date "$(cat local-stack/stack/series-date)" \
+            --require-newer
+
       - name: Report skip
         if: steps.skip.outputs.skip == 'true'
         env:

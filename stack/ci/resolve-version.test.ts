@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolveVersion, tagNameFromRef } from "./resolve-version.ts";
+import { requireNewer, resolveVersion, tagNameFromRef } from "./resolve-version.ts";
 
 const release = (tag_name: string, draft = false, prerelease = false) => ({ tag_name, draft, prerelease });
 
@@ -20,6 +20,7 @@ describe("resolveVersion", () => {
       upstreamStable: "0.1.8",
       seriesDate: "20261110",
       buildNumber: 1,
+      highestExisting: null,
     });
   });
 
@@ -55,12 +56,15 @@ describe("resolveVersion", () => {
     ["a peeled tag with a newer series date", ["v0.1.9-local.stack.20261110.4", "v0.1.9-local.stack.20261201.1^{}"], "20261110"],
   ])("refuses a version that would not be newer after %s", (_case, forkTags, seriesDate) => {
     const tags = forkTags.map((tag) => `abcd\trefs/tags/${tag}`);
-    expect(() => resolveVersion({ upstreamReleases, forkTags: tags, seriesDate })).toThrow("would not be newer than the existing tag");
+    const resolved = resolveVersion({ upstreamReleases, forkTags: tags, seriesDate });
+    expect(() => requireNewer(resolved)).toThrow("would not be newer than the existing tag");
   });
 
   it("allows a newer series date after higher build numbers and ignores tags installers cannot run", () => {
     const forkTags = ["v0.1.9-local.stack.20261109.40", "v0.1.9-local.stack.20261110.3-rc", "v0.1.9-local.stack.20261112.07", "v9.9.9-fork.1"];
-    expect(resolveVersion({ upstreamReleases, forkTags, seriesDate: "20261110" }).version).toBe("0.1.9-local.stack.20261110.1");
+    const resolved = resolveVersion({ upstreamReleases, forkTags, seriesDate: "20261110" });
+    expect(resolved.version).toBe("0.1.9-local.stack.20261110.1");
+    expect(() => requireNewer(resolved)).not.toThrow();
   });
 
   it("refuses a malformed series date", () => {

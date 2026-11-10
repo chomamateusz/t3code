@@ -13,7 +13,7 @@ The workflow runs from the fork's `main` (where the owner installs it) and takes
 - `tools/verify-series.sh`: applies the series to a fresh upstream clone at `upstream-base` and requires the carried branch's tree.
 - `ci/`: everything the workflow runs.
   - `fetch-upstream.sh`, `apply-series.sh`: fetch upstream and apply the series. A failed apply writes the failing patch and the conflicted paths to its result file.
-  - `resolve-version.ts`: `<latest stable upstream, patch + 1>-local.stack.<series date>.<build number>`, build number = 1 + the highest existing fork tag with that prefix. It fails when the result would not be newer than every existing `v*-local.stack.*` tag, by the ordering the fleet installer uses.
+  - `resolve-version.ts`: `<latest stable upstream, patch + 1>-local.stack.<series date>.<build number>`, build number = 1 + the highest existing fork tag with that prefix. With `--require-newer`, which the workflow passes only to a run that is going to build, it fails when the result would not be newer than every existing `v*-local.stack.*` tag, by the ordering the fleet installer uses.
   - `should-skip.ts`: skips the run when the newest stack release was built from the same upstream and stack commits.
   - `build-runtime.sh`, `container-build.sh`: build the Linux x64 runtime inside `ubuntu:22.04`.
   - `run-acceptance.sh`, `accept-fresh.sh`, `verify-*.mjs`, `fork-markers.json`: accept the runtime in fresh `ubuntu:22.04` and `ubuntu:24.04` containers, including checks that fork changes reached the bundle.
