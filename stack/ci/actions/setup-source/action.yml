@@ -1,0 +1,56 @@
+name: Set up the applied source
+description: Restore the source tree prepare built, check its tree, install Vite+ and the workspace dependencies.
+inputs:
+  tree:
+    description: Tree id the applied source must have
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Download applied source
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      with:
+        name: source
+        path: ${{ runner.temp }}/source-artifact
+
+    - name: Unpack and check applied source
+      shell: bash
+      env:
+        EXPECTED_TREE: ${{ inputs.tree }}
+      run: |
+        mkdir source
+        tar -xzf "$RUNNER_TEMP/source-artifact/source.tar.gz" -C source
+        actual=$(git -C source rev-parse 'HEAD^{tree}')
+        if [[ "$actual" != "$EXPECTED_TREE" ]]; then
+          echo "::error::Applied source tree is $actual, expected $EXPECTED_TREE" >&2
+          exit 1
+        fi
+        test -z "$(git -C source status --porcelain)"
+
+    - name: Setup Vite+
+      uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+      env:
+        VP_DOWNLOAD_TIMEOUT: "120"
+      with:
+        node-version-file: source/package.json
+        cache: false
+        run-install: false
+
+    - name: Resolve pnpm store
+      id: pnpm_store
+      shell: bash
+      working-directory: source
+      run: echo "path=$(vp pm cache dir)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache pnpm store
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ steps.pnpm_store.outputs.path }}
+        key: stack-pnpm-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('source/pnpm-lock.yaml', 'source/pnpm-workspace.yaml', 'source/package.json') }}
+        restore-keys: |
+          stack-pnpm-v1-${{ runner.os }}-${{ runner.arch }}-
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: source
+      run: vp install
