@@ -1,0 +1,686 @@
+name: Stack build
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Build and release even if the newest stack release used the same upstream and stack commits
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stack-build
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  UPSTREAM_URL: https://github.com/pingdotgg/t3code.git
+  UPSTREAM_REPOSITORY: pingdotgg/t3code
+  STACK_BRANCH: local/stack
+  TOOL_NODE_VERSION: "26.12.1"
+
+jobs:
+  prepare:
+    name: Prepare source
+    if: github.repository == 'chomamateusz/t3code'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      skip: ${{ steps.skip.outputs.skip }}
+      skip_reason: ${{ steps.skip.outputs.skip_reason }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      series_date: ${{ steps.version.outputs.series_date }}
+      build_number: ${{ steps.version.outputs.build_number }}
+      upstream_sha: ${{ steps.refs.outputs.upstream_sha }}
+      stack_sha: ${{ steps.refs.outputs.stack_sha }}
+      source_tree: ${{ steps.apply.outputs.tree }}
+      workflow_drift: ${{ steps.drift.outputs.drift }}
+    steps:
+      - name: Check out the stack branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ env.STACK_BRANCH }}
+          path: local-stack
+          persist-credentials: false
+
+      - name: Check out the installed workflow
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          path: installed
+          sparse-checkout: .github/workflows/stack-build.yml
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Compare the installed workflow with its source
+        id: drift
+        run: |
+          if cmp -s installed/.github/workflows/stack-build.yml local-stack/stack/workflow/stack-build.yml; then
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=Workflow drift::.github/workflows/stack-build.yml on ${GITHUB_REF_NAME} differs from stack/workflow/stack-build.yml on ${STACK_BRANCH}. Install the stack branch copy."
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install tool Node.js
+        run: bash local-stack/stack/ci/fetch-node.sh "$TOOL_NODE_VERSION" "$RUNNER_TEMP/tool-node" >> "$GITHUB_PATH"
+
+      - name: Resolve commits
+        id: refs
+        run: |
+          upstream_sha=$(git ls-remote "$UPSTREAM_URL" refs/heads/main | cut -f1)
+          [[ "$upstream_sha" =~ ^[0-9a-f]{40}$ ]]
+          {
+            echo "upstream_sha=$upstream_sha"
+            echo "stack_sha=$(git -C local-stack rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Resolve version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate "repos/$UPSTREAM_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | {tag_name, draft, prerelease}' > "$RUNNER_TEMP/upstream-releases.jsonl"
+          git ls-remote --tags --refs "https://github.com/$GITHUB_REPOSITORY.git" > "$RUNNER_TEMP/fork-tags.txt"
+          node local-stack/stack/ci/resolve-version.ts \
+            --upstream-releases "$RUNNER_TEMP/upstream-releases.jsonl" \
+            --fork-tags "$RUNNER_TEMP/fork-tags.txt" \
+            --series-date "$(cat local-stack/stack/series-date)" \
+            --github-output
+
+      - name: Decide whether to build
+        id: skip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force == true }}
+          UPSTREAM_SHA: ${{ steps.refs.outputs.upstream_sha }}
+          STACK_SHA: ${{ steps.refs.outputs.stack_sha }}
+        run: |
+          gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 100 \
+            --json tagName,isDraft,publishedAt,createdAt > "$RUNNER_TEMP/fork-releases.json"
+          newest=$(node local-stack/stack/ci/should-skip.ts newest --releases "$RUNNER_TEMP/fork-releases.json")
+          manifest=()
+          if [[ -n "$newest" ]] && gh release download "$newest" -R "$GITHUB_REPOSITORY" \
+            -p build-manifest.json -D "$RUNNER_TEMP/newest-release"; then
+            manifest=(--manifest "$RUNNER_TEMP/newest-release/build-manifest.json")
+          fi
+          node local-stack/stack/ci/should-skip.ts decide "${manifest[@]}" \
+            --upstream-sha "$UPSTREAM_SHA" --stack-sha "$STACK_SHA" --force "$FORCE" --github-output
+
+      - name: Check the version is newer than every stack tag
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          node local-stack/stack/ci/resolve-version.ts \
+            --upstream-releases "$RUNNER_TEMP/upstream-releases.jsonl" \
+            --fork-tags "$RUNNER_TEMP/fork-tags.txt" \
+            --series-date "$(cat local-stack/stack/series-date)" \
+            --require-newer
+
+      - name: Report skip
+        if: steps.skip.outputs.skip == 'true'
+        env:
+          REASON: ${{ steps.skip.outputs.skip_reason }}
+        run: echo "::notice title=Nothing to build::$REASON"
+
+      - name: Apply the series
+        id: apply
+        if: steps.skip.outputs.skip != 'true'
+        env:
+          UPSTREAM_SHA: ${{ steps.refs.outputs.upstream_sha }}
+        run: |
+          mkdir -p results
+          bash local-stack/stack/ci/fetch-upstream.sh "$UPSTREAM_URL" "$UPSTREAM_SHA" source
+          bash local-stack/stack/ci/apply-series.sh local-stack/stack source results/apply-result.json
+          echo "tree=$(jq -r .tree results/apply-result.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload apply result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: apply-result
+          overwrite: true
+          path: results/apply-result.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Pack applied source
+        if: steps.skip.outputs.skip != 'true'
+        run: tar -C source -czf source.tar.gz .
+
+      - name: Upload applied source
+        if: steps.skip.outputs.skip != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: source
+          overwrite: true
+          path: source.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  quality:
+    name: Quality checks
+    needs: [prepare]
+    if: needs.prepare.outputs.skip == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - name: Check out the stack branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.prepare.outputs.stack_sha }}
+          path: local-stack
+          persist-credentials: false
+
+      - name: Set up the applied source
+        uses: ./local-stack/stack/ci/actions/setup-source
+        with:
+          tree: ${{ needs.prepare.outputs.source_tree }}
+
+      - name: Ensure Electron runtime is installed
+        run: vp run --filter @t3tools/desktop ensure:electron
+
+      - name: Check
+        run: vp check
+
+      - name: Typecheck
+        run: vp run typecheck
+
+  test:
+    name: Tests
+    needs: [prepare]
+    if: needs.prepare.outputs.skip == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - name: Check out the stack branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.prepare.outputs.stack_sha }}
+          path: local-stack
+          persist-credentials: false
+
+      - name: Set up the applied source
+        uses: ./local-stack/stack/ci/actions/setup-source
+        with:
+          tree: ${{ needs.prepare.outputs.source_tree }}
+
+      - name: Ensure Electron runtime is installed
+        run: vp run --filter @t3tools/desktop ensure:electron
+
+      - name: Install browser secret helper build libraries
+        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config build-essential
+
+      - name: Test
+        run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/monorepo' --filter '!@t3tools/web' test
+
+  test_web:
+    name: Web tests
+    needs: [prepare]
+    if: needs.prepare.outputs.skip == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - name: Check out the stack branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.prepare.outputs.stack_sha }}
+          path: local-stack
+          persist-credentials: false
+
+      - name: Set up the applied source
+        uses: ./local-stack/stack/ci/actions/setup-source
+        with:
+          tree: ${{ needs.prepare.outputs.source_tree }}
+
+      - name: Resolve Playwright version
+        id: playwright_version
+        run: echo "version=$(node -p "require('./apps/web/node_modules/playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Chromium
+        id: chromium_cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-shell-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}
+
+      - name: Install Chromium for web browser tests
+        if: steps.chromium_cache.outputs.cache-hit != 'true'
+        run: node apps/web/node_modules/playwright/cli.js install --only-shell chromium
+
+      - name: Install missing Chromium system dependencies
+        run: |
+          browser=$(find "$HOME/.cache/ms-playwright" -name chrome-headless-shell -type f -print -quit)
+          test -n "$browser"
+          if ldd "$browser" | grep '=> not found'; then
+            node apps/web/node_modules/playwright/cli.js install-deps chromium
+          fi
+
+      - name: Test
+        run: vp run --filter @t3tools/web test
+
+      - name: Boot the built web client
+        run: |
+          vp run --filter @t3tools/web build
+          node apps/web/scripts/verify-built-boot.ts
+
+  test_server:
+    name: Server tests ${{ matrix.shard }}
+    needs: [prepare]
+    if: needs.prepare.outputs.skip == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - name: Check out the stack branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.prepare.outputs.stack_sha }}
+          path: local-stack
+          persist-credentials: false
+
+      - name: Set up the applied source
+        uses: ./local-stack/stack/ci/actions/setup-source
+        with:
+          tree: ${{ needs.prepare.outputs.source_tree }}
+
+      - name: Install Chromium for server browser integration tests
+        run: node apps/server/node_modules/playwright-core/cli.js install --with-deps --only-shell chromium
+
+      - name: Test
+        run: vp run --filter t3 test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+
+  build_linux_x64:
+    name: Build Linux x64 runtime
+    needs: [prepare, quality, test, test_web, test_server]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      archive_sha256: ${{ steps.build.outputs.archive_sha256 }}
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SOURCE_TREE: ${{ needs.prepare.outputs.source_tree }}
+    steps:
+      - name: Check out the stack branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.prepare.outputs.stack_sha }}
+          path: local-stack
+          persist-credentials: false
+
+      - name: Download applied source
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: source
+          path: input
+
+      # The build needs more disk than a hosted runner leaves free.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Build in ubuntu:22.04
+        id: build
+        run: |
+          mkdir -p output
+          docker pull --platform linux/amd64 ubuntu:22.04
+          docker image inspect ubuntu:22.04 --format '{{json .RepoDigests}}'
+          docker run --rm --platform linux/amd64 \
+            --mount "type=bind,src=$PWD/local-stack/stack/ci,dst=/ci,readonly" \
+            --mount "type=bind,src=$PWD/input,dst=/input,readonly" \
+            --mount "type=bind,src=$PWD/output,dst=/output" \
+            ubuntu:22.04 bash /ci/container-build.sh "$VERSION" "$SOURCE_TREE"
+          (cd output && sha256sum -c SHA256SUMS)
+          archive_sha256=$(sha256sum "output/t3-$VERSION-linux-x64.tar.gz" | cut -d' ' -f1)
+          [[ "$archive_sha256" =~ ^[0-9a-f]{64}$ ]]
+          echo "archive_sha256=$archive_sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: linux-x64-runtime
+          overwrite: true
+          path: |
+            output/t3-${{ needs.prepare.outputs.version }}-linux-x64.tar.gz
+            output/SHA256SUMS
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Upload acceptance probe inputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: linux-x64-probe
+          overwrite: true
+          path: |
+            output/server-bundle.tar.gz
+            output/provenance.txt
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: linux-x64-build-logs
+          overwrite: true
+          path: output/logs
+          if-no-files-found: ignore
+          retention-days: 30
+
+  accept_linux_x64:
+    name: Accept Linux x64 on ubuntu:${{ matrix.ubuntu }}
+    needs: [prepare, build_linux_x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu: ["22.04", "24.04"]
+    steps:
+      - name: Check out the stack branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.prepare.outputs.stack_sha }}
+          path: local-stack
+          persist-credentials: false
+
+      - name: Download runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: linux-x64-runtime
+          path: artifacts
+
+      - name: Download acceptance probe inputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: linux-x64-probe
+          path: probe-input
+
+      - name: Prepare probe
+        run: |
+          node_version=$(sed -n 's/^NODE=v//p' probe-input/provenance.txt)
+          node_bin=$(bash local-stack/stack/ci/fetch-node.sh "$node_version" "$RUNNER_TEMP/probe-node")
+          mkdir probe
+          mv "$(dirname "$node_bin")" probe/node
+          tar -xzf probe-input/server-bundle.tar.gz -C probe
+
+      - name: Accept in a fresh ubuntu:${{ matrix.ubuntu }} container
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          UBUNTU: ${{ matrix.ubuntu }}
+        run: bash local-stack/stack/ci/run-acceptance.sh "$UBUNTU" artifacts probe "verification/ubuntu-$UBUNTU" "$VERSION"
+
+      - name: Upload acceptance transcript
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: linux-x64-acceptance-ubuntu-${{ matrix.ubuntu }}
+          overwrite: true
+          path: verification
+          if-no-files-found: ignore
+          retention-days: 30
+
+  release:
+    name: Publish fork release
+    needs: [prepare, build_linux_x64, accept_linux_x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      UPSTREAM_SHA: ${{ needs.prepare.outputs.upstream_sha }}
+      STACK_SHA: ${{ needs.prepare.outputs.stack_sha }}
+      SERIES_DATE: ${{ needs.prepare.outputs.series_date }}
+      BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+      ARCHIVE_SHA256: ${{ needs.build_linux_x64.outputs.archive_sha256 }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Download runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: linux-x64-runtime
+          path: release-assets
+
+      - name: Check the runtime against the build
+        run: |
+          archive="t3-$VERSION-linux-x64.tar.gz"
+          [[ "$ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          actual=$(sha256sum "release-assets/$archive" | cut -d' ' -f1)
+          if [[ "$actual" != "$ARCHIVE_SHA256" ]]; then
+            echo "::error::$archive has sha256 $actual, the build job produced $ARCHIVE_SHA256" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$ARCHIVE_SHA256" "$archive" | cmp - release-assets/SHA256SUMS
+
+      - name: Write build manifest
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-local\.stack\.[0-9]{8}\.[1-9][0-9]*$ ]]
+          [[ "$TAG" == "v$VERSION" ]]
+          [[ "$UPSTREAM_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$STACK_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$SERIES_DATE" =~ ^[0-9]{8}$ ]]
+          [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          jq -n \
+            --arg version "$VERSION" \
+            --arg upstreamSha "$UPSTREAM_SHA" \
+            --arg stackSha "$STACK_SHA" \
+            --arg seriesDate "$SERIES_DATE" \
+            --argjson buildNumber "$BUILD_NUMBER" \
+            --arg runUrl "$RUN_URL" \
+            '{version: $version, upstreamSha: $upstreamSha, stackSha: $stackSha, seriesDate: $seriesDate, buildNumber: $buildNumber, runUrl: $runUrl}' \
+            > release-assets/build-manifest.json
+          cat release-assets/build-manifest.json
+
+      - name: Check for an existing release
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          refs=$(git ls-remote --tags "https://github.com/$GITHUB_REPOSITORY.git" "refs/tags/$TAG" "refs/tags/$TAG^{}")
+          tag_commit=$(awk -v ref="refs/tags/$TAG" '$2 == ref { direct = $1 } $2 == ref "^{}" { peeled = $1 } END { print (peeled != "" ? peeled : direct) }' <<< "$refs")
+          if [[ -z "$tag_commit" ]]; then
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$tag_commit" != "$STACK_SHA" ]]; then
+            echo "::error::Tag $TAG points at commit $tag_commit, this run built stack commit $STACK_SHA" >&2
+            exit 1
+          fi
+          archive="t3-$VERSION-linux-x64.tar.gz"
+          if ! release=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG"); then
+            echo "::error::Tag $TAG exists on $STACK_SHA without a published release" >&2
+            exit 1
+          fi
+          assets=$(jq -r '[.assets[].name] | sort | join(", ")' <<< "$release")
+          expected=$(jq -rn --arg archive "$archive" '[$archive, "SHA256SUMS", "build-manifest.json"] | sort | join(", ")')
+          if [[ "$assets" != "$expected" ]]; then
+            echo "::error::Release $TAG carries assets [$assets], expected exactly [$expected]" >&2
+            exit 1
+          fi
+          existing="$RUNNER_TEMP/existing-release"
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$archive" -p SHA256SUMS -p build-manifest.json -D "$existing"
+          differences=$(jq -r -s --arg version "$VERSION" --arg upstreamSha "$UPSTREAM_SHA" --arg stackSha "$STACK_SHA" \
+            'if length == 1 and (.[0] | type) == "object" then .[0] else error("not one object") end | . as $manifest | $ARGS.named | to_entries[] | select($manifest[.key] != .value) | "build-manifest.json \(.key) is \($manifest[.key] | tojson), this run has \(.value)"' \
+            "$existing/build-manifest.json") || differences="build-manifest.json is not a JSON object"
+          if ! cmp -s "$existing/SHA256SUMS" release-assets/SHA256SUMS; then
+            differences+=$'\n'"SHA256SUMS is $(jq -Rsc . "$existing/SHA256SUMS"), this run has $(jq -Rsc . release-assets/SHA256SUMS)"
+          fi
+          published_sha256=$(sha256sum "$existing/$archive" | cut -d' ' -f1)
+          if [[ "$published_sha256" != "$ARCHIVE_SHA256" ]]; then
+            differences+=$'\n'"$archive has sha256 $published_sha256, this run built $ARCHIVE_SHA256"
+          fi
+          differences=$(sed '/^$/d' <<< "$differences")
+          if [[ -n "$differences" ]]; then
+            echo "::error::Release $TAG already exists with a different build: ${differences//$'\n'/; }" >&2
+            exit 1
+          fi
+          echo "::notice title=Already published::$TAG is published from the same commits and archive; nothing to do."
+          echo "published=true" >> "$GITHUB_OUTPUT"
+
+      - name: Attest build provenance
+        if: steps.existing.outputs.published == 'false'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release-assets/t3-${{ needs.prepare.outputs.version }}-linux-x64.tar.gz
+            release-assets/SHA256SUMS
+            release-assets/build-manifest.json
+
+      # A draft is invisible to updaters until every asset is attached.
+      - name: Publish release
+        if: steps.existing.outputs.published == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          releases="repos/$GITHUB_REPOSITORY/releases"
+          draft_ids() {
+            gh api --paginate "$releases?per_page=100" | jq -r --arg tag "$TAG" '.[] | select(.draft and .tag_name == $tag) | .id'
+          }
+          leftover=$(draft_ids)
+          for id in $leftover; do
+            echo "Deleting leftover draft release $id for $TAG"
+            gh api -X DELETE "$releases/$id"
+          done
+          {
+            echo "Linux x64 runtime built by [stack build]($RUN_URL)."
+            echo
+            echo "- upstream: [\`$UPSTREAM_SHA\`](https://github.com/$UPSTREAM_REPOSITORY/commit/$UPSTREAM_SHA)"
+            echo "- stack: [\`$STACK_SHA\`](https://github.com/$GITHUB_REPOSITORY/commit/$STACK_SHA)"
+            echo "- series date: $SERIES_DATE, build $BUILD_NUMBER"
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --draft --prerelease \
+            --target "$STACK_SHA" --title "T3 Code $VERSION" --notes-file "$RUNNER_TEMP/notes.md" \
+            "release-assets/t3-$VERSION-linux-x64.tar.gz" release-assets/SHA256SUMS release-assets/build-manifest.json
+          id=$(draft_ids)
+          if [[ ! "$id" =~ ^[0-9]+$ ]]; then
+            echo "::error::Expected exactly one draft release for $TAG, found: ${id//$'\n'/ }" >&2
+            exit 1
+          fi
+          published=$(gh api -X PATCH "$releases/$id" -F draft=false)
+          jq '{url: .html_url, tag: .tag_name, draft, assets: [.assets[].name]}' <<< "$published"
+          jq -e --arg tag "$TAG" '.draft == false and .tag_name == $tag' <<< "$published" > /dev/null
+
+  report:
+    name: Report
+    if: always() && github.repository == 'chomamateusz/t3code'
+    needs: [prepare, quality, test, test_web, test_server, build_linux_x64, accept_linux_x64, release]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NEEDS: ${{ toJSON(needs) }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Check out the stack branch
+        id: checkout
+        continue-on-error: true
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.prepare.outputs.stack_sha || env.STACK_BRANCH }}
+          path: local-stack
+          persist-credentials: false
+
+      - name: Install tool Node.js
+        id: tool_node
+        if: steps.checkout.outcome == 'success'
+        continue-on-error: true
+        run: bash local-stack/stack/ci/fetch-node.sh "$TOOL_NODE_VERSION" "$RUNNER_TEMP/tool-node" >> "$GITHUB_PATH"
+
+      - name: Download apply result
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: apply-result
+          path: results
+
+      - name: Classify run
+        id: classify
+        if: steps.tool_node.outcome == 'success'
+        continue-on-error: true
+        run: |
+          printf '%s' "$NEEDS" > "$RUNNER_TEMP/needs.json"
+          node local-stack/stack/ci/classify-run.ts --needs "$RUNNER_TEMP/needs.json" \
+            --apply-result results/apply-result.json --run-url "$RUN_URL" \
+            --output stack-result.json --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Write the run result without the report tooling
+        if: always() && steps.classify.outcome != 'success'
+        run: |
+          echo "::warning title=Report fallback::The report tooling could not run; writing stack-result.json from the needs context."
+          apply=null
+          if [[ -f results/apply-result.json ]] && jq -e 'type == "object"' results/apply-result.json >/dev/null 2>&1; then
+            apply=$(cat results/apply-result.json)
+          fi
+          jq -n --argjson needs "$NEEDS" --argjson applyResult "$apply" --arg runUrl "$RUN_URL" '
+            def stage_of: if . == "prepare" or . == "release" then . elif startswith("build_") then "build" elif startswith("accept_") then "accept" else "test" end;
+            def earliest: map(stage_of) as $stages | ["prepare", "test", "build", "accept", "release"] | map(select(. as $stage | $stages | index($stage))) | first;
+            def jobs_with($result): $needs | to_entries | map(select(.value.result == $result) | .key);
+            ($needs.prepare.outputs // {}) as $outputs
+            | def output($key): $outputs[$key] | if type == "string" and . != "" then . else null end;
+            jobs_with("failure") as $failed
+            | jobs_with("cancelled") as $cancelled
+            | (if ($failed | length) > 0 then {status: "failed", stage: ($failed | earliest), reason: null}
+               elif ($cancelled | length) > 0 then {status: "cancelled", stage: ($cancelled | earliest), reason: null}
+               elif $needs.prepare.result == "skipped" then {status: "skipped", stage: null, reason: "prepare did not run in this repository"}
+               elif $outputs.skip == "true" then {status: "skipped", stage: null, reason: output("skip_reason")}
+               elif all($needs[]; .result == "success") then {status: "success", stage: null, reason: null}
+               else {status: "failed", stage: ($needs | to_entries | map(select(.value.result != "success") | .key) | earliest), reason: "a required job did not run"}
+               end) as $run
+            | (if $run.stage == "prepare" and $applyResult.status == "failed" then "apply" else $run.stage end) as $stage
+            | {
+                status: $run.status,
+                stage: $stage,
+                reason: ([$run.reason, "the report tooling could not run; this result was written by the workflow fallback"] | map(select(. != null)) | join("; ")),
+                failedJobs: $failed,
+                cancelledJobs: $cancelled,
+                version: output("version"),
+                tag: output("tag"),
+                upstreamSha: output("upstream_sha"),
+                stackSha: output("stack_sha"),
+                seriesDate: output("series_date"),
+                buildNumber: output("build_number"),
+                workflowDrift: ($outputs.workflow_drift == "true"),
+                runUrl: $runUrl,
+                apply: (if $stage == "apply" then $applyResult else null end)
+              }' > stack-result.json
+          cat stack-result.json
+          jq -r '"## Stack build: \(.status)\(if .stage then " at stage `\(.stage)`" else "" end)\n\n\(.reason)"' stack-result.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload run result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: stack-result
+          overwrite: true
+          path: stack-result.json
+          if-no-files-found: error
+          retention-days: 90
