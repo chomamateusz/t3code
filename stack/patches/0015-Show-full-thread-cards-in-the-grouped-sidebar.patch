@@ -8,7 +8,11 @@ Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 Behaviours:
-- Active threads under a project header in the grouped sidebar (Group threads by project, the boringSidebarEnabled client setting) render with the same card as the flat list: project favicon and name, status with working duration, Snooze, labelled Settle, Discard draft, title and the machine, branch, pull request and provider line. Cards are not indented. The header stays their keyboard-navigation parent; drag to the composer, sweep actions, jump hints, file drop, the pinned, snoozed and settled sections and empty pinned folders behave as before.
+- Active threads under a project header in the grouped sidebar (Group threads by project, the boringSidebarEnabled client setting) render with the same card as the flat list: project favicon and name, status with working duration, Snooze, labelled Settle, Discard draft, title and the machine, branch, pull request and provider line. The header stays their keyboard-navigation parent; drag to the composer, sweep actions, jump hints, file drop, the pinned, snoozed and settled sections and empty pinned folders behave as before.
+- A card under a project header is indented by the header's favicon size plus its gap (1rem + 0.625rem = 1.625rem), so the card's project favicon starts where the header's project name starts. The indent is a margin on the card's list item, so the row's hover, active, selected, draft, file-drop and drag surfaces start at the indent too; the card keeps its height, content and actions and its title has less width.
+- The header favicon size, the header gap and the indent come from three root CSS properties (--sidebar-folder-icon-size, --sidebar-folder-gap and --sidebar-folder-child-indent, their sum); the header renders with the same values as before.
+- Pinned cards above the folders, the flat list, the Working shelf, and the snoozed and settled rows keep their position: only rows rendered with a folder as their navigation parent are indented.
+- Nothing positions against a card's left edge: dragging is restricted to the vertical axis, the context-drag test uses the list bounds, the list motion clones a removed row at its own offsetLeft and width, and the keyboard context menu opens at the row's own left edge, which is now the indented edge.
 - The Labs sub-setting Two-line folder rows and its settings search entry are removed; the sidebar no longer reads boringSidebarMultilineRows. The contract field is unchanged, and the folder and folder-multiline variants stay in SidebarThreadRow.tsx, no longer selected by the sidebar.
 - The open project headers follow the project icon order through the same shared sort as the icon row (sortSidebarProjectGroups with Project icon order and, under Manual, the manual ranks): pinned first, then by name, latest activity or the manual order, so the headers and the icons always agree. Archived project headers stay after them. Under Name and Manual a thread update does not reorder the headers. The upstream Project order setting still governs the project picker and the command palette.
 - Alt-click on a project header collapses every header when the clicked one is expanded and expands every header when it is collapsed. Alt+Enter and Alt+Space on a focused header do the same and suppress the plain toggle. A plain click toggles only that header. The bulk change is one write of every folder's expansion keys through the persisted project expansion state.
@@ -39,12 +43,15 @@ apps/web:
 - apps/web/src/components/sidebar/SidebarProjectRow.tsx
 - apps/web/src/components/sidebar/SidebarThreadBadge.css
 - apps/web/src/components/sidebar/SidebarThreadBadge.tsx
+- apps/web/src/components/sidebar/SidebarThreadRow.tsx
+- apps/web/src/index.css
 docs:
 - docs/user/thread-sidebar.md
 
 Tests:
 - apps/web/src/components/Sidebar.browser.test.tsx: the grouped sidebar renders cards under project headers in the icon order; Alt+Enter collapses and Alt+Space expands every header without a second plain toggle.
 - apps/web/src/components/Sidebar.logic.test.ts: the folder toggle rule, the collapsed-header badge counts through the shared derivation, and the badge wake clock.
+- No test for the card indent: it is spacing only. Sidebar.browser.test.tsx and SidebarThreadRow.browser.test.tsx pass unchanged with it (8 tests); the changed-files gate over its 4 files (format, lint, knip 1/2 and 2/2, typecheck of 2 packages, 176 tests in 6 files, the cross-file test run with 3 tests, the React compiler check on 3 files) passed.
 - Changed-files gate on the finished branch (node scripts/check-changed.ts 7b7c82aae2, 25 files): format, lint, knip 1/2 and 2/2, typecheck of 2 packages, 370 tests in 14 files and the React compiler check on 14 files all passed.
 - Header render counts, measured with a scratch counter that is not committed, for eight modifier press-and-release pairs: with all machines 48 header renders before the memo change and 0 after; with one machine selected 64 before the scoped-snapshot cache and 0 after; with two of three machines 0.
 - One integrated pass in the development client on demo data: full cards under headers, Alt-click collapse and expand, badges on collapsed headers, headers following the Manual order. No installed-client pass.
@@ -54,17 +61,19 @@ Model/harness: Claude Opus 5.5 / Claude Code (implementation and fix waves); rev
  .../src/components/Sidebar.browser.test.tsx   |  74 +++++++++-
  apps/web/src/components/Sidebar.logic.test.ts | 127 ++++++++++++------
  apps/web/src/components/Sidebar.logic.ts      | 107 ++++++++++-----
- apps/web/src/components/Sidebar.tsx           |  94 ++++++++-----
+ apps/web/src/components/Sidebar.tsx           |  95 ++++++++-----
  .../components/settings/LabsSettingsPanel.tsx |  31 +----
  .../src/components/settings/settingsSearch.ts |  10 +-
- .../sidebar/SidebarProjectFolderHeader.tsx    |  97 ++++++-------
+ .../sidebar/SidebarProjectFolderHeader.tsx    | 101 +++++++-------
  .../SidebarProjectRow.browser.test.tsx        |   4 +-
  .../components/sidebar/SidebarProjectRow.css  |  33 +----
  .../components/sidebar/SidebarProjectRow.tsx  |  38 ++----
  .../components/sidebar/SidebarThreadBadge.css |  26 ++++
  .../components/sidebar/SidebarThreadBadge.tsx |  27 ++++
+ .../components/sidebar/SidebarThreadRow.tsx   |   2 +
+ apps/web/src/index.css                        |   3 +
  docs/user/thread-sidebar.md                   |  12 +-
- 13 files changed, 426 insertions(+), 254 deletions(-)
+ 15 files changed, 434 insertions(+), 256 deletions(-)
  create mode 100644 apps/web/src/components/sidebar/SidebarThreadBadge.css
  create mode 100644 apps/web/src/components/sidebar/SidebarThreadBadge.tsx
 
@@ -482,7 +491,7 @@ index 3a0630ed64979ea81667689501b14318978c9f8f..1fb1c08fc1530f83d376834c2797a4bb
   * Boring sidebar folders. Folders follow `groups` order and threads keep their
   * input order. A project with no threads gets a folder only when `keepEmpty` says so.
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index b33ac713ac6db84c7e92915888dba5efcd09040b..98c72eb57c00703c3c069b259fff21492241b38a 100644
+index b33ac713ac6db84c7e92915888dba5efcd09040b..4f264fbcdee61a9077bdb548a7bc3d7d9694895b 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -120,12 +120,18 @@ import {
@@ -673,7 +682,15 @@ index b33ac713ac6db84c7e92915888dba5efcd09040b..98c72eb57c00703c3c069b259fff2149
                              ? "card"
                              : "slim";
                          return (
-@@ -3408,6 +3441,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3291,6 +3324,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                             }
+                             thread={thread}
+                             variant={rowVariant}
++                            inProjectFolder={folderRow !== undefined}
+                             navigationParent={
+                               folderRow ??
+                               (section === "working" ||
+@@ -3408,6 +3442,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                  group={folder.group}
                                  collapsed={folder.collapsed}
                                  hiddenThreads={folder.hiddenThreads}
@@ -764,7 +781,7 @@ index d3682404200870f99e131dd8f4f3cba4391276a4..c4e6753ac8ef8c0f4918985ff271fa27
    },
    {
 diff --git a/apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx b/apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx
-index 38b1e53bf057bd4f22033f3fa18be04a93899dd1..6131c246546294463e29023fb928c635ec8636d7 100644
+index 38b1e53bf057bd4f22033f3fa18be04a93899dd1..283b9a06b4a76912aeaa2a548a3545aa86bf9d80 100644
 --- a/apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx
 +++ b/apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx
 @@ -1,62 +1,67 @@
@@ -873,7 +890,7 @@ index 38b1e53bf057bd4f22033f3fa18be04a93899dd1..6131c246546294463e29023fb928c635
        )
      : null;
    return (
-@@ -68,7 +73,12 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
+@@ -68,22 +73,24 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
          type="button"
          data-sidebar-row={rowId}
          aria-expanded={!collapsed}
@@ -887,7 +904,12 @@ index 38b1e53bf057bd4f22033f3fa18be04a93899dd1..6131c246546294463e29023fb928c635
          onContextMenu={(event) => {
            event.preventDefault();
            props.onContextMenu(group, { x: event.clientX, y: event.clientY });
-@@ -79,11 +89,8 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
+         }}
+-        className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-(--control-radius) px-(--sidebar-row-content-inset) text-left outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
++        className="flex h-8 w-full cursor-pointer items-center gap-(--sidebar-folder-gap) rounded-(--control-radius) px-(--sidebar-row-content-inset) text-left outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+       >
+-        <ProjectFavicon project={group} className="size-4 shrink-0" />
++        <ProjectFavicon project={group} className="size-(--sidebar-folder-icon-size) shrink-0" />
          <span className="min-w-0 flex-1 truncate text-sm font-medium text-sidebar-foreground/90">
            {group.displayName}
          </span>
@@ -1146,6 +1168,40 @@ index 0000000000000000000000000000000000000000..db439e67964e4dea091c47376eead71c
 +    previous.badge?.className === next.badge?.className &&
 +    previous.badge?.description === next.badge?.description,
 +);
+diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
+index bc26f4b47608cfa280ab0cf1285f5361fbc62e7f..ef3101e22787a6f84f3fae8f20b43fdea2b527ee 100644
+--- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
++++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
+@@ -538,6 +538,7 @@ type SidebarThreadRowProps = {
+   // "folder-multiline" adds the card's branch and PR line under it.
+   variant: "card" | "slim" | "folder" | "folder-multiline";
+   navigationParent?: string | undefined;
++  inProjectFolder?: boolean | undefined;
+   variantAction: SidebarSweepAction;
+   settlementSupported: boolean;
+   snoozeSupported: boolean;
+@@ -1385,6 +1386,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+       className={cn(
+         "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
+         metaLineEmpty && "[contain-intrinsic-size:auto_58px]",
++        props.inProjectFolder && "ms-(--sidebar-folder-child-indent)",
+         sortable?.isDragging && "relative z-20",
+       )}
+     >
+diff --git a/apps/web/src/index.css b/apps/web/src/index.css
+index b24265d02197ec7ba5b6ec670918a881188a3739..9d67401392b896b0483c2366e2b155a1fd9f13bc 100644
+--- a/apps/web/src/index.css
++++ b/apps/web/src/index.css
+@@ -109,6 +109,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
+     var(--sidebar)
+   );
+   --sidebar-row-content-inset: 0.625rem;
++  --sidebar-folder-icon-size: 1rem;
++  --sidebar-folder-gap: 0.625rem;
++  --sidebar-folder-child-indent: calc(var(--sidebar-folder-icon-size) + var(--sidebar-folder-gap));
+   --command-shell-inset: 0.5rem;
+   --command-content-inset: 1rem;
+   --floating-content-inset: 0.75rem;
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
 index 73d94c6748633f0156654983908cffda13961022..147811dc197dab528d80bd2a325030587955d105 100644
 --- a/docs/user/thread-sidebar.md

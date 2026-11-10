@@ -23,6 +23,8 @@
     { "name": "full thread card badge", "pattern": "data-thread-badge" },
     { "name": "needs input", "pattern": "needs input" },
     { "name": "snooze", "pattern": "Snooze thread" },
-    { "name": "swipe navigation setting", "pattern": "historySwipeNavigation" }
+    { "name": "swipe navigation setting", "pattern": "historySwipeNavigation" },
+    { "name": "mark read from sidebar card", "pattern": "Mark read\\b" },
+    { "name": "reorder within project group", "pattern": "projectFolder:[$\\w]+\\.group\\.projectKey" }
   ]
 }
