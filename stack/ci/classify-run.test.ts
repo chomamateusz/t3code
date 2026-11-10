@@ -46,6 +46,13 @@ describe("classifyRun", () => {
     expect(result.status).toBe("success");
     expect(result.stage).toBeNull();
     expect(result.version).toBe("0.1.9-local.stack.20261110.2");
+    expect(result.workflowDrift).toBe(false);
+  });
+
+  it("carries workflow drift without failing the run", () => {
+    const result = classifyRun({ needs: needs({}, { ...prepareOutputs, workflow_drift: "true" }), applyResult: undefined, runUrl });
+    expect(result.status).toBe("success");
+    expect(result.workflowDrift).toBe(true);
   });
 
   it("reports apply with the failing patch and paths when prepare failed applying the series", () => {

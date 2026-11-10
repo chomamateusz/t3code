@@ -76,6 +76,7 @@ export function classifyRun(input: { needs: unknown; applyResult: unknown; runUr
     stackSha: stringField(outputs, "stack_sha"),
     seriesDate: stringField(outputs, "series_date"),
     buildNumber: stringField(outputs, "build_number"),
+    workflowDrift: outputs?.workflow_drift === "true",
     runUrl: input.runUrl,
     apply: stage === "apply" && isRecord(input.applyResult) ? input.applyResult : null,
   };
@@ -89,6 +90,7 @@ export function summaryMarkdown(result: RunResult): string {
   if (result.version) lines.push(`- version: \`${result.version}\``);
   if (result.upstreamSha) lines.push(`- upstream: \`${result.upstreamSha}\``);
   if (result.stackSha) lines.push(`- stack: \`${result.stackSha}\``);
+  if (result.workflowDrift) lines.push("- workflow drift: the installed workflow differs from `stack/workflow/stack-build.yml`");
   if (result.failedJobs.length > 0) lines.push(`- failed jobs: ${result.failedJobs.map((job) => `\`${job}\``).join(", ")}`);
   if (result.cancelledJobs.length > 0) lines.push(`- cancelled jobs: ${result.cancelledJobs.map((job) => `\`${job}\``).join(", ")}`);
   const apply = result.apply;
