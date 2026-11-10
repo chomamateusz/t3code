@@ -20,7 +20,11 @@ import {
 import type { SidebarProjectBadge } from "../Sidebar.logic";
 import { SidebarProjectRow } from "./SidebarProjectRow";
 import { useUiStateStore } from "../../uiStateStore";
-import { isSidebarBadgeLegendAvailable, openSidebarBadgeLegend } from "../../sidebarBadgeLegend";
+import type { SidebarProjectIconOrder } from "../../sidebarProjectRow";
+
+const settingsMock = vi.hoisted(() => ({
+  updateClientSettings: vi.fn(async (_patch: { readonly boringSidebarEnabled: boolean }) => {}),
+}));
 
 vi.mock(import("../ProjectFavicon"), () => ({ ProjectFavicon: () => <span /> }));
 vi.mock(import("../../hooks/useSettings"), () => ({
@@ -28,8 +32,19 @@ vi.mock(import("../../hooks/useSettings"), () => ({
     select(DEFAULT_CLIENT_SETTINGS)) as never,
   getClientSettings: () => DEFAULT_CLIENT_SETTINGS,
   subscribeClientSettings: () => () => undefined,
-  updateClientSettings: async () => undefined,
+  updateClientSettings: settingsMock.updateClientSettings as never,
 }));
+
+function setup() {
+  settingsMock.updateClientSettings.mockClear();
+  useUiStateStore.setState({
+    sidebarProjectScopeKeys: [],
+    sidebarProjectExcludeKeys: [],
+    sidebarProjectFilterMode: "include",
+  });
+}
+
+const selectionModifier = () => (isMacPlatform(navigator.platform) ? "Meta" : "Control");
 
 function makeProject(name: string): SidebarProjectSnapshot {
   const project = {
@@ -59,7 +74,13 @@ function makeProject(name: string): SidebarProjectSnapshot {
   };
 }
 
-function ProjectList({ badges = [] }: { readonly badges?: readonly SidebarProjectBadge[] }) {
+function ProjectList({
+  badges = [],
+  onOpenSidebarSettings = () => undefined,
+}: {
+  readonly badges?: readonly SidebarProjectBadge[];
+  readonly onOpenSidebarSettings?: () => void;
+}) {
   const projects = ["Alpha", "Beta", "Gamma", "Delta", "Echo", "Foxtrot"].map(makeProject);
   const state = useUiStateStore();
   const mode = state.sidebarProjectFilterMode;
@@ -111,6 +132,7 @@ function ProjectList({ badges = [] }: { readonly badges?: readonly SidebarProjec
             availableKeys,
           })
         }
+        onOpenSidebarSettings={onOpenSidebarSettings}
         onProjectSettings={(event) => event.preventDefault()}
       />
       <ul aria-label="Visible threads">
@@ -131,7 +153,7 @@ function ProjectList({ badges = [] }: { readonly badges?: readonly SidebarProjec
 }
 
 it("filters through plain and modifier selections, hide mode and overflow search", async () => {
-  const modifier = isMacPlatform(navigator.platform) ? "Meta" : "Control";
+  const modifier = selectionModifier();
   useUiStateStore.setState({
     sidebarProjectScopeKeys: ["Remote"],
     sidebarProjectExcludeKeys: ["Remote-hidden"],
@@ -157,17 +179,13 @@ it("filters through plain and modifier selections, hide mode and overflow search
   await expect.element(threads.getByText("Alpha thread")).toBeVisible();
   expect(useUiStateStore.getState().sidebarProjectScopeKeys).toEqual(["Remote"]);
   await screen.getByRole("button", { name: /^Beta(?:, hidden)?$/, exact: true }).click();
-  await screen.getByRole("button", { name: "Project filter options" }).click();
-  await page.getByRole("menuitem", { name: /Clear selection\s*1/ }).click();
+  await screen.getByRole("button", { name: "Clear project selection" }).click();
   await expect.element(threads.getByText("Alpha thread")).toBeVisible();
   expect(useUiStateStore.getState().sidebarProjectScopeKeys).toEqual(["Remote"]);
-  await userEvent.keyboard("{Escape}");
   await screen.getByRole("button", { name: /^Beta(?:, hidden)?$/, exact: true }).click();
-  await screen.getByRole("button", { name: "Project filter options" }).click();
-  await page.getByRole("menuitemradio", { name: "Hide selected" }).click();
+  await screen.getByRole("button", { name: "Showing selected projects" }).click();
   await expect.element(threads.getByText("Alpha thread")).toBeVisible();
   await expect.element(threads.getByText("Beta thread")).not.toBeInTheDocument();
-  await userEvent.keyboard("{Escape}");
   await screen.getByRole("combobox", { name: /more projects/ }).click();
   await page.getByRole("combobox", { name: "Search project row" }).fill("Foxtrot");
   await page.getByRole("option", { name: "Foxtrot" }).click();
@@ -289,9 +307,7 @@ it("shows the combined badge of hidden projects on +N", async () => {
   expect(badgeBox.top).toBeGreaterThanOrEqual(moreBox.top - 1);
   await expect.element(badge as HTMLElement).toBeVisible();
   await more.hover();
-  await expect
-    .element(page.getByText("2 more projects · 1 approval · 1 done · 3 working", { exact: true }))
-    .toBeVisible();
+  await expect.element(page.getByText("2 more projects", { exact: true })).toBeVisible();
 });
 
 it("shows a working dot on +N when hidden projects are only working", async () => {
@@ -311,42 +327,142 @@ it("shows a working dot on +N when hidden projects are only working", async () =
   expect(badge?.className).toBe("text-info-foreground");
 });
 
-it("explains the badges from the options menu and from a legend request", async () => {
-  useUiStateStore.setState({
-    sidebarProjectScopeKeys: [],
-    sidebarProjectExcludeKeys: [],
-    sidebarProjectFilterMode: "include",
-  });
-  await using screen = await render(<ProjectList />);
-  const options = screen.getByRole("button", { name: "Project filter options" });
-  options.element().focus();
-  await userEvent.keyboard("{Enter}");
-  await page.getByRole("menuitem", { name: "Badge legend" }).click();
-  const legend = page.getByRole("dialog", { name: "Project badges" });
-  await expect.element(legend).toBeVisible();
-  const rows = [...legend.element().querySelectorAll("li")].map((row) => ({
-    label: row.children[1]?.textContent,
-    badge: row.querySelector('[data-project-row="thread-badge"]')?.className,
-    count: row.querySelector('[data-project-row="thread-badge"]')?.textContent,
-  }));
-  expect(rows).toEqual([
-    { label: "Approval", badge: "text-warning-foreground", count: "1" },
-    { label: "Needs input", badge: "text-indigo-600 dark:text-indigo-300", count: "1" },
-    { label: "Request", badge: "text-guest-foreground", count: "1" },
-    { label: "Failed", badge: "text-error-foreground", count: "1" },
-    { label: "Limited", badge: "text-warning-foreground", count: "1" },
-    { label: "Woke", badge: "text-warning-foreground", count: "1" },
-    { label: "Done", badge: "text-success-foreground", count: "1" },
-    { label: "Working", badge: "text-info-foreground", count: "" },
-  ]);
-  await userEvent.keyboard("{Escape}");
-  await expect.element(legend).not.toBeInTheDocument();
-  await expect.element(options).toHaveFocus();
+it("switches the mode on click, grouping with the selection modifier and settings with left Alt only", async () => {
+  setup();
+  const modifier = selectionModifier();
+  const onOpenSidebarSettings = vi.fn();
+  {
+    await using screen = await render(
+      <ProjectList onOpenSidebarSettings={onOpenSidebarSettings} />,
+    );
+    await screen.getByRole("button", { name: "Showing selected projects" }).click();
+    expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("exclude");
+    await screen.getByRole("button", { name: "Hiding selected projects" }).click();
+    expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("include");
 
-  openSidebarBadgeLegend();
-  await expect.element(legend).toBeVisible();
-  await userEvent.keyboard("{Escape}");
-  await expect.element(legend).not.toBeInTheDocument();
+    await userEvent.keyboard("{AltRight>}");
+    const showing = screen.getByRole("button", { name: "Showing selected projects" });
+    await expect.element(showing).toHaveAttribute("data-face", "include");
+    await showing.click();
+    await userEvent.keyboard("{/AltRight}");
+    expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("exclude");
+    expect(onOpenSidebarSettings).not.toHaveBeenCalled();
+    await screen.getByRole("button", { name: "Hiding selected projects" }).click();
+
+    await userEvent.keyboard(`{${modifier}>}`);
+    await screen.getByRole("button", { name: "Group threads by project" }).click();
+    await userEvent.keyboard(`{/${modifier}}`);
+    expect(settingsMock.updateClientSettings).toHaveBeenCalledExactlyOnceWith({
+      boringSidebarEnabled: true,
+    });
+    await userEvent.keyboard("{Alt>}");
+    await screen.getByRole("button", { name: "Sidebar settings" }).click();
+    await userEvent.keyboard("{/Alt}");
+    expect(onOpenSidebarSettings).toHaveBeenCalledOnce();
+    expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("include");
+
+    screen.getByRole("button", { name: "Showing selected projects" }).element().focus();
+    await userEvent.keyboard(`{${modifier}>}{Enter}{/${modifier}}`);
+    expect(settingsMock.updateClientSettings).toHaveBeenCalledTimes(2);
+    await userEvent.keyboard("{Alt>}{Enter}{/Alt}");
+    expect(onOpenSidebarSettings).toHaveBeenCalledTimes(2);
+    await userEvent.keyboard("{Enter}");
+    expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("exclude");
+  }
+  {
+    using _platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux x86_64");
+    await using screen = await render(<ProjectList />);
+    const hiding = screen.getByRole("button", { name: "Hiding selected projects" });
+    const altGraph = { altKey: true, ctrlKey: true };
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Control", ...altGraph }));
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "AltGraph",
+        code: "AltRight",
+        modifierAltGraph: true,
+        ...altGraph,
+      }),
+    );
+    await expect.element(hiding).toHaveAttribute("data-face", "exclude");
+    hiding
+      .element()
+      .dispatchEvent(
+        new MouseEvent("click", { bubbles: true, modifierAltGraph: true, ...altGraph }),
+      );
+    expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("include");
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: "AltGraph", code: "AltRight" }));
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: "Control" }));
+    expect(settingsMock.updateClientSettings).toHaveBeenCalledTimes(2);
+  }
+  {
+    using _platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    await using screen = await render(<ProjectList />);
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Alt",
+        code: "AltLeft",
+        altKey: true,
+        modifierAltGraph: true,
+      }),
+    );
+    await expect
+      .element(screen.getByRole("button", { name: "Sidebar settings" }))
+      .toHaveAttribute("data-face", "settings");
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: "Alt", code: "AltLeft" }));
+  }
+});
+
+it("shows the held modifier's action anywhere and resets it when the window loses focus", async () => {
+  setup();
+  const modifier = selectionModifier();
+  await using screen = await render(<ProjectList />);
+  const showing = screen.getByRole("button", { name: "Showing selected projects" });
+  await expect.element(showing).toBeVisible();
+  await userEvent.keyboard(`{${modifier}>}`);
+  await expect
+    .element(screen.getByRole("button", { name: "Group threads by project" }))
+    .toHaveAttribute("aria-pressed", "false");
+  await userEvent.keyboard("{Alt>}");
+  await expect
+    .element(screen.getByRole("button", { name: "Group threads by project" }))
+    .toBeVisible();
+  await userEvent.keyboard(`{/${modifier}}`);
+  await expect.element(screen.getByRole("button", { name: "Sidebar settings" })).toBeVisible();
+  window.dispatchEvent(new Event("blur"));
+  await expect.element(showing).toBeVisible();
+  await userEvent.keyboard("{/Alt}");
+  await expect.element(showing).toBeVisible();
+});
+
+it("opens the switch's secondary menu from the keyboard with its three actions", async () => {
+  setup();
+  const onOpenSidebarSettings = vi.fn();
+  await using screen = await render(<ProjectList onOpenSidebarSettings={onOpenSidebarSettings} />);
+  const showing = screen.getByRole("button", { name: "Showing selected projects" });
+  showing.element().focus();
+  await userEvent.keyboard("{Shift>}{F10}{/Shift}");
+  await expect
+    .element(page.getByRole("menuitemradio", { name: "Show selected" }))
+    .toHaveAttribute("aria-checked", "true");
+  await expect
+    .element(page.getByRole("menuitemradio", { name: "Group threads by project" }))
+    .toHaveAttribute("aria-checked", "false");
+  await page.getByRole("menuitemradio", { name: "Hide selected" }).click();
+  expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("exclude");
+
+  const hiding = screen.getByRole("button", { name: "Hiding selected projects" });
+  hiding.element().focus();
+  await userEvent.keyboard("{ContextMenu}");
+  await page.getByRole("menuitemradio", { name: "Group threads by project" }).click();
+  expect(settingsMock.updateClientSettings).toHaveBeenCalledExactlyOnceWith({
+    boringSidebarEnabled: true,
+  });
+
+  hiding.element().focus();
+  await userEvent.keyboard("{Shift>}{F10}{/Shift}");
+  await page.getByRole("menuitem", { name: "Sidebar settings" }).click();
+  expect(onOpenSidebarSettings).toHaveBeenCalledOnce();
+  expect(useUiStateStore.getState().sidebarProjectFilterMode).toBe("exclude");
 });
 
 function BareRow({
@@ -376,36 +492,17 @@ function BareRow({
         onToggle={() => undefined}
         onClear={() => undefined}
         onModeChange={() => undefined}
+        onOpenSidebarSettings={() => undefined}
         onProjectSettings={() => undefined}
       />
     </div>
   );
 }
 
-it("offers no legend without projects and never opens it on its own later", async () => {
-  const projects = ["Alpha", "Beta"].map(makeProject);
-  await using screen = await render(<BareRow projects={[]} />);
-  expect(screen.container.querySelector('[data-project-row="root"]')).toBeNull();
-  expect(isSidebarBadgeLegendAvailable()).toBe(false);
-  openSidebarBadgeLegend();
-
-  await screen.rerender(<BareRow projects={projects} />);
-  await expect.element(screen.getByRole("group", { name: "Filter projects" })).toBeVisible();
-  expect(isSidebarBadgeLegendAvailable()).toBe(true);
-  const legend = page.getByRole("dialog", { name: "Project badges" });
-  await expect.element(legend).not.toBeInTheDocument();
-
-  openSidebarBadgeLegend();
-  await expect.element(legend).toBeVisible();
-  await screen.rerender(<BareRow projects={[]} />);
-  await expect.element(legend).not.toBeInTheDocument();
-  expect(isSidebarBadgeLegendAvailable()).toBe(false);
-  await screen.rerender(<BareRow projects={projects} />);
-  await expect.element(screen.getByRole("group", { name: "Filter projects" })).toBeVisible();
-  await expect.element(legend).not.toBeInTheDocument();
-});
-
-it("moves a project ahead when its activity breaks a name-ordered tie", async () => {
+it.each<{ order: SidebarProjectIconOrder; expected: string[] }>([
+  { order: "name", expected: ["Alpha", "Zulu"] },
+  { order: "activity", expected: ["Zulu", "Alpha"] },
+])("orders icons by $order when newer activity breaks a name tie", async ({ order, expected }) => {
   const projects = [
     { ...makeProject("Zulu"), projectKey: "a" },
     { ...makeProject("Alpha"), projectKey: "b" },
@@ -418,9 +515,9 @@ it("moves a project ahead when its activity breaks a name-ordered tie", async ()
     updatedAt: tiedAt,
   }));
   const source = Atom.make(threads);
-  const activity = Atom.make((get) => buildSidebarProjectActivity(projects, get(source))).pipe(
-    Atom.withEquality(sameSidebarProjectActivity),
-  );
+  const activity = Atom.make((get) =>
+    buildSidebarProjectActivity(projects, get(source), order),
+  ).pipe(Atom.withEquality(sameSidebarProjectActivity));
   const registry = AtomRegistry.make();
   const release = registry.mount(activity);
   await using screen = await render(
@@ -433,9 +530,11 @@ it("moves a project ahead when its activity breaks a name-ordered tie", async ()
   try {
     await expect.element(screen.getByRole("button", { name: "Alpha", exact: true })).toBeVisible();
     expect(iconLabels()).toEqual(["Alpha", "Zulu"]);
+    const tiedActivity = registry.get(activity);
     registry.set(source, [{ ...threads[0]!, updatedAt: "2026-11-03T11:00:00.000Z" }, threads[1]!]);
+    expect(registry.get(activity) === tiedActivity).toBe(order === "name");
     await screen.rerender(<BareRow projects={projects} activity={registry.get(activity)} />);
-    await vi.waitFor(() => expect(iconLabels()).toEqual(["Zulu", "Alpha"]));
+    await vi.waitFor(() => expect(iconLabels()).toEqual(expected));
   } finally {
     release();
     registry.dispose();

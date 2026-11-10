@@ -4,10 +4,23 @@ import { managedCapabilityDenial } from "@t3tools/contracts";
 
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import { useT3ConnectAuthPrompt } from "../clerk/useT3ConnectAuthPrompt";
+import {
+  SIDEBAR_PROJECT_ICON_ORDERS,
+  isSidebarProjectIconOrder,
+  type SidebarProjectIconOrder,
+} from "../../sidebarProjectRow";
+import { useUiStateStore } from "../../uiStateStore";
 import { Button } from "../ui/button";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { ProjectManualOrderList } from "./ProjectManualOrderList";
 import { ScopedSwitch } from "./ScopedSwitch";
-import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
+import {
+  SettingResetButton,
+  SettingsPageContainer,
+  SettingsRow,
+  SettingsSection,
+} from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 import { useOptionalSettingsScope, useSettingsScope } from "./SettingsScopeContext";
@@ -19,6 +32,7 @@ export function LabsSettingsPanel() {
     <SettingsPageContainer>
       <SettingsSection id="beta" title="Beta">
         <BoringSidebarRow />
+        <ProjectIconOrderRow />
         {/* Clerk is only mounted when this build has T3 Connect. */}
         {hasCloudPublicConfig() ? <GuestLinksRowWithSignIn /> : <GuestLinksRow />}
         <LinkedEnvironmentsRow />
@@ -50,6 +64,49 @@ function BoringSidebarRow() {
           <BoringSidebarMultilineRow />
         </div>
       ) : null}
+    </SettingsRow>
+  );
+}
+
+const PROJECT_ICON_ORDER_LABELS: Record<SidebarProjectIconOrder, string> = {
+  name: "Name (A–Z)",
+  activity: "Latest activity",
+  manual: "Manual",
+};
+
+function ProjectIconOrderRow() {
+  const order = useUiStateStore((state) => state.sidebarProjectIconOrder);
+  const setOrder = useUiStateStore((state) => state.setSidebarProjectIconOrder);
+  return (
+    <SettingsRow
+      {...searchableSetting("project-icon-order")}
+      description="Order of project icons in the sidebar filter row. Pinned projects come first; Manual follows the order you drag here."
+      resetAction={
+        order === "name" ? null : (
+          <SettingResetButton label="project icon order" onClick={() => setOrder("name")} />
+        )
+      }
+      control={
+        <Select
+          value={order}
+          onValueChange={(value) => {
+            if (isSidebarProjectIconOrder(value)) setOrder(value);
+          }}
+        >
+          <SelectTrigger size="sm" className="w-full sm:w-44" aria-label="Project icon order">
+            <SelectValue>{PROJECT_ICON_ORDER_LABELS[order]}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            {SIDEBAR_PROJECT_ICON_ORDERS.map((value) => (
+              <SelectItem hideIndicator key={value} value={value}>
+                {PROJECT_ICON_ORDER_LABELS[value]}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      }
+    >
+      {order === "manual" ? <ProjectManualOrderList /> : null}
     </SettingsRow>
   );
 }

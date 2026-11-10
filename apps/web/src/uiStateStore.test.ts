@@ -28,6 +28,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     sidebarEnvironmentScopeKeys: [],
     sidebarProjectExcludeKeys: [],
     sidebarProjectFilterMode: "include",
+    sidebarProjectIconOrder: "name",
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
@@ -227,7 +228,7 @@ describe("parsePersistedState", () => {
   });
 
   it.each([undefined, null, [], "invalid", 42])(
-    "ignores invalid project scope maps and mode %s",
+    "ignores invalid project scope maps, mode and icon order %s",
     (value) => {
       const parsed = parsePersistedState({
         sidebarEnvironmentScopeKeys: ["__proto__"],
@@ -238,7 +239,11 @@ describe("parsePersistedState", () => {
           PersistedUiState["sidebarProjectFilterMode"]
         >,
         sidebarProjectExcludeKeys: value as unknown as string[],
+        sidebarProjectIconOrder: value as unknown as NonNullable<
+          PersistedUiState["sidebarProjectIconOrder"]
+        >,
       });
+      expect(parsed.sidebarProjectIconOrder).toBe("name");
       expect(parsed.sidebarProjectScopeKeys).toEqual([]);
       expect(parsed).not.toHaveProperty("sidebarProjectScopesByEnvironment");
       expect(parsed.sidebarProjectFilterMode).toBe("include");
@@ -301,6 +306,7 @@ describe("parsePersistedState", () => {
       sidebarEnvironmentScopeKeys: [],
       sidebarProjectExcludeKeys: [],
       sidebarProjectFilterMode: "include",
+      sidebarProjectIconOrder: "name",
       pullRequestMergeMethod: "merge",
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
@@ -389,6 +395,7 @@ describe("uiStateStore persistence", () => {
         },
       },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
+      sidebarProjectIconOrder: "activity",
     });
 
     persistState(state);
@@ -410,6 +417,7 @@ describe("uiStateStore persistence", () => {
       sidebarEnvironmentScopeKeys: [],
       sidebarProjectExcludeKeys: [],
       sidebarProjectFilterMode: "include",
+      sidebarProjectIconOrder: "activity",
       threadChangedFilesExpansionVersion: 2,
       threadChangedFilesExpandedById: {
         "environment:thread-1": {

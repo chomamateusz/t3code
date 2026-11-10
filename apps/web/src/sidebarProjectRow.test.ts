@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { EnvironmentId, ProjectId } from "@t3tools/contracts";
 
+import { scopeSidebarProjectGroupsToEnvironment } from "./sidebarEnvironmentScope";
 import { buildSidebarProjectSnapshots } from "./sidebarProjectGrouping";
 
 import {
@@ -11,13 +12,19 @@ import {
   fitSidebarProjectRow,
   includeSidebarProjectSelection,
   isInSidebarProjectScope,
+  legacyProjectCwdPreferenceKey,
   revealSidebarProject,
   sameSidebarProjectActivity,
+  SIDEBAR_PROJECT_ICON_ORDERS,
+  sidebarProjectManualMove,
+  sidebarProjectManualRanks,
   sidebarProjectMemberScope,
+  sortSidebarProjectGroups,
   switchSidebarProjectMode,
   toggleSidebarProjectKey,
   toggleSidebarProjectSelection,
 } from "./sidebarProjectRow";
+import { reorderProjects, useUiStateStore } from "./uiStateStore";
 
 describe("sidebar project activity", () => {
   it("orders and counts scoped members, falling back to project activity only without threads", () => {
@@ -27,6 +34,7 @@ describe("sidebar project activity", () => {
         displayName: "Shared",
         pinned: false,
         updatedAt: "2026-10-30T12:00:00Z",
+        memberProjects: [],
         memberProjectRefs: [
           { environmentId: "mac", projectId: "a" },
           { environmentId: "linux", projectId: "a" },
@@ -37,6 +45,7 @@ describe("sidebar project activity", () => {
         displayName: "Empty",
         pinned: false,
         updatedAt: "2026-10-30T11:00:00Z",
+        memberProjects: [],
         memberProjectRefs: [{ environmentId: "mac", projectId: "b" }],
       },
     ];
@@ -61,7 +70,7 @@ describe("sidebar project activity", () => {
         archivedAt: null,
       },
     ];
-    const activity = buildSidebarProjectActivity(projects, threads);
+    const activity = buildSidebarProjectActivity(projects, threads, "activity");
     expect(activity).toEqual([
       { projectKey: "empty", threadCount: 0, lastActivity: Date.parse("2026-10-30T11:00:00Z") },
       { projectKey: "shared", threadCount: 2, lastActivity: Date.parse("2026-10-30T10:00:00Z") },
@@ -72,6 +81,7 @@ describe("sidebar project activity", () => {
         memberProjectRefs: project.memberProjectRefs.filter((ref) => ref.environmentId === "mac"),
       })),
       threads,
+      "activity",
     );
     expect(scoped[1]).toEqual({
       projectKey: "shared",
@@ -79,26 +89,29 @@ describe("sidebar project activity", () => {
       lastActivity: Date.parse("2026-10-30T09:00:00Z"),
     });
 
-    const unchangedOrder = buildSidebarProjectActivity(projects, [
-      { ...threads[0]!, updatedAt: "2026-10-30T10:30:00Z" },
-      ...threads.slice(1),
-    ]);
+    const unchangedOrder = buildSidebarProjectActivity(
+      projects,
+      [{ ...threads[0]!, updatedAt: "2026-10-30T10:30:00Z" }, ...threads.slice(1)],
+      "activity",
+    );
     expect(sameSidebarProjectActivity(activity, unchangedOrder)).toBe(true);
-    const reordered = buildSidebarProjectActivity(projects, [
-      { ...threads[0]!, updatedAt: "2026-10-30T12:30:00Z" },
-      ...threads.slice(1),
-    ]);
+    const reordered = buildSidebarProjectActivity(
+      projects,
+      [{ ...threads[0]!, updatedAt: "2026-10-30T12:30:00Z" }, ...threads.slice(1)],
+      "activity",
+    );
     expect(sameSidebarProjectActivity(activity, reordered)).toBe(false);
     expect(sameSidebarProjectActivity(activity, scoped)).toBe(false);
   });
 
-  it("orders pinned first, then latest activity, then display name, and reports a broken tie", () => {
+  it("orders pinned first, then by name, latest activity or the manual order, and reports a changed order", () => {
     const projects = [
       {
         projectKey: "a",
         displayName: "Zulu",
         pinned: false,
         updatedAt: "2026-11-03T09:00:00Z",
+        memberProjects: [{ physicalProjectKey: "mac:/a", workspaceRoot: "/a" }],
         memberProjectRefs: [{ environmentId: "mac", projectId: "a" }],
       },
       {
@@ -106,28 +119,256 @@ describe("sidebar project activity", () => {
         displayName: "Alpha",
         pinned: false,
         updatedAt: "2026-11-03T09:00:00Z",
+        memberProjects: [{ physicalProjectKey: "mac:/b", workspaceRoot: "/b" }],
         memberProjectRefs: [{ environmentId: "mac", projectId: "b" }],
+      },
+      {
+        projectKey: "c",
+        displayName: "Alpha",
+        pinned: false,
+        updatedAt: "2026-11-03T09:00:00Z",
+        memberProjects: [{ physicalProjectKey: "mac:/c", workspaceRoot: "/c" }],
+        memberProjectRefs: [{ environmentId: "mac", projectId: "c" }],
       },
     ];
     const threads = (zuluActiveAt: string) => [
       { environmentId: "mac", projectId: "a", updatedAt: zuluActiveAt, archivedAt: null },
       { environmentId: "mac", projectId: "b", updatedAt: "2026-11-03T10:00:00Z", archivedAt: null },
+      { environmentId: "mac", projectId: "c", updatedAt: "2026-11-03T10:00:00Z", archivedAt: null },
     ];
     const keys = (activity: readonly { readonly projectKey: string }[]) =>
       activity.map((entry) => entry.projectKey);
+    const alphaPinned = [projects[0]!, { ...projects[1]!, pinned: true }, projects[2]!];
 
-    const tied = buildSidebarProjectActivity(projects, threads("2026-11-03T10:00:00Z"));
-    expect(keys(tied)).toEqual(["b", "a"]);
-    const zuluNewer = buildSidebarProjectActivity(projects, threads("2026-11-03T11:00:00Z"));
-    expect(keys(zuluNewer)).toEqual(["a", "b"]);
-    expect(sameSidebarProjectActivity(tied, zuluNewer)).toBe(false);
-
-    const alphaPinned = buildSidebarProjectActivity(
-      [projects[0]!, { ...projects[1]!, pinned: true }],
+    const byName = buildSidebarProjectActivity(projects, threads("2026-11-03T10:00:00Z"), "name");
+    expect(keys(byName)).toEqual(["b", "c", "a"]);
+    const byNameZuluNewer = buildSidebarProjectActivity(
+      projects,
       threads("2026-11-03T11:00:00Z"),
+      "name",
     );
-    expect(keys(alphaPinned)).toEqual(["b", "a"]);
-    expect(sameSidebarProjectActivity(zuluNewer, alphaPinned)).toBe(false);
+    expect(keys(byNameZuluNewer)).toEqual(["b", "c", "a"]);
+    expect(sameSidebarProjectActivity(byName, byNameZuluNewer)).toBe(true);
+    const byNamePinned = buildSidebarProjectActivity(
+      [projects[0]!, projects[1]!, { ...projects[2]!, pinned: true }],
+      threads("2026-11-03T11:00:00Z"),
+      "name",
+    );
+    expect(keys(byNamePinned)).toEqual(["c", "b", "a"]);
+    expect(sameSidebarProjectActivity(byNameZuluNewer, byNamePinned)).toBe(false);
+
+    const tied = buildSidebarProjectActivity(projects, threads("2026-11-03T10:00:00Z"), "activity");
+    expect(keys(tied)).toEqual(["b", "c", "a"]);
+    const zuluNewer = buildSidebarProjectActivity(
+      projects,
+      threads("2026-11-03T11:00:00Z"),
+      "activity",
+    );
+    expect(keys(zuluNewer)).toEqual(["a", "b", "c"]);
+    expect(sameSidebarProjectActivity(tied, zuluNewer)).toBe(false);
+    const activityPinned = buildSidebarProjectActivity(
+      alphaPinned,
+      threads("2026-11-03T11:00:00Z"),
+      "activity",
+    );
+    expect(keys(activityPinned)).toEqual(["b", "a", "c"]);
+    expect(sameSidebarProjectActivity(zuluNewer, activityPinned)).toBe(false);
+
+    const manualRanks = sidebarProjectManualRanks(projects, [
+      legacyProjectCwdPreferenceKey("/c"),
+      "mac:/a",
+      "mac:/gone",
+    ]);
+    const manual = buildSidebarProjectActivity(
+      projects,
+      threads("2026-11-03T10:00:00Z"),
+      "manual",
+      manualRanks,
+    );
+    expect(keys(manual)).toEqual(["c", "a", "b"]);
+    const manualZuluNewer = buildSidebarProjectActivity(
+      projects,
+      threads("2026-11-03T11:00:00Z"),
+      "manual",
+      manualRanks,
+    );
+    expect(sameSidebarProjectActivity(manual, manualZuluNewer)).toBe(true);
+    const manualPinned = buildSidebarProjectActivity(
+      alphaPinned,
+      threads("2026-11-03T11:00:00Z"),
+      "manual",
+      manualRanks,
+    );
+    expect(keys(manualPinned)).toEqual(["b", "c", "a"]);
+    expect(sameSidebarProjectActivity(manualZuluNewer, manualPinned)).toBe(false);
+
+    for (const order of SIDEBAR_PROJECT_ICON_ORDERS) {
+      const groups = sortSidebarProjectGroups(
+        alphaPinned,
+        threads("2026-11-03T11:00:00Z"),
+        order,
+        manualRanks,
+      );
+      expect(keys(groups)).toEqual(
+        keys(
+          buildSidebarProjectActivity(
+            alphaPinned,
+            threads("2026-11-03T11:00:00Z"),
+            order,
+            manualRanks,
+          ),
+        ),
+      );
+    }
+  });
+
+  it("moves a project within its section of the manual order", () => {
+    const group = (projectKey: string, pinned: boolean, ...roots: string[]) => ({
+      projectKey,
+      displayName: projectKey,
+      pinned,
+      updatedAt: "2026-11-03T09:00:00Z",
+      memberProjects: roots.map((root) => ({
+        physicalProjectKey: `mac:${root}`,
+        workspaceRoot: root,
+      })),
+      memberProjectRefs: [],
+    });
+    const groups = [
+      group("pinned", true, "/pinned"),
+      group("zulu", false, "/zulu"),
+      group("alpha", false, "/alpha"),
+      group("shared", false, "/shared", "/shared-copy"),
+    ];
+    const stored = [
+      "mac:/zulu",
+      "linux:/offline",
+      legacyProjectCwdPreferenceKey("/alpha"),
+      "mac:/shared-copy",
+      "mac:/alpha",
+    ];
+    const sortManually = (projectOrder: readonly string[], listed = groups) =>
+      sortSidebarProjectGroups(
+        listed,
+        [],
+        "manual",
+        sidebarProjectManualRanks(listed, projectOrder),
+      );
+    const moveAndSort = (activeKey: string, overKey: string, listed = groups, order = stored) => {
+      const move = sidebarProjectManualMove(listed, order, activeKey, overKey);
+      if (move === null) return null;
+      const { projectOrder } = reorderProjects(
+        { ...useUiStateStore.getInitialState(), projectOrder: order },
+        ...move,
+      );
+      return {
+        projectOrder,
+        keys: sortManually(projectOrder, listed).map((entry) => entry.projectKey),
+      };
+    };
+
+    expect(sortManually(stored)).toEqual(groups);
+    expect(moveAndSort("zulu", "alpha")).toEqual({
+      projectOrder: [
+        "linux:/offline",
+        legacyProjectCwdPreferenceKey("/alpha"),
+        "mac:/zulu",
+        "mac:/shared-copy",
+        "mac:/alpha",
+        "mac:/pinned",
+      ],
+      keys: ["pinned", "alpha", "zulu", "shared"],
+    });
+    expect(moveAndSort("alpha", "shared")).toEqual({
+      projectOrder: [
+        "mac:/zulu",
+        "linux:/offline",
+        "mac:/shared-copy",
+        legacyProjectCwdPreferenceKey("/alpha"),
+        "mac:/alpha",
+        "mac:/pinned",
+      ],
+      keys: ["pinned", "zulu", "shared", "alpha"],
+    });
+    expect(moveAndSort("shared", "pinned")?.keys).toEqual(["pinned", "shared", "zulu", "alpha"]);
+    expect(moveAndSort("pinned", "zulu")).toBeNull();
+    expect(moveAndSort("alpha", "alpha")).toBeNull();
+
+    const notesOn = (projectKey: string, machine: string) => ({
+      ...group(projectKey, false),
+      memberProjects: [{ physicalProjectKey: `${machine}:/notes`, workspaceRoot: "/notes" }],
+    });
+    const sameRoot = [
+      group("first", false, "/first"),
+      notesOn("laptop", "mac"),
+      notesOn("server", "linux"),
+    ];
+    const legacyOnly = ["/first", "/notes"].map(legacyProjectCwdPreferenceKey);
+    expect(sortManually(legacyOnly, sameRoot).map((entry) => entry.projectKey)).toEqual([
+      "first",
+      "laptop",
+      "server",
+    ]);
+    expect(moveAndSort("laptop", "server", sameRoot, legacyOnly)).toEqual({
+      projectOrder: [legacyProjectCwdPreferenceKey("/first"), "linux:/notes", "mac:/notes"],
+      keys: ["first", "server", "laptop"],
+    });
+    expect(moveAndSort("server", "first", sameRoot, legacyOnly)?.keys).toEqual([
+      "server",
+      "first",
+      "laptop",
+    ]);
+  });
+
+  it("keeps the manual order of logical projects when the view narrows to another machine", () => {
+    const project = (name: string, environmentId: EnvironmentId) => ({
+      id: ProjectId.make(`${name}-${environmentId}`),
+      environmentId,
+      title: name,
+      workspaceRoot: `/${environmentId}/${name}`,
+      repositoryIdentity: {
+        canonicalKey: `github.com/example/${name}`,
+        locator: {
+          source: "git-remote" as const,
+          remoteName: "origin",
+          remoteUrl: `https://github.com/example/${name}.git`,
+        },
+      },
+      defaultModelSelection: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+      scripts: [],
+    });
+    const local = EnvironmentId.make("local");
+    const remote = EnvironmentId.make("remote");
+    const input = {
+      projects: [local, remote].flatMap((id) => [project("alpha", id), project("zulu", id)]),
+      settings: {
+        sidebarProjectGroupingMode: "repository" as const,
+        sidebarProjectGroupingOverrides: {},
+      },
+      primaryEnvironmentId: local,
+    };
+    const unscoped = buildSidebarProjectSnapshots({
+      ...input,
+      resolveEnvironmentLabel: () => null,
+    });
+    const localKey = (name: string) =>
+      unscoped
+        .find((group) => group.displayName === name)!
+        .memberProjects.find((member) => member.environmentId === local)!.physicalProjectKey;
+    const ranks = sidebarProjectManualRanks(unscoped, [localKey("zulu"), localKey("alpha")]);
+    const names = (environmentIds: ReadonlySet<EnvironmentId> | null) =>
+      sortSidebarProjectGroups(
+        scopeSidebarProjectGroupsToEnvironment(unscoped, environmentIds, input),
+        [],
+        "manual",
+        ranks,
+      ).map((group) => group.displayName);
+
+    expect(names(null)).toEqual(["zulu", "alpha"]);
+    expect(names(new Set([remote]))).toEqual(["zulu", "alpha"]);
+    expect(names(new Set([local, remote]))).toEqual(["zulu", "alpha"]);
   });
 });
 

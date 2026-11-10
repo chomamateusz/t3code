@@ -1,12 +1,14 @@
 import { Debouncer } from "@tanstack/react-pacer";
 import type { PullRequestMergeMethod } from "@t3tools/contracts";
 import { create } from "zustand";
-import { normalizeProjectPathForComparison } from "@t3tools/client-runtime/state/projects";
 
 import {
+  isSidebarProjectIconOrder,
+  legacyProjectCwdPreferenceKey,
   revealSidebarProject,
   switchSidebarProjectMode,
   type SidebarProjectFilterMode,
+  type SidebarProjectIconOrder,
   type SidebarProjectSelection,
 } from "./sidebarProjectRow";
 
@@ -39,6 +41,7 @@ export interface PersistedUiState {
   sidebarEnvironmentScopeKeys?: string[];
   sidebarProjectExcludeKeys?: string[];
   sidebarProjectFilterMode?: SidebarProjectFilterMode;
+  sidebarProjectIconOrder?: SidebarProjectIconOrder;
   sidebarProjectScopesByEnvironment?: Record<string, SidebarProjectSelection>;
   threadChangedFilesExpansionVersion?: number;
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
@@ -52,6 +55,7 @@ export interface UiProjectState {
   sidebarEnvironmentScopeKeys: string[];
   sidebarProjectExcludeKeys: string[];
   sidebarProjectFilterMode: SidebarProjectFilterMode;
+  sidebarProjectIconOrder: SidebarProjectIconOrder;
 }
 
 export interface UiThreadState {
@@ -77,19 +81,17 @@ const initialState: UiState = {
   sidebarEnvironmentScopeKeys: [],
   sidebarProjectExcludeKeys: [],
   sidebarProjectFilterMode: "include",
+  sidebarProjectIconOrder: "name",
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
   defaultAdvertisedEndpointKey: null,
   pullRequestMergeMethod: "merge",
 };
 
-const LEGACY_PROJECT_CWD_PREFERENCE_PREFIX = "legacy-project-cwd:";
 const LEGACY_PROJECT_EXPANSION_DEFAULT_KEY = "legacy-project-expansion-default";
 let legacyKeysCleanedUp = false;
 
-export function legacyProjectCwdPreferenceKey(cwd: string): string {
-  return `${LEGACY_PROJECT_CWD_PREFERENCE_PREFIX}${normalizeProjectPathForComparison(cwd)}`;
-}
+export { legacyProjectCwdPreferenceKey };
 
 function sanitizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
@@ -218,6 +220,9 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
         ? [...(selection?.exclude ?? [])]
         : topLevelSelection.exclude,
     sidebarProjectFilterMode,
+    sidebarProjectIconOrder: isSidebarProjectIconOrder(parsed.sidebarProjectIconOrder)
+      ? parsed.sidebarProjectIconOrder
+      : initialState.sidebarProjectIconOrder,
     pullRequestMergeMethod: isPullRequestMergeMethod(parsed.pullRequestMergeMethod)
       ? parsed.pullRequestMergeMethod
       : initialState.pullRequestMergeMethod,
@@ -300,6 +305,7 @@ export function persistState(state: UiState): void {
         sidebarEnvironmentScopeKeys: state.sidebarEnvironmentScopeKeys,
         sidebarProjectExcludeKeys: state.sidebarProjectExcludeKeys,
         sidebarProjectFilterMode: state.sidebarProjectFilterMode,
+        sidebarProjectIconOrder: state.sidebarProjectIconOrder,
         threadChangedFilesExpansionVersion: THREAD_CHANGED_FILES_EXPANSION_VERSION,
         threadChangedFilesExpandedById: state.threadChangedFilesExpandedById,
         pullRequestMergeMethod: state.pullRequestMergeMethod,
@@ -457,6 +463,18 @@ export function setSidebarProjectFilterMode(
   };
 }
 
+function setSidebarProjectIconOrder(state: UiState, order: SidebarProjectIconOrder): UiState {
+  return state.sidebarProjectIconOrder === order
+    ? state
+    : { ...state, sidebarProjectIconOrder: order };
+}
+
+const NO_MANUAL_PROJECT_ORDER: readonly string[] = [];
+
+export function selectSidebarProjectManualOrder(state: UiState): readonly string[] {
+  return state.sidebarProjectIconOrder === "manual" ? state.projectOrder : NO_MANUAL_PROJECT_ORDER;
+}
+
 function sidebarEnvironmentScopeStorageKey(keys: readonly string[]): string | null {
   const sorted = [...new Set(keys)].sort();
   return sorted.length < 2 ? (sorted[0] ?? null) : JSON.stringify(sorted);
@@ -600,6 +618,7 @@ interface UiStateStore extends UiState {
     mode: SidebarProjectFilterMode,
     scope: Parameters<typeof switchSidebarProjectMode>[3],
   ) => void;
+  setSidebarProjectIconOrder: (order: SidebarProjectIconOrder) => void;
   revealSidebarProjectScope: (
     projectKey: string,
     revealEnvironment: boolean,
@@ -632,6 +651,7 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => setSidebarProjectExcludeKeys(state, projectKeys)),
   setSidebarProjectFilterMode: (mode, scope) =>
     set((state) => setSidebarProjectFilterMode(state, mode, scope)),
+  setSidebarProjectIconOrder: (order) => set((state) => setSidebarProjectIconOrder(state, order)),
   revealSidebarProjectScope: (projectKey, revealEnvironment, availableKeys, resolvedSelection) =>
     set((state) =>
       revealSidebarProjectScope(

@@ -64,7 +64,6 @@ import {
   FolderGit2Icon,
   FolderIcon,
   FolderPlusIcon,
-  InfoIcon,
   MessageSquareDashedIcon,
   LinkIcon,
   MessageSquareIcon,
@@ -104,11 +103,6 @@ import {
   queueWorkspaceFocusFromPalette,
   restoreWorkspaceFocusFromPalette,
 } from "../lib/workspaceFocus";
-import {
-  isSidebarBadgeLegendAvailable,
-  openQueuedSidebarBadgeLegend,
-  queueSidebarBadgeLegendFromPalette,
-} from "../sidebarBadgeLegend";
 import {
   composerPromptLink,
   copyPromptLink,
@@ -370,7 +364,7 @@ function CommandPaletteDialog(props: {
       data-palette-mode={props.mode}
       data-testid="command-palette"
       finalFocus={() => {
-        if (restoreWorkspaceFocusFromPalette() || openQueuedSidebarBadgeLegend()) return false;
+        if (restoreWorkspaceFocusFromPalette()) return false;
         const returnFocus = getCommandPaletteReturnFocus();
         if (returnFocus === false) return false;
         const composer = composerHandleRef?.current;
@@ -1756,19 +1750,6 @@ function OpenCommandPaletteDialog(props: {
       await navigate({ to: "/settings" });
     },
   });
-
-  if (isSidebarBadgeLegendAvailable()) {
-    actionItems.push({
-      kind: "action",
-      value: "action:project-badge-legend",
-      searchTerms: ["project", "badge", "legend", "status", "colour", "color", "dot", "order"],
-      title: "Show project badge legend",
-      icon: <InfoIcon className={ITEM_ICON_CLASS} />,
-      run: async () => {
-        queueSidebarBadgeLegendFromPalette();
-      },
-    });
-  }
 
   // Every group, so an archived project's thread still opens its own settings.
   const currentProjectGroup =

@@ -182,21 +182,30 @@ for projects on other machines stay saved.
 select only the focused project; **⌘/Ctrl+Enter** adds or removes it. The current
 Show only or Hide mode is preserved, including when choosing a project in **+N**.
 Right-click an icon to open its project settings. **+N** opens the remaining
-projects with a search field. Pinned projects come first; pin a project in **+N**
+projects with a search field. Pinned projects come first, then the others by name;
+to order them by latest thread activity or in your own order instead, change **Settings → Labs → Project
+icon order**. With **Manual**, drag projects in the list below that setting, or move a focused
+handle with Space and the arrow keys; projects you have not placed yet follow by name. This choice
+is saved on each device. Pin a project in **+N**
 or use the pin shortcut while its icon or search result is focused. Archived projects
 are left out of the filter choices.
 Project badges count threads needing attention; a static dot means only working threads, and **+N** combines the projects that do not fit in the row.
-For a key to the badge colours and the icon order, choose **Badge legend** in the **⋯** menu or
-**Show project badge legend** in the command palette.
+Hover an icon for its counts per state and a key to the badge colours.
 
-In the **⋯** menu, choose **Show only selected** or **Hide selected**. Switching
+The eye button at the end of the row switches between **Show selected** and **Hide
+selected**; in Hide mode it turns red. Hold **⌘** (Ctrl outside macOS) and click it
+to turn **Group threads by project** on or off, or hold the left **⌥** (left Alt) and click it to
+open the sidebar settings. The right ⌥ and AltGr type characters, so they leave the button alone.
+The button shows the action while you hold the key.
+Right-click it, press Shift+F10, or long-press it on a touch screen for a menu with
+the same three actions. Switching
 modes restores that mode's saved selection if any of its projects are visible.
 Otherwise, it adds the current visible selection to that mode's saved projects on
 other machines. Both modes keep their saved selections. One project filter is shared across
 all machine selections. Changing machines keeps the filter; projects unavailable
 on the selected machines have no effect. If none of the Show only projects is
-available, all threads on the selected machines are shown. **×** or **Clear
-selection** clears only the visible selection. Choose **All machines**, then clear the project selection to remove
+available, all threads on the selected machines are shown. **×** clears only the
+visible selection. Choose **All machines**, then clear the project selection to remove
 selections across machines. The thread menu's **Filter by project** selects that
 project among the visible projects and switches to Show only. From Hide, it keeps
 the saved Show only selections on other machines and leaves the Hide list saved.
@@ -204,7 +213,7 @@ the saved Show only selections on other machines and leaves the Hide list saved.
 reveals its project. Opening a thread in an archived project clears visible Show only
 selections so the thread can appear, while keeping selections for unavailable projects.
 
-**Group threads by project** in the same menu controls the same setting as
+**Group threads by project** on the eye button controls the same setting as
 **Settings → Labs → Boring sidebar (group by project)**.
 
 ### Group threads by project (beta)

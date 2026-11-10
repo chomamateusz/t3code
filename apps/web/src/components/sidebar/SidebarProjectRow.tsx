@@ -1,12 +1,10 @@
 import type { EnvironmentId, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { useSidebarProjectRowData } from "../../hooks/useSidebarProjectRowData";
-import { CheckIcon, EyeIcon, EyeOffIcon, InfoIcon, MoreHorizontalIcon, XIcon } from "lucide-react";
-import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { CheckIcon, LaptopIcon, XIcon } from "lucide-react";
+import { memo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 
-import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
 import { observeResize } from "../../lib/observeResize";
 import { isMacPlatform } from "../../lib/utils";
-import { onSidebarBadgeLegendRequest } from "../../sidebarBadgeLegend";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
 import { fitSidebarProjectRow, type SidebarProjectFilterMode } from "../../sidebarProjectRow";
 import {
@@ -14,7 +12,6 @@ import {
   SIDEBAR_PROJECT_BADGE_LEGEND,
   summarizeSidebarProjectBadge,
   type SidebarProjectBadge,
-  type SidebarProjectBadgeState,
 } from "../Sidebar.logic";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { isProjectPinShortcut, ProjectPinButton } from "../ProjectPinButton";
@@ -28,29 +25,15 @@ import {
   ComboboxSearchInput,
   ComboboxTrigger,
 } from "../ui/combobox";
-import {
-  Menu,
-  MenuCheckboxItem,
-  MenuGroup,
-  MenuGroupLabel,
-  MenuItem,
-  MenuPopup,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator,
-  MenuTrigger,
-} from "../ui/menu";
-import { Popover, PopoverPopup, PopoverTitle } from "../ui/popover";
-import { useSidebar } from "../ui/sidebar";
+import { Kbd } from "../ui/kbd";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { SidebarProjectModeSwitch } from "./SidebarProjectModeSwitch";
 import "./SidebarProjectRow.css";
 
+type ProjectBadgeSummary = ReturnType<typeof summarizeSidebarProjectBadge>;
+
 const ProjectThreadBadge = memo(
-  function ProjectThreadBadge({
-    badge,
-  }: {
-    readonly badge: ReturnType<typeof summarizeSidebarProjectBadge>;
-  }) {
+  function ProjectThreadBadge({ badge }: { readonly badge: ProjectBadgeSummary }) {
     if (badge === null) return null;
     return (
       <span
@@ -70,40 +53,105 @@ const ProjectThreadBadge = memo(
     previous.badge?.description === next.badge?.description,
 );
 
-const BADGE_MEANINGS = {
-  approval: "An action waits for your approval",
-  input: "An agent asked you a question",
-  request: "A guest message waits for you",
-  failed: "The last run failed",
-  limited: "Stopped by a usage limit",
-  woke: "A snoozed thread woke up",
-  done: "Finished, not opened yet",
-  working: "Running now",
-} satisfies Record<SidebarProjectBadgeState, string>;
+function ProjectBadgeCounts({ badge }: { readonly badge: ProjectBadgeSummary }) {
+  if (badge === null) return null;
+  return (
+    <div data-project-row="tooltip-counts">
+      {badge.entries.map((entry) => (
+        <span key={entry.state} className={entry.className}>
+          <span data-project-row="tooltip-dot" />
+          {entry.count} <span data-project-row="tooltip-count-label">{entry.label}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function ProjectBadgeLegend() {
   return (
-    <div data-project-row="legend">
-      <PopoverTitle>Project badges</PopoverTitle>
-      <ul>
+    <>
+      <div data-project-row="tooltip-note">Badges</div>
+      <div data-project-row="tooltip-legend">
         {SIDEBAR_PROJECT_BADGE_LEGEND.map((entry) => (
-          <li key={entry.state}>
-            <span data-project-row="legend-swatch">
+          <span key={entry.state}>
+            <span data-project-row="tooltip-swatch">
               <ProjectThreadBadge badge={entry.badge} />
             </span>
-            <span className="font-medium">{entry.label}</span>
-            <span className="text-muted-foreground">{BADGE_MEANINGS[entry.state]}</span>
-          </li>
+            {entry.label}
+          </span>
         ))}
-      </ul>
-      <p>Colour: the most urgent state, top of this list first.</p>
-      <p>Hover an icon for exact counts.</p>
-      <p>Number: threads needing you, all but Working, up to 9+.</p>
-      <p>Dot without a number: only working threads.</p>
-      <p>
-        Order: pinned, then latest thread activity, then name. Selected projects stay in the row.
-      </p>
-      <p>+N: projects that do not fit, with their combined badge.</p>
+      </div>
+      <div data-project-row="tooltip-note">
+        Colour: most urgent state · Number: threads needing you · Dot: only working
+      </div>
+    </>
+  );
+}
+
+function ProjectIconTooltip({
+  project,
+  state,
+  showMachines,
+  threadCount,
+  badge,
+  selectionModifier,
+}: {
+  readonly project: SidebarProjectSnapshot;
+  readonly state: "Selected" | "Shown" | "Hidden";
+  readonly showMachines: boolean;
+  readonly threadCount: number;
+  readonly badge: ProjectBadgeSummary;
+  readonly selectionModifier: string;
+}) {
+  const machineNames = showMachines
+    ? [...new Set(project.memberProjects.map((member) => member.environmentLabel).filter(Boolean))]
+    : [];
+  return (
+    <div data-project-row="tooltip">
+      <div data-project-row="tooltip-header">
+        <span data-project-row="tooltip-title">{project.displayName}</span>
+        <span data-project-row="tooltip-state" data-state={state}>
+          {state}
+        </span>
+      </div>
+      <div data-project-row="tooltip-meta">
+        {machineNames.length > 0 ? <LaptopIcon aria-hidden className="size-3 flex-none" /> : null}
+        <span>
+          {machineNames.length > 0 ? `${machineNames.join(", ")} · ` : ""}
+          {threadCount} threads
+        </span>
+      </div>
+      <ProjectBadgeCounts badge={badge} />
+      <hr data-project-row="tooltip-divider" />
+      <div data-project-row="keys">
+        <Kbd>Click</Kbd>
+        <span>only this</span>
+        <Kbd>{selectionModifier} Click</Kbd>
+        <span>add or remove</span>
+        <Kbd>Right-click</Kbd>
+        <span>project settings</span>
+      </div>
+      <hr data-project-row="tooltip-divider" />
+      <ProjectBadgeLegend />
+    </div>
+  );
+}
+
+function OverflowTooltip({
+  count,
+  selectedCount,
+  badge,
+}: {
+  readonly count: number;
+  readonly selectedCount: number;
+  readonly badge: ProjectBadgeSummary;
+}) {
+  return (
+    <div data-project-row="tooltip">
+      <div data-project-row="tooltip-title">
+        {count} more projects{selectedCount > 0 ? `, ${selectedCount} selected` : ""}
+      </div>
+      <ProjectBadgeCounts badge={badge} />
     </div>
   );
 }
@@ -125,6 +173,7 @@ interface SidebarProjectRowProps {
   readonly onToggle: (key: string, additive: boolean) => void;
   readonly onClear: () => void;
   readonly onModeChange: (mode: SidebarProjectFilterMode) => void;
+  readonly onOpenSidebarSettings: () => void;
   readonly onProjectSettings: (
     event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>,
     project: SidebarProjectSnapshot,
@@ -142,27 +191,16 @@ export const SidebarProjectRow = memo(
     onToggle,
     onClear,
     onModeChange,
+    onOpenSidebarSettings,
     onProjectSettings,
     canPinProject,
     onToggleProjectPin,
     keybindings,
   }: SidebarProjectRowProps) {
-    const grouped = useClientSettings((settings) => settings.boringSidebarEnabled);
     const isMac = isMacPlatform(navigator.platform);
     const selectionModifier = isMac ? "⌘" : "Ctrl";
     const highlightedProjectKey = useRef<string | null>(null);
-    const menuButtonRef = useRef<HTMLButtonElement>(null);
-    const [legendOpen, setLegendOpen] = useState(false);
     const hasProjects = projects.length > 0;
-    // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers this row for command palette legend requests only while it renders, and closes the legend when it stops
-    useEffect(() => {
-      if (!hasProjects) return;
-      const unsubscribe = onSidebarBadgeLegendRequest(() => setLegendOpen(true));
-      return () => {
-        unsubscribe();
-        setLegendOpen(false);
-      };
-    }, [hasProjects]);
     const [width, setWidth] = useState<number | null>(null);
     const [query, setQuery] = useState("");
     const [interaction, setInteraction] = useState<{
@@ -218,6 +256,7 @@ export const SidebarProjectRow = memo(
     const filteredProjects = orderedProjects.filter((project) =>
       project.displayName.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
     );
+    const tooltipsDisabled = interaction.overflowOpen || interaction.menuOpen;
     const updateInteraction = (
       field: "pointerOver" | "overflowOpen" | "menuOpen",
       value: boolean,
@@ -291,16 +330,9 @@ export const SidebarProjectRow = memo(
                   : selected.size > 0
                     ? "Hidden"
                     : "Shown";
-            const machineNames = [
-              ...new Set(
-                project.memberProjects.map((member) => member.environmentLabel).filter(Boolean),
-              ),
-            ];
+            const badge = badgeByKey.get(key) ?? null;
             return (
-              <Tooltip
-                key={key}
-                disabled={interaction.overflowOpen || interaction.menuOpen || legendOpen}
-              >
+              <Tooltip key={key} disabled={tooltipsDisabled}>
                 <TooltipTrigger
                   render={
                     <button
@@ -321,19 +353,17 @@ export const SidebarProjectRow = memo(
                   <span data-project-row="favicon">
                     <ProjectFavicon project={project} className="size-4" />
                   </span>
-                  <ProjectThreadBadge badge={badgeByKey.get(key) ?? null} />
+                  <ProjectThreadBadge badge={badge} />
                 </TooltipTrigger>
                 <TooltipPopup side="bottom">
-                  <div className="font-medium">{projectLabel(project)}</div>
-                  <div className="text-muted-foreground">
-                    {showMachines && machineNames.length > 0 ? `${machineNames.join(", ")} · ` : ""}
-                    {activityByKey.get(key)?.threadCount ?? 0} threads
-                  </div>
-                  <div>{state}</div>
-                  <div className="text-muted-foreground">
-                    Click: only this · {selectionModifier}-click: add or remove · Right-click:
-                    settings
-                  </div>
+                  <ProjectIconTooltip
+                    project={project}
+                    state={state}
+                    showMachines={showMachines}
+                    threadCount={activityByKey.get(key)?.threadCount ?? 0}
+                    badge={badge}
+                    selectionModifier={selectionModifier}
+                  />
                 </TooltipPopup>
               </Tooltip>
             );
@@ -369,7 +399,7 @@ export const SidebarProjectRow = memo(
               );
             }}
           >
-            <Tooltip disabled={interaction.overflowOpen || interaction.menuOpen || legendOpen}>
+            <Tooltip disabled={tooltipsDisabled}>
               <TooltipTrigger
                 render={
                   <ComboboxTrigger
@@ -387,7 +417,13 @@ export const SidebarProjectRow = memo(
                 +{layout.overflow.length}
                 <ProjectThreadBadge badge={overflowBadge} />
               </TooltipTrigger>
-              <TooltipPopup side="bottom">{overflowLabel}</TooltipPopup>
+              <TooltipPopup side="bottom">
+                <OverflowTooltip
+                  count={layout.overflow.length}
+                  selectedCount={overflowSelectedCount}
+                  badge={overflowBadge}
+                />
+              </TooltipPopup>
             </Tooltip>
             <ComboboxPopup
               align="start"
@@ -455,88 +491,14 @@ export const SidebarProjectRow = memo(
             <XIcon className="size-3.5" />
           </button>
         ) : null}
-        <Menu
-          open={interaction.menuOpen}
-          onOpenChange={(open) => updateInteraction("menuOpen", open)}
-        >
-          <MenuTrigger
-            render={
-              <button
-                ref={menuButtonRef}
-                type="button"
-                data-project-row="menu"
-                aria-label="Project filter options"
-              />
-            }
-          >
-            <MoreHorizontalIcon className="size-4" />
-            {mode === "exclude" && selected.size > 0 ? <span data-project-row="dot" /> : null}
-          </MenuTrigger>
-          <MenuPopup align="end">
-            <MenuGroup>
-              <MenuGroupLabel>Selected projects</MenuGroupLabel>
-              <MenuRadioGroup
-                value={mode}
-                onValueChange={(value) => onModeChange(value === "exclude" ? "exclude" : "include")}
-              >
-                <MenuRadioItem value="include">
-                  <span className="flex items-center gap-2">
-                    <span
-                      data-project-row="radio"
-                      data-selected={mode === "include" || undefined}
-                      aria-hidden
-                    />
-                    <span className="flex-1">Show only selected</span>
-                    <EyeIcon className="size-4" />
-                  </span>
-                </MenuRadioItem>
-                <MenuRadioItem value="exclude">
-                  <span className="flex items-center gap-2">
-                    <span
-                      data-project-row="radio"
-                      data-selected={mode === "exclude" || undefined}
-                      data-mode="exclude"
-                      aria-hidden
-                    />
-                    <span className="flex-1">Hide selected</span>
-                    <EyeOffIcon className="size-4" />
-                  </span>
-                </MenuRadioItem>
-              </MenuRadioGroup>
-            </MenuGroup>
-            <MenuSeparator />
-            <MenuCheckboxItem
-              checked={grouped}
-              onCheckedChange={(checked) => {
-                void updateClientSettings({ boringSidebarEnabled: checked });
-              }}
-            >
-              Group threads by project
-            </MenuCheckboxItem>
-            <MenuSeparator />
-            <MenuItem disabled={selected.size === 0} onClick={onClear}>
-              <XIcon />
-              <span className="flex-1">Clear selection</span>
-              <span className="text-muted-foreground">{selected.size}</span>
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem onClick={() => setLegendOpen(true)}>
-              <InfoIcon />
-              Badge legend
-            </MenuItem>
-          </MenuPopup>
-        </Menu>
-        <Popover open={legendOpen} onOpenChange={setLegendOpen}>
-          <PopoverPopup
-            anchor={menuButtonRef}
-            align="end"
-            width="md"
-            padding="compact"
-            finalFocus={menuButtonRef}
-          >
-            <ProjectBadgeLegend />
-          </PopoverPopup>
-        </Popover>
+        <SidebarProjectModeSwitch
+          mode={mode}
+          isMac={isMac}
+          tooltipDisabled={tooltipsDisabled}
+          onModeChange={onModeChange}
+          onOpenSettings={onOpenSidebarSettings}
+          onMenuOpenChange={(open) => updateInteraction("menuOpen", open)}
+        />
       </div>
     );
   },
@@ -549,6 +511,7 @@ export const SidebarProjectRow = memo(
     previous.onToggle === next.onToggle &&
     previous.onClear === next.onClear &&
     previous.onModeChange === next.onModeChange &&
+    previous.onOpenSidebarSettings === next.onOpenSidebarSettings &&
     previous.onProjectSettings === next.onProjectSettings &&
     previous.canPinProject === next.canPinProject &&
     previous.onToggleProjectPin === next.onToggleProjectPin &&
@@ -564,14 +527,5 @@ export const ConnectedSidebarProjectRow = memo(function ConnectedSidebarProjectR
   readonly environmentIds: ReadonlySet<EnvironmentId> | null;
 }) {
   const data = useSidebarProjectRowData(environmentIds);
-  const { isMobile, open, setOpen } = useSidebar();
-  const hasProjects = data.projects.length > 0;
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a legend request expands the collapsed desktop sidebar so its anchor is on screen; gated like the row's listener so it never offers the legend on its own
-  useEffect(() => {
-    if (!hasProjects) return;
-    return onSidebarBadgeLegendRequest(() => {
-      if (!isMobile && !open) setOpen(true);
-    });
-  }, [hasProjects, isMobile, open, setOpen]);
   return <SidebarProjectRow {...props} {...data} />;
 });

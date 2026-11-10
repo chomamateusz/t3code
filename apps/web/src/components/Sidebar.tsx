@@ -122,6 +122,7 @@ import {
   toggleSidebarProjectSelection,
 } from "../sidebarProjectRow";
 import { ConnectedSidebarProjectRow } from "./sidebar/SidebarProjectRow";
+import { searchableSetting } from "./settings/settingsSearch";
 import { startNewThreadInSidebarFilter } from "../newThreadActions";
 import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
 import {
@@ -1325,6 +1326,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     setProjectGroupPinned,
     toggleProjectGroupPin,
   } = useProjectPin();
+  const openSidebarSettings = useStableCallback(() => {
+    if (isMobile) setOpenMobile(false);
+    void router.navigate({ to: "/settings/labs", hash: searchableSetting("boring-sidebar").id });
+  });
   const handleProjectSettings = useStableCallback(
     (
       event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>,
@@ -3106,6 +3111,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   onToggle={toggleRowProject}
                   onClear={clearRowSelection}
                   onModeChange={changeRowMode}
+                  onOpenSidebarSettings={openSidebarSettings}
                   onProjectSettings={handleProjectSettings}
                   canPinProject={canPinProject}
                   onToggleProjectPin={toggleProjectGroupPin}

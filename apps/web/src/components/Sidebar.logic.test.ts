@@ -1800,6 +1800,21 @@ describe("sidebar project thread badges", () => {
     expect(summarizeSidebarProjectBadge(badge.counts)?.description).toBe(
       "1 approval · 1 needs input · 1 request · 1 failed · 1 limited · 1 woke · 1 done · 1 working",
     );
+    expect(
+      summarizeSidebarProjectBadge({
+        approval: 0,
+        input: 0,
+        request: 2,
+        failed: 0,
+        limited: 0,
+        woke: 0,
+        done: 0,
+        working: 3,
+      })?.entries,
+    ).toEqual([
+      { state: "request", count: 2, label: "requests", className: "text-guest-foreground" },
+      { state: "working", count: 3, label: "working", className: "text-info-foreground" },
+    ]);
     const many = buildSidebarProjectBadges(
       groups,
       Array.from({ length: 10 }, () => threads[0]!),

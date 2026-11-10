@@ -10,7 +10,7 @@ import {
   sameSidebarProjectBadges,
   sameSidebarProjectBadgeThreads,
 } from "../components/Sidebar.logic";
-import { useUiStateStore } from "../uiStateStore";
+import { selectSidebarProjectManualOrder, useUiStateStore } from "../uiStateStore";
 import { Atom } from "effect/reactivity";
 
 import { scopeSidebarProjectGroupsToEnvironment } from "../sidebarEnvironmentScope";
@@ -18,7 +18,11 @@ import {
   buildSidebarProjectSnapshots,
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
-import { buildSidebarProjectActivity, sameSidebarProjectActivity } from "../sidebarProjectRow";
+import {
+  buildSidebarProjectActivity,
+  sameSidebarProjectActivity,
+  sidebarProjectManualRanks,
+} from "../sidebarProjectRow";
 import { environmentProjects } from "../state/projects";
 import { environmentPresentations, environmentSummaries } from "../state/presentation";
 import { primaryEnvironmentIdAtom } from "../state/primaryEnvironment";
@@ -27,15 +31,20 @@ import { shallow } from "zustand/vanilla/shallow";
 import { environmentThreadShells } from "../state/threads";
 import { getClientSettings, subscribeClientSettings } from "./useSettings";
 
-const localVisitsAtom = Atom.make((get) => {
-  get.addFinalizer(
-    useUiStateStore.subscribe((state, previous) => {
-      if (state.threadLastVisitedAtById !== previous.threadLastVisitedAtById)
-        get.setSelf(state.threadLastVisitedAtById);
-    }),
-  );
-  return useUiStateStore.getState().threadLastVisitedAtById;
-});
+function uiStateAtom<T>(select: (state: ReturnType<typeof useUiStateStore.getState>) => T) {
+  return Atom.make((get) => {
+    get.addFinalizer(
+      useUiStateStore.subscribe((state, previous) => {
+        if (select(state) !== select(previous)) get.setSelf(select(state));
+      }),
+    );
+    return select(useUiStateStore.getState());
+  });
+}
+
+const localVisitsAtom = uiStateAtom((state) => state.threadLastVisitedAtById);
+const iconOrderAtom = uiStateAtom((state) => state.sidebarProjectIconOrder);
+const manualOrderAtom = uiStateAtom(selectSidebarProjectManualOrder);
 
 function createProjectBadgesAtom(
   projectsAtom: Atom.Atom<readonly SidebarProjectSnapshot[]>,
@@ -84,36 +93,42 @@ const loadedEnvironmentIdsAtom = Atom.make(
   ),
 );
 
+const unscopedProjectGroupsAtom = Atom.make((get) => {
+  const environments = get(environmentSummaries.identitiesAtom);
+  const labels = new Map(
+    environments.map((environment) => [environment.environmentId, environment.label]),
+  );
+  return buildSidebarProjectSnapshots({
+    projects: get(environmentProjects.projectsAtom),
+    settings: get(groupingSettingsAtom),
+    groupScratchProjects: true,
+    primaryEnvironmentId: get(primaryEnvironmentIdAtom),
+    resolveEnvironmentLabel: (id) => labels.get(id) ?? null,
+  });
+});
+
+const manualRanksAtom = Atom.make((get) =>
+  sidebarProjectManualRanks(get(unscopedProjectGroupsAtom), get(manualOrderAtom)),
+);
+
 const projectRowAtoms = Atom.family((key: string) => {
   const environmentIds =
     key === "" ? null : new Set(key.split("\n").map((id) => EnvironmentId.make(id)));
-  const projectsAtom = Atom.make((get) => {
-    const rawProjects = get(environmentProjects.projectsAtom);
-    const environments = get(environmentSummaries.identitiesAtom);
-    const primaryEnvironmentId = get(primaryEnvironmentIdAtom);
-    const settings = get(groupingSettingsAtom);
-    const labels = new Map(
-      environments.map((environment) => [environment.environmentId, environment.label]),
-    );
-    const groups = buildSidebarProjectSnapshots({
-      projects: rawProjects,
-      settings,
-      groupScratchProjects: true,
-      primaryEnvironmentId,
-      resolveEnvironmentLabel: (id) => labels.get(id) ?? null,
-    });
-    return pickableProjectGroups(
-      scopeSidebarProjectGroupsToEnvironment(groups, environmentIds, {
-        projects: rawProjects,
-        settings,
-        primaryEnvironmentId,
+  const projectsAtom = Atom.make((get) =>
+    pickableProjectGroups(
+      scopeSidebarProjectGroupsToEnvironment(get(unscopedProjectGroupsAtom), environmentIds, {
+        projects: get(environmentProjects.projectsAtom),
+        settings: get(groupingSettingsAtom),
+        primaryEnvironmentId: get(primaryEnvironmentIdAtom),
       }),
-    );
-  });
+    ),
+  );
   const activityAtom = Atom.make((get) =>
     buildSidebarProjectActivity(
       get(projectsAtom),
       get(environmentThreadShells.quietThreadShellsAtom),
+      get(iconOrderAtom),
+      get(manualRanksAtom),
     ),
   ).pipe(Atom.withEquality(sameSidebarProjectActivity));
   return {
@@ -122,6 +137,13 @@ const projectRowAtoms = Atom.family((key: string) => {
     badgesAtom: createProjectBadgesAtom(projectsAtom, environmentIds),
   };
 });
+
+export function useSidebarProjectIconOrder() {
+  const atoms = projectRowAtoms(environmentIdsKey([]));
+  const projects = useAtomValue(atoms.projectsAtom);
+  const activity = useAtomValue(atoms.activityAtom);
+  return { projects, activity };
+}
 
 export function useSidebarProjectRowData(environmentIds: ReadonlySet<EnvironmentId> | null) {
   const atoms = projectRowAtoms(

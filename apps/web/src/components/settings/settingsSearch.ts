@@ -474,6 +474,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["beta boring sidebar folder rows multiline branch pull request details"],
   },
   {
+    id: "project-icon-order",
+    title: "Project icon order",
+    to: "/settings/labs",
+    searchTerms: [
+      "beta sidebar filter row project icons sort alphabetical name latest activity manual drag arrange",
+    ],
+  },
+  {
     id: "tool-call-visibility",
     title: "Tool calls in chat",
     to: "/settings/chat",

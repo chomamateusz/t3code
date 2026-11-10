@@ -976,27 +976,31 @@ function emptySidebarProjectBadgeCounts() {
   return { approval: 0, input: 0, request: 0, failed: 0, limited: 0, woke: 0, done: 0, working: 0 };
 }
 
+function sidebarProjectBadgeEntries(counts: SidebarProjectBadgeCounts) {
+  return PROJECT_BADGE_STATES.filter((state) => counts[state] > 0).map((state) => ({
+    state,
+    count: counts[state],
+    label: `${PROJECT_BADGE_LABELS[state]}${state === "request" && counts[state] !== 1 ? "s" : ""}`,
+    className: SIDEBAR_TOP_STATUS[state].className,
+  }));
+}
+
 export function summarizeSidebarProjectBadge(counts: SidebarProjectBadgeCounts) {
-  const state = PROJECT_BADGE_STATES.find((state) => counts[state] > 0);
-  if (state === undefined) return null;
-  const count = PROJECT_BADGE_STATES.reduce(
-    (sum, state) => sum + (state === "working" ? 0 : counts[state]),
+  const entries = sidebarProjectBadgeEntries(counts);
+  const urgent = entries[0];
+  if (urgent === undefined) return null;
+  const count = entries.reduce(
+    (sum, entry) => sum + (entry.state === "working" ? 0 : entry.count),
     0,
   );
   return {
     count,
     label: count === 0 ? null : count > 9 ? "9+" : String(count),
-    className: SIDEBAR_TOP_STATUS[state].className,
-    description: PROJECT_BADGE_STATES.filter((state) => counts[state] > 0)
-      .map(
-        (state) =>
-          `${counts[state]} ${PROJECT_BADGE_LABELS[state]}${state === "request" && counts[state] !== 1 ? "s" : ""}`,
-      )
-      .join(" · "),
+    className: urgent.className,
+    entries,
+    description: entries.map((entry) => `${entry.count} ${entry.label}`).join(" · "),
   };
 }
-
-export type SidebarProjectBadgeState = (typeof PROJECT_BADGE_STATES)[number];
 
 export const SIDEBAR_PROJECT_BADGE_LEGEND = PROJECT_BADGE_STATES.map((state) => ({
   state,

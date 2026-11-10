@@ -1,3 +1,5 @@
+import { normalizeProjectPathForComparison } from "@t3tools/client-runtime/state/projects";
+
 import {
   resolveSidebarProjectScopeKey,
   resolveSidebarProjectScopeKeys,
@@ -5,30 +7,150 @@ import {
 
 export type SidebarProjectFilterMode = "include" | "exclude";
 
+export const SIDEBAR_PROJECT_ICON_ORDERS = ["name", "activity", "manual"] as const;
+export type SidebarProjectIconOrder = (typeof SIDEBAR_PROJECT_ICON_ORDERS)[number];
+
+export function isSidebarProjectIconOrder(value: unknown): value is SidebarProjectIconOrder {
+  return SIDEBAR_PROJECT_ICON_ORDERS.some((order) => order === value);
+}
+
+const LEGACY_PROJECT_CWD_PREFERENCE_PREFIX = "legacy-project-cwd:";
+
+export function legacyProjectCwdPreferenceKey(cwd: string): string {
+  return `${LEGACY_PROJECT_CWD_PREFERENCE_PREFIX}${normalizeProjectPathForComparison(cwd)}`;
+}
+
 export interface SidebarProjectActivity {
   readonly projectKey: string;
   readonly threadCount: number;
   readonly lastActivity: number;
 }
 
-export function buildSidebarProjectActivity(
-  groups: ReadonlyArray<{
-    readonly projectKey: string;
-    readonly displayName: string;
-    readonly pinned: boolean;
-    readonly updatedAt: string;
-    readonly memberProjectRefs: ReadonlyArray<{
-      readonly environmentId: string;
-      readonly projectId: string;
-    }>;
-  }>,
-  threads: ReadonlyArray<{
+interface SidebarProjectOrderMember {
+  readonly physicalProjectKey: string;
+  readonly workspaceRoot: string;
+}
+
+interface SidebarProjectOrderGroup {
+  readonly projectKey: string;
+  readonly displayName: string;
+  readonly pinned: boolean;
+  readonly updatedAt: string;
+  readonly memberProjects: ReadonlyArray<SidebarProjectOrderMember>;
+  readonly memberProjectRefs: ReadonlyArray<{
     readonly environmentId: string;
     readonly projectId: string;
-    readonly archivedAt: string | null;
-    readonly updatedAt: string;
-  }>,
-): SidebarProjectActivity[] {
+  }>;
+}
+
+interface SidebarProjectOrderThread {
+  readonly environmentId: string;
+  readonly projectId: string;
+  readonly archivedAt: string | null;
+  readonly updatedAt: string;
+}
+
+interface SidebarProjectIconSortEntry<TGroup extends SidebarProjectOrderGroup> {
+  readonly group: TGroup;
+  readonly activity: SidebarProjectActivity;
+}
+
+type SidebarProjectManualGroup = Pick<SidebarProjectOrderGroup, "memberProjects">;
+
+export type SidebarProjectManualRanks = ReadonlyMap<string, number>;
+
+const NO_MANUAL_RANKS: SidebarProjectManualRanks = new Map();
+const UNRANKED = Number.MAX_SAFE_INTEGER;
+
+function sidebarProjectManualKeys(group: SidebarProjectManualGroup): ReadonlySet<string> {
+  return new Set(
+    group.memberProjects.flatMap((member) => [
+      member.physicalProjectKey,
+      legacyProjectCwdPreferenceKey(member.workspaceRoot),
+    ]),
+  );
+}
+
+function firstIndexByKey(manualOrder: readonly string[]): ReadonlyMap<string, number> {
+  const indexByKey = new Map<string, number>();
+  for (const [index, key] of manualOrder.entries()) {
+    if (!indexByKey.has(key)) indexByKey.set(key, index);
+  }
+  return indexByKey;
+}
+
+function storedManualRank(
+  group: SidebarProjectManualGroup,
+  indexByKey: ReadonlyMap<string, number>,
+): number | undefined {
+  const indexes = [...sidebarProjectManualKeys(group)].flatMap((key) => indexByKey.get(key) ?? []);
+  return indexes.length === 0 ? undefined : Math.min(...indexes);
+}
+
+/** Takes groups before machine scoping: a scoped group may hold none of the stored keys. */
+export function sidebarProjectManualRanks(
+  unscopedGroups: ReadonlyArray<SidebarProjectManualGroup>,
+  manualOrder: readonly string[],
+): SidebarProjectManualRanks {
+  if (manualOrder.length === 0) return NO_MANUAL_RANKS;
+  const indexByKey = firstIndexByKey(manualOrder);
+  return new Map(
+    unscopedGroups.flatMap((group) => {
+      const rank = storedManualRank(group, indexByKey);
+      return rank === undefined
+        ? []
+        : group.memberProjects.map((member) => [member.physicalProjectKey, rank] as const);
+    }),
+  );
+}
+
+function manualRankOf(group: SidebarProjectManualGroup, ranks: SidebarProjectManualRanks) {
+  return Math.min(
+    UNRANKED,
+    ...group.memberProjects.map((member) => ranks.get(member.physicalProjectKey) ?? UNRANKED),
+  );
+}
+
+function compareByName(
+  left: Pick<SidebarProjectOrderGroup, "displayName" | "projectKey">,
+  right: Pick<SidebarProjectOrderGroup, "displayName" | "projectKey">,
+) {
+  return (
+    left.displayName.localeCompare(right.displayName) ||
+    left.projectKey.localeCompare(right.projectKey)
+  );
+}
+
+function compareSidebarProjectIcons(
+  order: SidebarProjectIconOrder,
+  manualRanks: SidebarProjectManualRanks,
+) {
+  type Entry = SidebarProjectIconSortEntry<SidebarProjectOrderGroup>;
+  const byName = (left: Entry, right: Entry) =>
+    Number(right.group.pinned) - Number(left.group.pinned) ||
+    compareByName(left.group, right.group);
+  switch (order) {
+    case "name":
+      return byName;
+    case "activity":
+      return (left: Entry, right: Entry) =>
+        Number(right.group.pinned) - Number(left.group.pinned) ||
+        right.activity.lastActivity - left.activity.lastActivity ||
+        byName(left, right);
+    case "manual":
+      return (left: Entry, right: Entry) =>
+        Number(right.group.pinned) - Number(left.group.pinned) ||
+        manualRankOf(left.group, manualRanks) - manualRankOf(right.group, manualRanks) ||
+        byName(left, right);
+  }
+}
+
+function sortSidebarProjectEntries<TGroup extends SidebarProjectOrderGroup>(
+  groups: ReadonlyArray<TGroup>,
+  threads: ReadonlyArray<SidebarProjectOrderThread>,
+  order: SidebarProjectIconOrder,
+  manualRanks: SidebarProjectManualRanks,
+): SidebarProjectIconSortEntry<TGroup>[] {
   const groupKeyByMember = new Map(
     groups.flatMap((group) =>
       group.memberProjectRefs.map(
@@ -58,14 +180,86 @@ export function buildSidebarProjectActivity(
         }),
       },
     }))
-    .sort(
-      (left, right) =>
-        Number(right.group.pinned) - Number(left.group.pinned) ||
-        right.activity.lastActivity - left.activity.lastActivity ||
-        left.group.displayName.localeCompare(right.group.displayName) ||
-        left.group.projectKey.localeCompare(right.group.projectKey),
-    )
-    .map((entry) => entry.activity);
+    .sort(compareSidebarProjectIcons(order, manualRanks));
+}
+
+export function buildSidebarProjectActivity(
+  groups: ReadonlyArray<SidebarProjectOrderGroup>,
+  threads: ReadonlyArray<SidebarProjectOrderThread>,
+  order: SidebarProjectIconOrder,
+  manualRanks: SidebarProjectManualRanks = NO_MANUAL_RANKS,
+): SidebarProjectActivity[] {
+  return sortSidebarProjectEntries(groups, threads, order, manualRanks).map(
+    (entry) => entry.activity,
+  );
+}
+
+export function sortSidebarProjectGroups<TGroup extends SidebarProjectOrderGroup>(
+  groups: ReadonlyArray<TGroup>,
+  threads: ReadonlyArray<SidebarProjectOrderThread>,
+  order: SidebarProjectIconOrder,
+  manualRanks: SidebarProjectManualRanks,
+): TGroup[] {
+  return sortSidebarProjectEntries(groups, threads, order, manualRanks).map((entry) => entry.group);
+}
+
+/** A legacy cwd key can match one path on two machines; splitting it lets a drop move just one. */
+function splitSharedManualKeys(
+  orderedGroups: ReadonlyArray<SidebarProjectManualGroup>,
+  manualOrder: readonly string[],
+): string[] {
+  const ownersByKey = new Map<string, SidebarProjectManualGroup[]>();
+  for (const group of orderedGroups) {
+    for (const key of sidebarProjectManualKeys(group)) {
+      ownersByKey.set(key, [...(ownersByKey.get(key) ?? []), group]);
+    }
+  }
+  return [
+    ...new Set(
+      manualOrder.flatMap((key) => {
+        const owners = ownersByKey.get(key) ?? [];
+        return owners.length > 1
+          ? owners.flatMap((group) =>
+              group.memberProjects.map((member) => member.physicalProjectKey),
+            )
+          : [key];
+      }),
+    ),
+  ];
+}
+
+export function sidebarProjectManualMove(
+  orderedGroups: ReadonlyArray<
+    Pick<SidebarProjectOrderGroup, "projectKey" | "displayName" | "pinned" | "memberProjects">
+  >,
+  manualOrder: readonly string[],
+  activeKey: string,
+  overKey: string,
+): [current: string[], dragged: string[], target: string[]] | null {
+  const activeIndex = orderedGroups.findIndex((group) => group.projectKey === activeKey);
+  const droppedIndex = orderedGroups.findIndex((group) => group.projectKey === overKey);
+  if (activeIndex < 0 || droppedIndex < 0) return null;
+  const pinned = orderedGroups[activeIndex]!.pinned;
+  const sectionStart = pinned ? 0 : orderedGroups.findIndex((group) => !group.pinned);
+  const sectionEnd = pinned
+    ? orderedGroups.findLastIndex((group) => group.pinned)
+    : orderedGroups.length - 1;
+  const overIndex = Math.min(sectionEnd, Math.max(sectionStart, droppedIndex));
+  if (activeIndex === overIndex) return null;
+  const storedOrder = splitSharedManualKeys(orderedGroups, manualOrder);
+  const indexByKey = firstIndexByKey(storedOrder);
+  const current = [
+    ...storedOrder,
+    ...orderedGroups
+      .filter((group) => storedManualRank(group, indexByKey) === undefined)
+      .toSorted(compareByName)
+      .flatMap((group) => group.memberProjects.map((member) => member.physicalProjectKey)),
+  ];
+  const draggedKeys = sidebarProjectManualKeys(orderedGroups[activeIndex]!);
+  const overKeys = sidebarProjectManualKeys(orderedGroups[overIndex]!);
+  const target = current.find((key) => overKeys.has(key));
+  if (target === undefined) return null;
+  return [current, current.filter((key) => draggedKeys.has(key)), [target]];
 }
 
 export function sameSidebarProjectActivity(

@@ -27,27 +27,62 @@ function areShortcutModifierStatesEqual(
   );
 }
 
-export function useShortcutModifierState(ignoreEditable = false): ShortcutModifierState {
-  const [state, setState] = useState(EMPTY_SHORTCUT_MODIFIER_STATE);
-  const stateRef = useRef(EMPTY_SHORTCUT_MODIFIER_STATE);
+export interface AltKeySideState {
+  leftAltKey: boolean;
+  altGraphKey: boolean;
+}
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window key, focus, paste and blur listeners that track held shortcut modifiers
+const EMPTY_ALT_KEY_SIDE_STATE: AltKeySideState = { leftAltKey: false, altGraphKey: false };
+
+function areAltKeySideStatesEqual(left: AltKeySideState, right: AltKeySideState): boolean {
+  return left.leftAltKey === right.leftAltKey && left.altGraphKey === right.altGraphKey;
+}
+
+export function useShortcutModifierState(ignoreEditable = false): ShortcutModifierState {
+  return useHeldKeyState(
+    EMPTY_SHORTCUT_MODIFIER_STATE,
+    shortcutModifierStateAfterKeyboardEvent,
+    areShortcutModifierStatesEqual,
+    ignoreEditable,
+  );
+}
+
+/** Option/Alt + letter types characters, so actions bound to Alt listen to the left key only. */
+export function useAltKeySideState(): AltKeySideState {
+  return useHeldKeyState(
+    EMPTY_ALT_KEY_SIDE_STATE,
+    altKeySideStateAfterKeyboardEvent,
+    areAltKeySideStatesEqual,
+    false,
+  );
+}
+
+function useHeldKeyState<TState>(
+  empty: TState,
+  stateAfterKeyboardEvent: (current: TState, event: KeyboardEvent) => TState,
+  areEqual: (left: TState, right: TState) => boolean,
+  ignoreEditable: boolean,
+): TState {
+  const [state, setState] = useState(empty);
+  const stateRef = useRef(empty);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window key, focus, paste and blur listeners that track held keys
   useEffect(() => {
-    const updateState = (next: ShortcutModifierState) => {
-      if (areShortcutModifierStatesEqual(stateRef.current, next)) return;
+    const updateState = (next: TState) => {
+      if (areEqual(stateRef.current, next)) return;
       stateRef.current = next;
       setState(next);
     };
     const onKeyboardEvent = (event: KeyboardEvent) => {
       updateState(
         ignoreEditable && isEditableFocused(event.target)
-          ? EMPTY_SHORTCUT_MODIFIER_STATE
-          : shortcutModifierStateAfterKeyboardEvent(stateRef.current, event),
+          ? empty
+          : stateAfterKeyboardEvent(stateRef.current, event),
       );
     };
     // Dictation tools can omit Meta keyup after synthetic paste, leaving jump hints stuck.
     const onResetEvent = () => {
-      updateState(EMPTY_SHORTCUT_MODIFIER_STATE);
+      updateState(empty);
     };
 
     const onFocus = (event: FocusEvent) => {
@@ -65,9 +100,23 @@ export function useShortcutModifierState(ignoreEditable = false): ShortcutModifi
       window.removeEventListener("paste", onResetEvent, true);
       window.removeEventListener("blur", onResetEvent);
     };
-  }, [ignoreEditable]);
+  }, [empty, stateAfterKeyboardEvent, areEqual, ignoreEditable]);
 
   return state;
+}
+
+function altKeySideStateAfterKeyboardEvent(
+  current: AltKeySideState,
+  event: KeyboardEvent,
+): AltKeySideState {
+  const next = {
+    leftAltKey:
+      event.code === "AltLeft"
+        ? event.type === "keydown"
+        : current.leftAltKey && (event.code === "AltRight" || event.altKey),
+    altGraphKey: event.getModifierState("AltGraph"),
+  };
+  return areAltKeySideStatesEqual(current, next) ? current : next;
 }
 
 function normalizeModifierKey(key: string): keyof ShortcutModifierState | null {
