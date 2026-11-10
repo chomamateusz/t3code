@@ -482,10 +482,9 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 60
     outputs:
-      sums_sha256: ${{ steps.collect.outputs.sums_sha256 }}
+      stage: ${{ steps.unsigned.outputs.stage }}
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
-      SIGNING_CONFIG: local-stack/stack/ci/macos-signing.json
     steps:
       - name: Check out the stack branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -519,20 +518,102 @@ jobs:
           [[ ${#stages[@]} -eq 1 ]]
           apps=("${stages[0]}"/dist/mac*/*.app)
           [[ ${#apps[@]} -eq 1 ]]
-          mkdir "$RUNNER_TEMP/macos-app"
-          mv "${apps[0]}" "$RUNNER_TEMP/macos-app/"
+          mkdir "$RUNNER_TEMP/unsigned"
+          tar -C "$(dirname "${apps[0]}")" -cf "$RUNNER_TEMP/unsigned/app.tar" "$(basename "${apps[0]}")"
           rm -rf "${stages[0]}/dist"
-          {
-            echo "stage=${stages[0]}"
-            echo "app=$RUNNER_TEMP/macos-app/$(basename "${apps[0]}")"
-          } >> "$GITHUB_OUTPUT"
+          tar -C "$(dirname "${stages[0]}")" -cf "$RUNNER_TEMP/unsigned/stage.tar" app
+          echo "stage=${stages[0]}" >> "$GITHUB_OUTPUT"
+
+      # Archives keep the bundle's symlinks and modes, which the artifact service drops.
+      - name: Upload the unsigned app
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: macos-arm64-unsigned
+          overwrite: true
+          path: ${{ runner.temp }}/unsigned/*.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  # Signing runs on a fresh runner before any code from the source or this branch, so neither can read the identity.
+  build_macos_arm64_signed:
+    name: Sign macOS arm64 app
+    needs: [prepare, build_macos_arm64]
+    runs-on: macos-26
+    timeout-minutes: 45
+    outputs:
+      sums_sha256: ${{ steps.collect.outputs.sums_sha256 }}
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      STAGE: ${{ needs.build_macos_arm64.outputs.stage }}
+      SIGNING_CONFIG: local-stack/stack/ci/macos-signing.json
+    steps:
+      - name: Check out the stack branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.prepare.outputs.stack_sha }}
+          path: local-stack
+          persist-credentials: false
+
+      - name: Download the unsigned app
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: macos-arm64-unsigned
+          path: ${{ runner.temp }}/unsigned
+
+      - name: Unpack the unsigned app
+        id: unpack
+        run: |
+          [[ "$STAGE" =~ ^"$RUNNER_TEMP"/desktop-tmp/t3code-desktop-mac-stage-[^/]+/app$ ]]
+          mkdir -p "$(dirname "$STAGE")" "$RUNNER_TEMP/macos-app"
+          tar -C "$(dirname "$STAGE")" -xf "$RUNNER_TEMP/unsigned/stage.tar"
+          tar -C "$RUNNER_TEMP/macos-app" -xf "$RUNNER_TEMP/unsigned/app.tar"
+          rm -r "$RUNNER_TEMP/unsigned"
+          shopt -s nullglob
+          apps=("$RUNNER_TEMP"/macos-app/*.app)
+          [[ ${#apps[@]} -eq 1 ]]
+          echo "app=${apps[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Sign the app
         env:
           STACK_MACOS_CERT_P12_BASE64: ${{ secrets.STACK_MACOS_CERT_P12_BASE64 }}
           STACK_MACOS_CERT_PASSWORD: ${{ secrets.STACK_MACOS_CERT_PASSWORD }}
-          APP: ${{ steps.unsigned.outputs.app }}
-        run: bash local-stack/stack/ci/sign-macos-app.sh "$APP" "$(jq -r .leafSha1 "$SIGNING_CONFIG")" "$RUNNER_TEMP/stack-signing"
+          APP: ${{ steps.unpack.outputs.app }}
+        run: |
+          leaf=$(jq -r .leafSha1 "$SIGNING_CONFIG")
+          [[ "$leaf" =~ ^[0-9a-f]{40}$ ]]
+          work="$RUNNER_TEMP/stack-signing"
+          keychain="$work/signing.keychain-db"
+          identity="$work/identity.p12"
+          umask 077
+          mkdir "$work"
+          keychain_password=$(openssl rand -hex 24)
+          echo "::add-mask::$keychain_password"
+          trap 'security delete-keychain "$keychain" 2>/dev/null || true; rm -rf "$work"' EXIT
+          printf '%s' "$STACK_MACOS_CERT_P12_BASE64" | tr -d '[:space:]' | base64 --decode > "$identity"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$identity" -k "$keychain" -f pkcs12 -P "$STACK_MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$identity"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+          search_list=("$keychain")
+          while IFS= read -r entry; do
+            entry=${entry#"${entry%%[![:space:]]*}"}
+            entry=${entry#\"}
+            entry=${entry%\"}
+            if [[ -n "$entry" ]]; then search_list+=("$entry"); fi
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s "${search_list[@]}"
+          # Without -v: the self-signed identity is untrusted on the runner, and codesign needs no trust to sign.
+          identities=$(security find-identity -p codesigning "$keychain")
+          if ! grep -qiE "\) $leaf \"" <<< "$identities"; then
+            echo "::error title=macOS signing::The signing secret holds no code signing identity with certificate SHA-1 $leaf. Identities found:" >&2
+            grep -E '^ +[0-9]+\) ' <<< "$identities" >&2 || true
+            exit 1
+          fi
+          codesign --force --deep --timestamp=none --keychain "$keychain" --sign "$leaf" "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -d -r- "$APP"
 
       - name: Remove the signing keychain
         if: always()
@@ -545,12 +626,16 @@ jobs:
             exit 1
           fi
 
+      - name: Set up the applied source
+        uses: ./local-stack/stack/ci/actions/setup-source
+        with:
+          tree: ${{ needs.prepare.outputs.source_tree }}
+
       # Signing changes the app after electron-builder hashed it into latest-mac.yml, so the signed app is packaged again.
       - name: Package the signed app
         working-directory: source
         env:
-          STAGE: ${{ steps.unsigned.outputs.stage }}
-          APP: ${{ steps.unsigned.outputs.app }}
+          APP: ${{ steps.unpack.outputs.app }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: |
           vp exec --filter @t3tools/desktop -- electron-builder --projectDir "$STAGE" --mac --arm64 --publish never --prepackaged "$APP"
@@ -588,13 +673,13 @@ jobs:
 
   release:
     name: Publish fork release
-    needs: [prepare, build_linux_x64, accept_linux_x64, build_macos_arm64]
+    needs: [prepare, build_linux_x64, accept_linux_x64, build_macos_arm64_signed]
     if: >-
       !cancelled()
       && needs.build_linux_x64.result == 'success'
       && needs.accept_linux_x64.result == 'success'
-      && (needs.build_macos_arm64.result == 'success'
-        || (needs.build_macos_arm64.result == 'skipped' && needs.prepare.outputs.macos_signing == 'false'))
+      && (needs.build_macos_arm64_signed.result == 'success'
+        || (needs.build_macos_arm64_signed.result == 'skipped' && needs.prepare.outputs.macos_signing == 'false'))
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -609,8 +694,8 @@ jobs:
       SERIES_DATE: ${{ needs.prepare.outputs.series_date }}
       BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
       ARCHIVE_SHA256: ${{ needs.build_linux_x64.outputs.archive_sha256 }}
-      MACOS: ${{ needs.build_macos_arm64.result == 'success' }}
-      MACOS_SUMS_SHA256: ${{ needs.build_macos_arm64.outputs.sums_sha256 }}
+      MACOS: ${{ needs.build_macos_arm64_signed.result == 'success' }}
+      MACOS_SUMS_SHA256: ${{ needs.build_macos_arm64_signed.outputs.sums_sha256 }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Download runtime
@@ -789,7 +874,7 @@ jobs:
   report:
     name: Report
     if: always() && github.repository == 'chomamateusz/t3code'
-    needs: [prepare, quality, test, test_web, test_server, build_linux_x64, accept_linux_x64, build_macos_arm64, release]
+    needs: [prepare, quality, test, test_web, test_server, build_linux_x64, accept_linux_x64, build_macos_arm64, build_macos_arm64_signed, release]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -842,7 +927,7 @@ jobs:
             def jobs_with($result): $needs | to_entries | map(select(.value.result == $result) | .key);
             ($needs.prepare.outputs // {}) as $outputs
             | def output($key): $outputs[$key] | if type == "string" and . != "" then . else null end;
-            def passed: .value.result == "success" or (.value.result == "skipped" and .key == "build_macos_arm64" and $outputs.macos_signing != "true");
+            def passed: .value.result == "success" or (.value.result == "skipped" and (.key | startswith("build_macos_")) and $outputs.macos_signing != "true");
             jobs_with("failure") as $failed
             | jobs_with("cancelled") as $cancelled
             | (if ($failed | length) > 0 then {status: "failed", stage: ($failed | earliest), reason: null}

@@ -23,6 +23,7 @@ function needs(results: Record<string, string>, outputs: Record<string, string> 
     build_linux_x64: "success",
     accept_linux_x64: "success",
     build_macos_arm64: "success",
+    build_macos_arm64_signed: "success",
     release: "success",
     ...results,
   };
@@ -54,13 +55,13 @@ describe("classifyRun", () => {
 
   it("accepts a skipped macOS build only when the signing secrets are absent", () => {
     const unsigned = classifyRun({
-      needs: needs({ build_macos_arm64: "skipped" }, { ...prepareOutputs, macos_signing: "false" }),
+      needs: needs({ build_macos_arm64: "skipped", build_macos_arm64_signed: "skipped" }, { ...prepareOutputs, macos_signing: "false" }),
       applyResult: undefined,
       runUrl,
     });
     expect(unsigned.status).toBe("success");
     expect(summaryMarkdown(unsigned)).toContain("not built (no signing secrets)");
-    const missing = classifyRun({ needs: needs({ build_macos_arm64: "skipped", release: "skipped" }), applyResult: undefined, runUrl });
+    const missing = classifyRun({ needs: needs({ build_macos_arm64: "skipped", build_macos_arm64_signed: "skipped", release: "skipped" }), applyResult: undefined, runUrl });
     expect(missing.status).toBe("failed");
     expect(missing.stage).toBe("build");
   });
@@ -94,6 +95,7 @@ describe("classifyRun", () => {
     [{ test_server: "failure", build_linux_x64: "skipped" }, "test"],
     [{ build_linux_x64: "failure", accept_linux_x64: "skipped" }, "build"],
     [{ build_macos_arm64: "failure" }, "build"],
+    [{ build_macos_arm64_signed: "failure", release: "skipped" }, "build"],
     [{ accept_linux_x64: "failure", release: "skipped" }, "accept"],
     [{ release: "failure" }, "release"],
     [{ test_web: "failure", release: "failure" }, "test"],
@@ -110,7 +112,7 @@ describe("classifyRun", () => {
   });
 
   it("reports a quiet skip with its reason", () => {
-    const skipped = Object.fromEntries(["quality", "test", "test_web", "test_server", "build_linux_x64", "accept_linux_x64", "build_macos_arm64", "release"].map((job) => [job, "skipped"]));
+    const skipped = Object.fromEntries(["quality", "test", "test_web", "test_server", "build_linux_x64", "accept_linux_x64", "build_macos_arm64", "build_macos_arm64_signed", "release"].map((job) => [job, "skipped"]));
     const result = classifyRun({
       needs: needs(skipped, { ...prepareOutputs, skip: "true", skip_reason: "already built" }),
       applyResult: undefined,

@@ -7,7 +7,6 @@ type PipelineStage = Exclude<Stage, "apply">;
 type Status = "success" | "skipped" | "failed" | "cancelled";
 
 const ORDER: readonly PipelineStage[] = ["prepare", "test", "build", "accept", "release"];
-const MACOS_JOB = "build_macos_arm64";
 
 export function stageOfJob(job: string): PipelineStage {
   if (job === "prepare") return "prepare";
@@ -42,7 +41,7 @@ export function classifyRun(input: { needs: unknown; applyResult: unknown; runUr
   const applyFailed = isRecord(input.applyResult) && input.applyResult.status === "failed";
   const macosSigning = outputs?.macos_signing === "true";
   const passed = ([job, result]: [string, string]) =>
-    result === "success" || (result === "skipped" && job === MACOS_JOB && !macosSigning);
+    result === "success" || (result === "skipped" && job.startsWith("build_macos_") && !macosSigning);
 
   let status: Status;
   let stage: Stage | null = null;

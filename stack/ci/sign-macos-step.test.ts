@@ -1,12 +1,16 @@
 import { describe, expect, it } from "bun:test";
+import { YAML } from "bun";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const leaf = "7ad2035d760ab51915234492b1938fd222840e5e";
-const script = join(import.meta.dir, "sign-macos-app.sh");
 const p12 = Buffer.from("fake pkcs12 bytes").toString("base64");
+const workflow = YAML.parse(readFileSync(join(import.meta.dir, "../workflow/stack-build.yml"), "utf8")) as {
+  jobs: Record<string, { steps: { name: string; run?: string; env?: Record<string, string> }[] }>;
+};
+const signStep = workflow.jobs.build_macos_arm64_signed!.steps.find((step) => step.name === "Sign the app")!;
 
 function stub(dir: string, name: string, body: string) {
   writeFileSync(join(dir, name), `#!/usr/bin/env bash\nprintf '%s\\n' "${name} $*" >> "$STUB_LOG"\n${body}\n`);
@@ -14,10 +18,12 @@ function stub(dir: string, name: string, body: string) {
 }
 
 function signWith(identityLine: string) {
-  const root = mkdtempSync(join(tmpdir(), "sign-macos-app-"));
+  const root = mkdtempSync(join(tmpdir(), "sign-macos-step-"));
   const bin = join(root, "bin");
+  const temp = join(root, "runner-temp");
   const app = join(root, "T3 Code (Beta).app");
   mkdirSync(bin);
+  mkdirSync(temp);
   mkdirSync(app);
   const log = join(root, "calls.log");
   stub(bin, "openssl", "echo 0123456789abcdef");
@@ -31,11 +37,13 @@ function signWith(identityLine: string) {
 esac`,
   );
   stub(bin, "codesign", "");
-  const work = join(root, "signing");
-  const result = spawnSync("bash", [script, app, leaf, work], {
+  const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", signStep.run!], {
     encoding: "utf8",
     env: {
       PATH: `${bin}:${process.env.PATH}`,
+      RUNNER_TEMP: temp,
+      SIGNING_CONFIG: join(import.meta.dir, "macos-signing.json"),
+      APP: app,
       STUB_LOG: log,
       STUB_IMPORTED: join(root, "imported.p12"),
       IDENTITY_LINE: identityLine,
@@ -47,24 +55,28 @@ esac`,
     result,
     calls: existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : [],
     imported: existsSync(join(root, "imported.p12")) ? readFileSync(join(root, "imported.p12"), "utf8") : undefined,
-    workLeft: existsSync(work),
-    keychain: join(work, "signing.keychain-db"),
+    work: join(temp, "stack-signing"),
     app,
   };
 }
 
-describe("sign-macos-app.sh", () => {
+describe("the workflow's signing step", () => {
+  it("takes the secrets from its own env only", () => {
+    expect(Object.keys(signStep.env ?? {}).sort()).toEqual(["APP", "STACK_MACOS_CERT_P12_BASE64", "STACK_MACOS_CERT_PASSWORD"]);
+  });
+
   it("imports the identity into its own keychain, signs by certificate hash and removes the keychain", () => {
     const run = signWith(`  1) ${leaf.toUpperCase()} "T3 Code Local Signing" (CSSMERR_TP_NOT_TRUSTED)`);
     expect(run.result.status).toBe(0);
     expect(run.imported).toBe("fake pkcs12 bytes");
-    expect(run.calls).toContain(`codesign --force --deep --timestamp=none --keychain ${run.keychain} --sign ${leaf} ${run.app}`);
-    expect(run.calls.find((call) => call.startsWith("security list-keychains -d user -s"))).toEndWith(
-      "signing.keychain-db /Users/runner/Library/Keychains/login.keychain-db",
+    const keychain = join(run.work, "signing.keychain-db");
+    expect(run.calls).toContain(`codesign --force --deep --timestamp=none --keychain ${keychain} --sign ${leaf} ${run.app}`);
+    expect(run.calls.find((call) => call.startsWith("security list-keychains -d user -s"))).toBe(
+      `security list-keychains -d user -s ${keychain} /Users/runner/Library/Keychains/login.keychain-db`,
     );
-    expect(run.calls.at(-1)).toStartWith("security delete-keychain");
+    expect(run.calls.at(-1)).toBe(`security delete-keychain ${keychain}`);
     expect(run.calls.join("\n")).not.toContain(p12.slice(8));
-    expect(run.workLeft).toBe(false);
+    expect(existsSync(run.work)).toBe(false);
   });
 
   it("refuses an identity with another certificate and signs nothing", () => {
@@ -73,6 +85,6 @@ describe("sign-macos-app.sh", () => {
     expect(run.result.stderr).toContain(`no code signing identity with certificate SHA-1 ${leaf}`);
     expect(run.calls.some((call) => call.startsWith("codesign"))).toBe(false);
     expect(run.calls.at(-1)).toStartWith("security delete-keychain");
-    expect(run.workLeft).toBe(false);
+    expect(existsSync(run.work)).toBe(false);
   });
 });
