@@ -1,0 +1,489 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mateusz Choma <chomamateusz@gmail.com>
+Date: Sat, 31 Oct 2026 18:54:47 +0100
+Subject: =?UTF-8?q?=F0=9F=96=90=EF=B8=8F=20Turn=20off=20two-finger=20swipe?=
+ =?UTF-8?q?=20navigation=20in=20Settings?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Behaviours:
+Add the client-only historySwipeNavigation boolean, defaulting to true so
+existing swipe navigation stays enabled until the user turns it off.
+Expose Swipe to go back and forward in General > Navigation on desktop,
+with explanatory mouse-wheel copy, a reset action, restore-defaults support,
+and desktop-only Settings search terms.
+
+Only mount HistorySwipeNavigation when Electron and the preference are both
+enabled. Turning it off removes the indicator and wheel/gesture listeners,
+including during an active swipe. Turning it back on takes effect immediately.
+Keep mouse back/forward buttons and keyboard history commands unchanged.
+
+Integration details:
+- Also gate upstream native macOS swipe events using the current persisted client preference; ignore vertical gestures, preserve available-history checks, and avoid navigation after the window closes during the asynchronous settings read. Settings read failures are logged without navigation. The shared contracts schema preserves the key through desktop IPC and disk persistence.
+
+Port to 965ddc1d6c:
+- Applied without conflicts. 965ddc1d6c has no swipe preference: DesktopWindow.ts and AppSidebarLayout.tsx did not change upstream and still navigate unconditionally. Upstream #33131 and #33147 reshaped SettingsPanels.tsx, settingsSearch.ts and settings.ts; the Navigation section, restore entry, search item and schema field merged beside them.
+
+Files:
+apps/desktop:
+- apps/desktop/src/window/DesktopWindow.test.ts
+- apps/desktop/src/window/DesktopWindow.ts
+apps/web:
+- apps/web/src/components/AppSidebarLayout.browser.test.tsx
+- apps/web/src/components/AppSidebarLayout.tsx
+- apps/web/src/components/settings/SettingsPanels.tsx
+- apps/web/src/components/settings/settingsSearch.test.ts
+- apps/web/src/components/settings/settingsSearch.ts
+packages/contracts:
+- packages/contracts/src/settings.test.ts
+- packages/contracts/src/settings.ts
+
+Tests:
+- apps/desktop/src/app/DesktopApp.test.ts
+- apps/desktop/src/app/DesktopLifecycle.test.ts
+- apps/desktop/src/app/DesktopWebLinks.test.ts
+- apps/desktop/src/backend/DesktopBackendPool.test.ts
+- apps/desktop/src/ipc/methods/localEnvironment.test.ts
+- apps/desktop/src/ipc/methods/wsl.test.ts
+- apps/desktop/src/settings/DesktopClientSettings.test.ts
+- apps/desktop/src/snapShot/DesktopSnapShot.test.ts
+- apps/desktop/src/window/DesktopApplicationMenu.test.ts
+- apps/desktop/src/window/DesktopWindow.test.ts
+- apps/server/src/pullRequest/PullRequestService.test.ts
+- apps/web/src/browserHistoryStore.test.ts
+- apps/web/src/components/AppSidebarLayout.browser.test.tsx
+- apps/web/src/components/ChatView.browser.test.tsx
+- apps/web/src/components/CommandPalette.composition.browser.test.tsx
+- apps/web/src/components/HistorySwipeNavigation.test.ts
+- apps/web/src/components/ThreadTerminalDrawer.browser.test.tsx
+- apps/web/src/components/UsageToggleShortcut.browser.test.tsx
+- apps/web/src/components/chat/UsageLimitRecoveryBanner.test.tsx
+- apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx
+- apps/web/src/components/settings/SourceControlWritingSettings.browser.test.tsx
+- apps/web/src/components/settings/TypographySettings.browser.test.tsx
+- apps/web/src/components/settings/settingsSearch.test.ts
+- apps/web/src/components/sidebar/SidebarProjectRow.browser.test.tsx
+- apps/web/src/composerDraftStore.test.ts
+- apps/web/src/hooks/useSettings.test.ts
+- apps/web/src/lib/openPullRequestLink.browser.test.tsx
+- apps/web/src/modelSelection.test.ts
+- packages/client-runtime/src/state/threadSnoozed.test.ts
+- packages/contracts/src/device.test.ts
+- packages/contracts/src/server.test.ts
+- packages/contracts/src/settings.test.ts
+- Failing-first native swipe proof: disabled gestures still navigated before the native gate; extended native test passes with disable/re-enable and close-during-read coverage.
+- Whole-stack focused validation on 965ddc1d6c: 1,321 passed and 2 baseline failures across 48 test files (every test file the stack touches plus CommandPalette.logic.test.ts and chatRouteCommands.browser.test.ts). Web: 679 / 32 files; desktop: 118 / 9; server: 432 passed and 2 baseline failures / 4; contracts: 36 / 1; scripts: 56 / 2.
+- vp run typecheck passed in apps/web, apps/desktop, apps/server, packages/contracts and scripts; vp lint and vp fmt --check passed on the 119 changed files.
+- Baseline: UsageService.test.ts on detached 965ddc1d6c fails the same 2 assertions (Pi /var versus /private/var path equality; Codex open-spy raw-path equality); no assertion was changed to hide them.
+- No installed-client or live remote/relay/tunnel pass: no development servers or installed app changes were authorized.
+
+Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
+---
+ apps/desktop/src/window/DesktopWindow.test.ts | 70 +++++++++++++++----
+ apps/desktop/src/window/DesktopWindow.ts      | 24 ++++++-
+ .../AppSidebarLayout.browser.test.tsx         | 67 ++++++++++++++++++
+ apps/web/src/components/AppSidebarLayout.tsx  |  5 +-
+ .../components/settings/SettingsPanels.tsx    | 33 +++++++++
+ .../settings/settingsSearch.test.ts           |  2 +
+ .../src/components/settings/settingsSearch.ts |  7 ++
+ packages/contracts/src/settings.test.ts       | 13 ++++
+ packages/contracts/src/settings.ts            |  2 +
+ 9 files changed, 206 insertions(+), 17 deletions(-)
+ create mode 100644 apps/web/src/components/AppSidebarLayout.browser.test.tsx
+
+diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
+index be5a26166cfc51ca69d186756b2c1e2a31b1dcee..3b29d245d1c4b8ec1130166ab8dd146f52b56d85 100644
+--- a/apps/desktop/src/window/DesktopWindow.test.ts
++++ b/apps/desktop/src/window/DesktopWindow.test.ts
+@@ -1,7 +1,7 @@
+ import * as NodeServices from "@effect/platform-node/NodeServices";
+ import { assert, describe, it } from "@effect/vitest";
+ import * as Deferred from "effect/Deferred";
+-import { DesktopSnapShotId } from "@t3tools/contracts";
++import { DEFAULT_CLIENT_SETTINGS, DesktopSnapShotId } from "@t3tools/contracts";
+ import * as Effect from "effect/Effect";
+ import * as Exit from "effect/Exit";
+ import * as Fiber from "effect/Fiber";
+@@ -64,7 +64,7 @@ const environmentInput = {
+ } satisfies DesktopEnvironment.MakeDesktopEnvironmentInput;
+ 
+ function makeFakeBrowserWindow() {
+-  const windowListeners = new Map<string, (...args: readonly unknown[]) => void>();
++  const windowListeners = new Map<string, (...args: readonly unknown[]) => unknown>();
+   const webContentsListeners = new Map<string, (...args: readonly unknown[]) => void>();
+   let zoomLevel = 0;
+   const webContents = {
+@@ -224,6 +224,7 @@ function layerTest(input: {
+   readonly mainWindow: Ref.Ref<Option.Option<Electron.BrowserWindow>>;
+   readonly createdWindowOptions?: Electron.BrowserWindowConstructorOptions[];
+   readonly desktopSettings?: DesktopAppSettings.DesktopSettings;
++  readonly clientSettings?: DesktopClientSettings.DesktopClientSettings["Service"];
+   readonly mainWindowBoundsUpdates?: DesktopAppSettings.DesktopWindowBounds[];
+   readonly mainWindowMaximizedUpdates?: boolean[];
+   readonly beforeMainWindowBoundsUpdate?: (
+@@ -310,7 +311,9 @@ function layerTest(input: {
+         }),
+         layerDesktopEnvironment,
+         layerDesktopAppSettings,
+-        layerDesktopClientSettings,
++        input.clientSettings
++          ? Layer.succeed(DesktopClientSettings.DesktopClientSettings, input.clientSettings)
++          : layerDesktopClientSettings,
+         layerDesktopServerExposure,
+         DesktopState.layer,
+         layerElectronApp,
+@@ -1050,7 +1053,17 @@ describe("DesktopWindow", () => {
+       const fakeWindow = makeFakeBrowserWindow();
+       const createCount = yield* Ref.make(0);
+       const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+-      const layer = layerTest({ window: fakeWindow.window, createCount, mainWindow });
++      const settings = yield* Ref.make(Option.none<typeof DEFAULT_CLIENT_SETTINGS>());
++      let beforeRead = Effect.void;
++      const layer = layerTest({
++        window: fakeWindow.window,
++        createCount,
++        mainWindow,
++        clientSettings: {
++          get: Effect.suspend(() => beforeRead).pipe(Effect.andThen(Ref.get(settings))),
++          set: (value) => Ref.set(settings, Option.some(value)),
++        },
++      });
+ 
+       yield* Effect.gen(function* () {
+         const desktopWindow = yield* DesktopWindow.DesktopWindow;
+@@ -1058,22 +1071,55 @@ describe("DesktopWindow", () => {
+         const swipe = fakeWindow.windowListeners.get("swipe");
+         assert.isDefined(swipe);
+         if (!swipe) return;
++        const sendSwipe = (direction: string) =>
++          Effect.promise(() => Promise.resolve(swipe({}, direction)));
+         const history = fakeWindow.navigationHistory;
+ 
+-        swipe({}, "left");
++        yield* sendSwipe("left");
+         assert.equal(history.goBack.mock.calls.length, 1);
+         assert.equal(history.goForward.mock.calls.length, 0);
+-        swipe({}, "right");
++        yield* sendSwipe("right");
+         assert.equal(history.goForward.mock.calls.length, 1);
+ 
+-        swipe({}, "up");
+-        swipe({}, "down");
+-        history.canGoBack.mockReturnValue(false);
+-        history.canGoForward.mockReturnValue(false);
+-        swipe({}, "left");
+-        swipe({}, "right");
++        yield* Ref.set(
++          settings,
++          Option.some({ ...DEFAULT_CLIENT_SETTINGS, historySwipeNavigation: false }),
++        );
++        yield* sendSwipe("left");
++        yield* sendSwipe("right");
+         assert.equal(history.goBack.mock.calls.length, 1);
+         assert.equal(history.goForward.mock.calls.length, 1);
++
++        yield* Ref.set(
++          settings,
++          Option.some({ ...DEFAULT_CLIENT_SETTINGS, historySwipeNavigation: true }),
++        );
++        yield* sendSwipe("left");
++        yield* sendSwipe("right");
++        assert.equal(history.goBack.mock.calls.length, 2);
++        assert.equal(history.goForward.mock.calls.length, 2);
++
++        yield* sendSwipe("up");
++        yield* sendSwipe("down");
++        history.canGoBack.mockReturnValue(false);
++        history.canGoForward.mockReturnValue(false);
++        yield* sendSwipe("left");
++        yield* sendSwipe("right");
++        assert.equal(history.goBack.mock.calls.length, 2);
++        assert.equal(history.goForward.mock.calls.length, 2);
++
++        const readStarted = yield* Deferred.make<void>();
++        const finishRead = yield* Deferred.make<void>();
++        beforeRead = Deferred.succeed(readStarted, undefined).pipe(
++          Effect.andThen(Deferred.await(finishRead)),
++        );
++        history.canGoBack.mockReturnValue(true);
++        const pendingSwipe = yield* sendSwipe("left").pipe(Effect.forkChild);
++        yield* Deferred.await(readStarted);
++        fakeWindow.isDestroyed.mockReturnValue(true);
++        yield* Deferred.succeed(finishRead, undefined);
++        yield* Fiber.join(pendingSwipe);
++        assert.equal(history.goBack.mock.calls.length, 2);
+       }).pipe(Effect.provide(layer));
+     }),
+   );
+diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
+index b8446f78740c42e6cdc49d2fdf3dc8a9965896b5..a736f20bfa6f3fb5b0717417bf3bac1c160a39b9 100644
+--- a/apps/desktop/src/window/DesktopWindow.ts
++++ b/apps/desktop/src/window/DesktopWindow.ts
+@@ -747,9 +747,27 @@ export const make = Effect.gen(function* () {
+     if (environment.platform === "darwin") {
+       // Mouse drivers can deliver Back/Forward as macOS swipe gestures instead of buttons.
+       window.on("swipe", (_event, direction) => {
+-        const history = window.webContents.navigationHistory;
+-        if (direction === "left" && history.canGoBack()) history.goBack();
+-        else if (direction === "right" && history.canGoForward()) history.goForward();
++        if (direction !== "left" && direction !== "right") return;
++        return runPromise(
++          Effect.gen(function* () {
++            const settings = yield* clientSettings.get;
++            if (
++              window.isDestroyed() ||
++              window.webContents.isDestroyed() ||
++              !(Option.isSome(settings)
++                ? settings.value.historySwipeNavigation
++                : DEFAULT_CLIENT_SETTINGS.historySwipeNavigation)
++            )
++              return;
++            const history = window.webContents.navigationHistory;
++            if (direction === "left" && history.canGoBack()) history.goBack();
++            else if (direction === "right" && history.canGoForward()) history.goForward();
++          }).pipe(
++            Effect.catch((error) =>
++              logWindowWarning("failed to read swipe navigation preference", { error }),
++            ),
++          ),
++        );
+       });
+       window.on("enter-full-screen", () => {
+         window.webContents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, true);
+diff --git a/apps/web/src/components/AppSidebarLayout.browser.test.tsx b/apps/web/src/components/AppSidebarLayout.browser.test.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..5bb716340d3b4f9c50c36650fe9b34e16bff0937
+--- /dev/null
++++ b/apps/web/src/components/AppSidebarLayout.browser.test.tsx
+@@ -0,0 +1,67 @@
++import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
++import { describe, expect, it, vi } from "vite-plus/test";
++
++import { act, render } from "../../test/render";
++import {
++  __resetClientSettingsPersistenceForTests,
++  __setClientSettingsForTests,
++  updateClientSettings,
++} from "../hooks/useSettings";
++import { AppSidebarLayout } from "./AppSidebarLayout";
++
++vi.mock("../env", () => ({ isElectron: true }));
++vi.mock("./Sidebar", () => ({ default: () => null }));
++vi.mock("./BackgroundThreadAnnouncer", () => ({ BackgroundThreadAnnouncer: () => null }));
++vi.mock("./sidebar/SidebarChrome", () => ({ SidebarBrandWidthProbe: () => null }));
++vi.mock("../localApi", () => ({
++  ensureLocalApi: () => ({
++    persistence: { setClientSettings: async () => undefined },
++  }),
++}));
++
++function setup(historySwipeNavigation: boolean) {
++  __resetClientSettingsPersistenceForTests();
++  __setClientSettingsForTests({ ...DEFAULT_CLIENT_SETTINGS, historySwipeNavigation });
++}
++
++function wheel(deltaX: number) {
++  window.dispatchEvent(new WheelEvent("wheel", { deltaX, clientY: 200 }));
++}
++
++describe("desktop history swipe navigation", () => {
++  it.each(["back", "forward"] as const)(
++    "disables %s swipes and can re-enable them without reloading",
++    async (direction) => {
++      setup(false);
++      using _available = vi
++        .spyOn(window.navigation, direction === "back" ? "canGoBack" : "canGoForward", "get")
++        .mockReturnValue(true);
++      await using screen = await render(<AppSidebarLayout>Thread</AppSidebarLayout>);
++      using navigate = vi.spyOn(window.history, direction).mockImplementation(() => undefined);
++      const deltaX = direction === "back" ? -140 : 140;
++
++      await act(() => {
++        wheel(deltaX);
++        wheel(0);
++      });
++      expect(navigate).not.toHaveBeenCalled();
++      expect(screen.container.querySelector('div[aria-hidden="true"]')).toBeNull();
++
++      await act(() => updateClientSettings({ historySwipeNavigation: true }));
++      await act(() => wheel(deltaX));
++      expect(screen.container.querySelector('div[aria-hidden="true"]')).not.toBeNull();
++
++      await act(() => updateClientSettings({ historySwipeNavigation: false }));
++      expect(screen.container.querySelector('div[aria-hidden="true"]')).toBeNull();
++      await act(() => wheel(0));
++      expect(navigate).not.toHaveBeenCalled();
++
++      await act(() => updateClientSettings({ historySwipeNavigation: true }));
++      await act(() => {
++        wheel(deltaX);
++        wheel(0);
++      });
++      expect(navigate).toHaveBeenCalledOnce();
++    },
++  );
++});
+diff --git a/apps/web/src/components/AppSidebarLayout.tsx b/apps/web/src/components/AppSidebarLayout.tsx
+index f9cb8c5170cf90e922a4935f7ab7ad11ebd78114..094f72076dbf29f1d110fa2b6cfadfc72ff275ed 100644
+--- a/apps/web/src/components/AppSidebarLayout.tsx
++++ b/apps/web/src/components/AppSidebarLayout.tsx
+@@ -31,7 +31,7 @@ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
+ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
+ import { cn, isMacPlatform } from "../lib/utils";
+ import { primaryServerKeybindingsAtom } from "../state/server";
+-import { useEnvironmentIdentificationMode } from "../hooks/useSettings";
++import { useClientSettings, useEnvironmentIdentificationMode } from "../hooks/useSettings";
+ import {
+   PanelAnimationSuppressionProvider,
+   usePanelAnimationSettings,
+@@ -412,6 +412,7 @@ export function AppSidebarLayout({
+   children: ReactNode;
+   showSidebar?: boolean;
+ }) {
++  const historySwipeNavigation = useClientSettings((settings) => settings.historySwipeNavigation);
+   const sidebarArea = workspaceAreaProps("sidebar", 0, "Threads");
+   const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
+     observedKey: null,
+@@ -489,7 +490,7 @@ export function AppSidebarLayout({
+         {children}
+         <BackgroundThreadAnnouncer />
+         <SidebarControl showSidebar={showSidebar} />
+-        {isElectron ? <HistorySwipeNavigation /> : null}
++        {isElectron && historySwipeNavigation ? <HistorySwipeNavigation /> : null}
+       </SidebarProvider>
+     </PanelAnimationSuppressionProvider>
+   );
+diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
+index bb0ca4baa48e7437040834774c20bd7818457d8f..f7ef98b24c55b817d6dd59ffc176b482c16969f3 100644
+--- a/apps/web/src/components/settings/SettingsPanels.tsx
++++ b/apps/web/src/components/settings/SettingsPanels.tsx
+@@ -598,6 +598,9 @@ export function useSettingsRestore(onRestored?: () => void) {
+       ? ["Delete confirmation"]
+       : []),
+     ...(settings.confirmQuit !== DEFAULT_UNIFIED_SETTINGS.confirmQuit ? ["Quit shortcut"] : []),
++    ...(settings.historySwipeNavigation !== DEFAULT_UNIFIED_SETTINGS.historySwipeNavigation
++      ? ["Swipe to go back and forward"]
++      : []),
+     ...(isTextGenerationModelDirty ? ["Text generation model"] : []),
+     ...(settings.threadTitleInstructions !== DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions
+       ? ["Thread title instructions"]
+@@ -706,6 +709,7 @@ export function useSettingsRestore(onRestored?: () => void) {
+       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
+       confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
+       confirmQuit: DEFAULT_UNIFIED_SETTINGS.confirmQuit,
++      historySwipeNavigation: DEFAULT_UNIFIED_SETTINGS.historySwipeNavigation,
+       textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
+       threadTitleInstructions: DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions,
+       fontFamilySans: DEFAULT_UNIFIED_SETTINGS.fontFamilySans,
+@@ -907,6 +911,35 @@ export function GeneralSettingsPanel() {
+         />
+       </SettingsSection>
+ 
++      {isElectron ? (
++        <SettingsSection id="navigation" title="Navigation">
++          <SettingsRow
++            {...searchableSetting("history-swipe-navigation")}
++            description="Two-finger horizontal swipes move through your thread history. Turn off if a mouse with a horizontal wheel switches threads by accident."
++            resetAction={
++              settings.historySwipeNavigation !==
++              DEFAULT_UNIFIED_SETTINGS.historySwipeNavigation ? (
++                <SettingResetButton
++                  label="swipe navigation"
++                  onClick={() =>
++                    updateSettings({
++                      historySwipeNavigation: DEFAULT_UNIFIED_SETTINGS.historySwipeNavigation,
++                    })
++                  }
++                />
++              ) : null
++            }
++            control={
++              <Switch
++                checked={settings.historySwipeNavigation}
++                onCheckedChange={(checked) => updateSettings({ historySwipeNavigation: checked })}
++                aria-label="Swipe to go back and forward"
++              />
++            }
++          />
++        </SettingsSection>
++      ) : null}
++
+       <SettingsSection id="confirmations" title="Confirmations">
+         <SettingsRow
+           {...searchableSetting("unpin-confirmation")}
+diff --git a/apps/web/src/components/settings/settingsSearch.test.ts b/apps/web/src/components/settings/settingsSearch.test.ts
+index c360265f81e310e38e01310e99fd738d41aa6275..408b371aa24fb8150ae93f003799719e29f25dea 100644
+--- a/apps/web/src/components/settings/settingsSearch.test.ts
++++ b/apps/web/src/components/settings/settingsSearch.test.ts
+@@ -106,6 +106,8 @@ describe("searchSettings", () => {
+ 
+   it("hides desktop-only settings from browser search", () => {
+     expect(SETTINGS_SEARCH_ITEMS.some((item) => item.id === "quit-confirmation")).toBe(true);
++    expect(SETTINGS_SEARCH_ITEMS.some((item) => item.id === "history-swipe-navigation")).toBe(true);
++    expect(searchSettings("horizontal wheel")).toEqual([]);
+     expect(searchSettings("hold to quit")).toEqual([]);
+     expect(searchSettings("wsl")).toEqual([]);
+     expect(searchSettings("update track")).toEqual([]);
+diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
+index f7492035874da0a0818343e556f24c4dc18a669c..a184db711430cb2390e10a1440361cae8d81a7d3 100644
+--- a/apps/web/src/components/settings/settingsSearch.ts
++++ b/apps/web/src/components/settings/settingsSearch.ts
+@@ -818,6 +818,13 @@ export const SETTINGS_SEARCH_ITEMS = [
+     searchTerms: ["confirmation desktop app exit direct hold double click press twice"],
+     desktopOnly: true,
+   },
++  {
++    id: "history-swipe-navigation",
++    title: "Swipe to go back and forward",
++    to: "/settings/general",
++    searchTerms: ["two-finger horizontal trackpad gesture mouse wheel thread history navigation"],
++    desktopOnly: true,
++  },
+   {
+     id: "text-generation-model",
+     title: "Text generation model",
+diff --git a/packages/contracts/src/settings.test.ts b/packages/contracts/src/settings.test.ts
+index a5a27235bbe7cebbecf22a28feafadb0580d0927..43c14dce6224203a1a6399cdd8d4c9752b153418 100644
+--- a/packages/contracts/src/settings.test.ts
++++ b/packages/contracts/src/settings.test.ts
+@@ -324,6 +324,19 @@ describe("ClientSettings quit confirmation", () => {
+   });
+ });
+ 
++describe("ClientSettings history swipe navigation", () => {
++  it.each([undefined, true, false])("decodes and round-trips %s", (historySwipeNavigation) => {
++    const input = historySwipeNavigation === undefined ? {} : { historySwipeNavigation };
++    const settings = decodeClientSettings(input);
++
++    expect(settings.historySwipeNavigation).toBe(historySwipeNavigation ?? true);
++    expect(decodeClientSettings(encodeClientSettings(settings)).historySwipeNavigation).toBe(
++      historySwipeNavigation ?? true,
++    );
++    expect(decodeClientSettingsPatch(input)).toEqual(input);
++  });
++});
++
+ describe("provider enabled defaults", () => {
+   it("resolves instance enabled state with explicit false winning", () => {
+     const grok = ProviderDriverKind.make("grok");
+diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
+index cd112d84bf9f4e9c031099149569ddd45aca8df1..27eebc4b628a0c19d7521367e637d4e26fbc5bb8 100644
+--- a/packages/contracts/src/settings.ts
++++ b/packages/contracts/src/settings.ts
+@@ -452,6 +452,7 @@ export const ClientSettingsSchema = Schema.Struct({
+   confirmQuit: QuitConfirmationModeSetting.pipe(
+     Schema.withDecodingDefault(Effect.succeed(DEFAULT_QUIT_CONFIRMATION_MODE)),
+   ),
++  historySwipeNavigation: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+   confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+   confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+   confirmThreadUnpin: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+@@ -1996,6 +1997,7 @@ export const ClientSettingsPatch = Schema.Struct({
+   browserProfiles: Schema.optionalKey(Schema.Array(BrowserProfile)),
+   browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),
+   confirmQuit: Schema.optionalKey(QuitConfirmationMode),
++  historySwipeNavigation: Schema.optionalKey(Schema.Boolean),
+   confirmThreadArchive: Schema.optionalKey(Schema.Boolean),
+   confirmThreadDelete: Schema.optionalKey(Schema.Boolean),
+   confirmThreadUnpin: Schema.optionalKey(Schema.Boolean),

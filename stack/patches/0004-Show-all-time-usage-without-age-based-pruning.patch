@@ -1,0 +1,720 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mateusz Choma <chomamateusz@gmail.com>
+Date: Sat, 3 Oct 2026 19:22:12 +0200
+Subject: =?UTF-8?q?=F0=9F=93=88=20Show=20all-time=20usage=20without=20age-?=
+ =?UTF-8?q?based=20pruning?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Behaviours:
+Durable usage history:
+- Remove the 92-day scan-cache retention cutoff and prune helper, retain already scanned records even when original transcripts disappear, and keep their directories discoverable for aggregation.
+- Preserve existing source aggregation and deduplication, reuse cached record arrays when no tail is present, and cooperatively yield every 1000 cache entries/records during large scans.
+
+Pass an epoch-zero retention cutoff through the current provider reader contract, including the relocated Cursor account cache; verify all-time Cursor fetch, refresh and restart.
+
+All-time web/desktop range:
+- Add a persisted all-time range using a 1970-01-01 query start, support it in both period controls and refresh behavior, and trim chart enumeration to the earliest returned usage day or today for empty results.
+- Retain hourly handling for the 24-hour range and existing finite-range shortcuts; let all-time appear without inventing a keybinding and update shortcut type handling and Settings keybinding iteration.
+- Document all-time usage and indefinite cached history, update retained-source/preference tests, preserve current scan-cache tests and add focused all-time window/chart coverage.
+
+Integration details:
+- Preserve upstream v11 scan-cache migration, service-tier reconciliation, route-modal layout, and relocated wide/compact period controls while removing only history-age retention.
+
+- Skip retained deleted-transcript cache entries whose mtime precedes the requested window start, while retaining their records indefinitely for all-time queries. Finite-range source file/session counts exclude those entries; align existing out-of-window source assertions.
+
+- Also preserve interrupted/compressed Codex reconciliation, model-filtered scans and summaries, Cursor API-key authentication and consolidated warning messages.
+- Upstream removed the Cursor CLI credential and Keychain fallbacks (#32448), so the all-time Cursor history test signs in through CURSOR_API_KEY like the upstream Cursor tests.
+
+Port to 965ddc1d6c:
+- Applied without conflicts. UsageService.ts and usageScanCache.ts did not change upstream; 965ddc1d6c still prunes at CACHE_RETENTION_DAYS = 92 (UsageService.ts:73) and has no all-time range.
+
+Files:
+apps/server:
+- apps/server/src/usage/UsageService.test.ts
+- apps/server/src/usage/UsageService.ts
+- apps/server/src/usage/usageScanCache.ts
+apps/web:
+- apps/web/src/components/settings/KeybindingsSettings.logic.ts
+- apps/web/src/components/usage/UsagePage.tsx
+- apps/web/src/components/usage/usagePagePreferences.test.ts
+- apps/web/src/components/usage/usagePagePreferences.ts
+- apps/web/src/components/usage/usageRange.test.ts
+- apps/web/src/components/usage/usageRange.ts
+- apps/web/src/components/usage/usageShortcuts.ts
+docs:
+- docs/user/usage.md
+
+Tests:
+- apps/server/src/storageCleanup.test.ts
+- apps/server/src/usage/UsageService.test.ts
+- apps/server/src/usage/usageScanCache.test.ts
+- apps/server/src/ws.test.ts
+- apps/web/src/components/settings/KeybindingsSettings.logic.test.ts
+- apps/web/src/components/usage/usagePagePreferences.test.ts
+- apps/web/src/components/usage/usageRange.test.ts
+- Whole-stack focused validation on 965ddc1d6c: 1,321 passed and 2 baseline failures across 48 test files (every test file the stack touches plus CommandPalette.logic.test.ts and chatRouteCommands.browser.test.ts). Web: 679 / 32 files; desktop: 118 / 9; server: 432 passed and 2 baseline failures / 4; contracts: 36 / 1; scripts: 56 / 2.
+- vp run typecheck passed in apps/web, apps/desktop, apps/server, packages/contracts and scripts; vp lint and vp fmt --check passed on the 119 changed files.
+- Baseline: UsageService.test.ts on detached 965ddc1d6c fails the same 2 assertions (Pi /var versus /private/var path equality; Codex open-spy raw-path equality); no assertion was changed to hide them.
+- No installed-client or live remote/relay/tunnel pass: no development servers or installed app changes were authorized.
+
+Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
+---
+ apps/server/src/usage/UsageService.test.ts    | 76 ++++++++++++++++---
+ apps/server/src/usage/UsageService.ts         | 48 ++++++------
+ apps/server/src/usage/usageScanCache.ts       | 11 ---
+ .../settings/KeybindingsSettings.logic.ts     |  4 +-
+ apps/web/src/components/usage/UsagePage.tsx   | 51 ++++++++-----
+ .../usage/usagePagePreferences.test.ts        |  6 ++
+ .../components/usage/usagePagePreferences.ts  |  2 +-
+ .../src/components/usage/usageRange.test.ts   | 44 +++++++++++
+ apps/web/src/components/usage/usageRange.ts   | 26 +++++++
+ .../src/components/usage/usageShortcuts.ts    |  8 +-
+ docs/user/usage.md                            |  7 +-
+ 11 files changed, 211 insertions(+), 72 deletions(-)
+ create mode 100644 apps/web/src/components/usage/usageRange.test.ts
+ create mode 100644 apps/web/src/components/usage/usageRange.ts
+
+diff --git a/apps/server/src/usage/UsageService.test.ts b/apps/server/src/usage/UsageService.test.ts
+index a3775c6aebe17a4616df09349a336f51ddf73c1c..489524348502f43a8066b79c6ba8b2d021b08010 100644
+--- a/apps/server/src/usage/UsageService.test.ts
++++ b/apps/server/src/usage/UsageService.test.ts
+@@ -99,6 +99,11 @@ const WINDOW: UsageSummaryInput = {
+   untilDay: UsageDay.make("2026-08-02"),
+ };
+ 
++const ALL_TIME_WINDOW: UsageSummaryInput = {
++  ...WINDOW,
++  sinceDay: UsageDay.make("1970-01-01"),
++};
++
+ const setup = Effect.gen(function* () {
+   const home = yield* Effect.promise(() =>
+     NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "usage-service-test-")),
+@@ -1440,6 +1445,42 @@ describe("UsageService", () => {
+     }).pipe(Effect.scoped),
+   );
+ 
++  it.live("requests all-time Cursor history from epoch zero and retains it after refresh", () =>
++    Effect.gen(function* () {
++      const { settings, home } = yield* setup;
++      yield* TestClock.setTime(CURSOR_NOW);
++      const cursor = makeFakeCursor();
++      cursor.state.events = [
++        { timestampMs: Date.parse("2025-01-01T00:00:00Z"), outputTokens: 5 },
++        { timestampMs: CURSOR_NOW - 3 * HOUR_MS, outputTokens: 7 },
++      ];
++      yield* Effect.gen(function* () {
++        const service = yield* makeWithCursor(cursor.read);
++        const original = yield* service.readSummary({ ...ALL_TIME_WINDOW, awaitRefresh: true });
++        assert.strictEqual(totalOutputTokens(original), 12);
++        assert.deepStrictEqual(cursor.state.calls, [{ sinceMs: 0, untilMs: CURSOR_NOW }]);
++        yield* service.awaitPersisted;
++
++        yield* TestClock.adjust(Duration.minutes(2));
++        const refreshed = yield* service.readSummary({ ...ALL_TIME_WINDOW, awaitRefresh: true });
++        assert.deepStrictEqual(refreshed.buckets, original.buckets);
++        yield* service.awaitPersisted;
++        const restarted = yield* makeWithCursor(cursor.read);
++        const restored = yield* restarted.readSummary(ALL_TIME_WINDOW);
++        assert.deepStrictEqual(restored.buckets, original.buckets);
++      }).pipe(
++        Effect.provide(
++          layerService({
++            prefix: "usage-service-cursor-all-time",
++            home,
++            settings,
++            environment: { CURSOR_API_KEY: "test-key" },
++          }),
++        ),
++      );
++    }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
++  );
++
+   it.live("restores the Cursor account cache after a restart", () =>
+     Effect.gen(function* () {
+       const { settings, home } = yield* setup;
+@@ -2812,7 +2853,7 @@ describe("UsageService", () => {
+     }).pipe(Effect.scoped),
+   );
+ 
+-  it.live("preserves saved tokens, costs and sessions after transcript cleanup and restart", () =>
++  it.live("preserves old saved usage after transcript cleanup and restart", () =>
+     Effect.gen(function* () {
+       const { transcript, settings, home } = yield* setup;
+       const alias = NodePath.join(home, "claude-alias");
+@@ -2820,26 +2861,38 @@ describe("UsageService", () => {
+         NodeFSP.symlink(NodePath.join(home, "claude"), alias, "junction"),
+       );
+       const content = claudeLine(1, 5);
+-      yield* Effect.promise(() => NodeFSP.writeFile(transcript, content));
++      yield* Effect.promise(async () => {
++        await NodeFSP.writeFile(transcript, content);
++        await NodeFSP.utimes(transcript, 946_684_800, 946_684_800);
++      });
+       yield* Effect.gen(function* () {
+         const service = yield* UsageService.make;
+-        const first = yield* service.readSummary(WINDOW);
++        const first = yield* service.readSummary(ALL_TIME_WINDOW);
+         assert.strictEqual(totalOutputTokens(first), 5);
+         assert.isAbove(first.buckets[0]?.costUsd ?? 0, 0);
+ 
+         yield* Effect.promise(() => NodeFSP.rm(transcript));
+-        const deleted = yield* service.readSummary(WINDOW);
++        const deleted = yield* service.readSummary(ALL_TIME_WINDOW);
+         assert.deepStrictEqual(deleted.buckets, first.buckets);
+         assert.deepStrictEqual(deleted.sources, first.sources);
+ 
+         yield* service.awaitPersisted;
+         const restarted = yield* UsageService.make;
+-        const restored = yield* restarted.readSummary(WINDOW);
++        const restored = yield* restarted.readSummary(ALL_TIME_WINDOW);
+         assert.deepStrictEqual(restored.buckets, first.buckets);
+         assert.deepStrictEqual(restored.sources, first.sources);
++        assert.strictEqual(restored.sources[0]?.scannedFiles, 1);
++        assert.strictEqual(restored.sources[0]?.distinctSessions, 1);
++
++        const lastSevenDays = yield* restarted.readSummary({
++          ...WINDOW,
++          sinceDay: UsageDay.make("2026-07-27"),
++        });
++        assert.strictEqual(lastSevenDays.sources[0]?.scannedFiles, 0);
++        assert.strictEqual(lastSevenDays.sources[0]?.distinctSessions, 0);
+ 
+         yield* Effect.promise(() => NodeFSP.writeFile(transcript + ".jsonl", content));
+-        const moved = yield* restarted.readSummary(WINDOW);
++        const moved = yield* restarted.readSummary(ALL_TIME_WINDOW);
+         assert.deepStrictEqual(moved.buckets, first.buckets);
+         assert.strictEqual(moved.sources[0]?.distinctSessions, 1);
+         yield* restarted.awaitPersisted;
+@@ -2850,7 +2903,7 @@ describe("UsageService", () => {
+           NodeFSP.rm(NodePath.join(home, "claude", "projects"), { recursive: true }),
+         );
+         const afterRootCleanup = yield* UsageService.make;
+-        const missingRoot = yield* afterRootCleanup.readSummary(WINDOW);
++        const missingRoot = yield* afterRootCleanup.readSummary(ALL_TIME_WINDOW);
+         assert.deepStrictEqual(missingRoot.buckets, first.buckets);
+         assert.strictEqual(missingRoot.sources[0]?.distinctSessions, 1);
+         assert.strictEqual(missingRoot.sources[0]?.status, "ok");
+@@ -2860,7 +2913,7 @@ describe("UsageService", () => {
+           await NodeFSP.rename(replacementProjects, projects);
+           await NodeFSP.writeFile(NodePath.join(projects, "new.jsonl"), claudeLine(2, 7));
+         });
+-        const recreated = yield* afterRootCleanup.readSummary(WINDOW);
++        const recreated = yield* afterRootCleanup.readSummary(ALL_TIME_WINDOW);
+         assert.strictEqual(totalOutputTokens(recreated), 12);
+         assert.deepStrictEqual(recreated.sources[0]?.fingerprint, first.sources[0]?.fingerprint);
+ 
+@@ -2884,7 +2937,7 @@ describe("UsageService", () => {
+         assert.strictEqual(merged.costUsd, recreated.buckets[0]?.costUsd);
+ 
+         const outsideWindow = yield* restarted.readSummary({
+-          ...WINDOW,
++          ...ALL_TIME_WINDOW,
+           sinceDay: UsageDay.make("2026-08-02"),
+         });
+         assert.deepStrictEqual(outsideWindow.buckets, []);
+@@ -3024,11 +3077,9 @@ describe("UsageService", () => {
+     }).pipe(Effect.scoped),
+   );
+ 
+-  it.live("reports saved usage of a removed directory only for windows it reaches", () =>
++  it.live("keeps saved sources discoverable while filtering records to the requested window", () =>
+     Effect.gen(function* () {
+-      yield* TestClock.setTime(Date.parse("2026-08-12T00:00:00Z"));
+       const { transcript, settings, home } = yield* setup;
+-      // Saved usage is pruned after the retention window, so pin "now" near the write.
+       yield* TestClock.setTime(Date.parse("2026-08-15T00:00:00Z"));
+       yield* Effect.promise(async () => {
+         await NodeFSP.writeFile(transcript, claudeLine(1, 5));
+@@ -3055,6 +3106,7 @@ describe("UsageService", () => {
+       assert.deepStrictEqual(later.buckets, []);
+       assert.strictEqual(later.sources[0]?.status, "missing");
+       assert.strictEqual(later.sources[0]?.scannedFiles, 0);
++      assert.strictEqual(later.sources[0]?.distinctSessions, 0);
+     }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+   );
+ 
+diff --git a/apps/server/src/usage/UsageService.ts b/apps/server/src/usage/UsageService.ts
+index 6b6762c089ba62b52c7ea4aeafb1cb73b6117e61..aef9ad71f480777836edb56c735501579d5c7579 100644
+--- a/apps/server/src/usage/UsageService.ts
++++ b/apps/server/src/usage/UsageService.ts
+@@ -51,7 +51,6 @@ import {
+   dedupeWithinFile,
+   LEGACY_SCAN_CACHE_FILE_NAMES,
+   makeScanCacheWriter,
+-  pruneScanCache,
+   SCAN_CACHE_FILE_NAME,
+   type CachedFile,
+   type ScanCache,
+@@ -70,7 +69,7 @@ const RATES_REFRESH_FLOOR_MS = 60 * 1000;
+ const MTIME_SLACK_MS = 36 * 60 * 60 * 1000;
+ const MAX_HOURLY_WINDOW_MS = 24 * 60 * 60 * 1000;
+ 
+-const CACHE_RETENTION_DAYS = 92;
++const SCAN_YIELD_ITEMS = 1_000;
+ 
+ const TRANSCRIPT_READ_CONCURRENCY = 4;
+ 
+@@ -328,7 +327,6 @@ export const make = Effect.gen(function* () {
+ 
+   const resolveTranscriptDirs = Effect.fn("UsageService.resolveTranscriptDirs")(function* (
+     settings: ServerSettingsValue,
+-    retentionCutoffMs: number,
+   ) {
+     const dirs: Array<TranscriptSource> = [];
+     const seen = new Set<string>();
+@@ -350,7 +348,6 @@ export const make = Effect.gen(function* () {
+           .some(
+             ([filePath, entry]) =>
+               entry.provider === provider &&
+-              entry.mtimeMs >= retentionCutoffMs &&
+               (entry.records.length + entry.tailRecords.length > 0 || entry.malformedRecords > 0) &&
+               isWithinDirectory(filePath, dir),
+           );
+@@ -618,19 +615,16 @@ export const make = Effect.gen(function* () {
+   const collectDirs = Effect.fn("UsageService.collectDirs")(function* (
+     windowStartMs: number,
+     settings: ServerSettingsValue,
+-    retentionCutoffMs: number,
+     awaitRefresh: boolean,
+   ) {
+-    const dirs = yield* resolveTranscriptDirs(settings, retentionCutoffMs).pipe(
+-      Effect.provideContext(readerContext),
+-    );
++    const dirs = yield* resolveTranscriptDirs(settings).pipe(Effect.provideContext(readerContext));
+ 
+     const scans = Effect.forEach(
+       scanReaders,
+       ({ driver, reader }) =>
+         usageInstances(driver, settings).pipe(
+           Effect.flatMap((instances) =>
+-            reader.scan({ instances, settings, windowStartMs, retentionCutoffMs, awaitRefresh }),
++            reader.scan({ instances, settings, windowStartMs, retentionCutoffMs: 0, awaitRefresh }),
+           ),
+           Effect.flatMap((sources) =>
+             Effect.forEach(sources, ({ volumeId, ...source }) =>
+@@ -709,13 +703,8 @@ export const make = Effect.gen(function* () {
+     const windowStartMs =
+       (hourlyWindow?.sinceTimeMs ?? DateTime.toEpochMillis(windowStart.value)) - MTIME_SLACK_MS;
+ 
+-    const retentionCutoffMs = startedAtMs - CACHE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+-
+     const [, scannedDirs] = yield* Effect.all(
+-      [
+-        ensureRates(false),
+-        collectDirs(windowStartMs, settings, retentionCutoffMs, input.awaitRefresh === true),
+-      ],
++      [ensureRates(false), collectDirs(windowStartMs, settings, input.awaitRefresh === true)],
+       { concurrency: 2 },
+     );
+ 
+@@ -734,26 +723,35 @@ export const make = Effect.gen(function* () {
+     const sources: UsageSource[] = [];
+ 
+     // Deleted transcripts' saved usage still aggregates and deduplicates normally.
+-    const retainedSinceMs = Math.max(windowStartMs, retentionCutoffMs);
+-    const filesByDir = scannedDirs.map(({ provider, dir, files }) => {
++    let itemsUntilYield = SCAN_YIELD_ITEMS;
++    const filesByDir = [];
++    for (const { provider, dir, files } of scannedDirs) {
+       const retainedFiles = [...(files ?? [])];
+       const livePaths = new Set(retainedFiles.map((file) => file.path));
+       for (const [filePath, entry] of fileCache) {
++        itemsUntilYield -= 1;
++        if (itemsUntilYield === 0) {
++          itemsUntilYield = SCAN_YIELD_ITEMS;
++          yield* Effect.yieldNow;
++        }
+         if (
+           entry.provider !== provider ||
+-          entry.mtimeMs < retainedSinceMs ||
++          entry.mtimeMs < windowStartMs ||
+           livePaths.has(filePath) ||
+           !isWithinDirectory(filePath, dir)
+         )
+           continue;
+         retainedFiles.push({
+           path: filePath,
+-          records: [...entry.records, ...entry.tailRecords],
++          records:
++            entry.tailRecords.length === 0
++              ? entry.records
++              : [...entry.records, ...entry.tailRecords],
+           malformedRecords: entry.malformedRecords,
+         });
+       }
+-      return retainedFiles;
+-    });
++      filesByDir.push(retainedFiles);
++    }
+     const windowEndMs =
+       hourlyWindow?.untilTimeMs ??
+       Date.parse(`${input.untilDay}T00:00:00Z`) + 86400000 + MTIME_SLACK_MS;
+@@ -819,6 +817,11 @@ export const make = Effect.gen(function* () {
+         scannedFiles += 1;
+         const eventOccurrences = new Map<string, number>();
+         for (const rawRecord of file.records) {
++          itemsUntilYield -= 1;
++          if (itemsUntilYield === 0) {
++            itemsUntilYield = SCAN_YIELD_ITEMS;
++            yield* Effect.yieldNow;
++          }
+           const record = correctedRecord(rawRecord);
+           let usageRecord = record;
+           if (
+@@ -869,9 +872,6 @@ export const make = Effect.gen(function* () {
+       });
+     }
+ 
+-    const pruned = pruneScanCache(fileCache, retentionCutoffMs);
+-    if (pruned > 0) cacheDirty = true;
+-
+     const aggregated = aggregator.finish();
+     const readAt = yield* DateTime.now;
+     const finishedAtMs = yield* Clock.currentTimeMillis;
+diff --git a/apps/server/src/usage/usageScanCache.ts b/apps/server/src/usage/usageScanCache.ts
+index c9032d64c05bdb0a1a90ed50281c8b54032abcfd..e02c500dc755330541af65c82eb66b4b2722f4e8 100644
+--- a/apps/server/src/usage/usageScanCache.ts
++++ b/apps/server/src/usage/usageScanCache.ts
+@@ -346,17 +346,6 @@ function makeStateValidators(
+   );
+ }
+ 
+-export function pruneScanCache(cache: ScanCache, retentionCutoffMs: number): number {
+-  let removed = 0;
+-  for (const [path, entry] of cache) {
+-    if (entry.mtimeMs < retentionCutoffMs) {
+-      cache.delete(path);
+-      removed += 1;
+-    }
+-  }
+-  return removed;
+-}
+-
+ /** Mutates seen; share it across incremental line/tail batches to deduplicate the whole file. */
+ export function dedupeWithinFile(
+   records: readonly UsageRecord[],
+diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
+index d185901e845aa663195528d1d97ab17e6e98706f..d843121f77356f7c5a74abd418891b9bb2d0ea46 100644
+--- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
++++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
+@@ -21,7 +21,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
+ const usageCommandOrder = new Map<KeybindingCommand, number>(
+   [
+     "usage.open" as const,
+-    ...[...METRIC_OPTIONS, ...WINDOW_OPTIONS].map((option) => option.command),
++    ...[...METRIC_OPTIONS, ...WINDOW_OPTIONS].flatMap((option) =>
++      option.command === undefined ? [] : [option.command],
++    ),
+   ].map((command, index) => [command, index]),
+ );
+ 
+diff --git a/apps/web/src/components/usage/UsagePage.tsx b/apps/web/src/components/usage/UsagePage.tsx
+index 8bc8a93a43d6925d9bf0395ad0f1b8c6bbd4e978..5f8f0203a51c141b920965500c5c30d50c027a9b 100644
+--- a/apps/web/src/components/usage/UsagePage.tsx
++++ b/apps/web/src/components/usage/UsagePage.tsx
+@@ -41,7 +41,6 @@ import { shortcutLabelForCommand } from "../../keybindings";
+ import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
+ import { useAtomCommand } from "../../state/use-atom-command";
+ import {
+-  enumerateDays,
+   enumerateHourStarts,
+   formatCount,
+   formatDateTimeShort,
+@@ -51,7 +50,6 @@ import {
+   formatTokens,
+   formatUsageContractMismatch,
+   formatUsd,
+-  makeWindow,
+   usageSourceMessages,
+ } from "@t3tools/shared/usageFormat";
+ import { Button, InlineButton } from "../ui/button";
+@@ -107,12 +105,20 @@ import {
+   type UsagePagePreferences,
+ } from "./usagePagePreferences";
+ 
++import {
++  ALL_USAGE_SINCE_DAY,
++  makeUsageWindow,
++  usageChartDays,
++  type UsageRange,
++} from "./usageRange";
++
+ function isUsageMetric(value: string | null | undefined): value is UsageMetric {
+   return METRIC_OPTIONS.some((option) => option.value === value);
+ }
+ 
+-function isUsageWindowDays(value: number): value is UsagePagePreferences["windowDays"] {
+-  return WINDOW_OPTIONS.some((option) => option.days === value);
++function parseUsageWindow(value: string | null | undefined): UsageRange | null {
++  const range = value === "all" ? value : Number(value);
++  return WINDOW_OPTIONS.find((option) => option.days === range)?.days ?? null;
+ }
+ 
+ const providerLabel = (provider: UsageProviderKind) => PROVIDER_PRESENTATION[provider].label;
+@@ -181,6 +187,7 @@ export function UsagePage() {
+   const shortcutTitle = (
+     option: (typeof METRIC_OPTIONS)[number] | (typeof WINDOW_OPTIONS)[number],
+   ) => {
++    if (option.command === undefined) return option.label;
+     const shortcut = shortcutLabelForCommand(keybindings, option.command, {
+       context: { usagePageOpen: true },
+     });
+@@ -188,11 +195,7 @@ export function UsagePage() {
+   };
+   const [windowSelection, setWindowSelection] = useState(() => ({
+     days: preferences.windowDays,
+-    window: makeWindow(
+-      preferences.windowDays,
+-      undefined,
+-      preferences.windowDays === 1 ? "hour" : "day",
+-    ),
++    window: makeUsageWindow(preferences.windowDays),
+   }));
+   const metric = preferences.metric;
+   const showingLimits = metric === "limits";
+@@ -204,7 +207,6 @@ export function UsagePage() {
+     useState<ReadonlySet<EnvironmentId> | null>(null);
+   const hiddenProviders = new Set(preferences.hiddenProviders);
+   const { days: windowDays, window } = windowSelection;
+-  const isPast24Hours = windowDays === 1;
+   const {
+     merged: answeredUsage,
+     environments,
+@@ -235,12 +237,11 @@ export function UsagePage() {
+     setPreferences(nextPreferences);
+     saveUsagePagePreferences(nextPreferences);
+   };
+-  const selectWindow = (days: number) => {
+-    if (!isUsageWindowDays(days)) return;
++  const selectWindow = (days: UsageRange) => {
+     updatePreferences({ windowDays: days });
+     setWindowSelection({
+       days,
+-      window: makeWindow(days, undefined, days === 1 ? "hour" : "day"),
++      window: makeUsageWindow(days),
+     });
+   };
+   const selectMetric = (nextMetric: UsageMetric) => {
+@@ -305,7 +306,7 @@ export function UsagePage() {
+       });
+       return;
+     }
+-    const nextWindow = makeWindow(windowDays, undefined, isPast24Hours ? "hour" : "day");
++    const nextWindow = makeUsageWindow(windowDays);
+     if (
+       nextWindow.sinceDay !== window.sinceDay ||
+       nextWindow.untilDay !== window.untilDay ||
+@@ -339,7 +340,7 @@ export function UsagePage() {
+     if (showingLimits && connectedLimitsEnvironments) autoRefreshLimits();
+   }, [showingLimits, connectedLimitsEnvironments]);
+ 
+-  const days = enumerateDays(shownWindow.sinceDay, shownWindow.untilDay);
++  const days = usageChartDays(shownWindow, merged.daily);
+   const hours =
+     shownWindow.sinceTime === undefined || shownWindow.untilTime === undefined
+       ? []
+@@ -353,9 +354,11 @@ export function UsagePage() {
+     );
+ 
+   const windowLabel =
+-    shownHourly && shownWindow.sinceTime !== undefined && shownWindow.untilTime !== undefined
+-      ? `${formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone, hour12)} to ${formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone, hour12)}`
+-      : `${formatDayShort(shownWindow.sinceDay)} to ${formatDayShort(shownWindow.untilDay)}`;
++    shownWindow.sinceDay === ALL_USAGE_SINCE_DAY
++      ? "All time"
++      : shownHourly && shownWindow.sinceTime !== undefined && shownWindow.untilTime !== undefined
++        ? `${formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone, hour12)} to ${formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone, hour12)}`
++        : `${formatDayShort(shownWindow.sinceDay)} to ${formatDayShort(shownWindow.untilDay)}`;
+   const topbarContent = (
+     <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-2 @4xl/usage-header:flex">
+       <WorkspaceBreadcrumb ariaLabel="Usage breadcrumb" className="min-w-0">
+@@ -399,8 +402,8 @@ export function UsagePage() {
+             variant="segmented"
+             value={[String(windowDays)]}
+             onValueChange={(next) => {
+-              const value = next[0];
+-              if (value) selectWindow(Number(value));
++              const range = parseUsageWindow(next[0]);
++              if (range !== null) selectWindow(range);
+             }}
+           >
+             {WINDOW_OPTIONS.map((option) => (
+@@ -438,7 +441,13 @@ export function UsagePage() {
+       </div>
+       <div className="ms-auto flex shrink-0 items-center justify-end gap-1 @4xl/usage-header:hidden">
+         {showingLimits ? null : (
+-          <Select value={String(windowDays)} onValueChange={(value) => selectWindow(Number(value))}>
++          <Select
++            value={String(windowDays)}
++            onValueChange={(value) => {
++              const range = parseUsageWindow(value);
++              if (range !== null) selectWindow(range);
++            }}
++          >
+             <SelectTrigger
+               aria-label="Usage period"
+               size="compact"
+diff --git a/apps/web/src/components/usage/usagePagePreferences.test.ts b/apps/web/src/components/usage/usagePagePreferences.test.ts
+index 075076a9b3c52a45673bfb11db385e02c65db2d8..220a71fdb440d37b4e3bf72e0675bd6cc1084913 100644
+--- a/apps/web/src/components/usage/usagePagePreferences.test.ts
++++ b/apps/web/src/components/usage/usagePagePreferences.test.ts
+@@ -24,6 +24,12 @@ afterEach(() => {
+ });
+ 
+ describe("Usage page preferences", () => {
++  it("round-trips the all-time range with provider preferences", () => {
++    const preferences = { metric: "cost", windowDays: "all", hiddenProviders: ["codex"] } as const;
++    saveUsagePagePreferences(preferences);
++    expect(readUsagePagePreferences()).toEqual(preferences);
++  });
++
+   it("round-trips hidden providers and reads older saves without them", () => {
+     saveUsagePagePreferences({ metric: "cost", windowDays: 7, hiddenProviders: ["codex"] });
+     expect(readUsagePagePreferences().hiddenProviders).toEqual(["codex"]);
+diff --git a/apps/web/src/components/usage/usagePagePreferences.ts b/apps/web/src/components/usage/usagePagePreferences.ts
+index 1aeaefc43da12b6834fd5c7c89c14d238d0a2878..98bb7e393b33f2d0111cbae92d5a77e53798e23e 100644
+--- a/apps/web/src/components/usage/usagePagePreferences.ts
++++ b/apps/web/src/components/usage/usagePagePreferences.ts
+@@ -6,7 +6,7 @@ import { getLocalStorageItem, setLocalStorageItem } from "../../hooks/useLocalSt
+ const STORAGE_KEY = "t3code:usage-page-preferences:v1";
+ const UsagePagePreferencesSchema = Schema.Struct({
+   metric: Schema.Literals(["cost", "tokens", "limits"]),
+-  windowDays: Schema.Literals([1, 7, 30, 90]),
++  windowDays: Schema.Literals([1, 7, 30, 90, "all"]),
+   hiddenProviders: Schema.optional(Schema.Array(UsageProviderKind)),
+ });
+ export type UsagePagePreferences = typeof UsagePagePreferencesSchema.Type;
+diff --git a/apps/web/src/components/usage/usageRange.test.ts b/apps/web/src/components/usage/usageRange.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..8fc24d126da0e1f27332d54cbb0116490c59a2ee
+--- /dev/null
++++ b/apps/web/src/components/usage/usageRange.test.ts
+@@ -0,0 +1,44 @@
++// @effect-diagnostics globalDate:off -- A fixed instant keeps calendar-window assertions deterministic.
++import { UsageDay } from "@t3tools/contracts";
++import { describe, expect, it, vi } from "vite-plus/test";
++
++import { makeUsageWindow, usageChartDays } from "./usageRange";
++
++describe("all-time usage range", () => {
++  it("requests daily usage from the fixed early day through today", () => {
++    vi.stubEnv("TZ", "UTC");
++    try {
++      expect(makeUsageWindow("all", new Date("2026-10-03T12:00:00Z"))).toEqual({
++        sinceDay: "1970-01-01",
++        untilDay: "2026-10-03",
++        timeZone: "UTC",
++        resolution: "day",
++      });
++    } finally {
++      vi.unstubAllEnvs();
++    }
++  });
++
++  it("starts the all-time chart on its earliest day with data", () => {
++    expect(
++      usageChartDays(
++        { sinceDay: UsageDay.make("1970-01-01"), untilDay: UsageDay.make("2026-01-05") },
++        [{ day: "2026-01-03" }, { day: "2026-01-02" }],
++      ),
++    ).toEqual(["2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05"]);
++    expect(
++      usageChartDays(
++        { sinceDay: UsageDay.make("1970-01-01"), untilDay: UsageDay.make("2026-01-05") },
++        [],
++      ),
++    ).toEqual(["2026-01-05"]);
++  });
++  it("keeps the full finite displayed window while another range loads", () => {
++    expect(
++      usageChartDays(
++        { sinceDay: UsageDay.make("2026-01-01"), untilDay: UsageDay.make("2026-01-03") },
++        [{ day: "2026-01-03" }],
++      ),
++    ).toEqual(["2026-01-01", "2026-01-02", "2026-01-03"]);
++  });
++});
+diff --git a/apps/web/src/components/usage/usageRange.ts b/apps/web/src/components/usage/usageRange.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7401e43c650cdff626866c69a57c0e8eee58cf31
+--- /dev/null
++++ b/apps/web/src/components/usage/usageRange.ts
+@@ -0,0 +1,26 @@
++import { UsageDay, type UsageSummaryInput } from "@t3tools/contracts";
++import { enumerateDays, makeWindow } from "@t3tools/shared/usageFormat";
++
++export type UsageRange = 1 | 7 | 30 | 90 | "all";
++
++export const ALL_USAGE_SINCE_DAY = UsageDay.make("1970-01-01");
++
++export function makeUsageWindow(range: UsageRange, now = new Date()): UsageSummaryInput {
++  const window = makeWindow(range === "all" ? 1 : range, now, range === 1 ? "hour" : "day");
++  return range === "all" ? { ...window, sinceDay: ALL_USAGE_SINCE_DAY } : window;
++}
++
++export function usageChartDays(
++  window: Pick<UsageSummaryInput, "sinceDay" | "untilDay">,
++  daily: readonly { readonly day: string }[],
++): readonly string[] {
++  const sinceDay =
++    window.sinceDay === ALL_USAGE_SINCE_DAY
++      ? (daily.reduce<string | undefined>(
++          (earliest, entry) =>
++            earliest === undefined || entry.day < earliest ? entry.day : earliest,
++          undefined,
++        ) ?? window.untilDay)
++      : window.sinceDay;
++  return enumerateDays(sinceDay, window.untilDay);
++}
+diff --git a/apps/web/src/components/usage/usageShortcuts.ts b/apps/web/src/components/usage/usageShortcuts.ts
+index f8e66a8533637e88dc79c11ac41c21d5ecd0a92c..308d1572c109fe836486a405cc2228816a8eef61 100644
+--- a/apps/web/src/components/usage/usageShortcuts.ts
++++ b/apps/web/src/components/usage/usageShortcuts.ts
+@@ -1,5 +1,6 @@
+ import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/contracts";
+ import type { UsageChartMetric } from "./UsageProviderChart";
++import type { UsageRange } from "./usageRange";
+ import { resolveShortcutCommand, type ShortcutEventLike } from "../../keybindings";
+ 
+ export type UsageMetric = UsageChartMetric | "limits";
+@@ -14,7 +15,12 @@ export const WINDOW_OPTIONS = [
+   { days: 7, label: "7 days", command: "usage.period.week" },
+   { days: 30, label: "30 days", command: "usage.period.month" },
+   { days: 90, label: "90 days", command: "usage.period.quarter" },
+-] as const;
++  { days: "all", label: "All", command: undefined },
++] as const satisfies readonly {
++  days: UsageRange;
++  label: string;
++  command: KeybindingCommand | undefined;
++}[];
+ 
+ export function resolveUsageShortcut(
+   event: ShortcutEventLike & { target: EventTarget | null },
+diff --git a/docs/user/usage.md b/docs/user/usage.md
+index d7e0dad901bef1c76d8e8dda119c6070cf557b78..6cb25ef495cc9d11921c6f8ae2240bd29908286f 100644
+--- a/docs/user/usage.md
++++ b/docs/user/usage.md
+@@ -54,6 +54,10 @@ environments are selected by default. The dropdown shows which environments are
+ results appear as each one responds, and figures still updating are dimmed. Cursor shows its last
+ saved totals first, then updates them when Cursor's API responds.
+ 
++Cost and Tokens can show the past 24 hours, 7 days, 30 days, 90 days, or all available history.
++Previously scanned transcript usage remains saved without an age limit, even after the original
++transcripts are deleted.
++
+ If recent work is missing or a new model shows no cost, refresh to rescan session history and
+ update model pricing.
+ 
+@@ -192,6 +196,7 @@ Session, Weekly, or both for each provider. Reopen T3 to refresh expired reading
+ On web and desktop, open Usage from the command palette. While on Usage,
+ press `C`, `T`, or `L` for Cost, Tokens, or Limits while not typing in a field.
+ Use `Ctrl+Shift+1/2/3/4` (`Cmd+Shift+1/2/3/4` on macOS) for the past
+-24 hours, 7 days, 30 days, or 90 days. Period shortcuts do nothing on Limits.
++24 hours, 7 days, 30 days, or 90 days. Choose **All** from the period control for all available
++history. Period shortcuts do nothing on Limits.
+ Press `Escape` to return to the previous page. Customize these shortcuts in
+ **Settings → Keybindings**.

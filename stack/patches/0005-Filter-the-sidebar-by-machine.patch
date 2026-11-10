@@ -1,0 +1,2033 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mateusz Choma <chomamateusz@gmail.com>
+Date: Mon, 26 Oct 2026 13:35:35 +0100
+Subject: =?UTF-8?q?=F0=9F=96=A5=EF=B8=8F=20Filter=20the=20sidebar=20by=20m?=
+ =?UTF-8?q?achine?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Behaviours:
+- Place the machine row above the project list, directly below Search, as a full-width dropdown. Display it only with at least two known environments; otherwise ignore saved machine scope.
+- Display All machines for an empty effective set, one machine's icon and name for a singleton, or every selected icon followed by comma-joined names with ellipsis and a full-name tooltip. List checkbox choices primary first, followed by catalog order; plain mouse or keyboard picks select one machine (or clear a repeated singleton) and close the menu; Cmd-click on macOS / Ctrl-click elsewhere adds or removes one machine and keeps the menu open. Cancel macOS Ctrl-click on machine items without changing selection, clear through a plain All machines action followed by a separator, and normalize selecting every known machine to empty. Machines have no Hide mode. Modifier handling uses the native mouse event directly; keyboard activation and drag-release clicks select normally.
+- Persist sidebarEnvironmentScopeKeys as a sanitized array, migrating the legacy null/single sidebarEnvironmentScopeKey. Keep unknown saved keys but ignore them for display and filtering; a set with no known member behaves as All machines.
+- Combine machine membership with project scope: threads must belong to any selected machine and an allowed project. A logical project remains available if any member belongs to any selected machine. Resolve selected project keys against available groups without erasing saved keys that are temporarily absent; an empty effective project intersection behaves as all projects.
+- Apply the same scope to thread partitions, drafts, empty-draft counts, search environment requests, settled pagination/counts, folder inputs and keyboard/jump order. Reset the settled tail when the project or machine set changes, using a stable set key.
+- For exactly one selected machine, rebuild project metadata through upstream grouping from original records ordered by member refs, preserving historical IDs and repository fallback across same-path deduplication. Refs, favicons, settings targets, labels and presence describe that machine. With several selected machines, retain All-machines metadata for groups with a member on any selected machine.
+- Reuse the shared environment membership predicate in production group filtering.
+- Preserve folders, delegated-thread nesting, F6/DOM navigation and desktop history. Route reveal clears a machine set only when it hides the opened thread, without unnecessarily widening the project dimension; archived/nested rows do not spuriously widen scopes.
+- Clear multi-thread selection on explicit scope changes, name selected machines together in empty states, and allow independent clearing of project and machine filters. Web, Electron renderer and mobile browser share the feature; native mobile, server/provider protocols and contracts are unchanged.
+- When the machine filter spans more than one machine (All machines with two or more known, or two or more selected), every thread row's second line shows the thread's machine with its icon instead of the branch, replacing the rule that showed it only for No project threads (apps/web/src/components/sidebar/SidebarThreadRow.tsx, covered by apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx).
+
+Integration details:
+- Compose with upstream pinned/archived project grouping, pinned empty folders, reorder safeguards, accessible row navigation, quiet draft subscriptions and route hover reveal. Explicit machine changes reset sidebar scroll; the upstream draft browser fixture takes the machine-scope input.
+- Machine scope composes with the upstream sidebar partition restored by the offline Working shelf revert (#31269).
+
+Port to 965ddc1d6c:
+- Applied without conflicts. 965ddc1d6c has no machine filter of its own.
+
+Files:
+apps/web:
+- apps/web/src/components/Sidebar.logic.test.ts
+- apps/web/src/components/Sidebar.logic.ts
+- apps/web/src/components/Sidebar.tsx
+- apps/web/src/components/sidebar/SidebarDraftBlock.browser.test.tsx
+- apps/web/src/components/sidebar/SidebarDraftBlock.tsx
+- apps/web/src/components/sidebar/SidebarMachineRow.css
+- apps/web/src/components/sidebar/SidebarMachineRow.tsx
+- apps/web/src/components/sidebar/SidebarThreadHeader.tsx
+- apps/web/src/components/sidebar/routeReveal.ts
+- apps/web/src/sidebarEnvironmentScope.test.ts
+- apps/web/src/sidebarEnvironmentScope.ts
+- apps/web/src/uiStateStore.test.ts
+- apps/web/src/uiStateStore.ts
+
+Tests:
+- apps/web/src/components/AppSidebarLayout.browser.test.tsx
+- apps/web/src/components/CommandPalette.browser.test.tsx
+- apps/web/src/components/Sidebar.browser.test.tsx
+- apps/web/src/components/Sidebar.drag.test.ts
+- apps/web/src/components/Sidebar.logic.browser.test.tsx
+- apps/web/src/components/Sidebar.logic.test.ts
+- apps/web/src/components/chat/ThreadDetailsPrRow.browser.test.tsx
+- apps/web/src/components/sidebar/SidebarDraftBlock.browser.test.tsx
+- apps/web/src/components/sidebar/SidebarProjectRow.browser.test.tsx
+- apps/web/src/components/sidebar/SidebarThreadHeader.browser.test.tsx
+- apps/web/src/components/sidebar/routeReveal.browser.test.tsx
+- apps/web/src/hooks/useHandleNewThread.test.ts
+- apps/web/src/hooks/useThreadActionMenu.test.ts
+- apps/web/src/hooks/useThreadActions.permissions.test.ts
+- apps/web/src/hooks/useThreadActions.undo.test.ts
+- apps/web/src/hooks/useThreadVisitedMigration.test.ts
+- apps/web/src/sidebarEnvironmentScope.test.ts
+- apps/web/src/uiStateStore.test.ts
+- Whole-stack focused validation on 965ddc1d6c: 1,321 passed and 2 baseline failures across 48 test files (every test file the stack touches plus CommandPalette.logic.test.ts and chatRouteCommands.browser.test.ts). Web: 679 / 32 files; desktop: 118 / 9; server: 432 passed and 2 baseline failures / 4; contracts: 36 / 1; scripts: 56 / 2.
+- vp run typecheck passed in apps/web, apps/desktop, apps/server, packages/contracts and scripts; vp lint and vp fmt --check passed on the 119 changed files.
+- Baseline: UsageService.test.ts on detached 965ddc1d6c fails the same 2 assertions (Pi /var versus /private/var path equality; Codex open-spy raw-path equality); no assertion was changed to hide them.
+- No installed-client or live remote/relay/tunnel pass: no development servers or installed app changes were authorized.
+
+Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
+---
+ apps/web/src/components/Sidebar.logic.test.ts |  84 +++-
+ apps/web/src/components/Sidebar.logic.ts      |  15 +-
+ apps/web/src/components/Sidebar.tsx           | 233 ++++++----
+ .../SidebarDraftBlock.browser.test.tsx        |   1 +
+ .../components/sidebar/SidebarDraftBlock.tsx  |   8 +-
+ .../components/sidebar/SidebarMachineRow.css  |  41 ++
+ .../components/sidebar/SidebarMachineRow.tsx  | 123 ++++++
+ .../sidebar/SidebarThreadHeader.tsx           | 141 +++---
+ .../sidebar/SidebarThreadRow.browser.test.tsx |  92 ++++
+ .../components/sidebar/SidebarThreadRow.tsx   |  26 +-
+ .../web/src/components/sidebar/routeReveal.ts |  23 +-
+ apps/web/src/sidebarEnvironmentScope.test.ts  | 410 ++++++++++++++++++
+ apps/web/src/sidebarEnvironmentScope.ts       | 152 +++++++
+ apps/web/src/uiStateStore.test.ts             |  30 +-
+ apps/web/src/uiStateStore.ts                  |  22 +
+ 15 files changed, 1224 insertions(+), 177 deletions(-)
+ create mode 100644 apps/web/src/components/sidebar/SidebarMachineRow.css
+ create mode 100644 apps/web/src/components/sidebar/SidebarMachineRow.tsx
+ create mode 100644 apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
+ create mode 100644 apps/web/src/sidebarEnvironmentScope.test.ts
+ create mode 100644 apps/web/src/sidebarEnvironmentScope.ts
+
+diff --git a/apps/web/src/components/Sidebar.logic.test.ts b/apps/web/src/components/Sidebar.logic.test.ts
+index 0e3f47b7f9ed81957f9db3f40c03fed0cb7f04c5..1364bb23f081bab643b13ba815627950085707b7 100644
+--- a/apps/web/src/components/Sidebar.logic.test.ts
++++ b/apps/web/src/components/Sidebar.logic.test.ts
+@@ -1,3 +1,4 @@
++import { threadKey } from "@t3tools/client-runtime/state/entities";
+ import { presentThreadShell } from "@t3tools/client-runtime/state/models";
+ import { isThreadWorking as isSidebarThreadWorking } from "@t3tools/client-runtime/state/thread-inbox";
+ import * as DateTime from "effect/DateTime";
+@@ -1476,17 +1477,77 @@ describe("resolveSidebarRouteReveal", () => {
+   const hiddenKey = "environment-test:thread-test";
+   const findThread = (key: string) => (key === hiddenKey ? hidden : undefined);
+ 
+-  it("widens the scope for a newly opened thread the scope hides", () => {
++  it.each([
++    { projects: scopedProjectKeys, machine: null, project: true, environment: false },
++    {
++      projects: new Set(["environment-test:project-other", "environment-other:project-scoped"]),
++      machine: new Set(["environment-other"]),
++      project: false,
++      environment: true,
++    },
++    {
++      projects: scopedProjectKeys,
++      machine: new Set(["environment-other"]),
++      project: true,
++      environment: true,
++    },
++    {
++      projects: scopedProjectKeys,
++      machine: new Set(["environment-test"]),
++      project: true,
++      environment: false,
++    },
++    { projects: null, machine: new Set(["environment-other"]), project: false, environment: true },
++    {
++      projects: null,
++      machine: new Set(["environment-other", "environment-test"]),
++      project: false,
++      environment: false,
++    },
++    {
++      projects: null,
++      machine: new Set(["environment-other", "environment-third"]),
++      project: false,
++      environment: true,
++    },
++  ])(
++    "widens only scopes hiding the opened thread: $project / $environment",
++    ({ projects, machine, project, environment }) => {
++      expect(
++        resolveSidebarRouteReveal({
++          reveal: { observedKey: "environment-test:other", pendingKey: null },
++          routeKey: hiddenKey,
++          isSearching: false,
++          scopedProjectKeys: projects,
++          scopedEnvironmentIds: machine,
++          delegatedUnderParent: new Set(),
++          findThread,
++        }),
++      ).toEqual({
++        pendingKey: hiddenKey,
++        widensProjectScope: project,
++        widensEnvironmentScope: environment,
++      });
++    },
++  );
++
++  it.each(["archived", "delegated"] as const)("does not widen for a %s thread", (kind) => {
+     expect(
+       resolveSidebarRouteReveal({
+-        reveal: { observedKey: "environment-test:other", pendingKey: null },
++        reveal: { observedKey: null, pendingKey: null },
+         routeKey: hiddenKey,
+         isSearching: false,
+         scopedProjectKeys,
+-        delegatedUnderParent: new Set(),
+-        findThread,
++        scopedEnvironmentIds: new Set(["environment-other"]),
++        delegatedUnderParent: new Set(
++          kind === "delegated"
++            ? [threadKey({ environmentId: hidden.environmentId, threadId: hidden.id })]
++            : [],
++        ),
++        findThread: () =>
++          kind === "archived" ? { ...hidden, archivedAt: "2026-10-30T00:00:00.000Z" } : hidden,
+       }),
+-    ).toEqual({ pendingKey: hiddenKey, widensScope: true });
++    ).toEqual({ pendingKey: hiddenKey, widensProjectScope: false, widensEnvironmentScope: false });
+   });
+ 
+   it("never widens for a thread whose reveal already completed", () => {
+@@ -1497,10 +1558,11 @@ describe("resolveSidebarRouteReveal", () => {
+         routeKey: hiddenKey,
+         isSearching: false,
+         scopedProjectKeys,
++        scopedEnvironmentIds: new Set(["environment-other"]),
+         delegatedUnderParent: new Set(),
+         findThread,
+       }),
+-    ).toEqual({ pendingKey: null, widensScope: false });
++    ).toEqual({ pendingKey: null, widensProjectScope: false, widensEnvironmentScope: false });
+   });
+ 
+   it("widens again for a thread reopened before the thread between them listed its row", () => {
+@@ -1513,11 +1575,16 @@ describe("resolveSidebarRouteReveal", () => {
+         routeKey,
+         isSearching: false,
+         scopedProjectKeys,
++        scopedEnvironmentIds: new Set(["environment-other"]),
+         delegatedUnderParent: new Set(),
+         findThread,
+       });
+     resolve("environment-test:unlisted");
+-    expect(resolve(hiddenKey)).toEqual({ pendingKey: hiddenKey, widensScope: true });
++    expect(resolve(hiddenKey)).toEqual({
++      pendingKey: hiddenKey,
++      widensProjectScope: true,
++      widensEnvironmentScope: true,
++    });
+   });
+ 
+   it("holds a pending reveal without widening while searching", () => {
+@@ -1527,10 +1594,11 @@ describe("resolveSidebarRouteReveal", () => {
+         routeKey: hiddenKey,
+         isSearching: true,
+         scopedProjectKeys,
++        scopedEnvironmentIds: new Set(["environment-other"]),
+         delegatedUnderParent: new Set(),
+         findThread,
+       }),
+-    ).toEqual({ pendingKey: hiddenKey, widensScope: false });
++    ).toEqual({ pendingKey: hiddenKey, widensProjectScope: false, widensEnvironmentScope: false });
+   });
+ });
+ 
+diff --git a/apps/web/src/components/Sidebar.logic.ts b/apps/web/src/components/Sidebar.logic.ts
+index ef229d1424c38a2b89b912a408e78823c68064b9..2b9c1febc643945202db5fe541d44e0a0930f97e 100644
+--- a/apps/web/src/components/Sidebar.logic.ts
++++ b/apps/web/src/components/Sidebar.logic.ts
+@@ -599,6 +599,7 @@ export function filterSidebarV2VisibleThreads<
+   threads: readonly T[],
+   scopedProjectKeys: ReadonlySet<string> | null,
+   delegatedUnderParent: ReadonlySet<string>,
++  scopedEnvironmentIds: ReadonlySet<string> | null = null,
+ ): T[] {
+   return threads.filter(
+     (thread) =>
+@@ -608,8 +609,18 @@ export function filterSidebarV2VisibleThreads<
+         thread.lineage,
+         delegatedUnderParent,
+       ) &&
+-      (scopedProjectKeys === null ||
+-        scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
++      isInSidebarScope(thread, scopedProjectKeys, scopedEnvironmentIds),
++  );
++}
++
++export function isInSidebarScope(
++  item: { readonly environmentId: string; readonly projectId: string },
++  scopedProjectKeys: ReadonlySet<string> | null,
++  scopedEnvironmentIds: ReadonlySet<string> | null,
++): boolean {
++  return (
++    (scopedEnvironmentIds === null || scopedEnvironmentIds.has(item.environmentId)) &&
++    (scopedProjectKeys === null || scopedProjectKeys.has(`${item.environmentId}:${item.projectId}`))
+   );
+ }
+ 
+diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
+index 75b225a8b435115cbb39a31efb7ea8b496ea3241..b7f1fe8cf5cd71e04264328c05e649ab49876119 100644
+--- a/apps/web/src/components/Sidebar.tsx
++++ b/apps/web/src/components/Sidebar.tsx
+@@ -117,6 +117,14 @@ import {
+   getSidebarProjectSettingsKey,
+   type SidebarProjectSnapshot,
+ } from "../sidebarProjectGrouping";
++import {
++  filterSidebarEnvironmentIds,
++  filterSidebarProjectScopeKeysToEnvironment,
++  resolveSidebarEnvironmentScope,
++  scopeSidebarProjectGroupsToEnvironment,
++  sidebarEmptyThreadsLabel,
++} from "../sidebarEnvironmentScope";
++import { SidebarMachineRow } from "./sidebar/SidebarMachineRow";
+ import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
+ import {
+   getThreadKeysToDeselectAfterDelete,
+@@ -170,7 +178,6 @@ import {
+   resolveThreadRouteTarget,
+ } from "../threadRoutes";
+ import type { SidebarThreadSummary } from "../types";
+-import { isScratchProject } from "@t3tools/client-runtime/state/projects";
+ import { cn } from "~/lib/utils";
+ import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
+ import { ProjectRowActions } from "./ProjectComboboxRow";
+@@ -189,6 +196,7 @@ import {
+   deleteSelectedThreadEntries,
+   filterSidebarProjectScopeItems,
+   firstValidTimestampMs,
++  isInSidebarScope,
+   isSidebarNestedLinkClick,
+   isTrailingDoubleClick,
+   orderItemsByPreferredIds,
+@@ -348,6 +356,7 @@ type SidebarOptimisticDrop = {
+ interface SidebarThreadPartitionInput {
+   readonly threads: readonly EnvironmentThreadShell[];
+   readonly scopedProjectKeys: ReadonlySet<string> | null;
++  readonly scopedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
+   /** Tasks linked environments run for a listed thread; they show under it. */
+   readonly delegatedUnderParent: ReadonlySet<string>;
+   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
+@@ -415,6 +424,7 @@ function routeThreadOnly(
+ function useSidebarThreads(input: {
+   readonly projectScopeKey: string | null;
+   readonly scopedProjectKeys: ReadonlySet<string> | null;
++  readonly scopedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
+   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
+   readonly connectedEnvironmentIds: readonly EnvironmentId[];
+   readonly optimisticDrop: SidebarOptimisticDrop | null;
+@@ -429,6 +439,7 @@ function useSidebarThreads(input: {
+   const {
+     projectScopeKey,
+     scopedProjectKeys,
++    scopedEnvironmentIds,
+     serverConfigs,
+     connectedEnvironmentIds,
+     optimisticDrop,
+@@ -466,19 +477,29 @@ function useSidebarThreads(input: {
+   // Shared with the old per-project sidebar, so folders keep their open state.
+   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
+   const setProjectExpanded = useUiStateStore((store) => store.setProjectExpanded);
++  const machineScopeKey = JSON.stringify(
++    scopedEnvironmentIds === null ? [] : [...scopedEnvironmentIds].sort(),
++  );
+   const [settledTail, setSettledTail] = useState({
+     scopeKey: projectScopeKey,
++    machineScopeKey,
+     count: SETTLED_TAIL_INITIAL_COUNT,
+   });
+-  if (settledTail.scopeKey !== projectScopeKey) {
+-    setSettledTail({ scopeKey: projectScopeKey, count: SETTLED_TAIL_INITIAL_COUNT });
++  const settledTailInScope =
++    settledTail.scopeKey === projectScopeKey && settledTail.machineScopeKey === machineScopeKey;
++  if (!settledTailInScope) {
++    setSettledTail({
++      scopeKey: projectScopeKey,
++      machineScopeKey,
++      count: SETTLED_TAIL_INITIAL_COUNT,
++    });
+   }
+-  const settledVisibleCount =
+-    settledTail.scopeKey === projectScopeKey ? settledTail.count : SETTLED_TAIL_INITIAL_COUNT;
++  const settledVisibleCount = settledTailInScope ? settledTail.count : SETTLED_TAIL_INITIAL_COUNT;
+ 
+   const partition = partitionSidebarThreads({
+     threads,
+     scopedProjectKeys,
++    scopedEnvironmentIds,
+     delegatedUnderParent,
+     serverConfigs,
+     connectedEnvironmentIds,
+@@ -492,7 +513,14 @@ function useSidebarThreads(input: {
+     partition;
+   // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
+   const olderSettledShelf = useOlderSettledShelf({
+-    scopes: olderSettledScopes([...serverConfigs.keys()], scopedProjectKeys),
++    scopes: olderSettledScopes(
++      filterSidebarEnvironmentIds(
++        [...serverConfigs.keys()],
++        scopedProjectKeys,
++        scopedEnvironmentIds,
++      ),
++      scopedProjectKeys,
++    ),
+     expanded: settledShelfExpanded,
+     visibleCount: settledVisibleCount,
+   });
+@@ -578,7 +606,7 @@ function useSidebarThreads(input: {
+     hiddenSettledCount: Math.max(0, settledCount - visibleSettledThreads.length),
+     showMoreSettled: () =>
+       setSettledTail((current) => ({
+-        scopeKey: current.scopeKey,
++        ...current,
+         count: current.count + SETTLED_TAIL_PAGE_COUNT,
+       })),
+     settledShelfExpanded,
+@@ -615,6 +643,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
+   const {
+     threads,
+     scopedProjectKeys,
++    scopedEnvironmentIds,
+     delegatedUnderParent,
+     serverConfigs,
+     optimisticDrop,
+@@ -622,7 +651,12 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
+     sortActiveBySend,
+   } = input;
+   const preciseNow = new Date().toISOString();
+-  const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys, delegatedUnderParent);
++  const visible = filterSidebarV2VisibleThreads(
++    threads,
++    scopedProjectKeys,
++    delegatedUnderParent,
++    scopedEnvironmentIds,
++  );
+   const inboxObservation = inboxReturns.observe(workingShelfEnabled ? threads : null);
+   const pinned: EnvironmentThreadShell[] = [];
+   const active: EnvironmentThreadShell[] = [];
+@@ -821,16 +855,6 @@ function useSidebarLookups() {
+       ),
+     ),
+   );
+-  const projectGroupByScopeKey = new Map(
+-    projectGroups.map((project) => [project.projectKey, project] as const),
+-  );
+-  const projectScopeItems = [
+-    { value: "all", label: "All projects" },
+-    ...pickableProjectGroups(projectGroups).map((project) => ({
+-      value: project.projectKey,
+-      label: project.displayName,
+-    })),
+-  ];
+   return {
+     projects,
+     serverConfigs,
+@@ -839,8 +863,7 @@ function useSidebarLookups() {
+     providerEntriesByEnvironment,
+     projectByKey,
+     projectDisplayNameByKey,
+-    projectGroupByScopeKey,
+-    projectScopeItems,
++    environments,
+   };
+ }
+ 
+@@ -906,8 +929,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+     providerEntriesByEnvironment,
+     projectByKey,
+     projectDisplayNameByKey,
+-    projectGroupByScopeKey,
+-    projectScopeItems: lookupProjectScopeItems,
++    environments,
+   } = useSidebarLookups();
+   const delegatedUnderParent = useDelegatedUnderParent();
+   const router = useRouter();
+@@ -1014,7 +1036,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+     reduceSidebarProjectScopeMenuState,
+     { open: false, query: "" },
+   );
+-  const projectScopeFilter = useComboboxFilter();
++  const persistedEnvironmentScopeKeys = useUiStateStore(
++    (store) => store.sidebarEnvironmentScopeKeys,
++  );
++  const setPersistedEnvironmentScopeKeys = useUiStateStore(
++    (store) => store.setSidebarEnvironmentScopeKeys,
++  );
++  const scopeFilter = useComboboxFilter();
++  const chosenEnvironmentScope = resolveSidebarEnvironmentScope({
++    environments,
++    keys: persistedEnvironmentScopeKeys,
++  });
++  const chosenEnvironmentIds =
++    chosenEnvironmentScope.length === 0
++      ? null
++      : new Set(chosenEnvironmentScope.map((environment) => environment.environmentId));
+   const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
+   const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
+   // Safari may click after Ctrl+click opens settings; suppress that selection until the picker reopens.
+@@ -1079,18 +1115,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+   };
+   // A scope whose project is gone reads as all projects once every snapshot has
+   // loaded. The stored keys are left alone, so the scope returns with its project.
+-  // An archived project's scope reads as all projects, matching the menu.
+   const scopeGroups = pickableProjectGroups(projectGroups);
+-  const archivedProjectKeys = new Set(
+-    projectGroups.filter((project) => project.archived).map((project) => project.projectKey),
++  const chosenMachineProjectGroups = scopeSidebarProjectGroupsToEnvironment(
++    projectGroups,
++    chosenEnvironmentIds,
++    { projects, settings: projectGroupingSettings, primaryEnvironmentId },
++  );
++  const chosenProjectScopeKeys = filterSidebarProjectScopeKeysToEnvironment(
++    pickableProjectGroups(chosenMachineProjectGroups),
++    resolveSidebarProjectScopeKeys({
++      groups: projectGroups,
++      keys: persistedProjectScopeKeys,
++      settings: projectGroupingSettings,
++      canClearMissingScope: allProjectSnapshotsReady && allProjectConfigsReady,
++    }),
++    null,
+   );
+-  const chosenProjectScopeKeys = resolveSidebarProjectScopeKeys({
+-    groups: projectGroups,
+-    keys: persistedProjectScopeKeys,
+-    settings: projectGroupingSettings,
+-    canClearMissingScope: allProjectSnapshotsReady && allProjectConfigsReady,
+-  }).filter((key) => !archivedProjectKeys.has(key));
+-  const chosenProjectGroups = scopeGroups.filter((project) =>
++  const chosenProjectGroups = chosenMachineProjectGroups.filter((project) =>
+     chosenProjectScopeKeys.includes(project.projectKey),
+   );
+   const chosenScopeProjectKeys =
+@@ -1123,15 +1164,19 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+   // scrolled away; a remount starts at the top, so each mount scrolls to the open
+   // thread once. Render decides the widening, so the first frame of the new route
+   // already lists the row; the active row's ref callback scrolls to it.
+-  const { widensScope: revealWidensScope } = resolveSidebarRouteReveal({
++  const {
++    widensProjectScope: revealWidensProjectScope,
++    widensEnvironmentScope: revealWidensEnvironmentScope,
++  } = resolveSidebarRouteReveal({
+     reveal: routeReveal,
+     routeKey: routeRowThreadKey,
+     isSearching: isSearchingThreads,
+     scopedProjectKeys: chosenScopeProjectKeys,
++    scopedEnvironmentIds: chosenEnvironmentIds,
+     delegatedUnderParent,
+     findThread: (key) => threads.find((candidate) => threadShellKey(candidate) === key),
+   });
+-  const projectScopeKeys = revealWidensScope ? [] : chosenProjectScopeKeys;
++  const projectScopeKeys = revealWidensProjectScope ? [] : chosenProjectScopeKeys;
+   const projectScopeKey = projectScopeKeys.length === 0 ? null : projectScopeKeys.join("\n");
+   const toggleProjectScopeKey = (key: string) =>
+     setProjectScopeKeys(
+@@ -1139,31 +1184,53 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+         ? projectScopeKeys.filter((candidate) => candidate !== key)
+         : [...projectScopeKeys, key],
+     );
+-  // The widened scope outlives the reveal, so it is written back to the persisted
+-  // scope. Route changes arrive from history, links and the palette, and only this
+-  // component holds the project groups that decide a widening, so no single
+-  // navigation handler can make the write.
+-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes a route reveal's widened project scope back to the persisted sidebar scope and clears selection
++  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- route reveals must persist their scope widening across sidebar remounts
+   useEffect(() => {
+-    if (!revealWidensScope) return;
++    if (!revealWidensProjectScope && !revealWidensEnvironmentScope) return;
+     clearSelection();
+-    setPersistedProjectScopeKeys([]);
+-  }, [clearSelection, revealWidensScope, setPersistedProjectScopeKeys]);
+-  const revealActiveRow = useActiveRowReveal(routeReveal, routeRowThreadKey);
+-  const showProjectEnvironments = projectGroupsSpanEnvironments(projectGroups);
+-  const scratchMachineLabelFor = (
+-    thread: Pick<SidebarThreadSummary, "environmentId" | "projectId">,
+-  ) => {
+-    if (!showProjectEnvironments) return null;
+-    const project = projectByKey.get(`${thread.environmentId}:${thread.projectId}`);
+-    if (
+-      !project ||
+-      !isScratchProject(project, serverConfigs.get(thread.environmentId)?.scratchWorkspaceRoot)
+-    ) {
+-      return null;
+-    }
+-    return environmentLabelById.get(thread.environmentId) ?? null;
++    if (revealWidensProjectScope) setPersistedProjectScopeKeys([]);
++    if (revealWidensEnvironmentScope) setPersistedEnvironmentScopeKeys([]);
++  }, [
++    clearSelection,
++    revealWidensProjectScope,
++    revealWidensEnvironmentScope,
++    setPersistedProjectScopeKeys,
++    setPersistedEnvironmentScopeKeys,
++  ]);
++  const environmentScope = revealWidensEnvironmentScope ? [] : chosenEnvironmentScope;
++  const scopedEnvironmentIds = revealWidensEnvironmentScope ? null : chosenEnvironmentIds;
++  const machineProjectGroups = revealWidensEnvironmentScope
++    ? projectGroups
++    : chosenMachineProjectGroups;
++  const projectGroupByScopeKey = new Map(
++    machineProjectGroups.map((project) => [project.projectKey, project] as const),
++  );
++  const lookupProjectScopeItems = [
++    { value: "all", label: "All projects" },
++    ...pickableProjectGroups(machineProjectGroups).map((project) => ({
++      value: project.projectKey,
++      label: project.displayName,
++    })),
++  ];
++  const setEnvironmentScopeKeys = (keys: string[]) => {
++    clearSelection();
++    setPersistedEnvironmentScopeKeys(keys);
++    scrollSidebarToTop(sidebarContentRef.current);
++    const resolved = resolveSidebarEnvironmentScope({ environments, keys });
++    const ids =
++      resolved.length === 0
++        ? null
++        : new Set(resolved.map((environment) => environment.environmentId));
++    setPersistedProjectScopeKeys(
++      filterSidebarProjectScopeKeysToEnvironment(projectGroups, projectScopeKeys, ids),
++    );
+   };
++  const revealActiveRow = useActiveRowReveal(routeReveal, routeRowThreadKey);
++  const showProjectEnvironments = projectGroupsSpanEnvironments(machineProjectGroups);
++  const rowMachineLabelFor = (thread: Pick<SidebarThreadSummary, "environmentId">) =>
++    (scopedEnvironmentIds?.size ?? environments.length) > 1
++      ? (environmentLabelById.get(thread.environmentId) ?? null)
++      : null;
+   // Pinning from a row keeps rows in place while the menu is open.
+   const projectScopeItems = useOrderWhileOpen(
+     lookupProjectScopeItems,
+@@ -1178,14 +1245,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+   const filteredProjectScopeItems = filterSidebarProjectScopeItems({
+     items: projectScopeItems,
+     query: projectScopeMenuState.query,
+-    matches: (item, query) =>
+-      projectScopeFilter.contains(item, query, (candidate) => candidate.label),
++    matches: (item, query) => scopeFilter.contains(item, query, (candidate) => candidate.label),
+   });
+-  const scopedProjectGroups = revealWidensScope ? [] : chosenProjectGroups;
++  const scopedProjectGroups = machineProjectGroups.filter((project) =>
++    projectScopeKeys.includes(project.projectKey),
++  );
+   const scopedProjectRefs = scopedProjectGroups.flatMap((project) => project.memberProjectRefs);
+-  const scopedProjectKeys = revealWidensScope ? null : chosenScopeProjectKeys;
++  const scopedProjectKeys = revealWidensProjectScope ? null : chosenScopeProjectKeys;
+   const threadSearch = useThreadSearch(
+-    connectedEnvironmentIds,
++    filterSidebarEnvironmentIds(connectedEnvironmentIds, scopedProjectKeys, scopedEnvironmentIds),
+     threadSearchQuery,
+     scopedProjectGroups.length === 0
+       ? {}
+@@ -1201,10 +1269,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+       if (!composerDraftHasUserContent(store.draftsByThreadKey[draftKey])) {
+         continue;
+       }
+-      if (
+-        scopedProjectKeys !== null &&
+-        !scopedProjectKeys.has(`${session.environmentId}:${session.projectId}`)
+-      ) {
++      if (!isInSidebarScope(session, scopedProjectKeys, scopedEnvironmentIds)) {
+         continue;
+       }
+       count += 1;
+@@ -1332,6 +1397,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+   } = useSidebarThreads({
+     projectScopeKey,
+     scopedProjectKeys,
++    scopedEnvironmentIds,
+     serverConfigs,
+     connectedEnvironmentIds,
+     optimisticDrop,
+@@ -1339,9 +1405,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+     delegatedUnderParent,
+     routeRowThreadKey,
+     folderGroups: boringSidebarEnabled
+-      ? scopedProjectGroups.length === 0
+-        ? // An archived project keeps a folder for its active threads, below the rest.
+-          [...scopeGroups, ...projectGroups.filter((project) => project.archived)]
++      ? scopedProjectKeys === null
++        ? [
++            ...pickableProjectGroups(machineProjectGroups),
++            ...machineProjectGroups.filter((project) => project.archived),
++          ]
+         : scopedProjectGroups
+       : null,
+     keepEmptyFolders: (group) =>
+@@ -3001,6 +3069,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+           <SidebarGroup className="z-[1]">
+             <SidebarThreadHeader
+               hasProjects={projectGroups.length > 0}
++              machineRow={
++                <SidebarMachineRow
++                  environments={environments}
++                  primaryEnvironmentId={primaryEnvironmentId}
++                  machineById={environmentMachineById}
++                  selectedIds={scopedEnvironmentIds}
++                  onChange={setEnvironmentScopeKeys}
++                />
++              }
+               projectScope={
+                 <Combobox
+                   items={projectScopeItems}
+@@ -3425,7 +3502,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                             environmentMachine={
+                               environmentMachineById.get(thread.environmentId) ?? "server"
+                             }
+-                            scratchMachineLabel={scratchMachineLabelFor(thread)}
++                            machineLabel={rowMachineLabelFor(thread)}
+                             project={
+                               projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ??
+                               null
+@@ -3467,6 +3544,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                           projectByKey={projectByKey}
+                           projectDisplayNameByKey={projectDisplayNameByKey}
+                           scopedProjectKeys={scopedProjectKeys}
++                          scopedEnvironmentIds={scopedEnvironmentIds}
+                           routeDraftId={routeDraftIdForRows}
+                           onNavigateToDraft={navigateToDraft}
+                           onDraftContextMenu={handleDraftContextMenu}
+@@ -3666,12 +3744,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                     Add project
+                   </button>
+                 </>
+-              ) : scopedProjectGroups.length > 1 ? (
+-                "No threads in these projects yet"
+-              ) : scopedProjectGroups[0] ? (
+-                `No threads in ${scopedProjectGroups[0].displayName} yet`
+               ) : (
+-                "No threads yet"
++                sidebarEmptyThreadsLabel({
++                  projectName:
++                    scopedProjectGroups.length > 1
++                      ? "selected projects"
++                      : (scopedProjectGroups[0]?.displayName ?? null),
++                  machineLabel:
++                    environmentScope.length === 0
++                      ? null
++                      : environmentScope.map((environment) => environment.label).join(", "),
++                })
+               )}
+             </div>
+           ) : null}
+diff --git a/apps/web/src/components/sidebar/SidebarDraftBlock.browser.test.tsx b/apps/web/src/components/sidebar/SidebarDraftBlock.browser.test.tsx
+index c29932f5757e15e57117817b9cc0cf742b0e8a31..0f3c1ff55068ca6c79d56ba4e9d9ec3d426861ea 100644
+--- a/apps/web/src/components/sidebar/SidebarDraftBlock.browser.test.tsx
++++ b/apps/web/src/components/sidebar/SidebarDraftBlock.browser.test.tsx
+@@ -29,6 +29,7 @@ it("keeps draft previews current through edits, promotion and removal", async ()
+           projectByKey={new Map()}
+           projectDisplayNameByKey={new Map()}
+           scopedProjectKeys={null}
++          scopedEnvironmentIds={null}
+           routeDraftId={null}
+           onNavigateToDraft={vi.fn()}
+           onDraftContextMenu={vi.fn()}
+diff --git a/apps/web/src/components/sidebar/SidebarDraftBlock.tsx b/apps/web/src/components/sidebar/SidebarDraftBlock.tsx
+index bc15ca5945972db5d4a9848c18152aae4c243cd9..d745f441ef847454322123bf5fa0f8de4c683f7d 100644
+--- a/apps/web/src/components/sidebar/SidebarDraftBlock.tsx
++++ b/apps/web/src/components/sidebar/SidebarDraftBlock.tsx
+@@ -10,7 +10,7 @@ import {
+ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+ import { useShallow } from "zustand/react/shallow";
+ import { cn } from "~/lib/utils";
+-import { resolveSidebarRowAccessibility } from "../Sidebar.logic";
++import { isInSidebarScope, resolveSidebarRowAccessibility } from "../Sidebar.logic";
+ import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
+ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+ import {
+@@ -143,6 +143,7 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
+   projectByKey: ReadonlyMap<string, EnvironmentProject>;
+   projectDisplayNameByKey: ReadonlyMap<string, string>;
+   scopedProjectKeys: ReadonlySet<string> | null;
++  scopedEnvironmentIds: ReadonlySet<string> | null;
+   routeDraftId: string | null;
+   onNavigateToDraft: (draftId: DraftId) => void;
+   onDraftContextMenu: (draftId: DraftId, position: { x: number; y: number }) => void;
+@@ -180,10 +181,7 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
+       if (session.promotedTo != null) {
+         continue;
+       }
+-      if (
+-        props.scopedProjectKeys !== null &&
+-        !props.scopedProjectKeys.has(`${session.environmentId}:${session.projectId}`)
+-      ) {
++      if (!isInSidebarScope(session, props.scopedProjectKeys, props.scopedEnvironmentIds)) {
+         continue;
+       }
+       if (draftKey === props.routeDraftId) {
+diff --git a/apps/web/src/components/sidebar/SidebarMachineRow.css b/apps/web/src/components/sidebar/SidebarMachineRow.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..956e0322f6de4ae4dc87b1c19e7d2bd8a556ada4
+--- /dev/null
++++ b/apps/web/src/components/sidebar/SidebarMachineRow.css
+@@ -0,0 +1,41 @@
++[data-machine-row="root"] {
++  min-width: 0;
++  margin-top: 2px;
++  padding-inline: 8px;
++}
++
++[data-machine-row="trigger"] {
++  display: flex;
++  align-items: center;
++  gap: 6px;
++  width: 100%;
++  min-width: 0;
++  height: 28px;
++  padding-inline: 6px;
++  border: 0;
++  border-radius: 7px;
++  background: none;
++  color: var(--sidebar-muted-foreground);
++  font-size: 12px;
++  cursor: pointer;
++}
++
++[data-machine-row="trigger"]:hover,
++[data-machine-row="trigger"][data-popup-open] {
++  background: var(--sidebar-row-hover);
++  color: var(--sidebar-foreground);
++}
++
++[data-machine-row="trigger"]:focus-visible {
++  outline: 2px solid var(--ring);
++  outline-offset: 1px;
++}
++
++[data-machine-row="label"] {
++  flex: 1;
++  min-width: 0;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++  text-align: start;
++}
+diff --git a/apps/web/src/components/sidebar/SidebarMachineRow.tsx b/apps/web/src/components/sidebar/SidebarMachineRow.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..b2bea4a38ab2124c050ad294efc788c198889fa0
+--- /dev/null
++++ b/apps/web/src/components/sidebar/SidebarMachineRow.tsx
+@@ -0,0 +1,123 @@
++import type { EnvironmentId, EnvironmentMachineKind } from "@t3tools/contracts";
++import { ChevronDownIcon, MonitorSmartphoneIcon } from "lucide-react";
++import { useState } from "react";
++
++import { isMacPlatform } from "../../lib/utils";
++import {
++  buildSidebarEnvironmentScopeItems,
++  nextSidebarEnvironmentScopeKeys,
++} from "../../sidebarEnvironmentScope";
++import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
++import {
++  Menu,
++  MenuCheckboxItem,
++  MenuItem,
++  MenuPopup,
++  MenuSeparator,
++  MenuTrigger,
++} from "../ui/menu";
++import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
++import "./SidebarMachineRow.css";
++
++export function SidebarMachineRow({
++  environments,
++  primaryEnvironmentId,
++  machineById,
++  selectedIds,
++  onChange,
++}: {
++  readonly environments: Parameters<typeof buildSidebarEnvironmentScopeItems>[0]["environments"];
++  readonly primaryEnvironmentId: EnvironmentId | null;
++  readonly machineById: ReadonlyMap<EnvironmentId, EnvironmentMachineKind>;
++  readonly selectedIds: ReadonlySet<EnvironmentId> | null;
++  readonly onChange: (keys: string[]) => void;
++}) {
++  const [open, setOpen] = useState(false);
++  const isMac = isMacPlatform(navigator.platform);
++  const items = buildSidebarEnvironmentScopeItems({ environments, primaryEnvironmentId });
++  if (items.length === 0) return null;
++  const selected = items.filter(
++    (item) => item.environmentId !== null && selectedIds?.has(item.environmentId),
++  );
++  const label =
++    selected.length === 0 ? "All machines" : selected.map((item) => item.label).join(", ");
++  const icon = (id: EnvironmentId | null) =>
++    id === null ? (
++      <MonitorSmartphoneIcon className="size-4 shrink-0" />
++    ) : (
++      <EnvironmentMachineIcon kind={machineById.get(id) ?? "server"} className="size-4 shrink-0" />
++    );
++
++  return (
++    <div data-machine-row="root">
++      <Menu open={open} onOpenChange={setOpen}>
++        <Tooltip>
++          <TooltipTrigger
++            render={
++              <MenuTrigger
++                render={
++                  <button
++                    type="button"
++                    data-machine-row="trigger"
++                    aria-label={`Filter threads by machine: ${label}`}
++                  />
++                }
++              />
++            }
++          >
++            {selected.length === 0
++              ? icon(null)
++              : selected.map((item) => <span key={item.value}>{icon(item.environmentId)}</span>)}
++            <span data-machine-row="label">{label}</span>
++            <ChevronDownIcon className="size-3.5 shrink-0" />
++          </TooltipTrigger>
++          <TooltipPopup side="bottom">{label}</TooltipPopup>
++        </Tooltip>
++        <MenuPopup align="start">
++          <MenuItem onClick={() => onChange([])}>
++            <span className="flex min-w-0 items-center gap-2">
++              {icon(null)}
++              <span>All machines</span>
++            </span>
++          </MenuItem>
++          <MenuSeparator />
++          {items
++            .filter(
++              (item): item is typeof item & { environmentId: EnvironmentId } =>
++                item.environmentId !== null,
++            )
++            .map((item) => (
++              <MenuCheckboxItem
++                key={item.value}
++                checked={selectedIds?.has(item.environmentId) ?? false}
++                closeOnClick={false}
++                onCheckedChange={(_, details) => {
++                  const event = details.event;
++                  if (isMac && event instanceof MouseEvent && event.ctrlKey) {
++                    details.cancel();
++                    return;
++                  }
++                  const additive =
++                    event instanceof MouseEvent && (isMac ? event.metaKey : event.ctrlKey);
++                  onChange(
++                    nextSidebarEnvironmentScopeKeys(
++                      [...(selectedIds ?? [])],
++                      item.environmentId,
++                      additive,
++                      environments.map((environment) => environment.environmentId),
++                    ),
++                  );
++                  if (!additive) setOpen(false);
++                }}
++              >
++                <span className="flex min-w-0 items-center gap-2">
++                  {icon(item.environmentId)}
++                  <span className="min-w-0 truncate">{item.label}</span>
++                </span>
++              </MenuCheckboxItem>
++            ))}
++        </MenuPopup>
++      </Menu>
++    </div>
++  );
++}
+diff --git a/apps/web/src/components/sidebar/SidebarThreadHeader.tsx b/apps/web/src/components/sidebar/SidebarThreadHeader.tsx
+index e400e03d27586bc9cff70e26cb9241d5f0c27d1b..35dadba487ca83d15e2e79c1460e3454d7939d40 100644
+--- a/apps/web/src/components/sidebar/SidebarThreadHeader.tsx
++++ b/apps/web/src/components/sidebar/SidebarThreadHeader.tsx
+@@ -14,6 +14,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+ 
+ export interface SidebarThreadHeaderProps {
+   hasProjects: boolean;
++  machineRow?: ReactNode;
+   projectScope: ReactNode;
+   onNewProject: () => void;
+   onNewThread: (event: ReactMouseEvent) => void;
+@@ -33,6 +34,7 @@ export interface SidebarThreadHeaderProps {
+ 
+ export function SidebarThreadHeader({
+   hasProjects,
++  machineRow,
+   projectScope,
+   onNewProject,
+   onNewThread,
+@@ -57,76 +59,79 @@ export function SidebarThreadHeader({
+     : "New thread";
+ 
+   return (
+-    <div className="flex items-center gap-1">
+-      <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70">
+-        <SearchIcon className="size-4 shrink-0 text-(--sidebar-icon-color)" />
+-        <SidebarInput
+-          ref={searchInputRef}
+-          nativeInput
+-          type="search"
+-          value={searchQuery}
+-          onChange={(event) => onSearchQueryChange(event.currentTarget.value)}
+-          onKeyDown={onSearchKeyDown}
+-          placeholder="Search"
+-          aria-label="Search threads"
+-          role="combobox"
+-          aria-autocomplete="list"
+-          aria-expanded={resultsVisible}
+-          aria-controls={resultsVisible ? "sidebar-thread-search-results" : undefined}
+-          aria-activedescendant={
+-            activeResultExists
+-              ? `sidebar-thread-search-result-${activeSearchResultIndex}`
+-              : undefined
+-          }
+-          className="min-w-0 flex-1"
+-        />
+-        {isSearching ? (
+-          <Button
+-            type="button"
+-            size="icon-micro"
+-            variant="ghost-muted"
+-            className="shrink-0"
+-            aria-label="Clear thread search"
+-            onClick={() => {
+-              onClearSearch();
+-              searchInputRef.current?.focus();
+-            }}
+-          >
+-            <XIcon className="size-3" />
+-          </Button>
+-        ) : null}
+-      </div>
+-      <div className="flex shrink-0 items-center">
+-        {hasProjects ? (
+-          <>
+-            {projectScope}
+-            <SidebarHeaderIconButton label="Add project" onClick={onNewProject}>
+-              <FolderPlusIcon />
+-            </SidebarHeaderIconButton>
+-          </>
+-        ) : null}
+-        <SidebarHeaderIconButton
+-          label="New thread"
+-          tooltip={
+-            showNewThreadInProjectHint ? (
+-              <span className="flex flex-col gap-0.5">
+-                <span>{newThreadLabel}</span>
+-                <span className="text-muted-foreground">
+-                  New thread in current project: Shift+click
+-                  {newThreadInProjectShortcutLabel ? ` (${newThreadInProjectShortcutLabel})` : ""}
++    <>
++      <div className="flex items-center gap-1">
++        <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70">
++          <SearchIcon className="size-4 shrink-0 text-(--sidebar-icon-color)" />
++          <SidebarInput
++            ref={searchInputRef}
++            nativeInput
++            type="search"
++            value={searchQuery}
++            onChange={(event) => onSearchQueryChange(event.currentTarget.value)}
++            onKeyDown={onSearchKeyDown}
++            placeholder="Search"
++            aria-label="Search threads"
++            role="combobox"
++            aria-autocomplete="list"
++            aria-expanded={resultsVisible}
++            aria-controls={resultsVisible ? "sidebar-thread-search-results" : undefined}
++            aria-activedescendant={
++              activeResultExists
++                ? `sidebar-thread-search-result-${activeSearchResultIndex}`
++                : undefined
++            }
++            className="min-w-0 flex-1"
++          />
++          {isSearching ? (
++            <Button
++              type="button"
++              size="icon-micro"
++              variant="ghost-muted"
++              className="shrink-0"
++              aria-label="Clear thread search"
++              onClick={() => {
++                onClearSearch();
++                searchInputRef.current?.focus();
++              }}
++            >
++              <XIcon className="size-3" />
++            </Button>
++          ) : null}
++        </div>
++        <div className="flex shrink-0 items-center">
++          {hasProjects ? (
++            <>
++              {projectScope}
++              <SidebarHeaderIconButton label="Add project" onClick={onNewProject}>
++                <FolderPlusIcon />
++              </SidebarHeaderIconButton>
++            </>
++          ) : null}
++          <SidebarHeaderIconButton
++            label="New thread"
++            tooltip={
++              showNewThreadInProjectHint ? (
++                <span className="flex flex-col gap-0.5">
++                  <span>{newThreadLabel}</span>
++                  <span className="text-muted-foreground">
++                    New thread in current project: Shift+click
++                    {newThreadInProjectShortcutLabel ? ` (${newThreadInProjectShortcutLabel})` : ""}
++                  </span>
+                 </span>
+-              </span>
+-            ) : (
+-              newThreadLabel
+-            )
+-          }
+-          disabled={newThreadDisabled}
+-          onClick={onNewThread}
+-        >
+-          <SquarePenIcon />
+-        </SidebarHeaderIconButton>
++              ) : (
++                newThreadLabel
++              )
++            }
++            disabled={newThreadDisabled}
++            onClick={onNewThread}
++          >
++            <SquarePenIcon />
++          </SidebarHeaderIconButton>
++        </div>
+       </div>
+-    </div>
++      {machineRow}
++    </>
+   );
+ }
+ 
+diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..2e24fb605211e3a627a8e484fadc0c46a2f700c4
+--- /dev/null
++++ b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
+@@ -0,0 +1,92 @@
++import "~/index.css";
++
++import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
++import { expect, it, vi } from "vite-plus/test";
++
++import { render } from "../../../test/render";
++import { useEnvironmentScope } from "../../state/session";
++import { makeThreadFixture } from "../../test-fixtures";
++import { SortableThreadRow } from "./SidebarThreadRow";
++
++vi.mock("../../state/session", { spy: true });
++
++const noop = () => undefined;
++
++function Row(props: {
++  readonly title: string;
++  readonly variant?: "card" | "folder";
++  readonly branch?: string;
++  readonly machineLabel?: string;
++}) {
++  return (
++    <ul style={{ width: 280 }}>
++      <SortableThreadRow
++        sortableId="row"
++        sortableDisabled
++        contextDrag={false}
++        thread={makeThreadFixture({
++          id: ThreadId.make("row"),
++          environmentId: EnvironmentId.make("local"),
++          projectId: ProjectId.make("project"),
++          title: props.title,
++          branch: props.branch ?? null,
++        })}
++        variant={props.variant ?? "folder"}
++        variantAction="settle"
++        settlementSupported
++        snoozeSupported
++        pinningSupported={false}
++        isPinned={false}
++        dropVerb={null}
++        dragOverPinned={false}
++        sweepAction={null}
++        snoozeWakeLabelText={null}
++        wokeAt={null}
++        isActive={false}
++        isRouteThread={false}
++        openPullRequestsInRightPanel={false}
++        jumpLabel={null}
++        currentEnvironmentId="local"
++        environmentLabel={null}
++        environmentMachine="laptop"
++        machineLabel={props.machineLabel ?? null}
++        project={null}
++        projectDisplayName={null}
++        providerEntryByInstanceId={new Map()}
++        timestampFormat="locale"
++        onThreadClick={noop}
++        onThreadActivate={noop}
++        onStartRename={noop}
++        onRenameTitleChange={noop}
++        onCommitRename={noop}
++        onCancelRename={noop}
++        isRenaming={false}
++        renamingTitle=""
++        onContextMenu={noop}
++        onSettle={noop}
++        onActionSweepStart={noop}
++        onUnsettle={noop}
++        onSnooze={noop}
++        onUnsnooze={noop}
++        onUnpin={noop}
++        onAcknowledgeWoke={noop}
++      />
++      <li>Outside</li>
++    </ul>
++  );
++}
++
++it("shows the machine instead of the branch when the filter spans machines", async () => {
++  vi.mocked(useEnvironmentScope).mockReturnValue(true);
++  await using screen = await render(
++    <Row title="Thread" variant="card" branch="main" machineLabel="MacBook Pro (Mateusz)" />,
++  );
++  await expect.element(screen.getByText("MacBook Pro (Mateusz)")).toBeVisible();
++  expect(screen.getByTestId("sidebar-row-card").element().textContent).not.toContain("main");
++});
++
++it("shows the branch when the filter is one machine", async () => {
++  vi.mocked(useEnvironmentScope).mockReturnValue(true);
++  await using screen = await render(<Row title="Thread" variant="card" branch="main" />);
++  await expect.element(screen.getByText("main")).toBeVisible();
++});
+diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
+index 3a50e76d06bda9912e9594b032bbf44c7af94632..1ef5d438eacdb831441c24b09467f38069e963c3 100644
+--- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
++++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
+@@ -561,7 +561,7 @@ type SidebarThreadRowProps = {
+   currentEnvironmentId: string | null;
+   environmentLabel: string | null;
+   environmentMachine: EnvironmentMachineKind;
+-  scratchMachineLabel: string | null;
++  machineLabel: string | null;
+   project: EnvironmentProject | null;
+   projectDisplayName: string | null;
+   providerEntryByInstanceId: ReadonlyMap<string, SidebarProviderEntry>;
+@@ -811,7 +811,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+     : thread.modelSelection.model;
+ 
+   const isRemote = thread.environmentId !== props.currentEnvironmentId;
+-  const showsScratchMachine = !thread.branch && props.scratchMachineLabel !== null;
++  const showsMachine = props.machineLabel !== null;
+ 
+   const detailsTooltip = (
+     <SidebarThreadTooltip
+@@ -1136,7 +1136,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+   ) : null;
+ 
+   const remoteMachineIcon =
+-    isRemote && !showsScratchMachine ? (
++    isRemote && !showsMachine ? (
+       <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
+         <EnvironmentMachineIcon aria-hidden kind={props.environmentMachine} className="size-3.5" />
+       </span>
+@@ -1145,27 +1145,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+   // Only the trailing icons would remain, so the row moves them to the title line instead.
+   const metaLineEmpty =
+     !thread.branch &&
+-    !showsScratchMachine &&
++    !showsMachine &&
+     prBadge === null &&
+     diff === null &&
+     runningTerminalIds.length === 0;
+   const metaLine = metaLineEmpty ? null : (
+     <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+-      {thread.branch ? (
+-        <>
+-          <ThreadWorktreeIndicator thread={thread} />
+-          <span className="flex min-w-0 flex-1">
+-            <MiddleTruncate value={thread.branch} showTitle={false} />
+-          </span>
+-        </>
+-      ) : showsScratchMachine ? (
++      {showsMachine ? (
+         <>
+           <EnvironmentMachineIcon
+             aria-hidden
+             kind={props.environmentMachine}
+             className="size-3 shrink-0"
+           />
+-          <span className="min-w-0 flex-1 truncate">{props.scratchMachineLabel}</span>
++          <span className="min-w-0 flex-1 truncate">{props.machineLabel}</span>
++        </>
++      ) : thread.branch ? (
++        <>
++          <ThreadWorktreeIndicator thread={thread} />
++          <span className="flex min-w-0 flex-1">
++            <MiddleTruncate value={thread.branch} showTitle={false} />
++          </span>
+         </>
+       ) : (
+         <span className="flex-1" />
+diff --git a/apps/web/src/components/sidebar/routeReveal.ts b/apps/web/src/components/sidebar/routeReveal.ts
+index f88433577581b5f2461b824be372873e53d7cefe..891aa84169ba26f4b0b1326be7f836929887cccf 100644
+--- a/apps/web/src/components/sidebar/routeReveal.ts
++++ b/apps/web/src/components/sidebar/routeReveal.ts
+@@ -55,18 +55,31 @@ export function resolveSidebarRouteReveal<T extends RevealableThread>(input: {
+   readonly routeKey: string | null;
+   readonly isSearching: boolean;
+   readonly scopedProjectKeys: ReadonlySet<string> | null;
++  readonly scopedEnvironmentIds?: ReadonlySet<string> | null;
+   readonly delegatedUnderParent: ReadonlySet<string>;
+   readonly findThread: (key: string) => T | undefined;
+-}): { readonly pendingKey: string | null; readonly widensScope: boolean } {
++}): {
++  readonly pendingKey: string | null;
++  readonly widensProjectScope: boolean;
++  readonly widensEnvironmentScope: boolean;
++} {
+   const { reveal, routeKey, isSearching, scopedProjectKeys, delegatedUnderParent, findThread } =
+     input;
+   const pendingKey = pendingSidebarRouteReveal(reveal, routeKey);
+   // Search results replace the thread list; the reveal waits for it to return.
+   const thread = pendingKey === null || isSearching ? undefined : findThread(pendingKey);
+-  const widensScope =
++  const canReveal =
+     thread !== undefined &&
+-    scopedProjectKeys !== null &&
+-    filterSidebarV2VisibleThreads([thread], scopedProjectKeys, delegatedUnderParent).length === 0 &&
+     filterSidebarV2VisibleThreads([thread], null, delegatedUnderParent).length === 1;
+-  return { pendingKey, widensScope };
++  return {
++    pendingKey,
++    widensProjectScope:
++      canReveal &&
++      scopedProjectKeys !== null &&
++      !scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`),
++    widensEnvironmentScope:
++      canReveal &&
++      input.scopedEnvironmentIds != null &&
++      !input.scopedEnvironmentIds.has(thread.environmentId),
++  };
+ }
+diff --git a/apps/web/src/sidebarEnvironmentScope.test.ts b/apps/web/src/sidebarEnvironmentScope.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..802bba21c18c317710443f3d14dbc8e0a0cde12c
+--- /dev/null
++++ b/apps/web/src/sidebarEnvironmentScope.test.ts
+@@ -0,0 +1,410 @@
++import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
++import { getProjectFaviconResourceKey } from "@t3tools/shared/projectFavicon";
++import { describe, expect, it } from "vite-plus/test";
++
++import { filterSidebarV2VisibleThreads, isInSidebarScope } from "./components/Sidebar.logic";
++import {
++  buildSidebarEnvironmentScopeItems,
++  filterSidebarEnvironmentIds,
++  filterSidebarProjectScopeKeysToEnvironment,
++  projectGroupHasEnvironment,
++  normalizeSidebarEnvironmentScopeKeys,
++  nextSidebarEnvironmentScopeKeys,
++  resolveSidebarEnvironmentScope,
++  scopeSidebarProjectGroupsToEnvironment,
++  sidebarEmptyThreadsLabel,
++} from "./sidebarEnvironmentScope";
++import {
++  buildSidebarProjectSnapshots,
++  getSidebarProjectSettingsKey,
++} from "./sidebarProjectGrouping";
++import { makeThreadFixture } from "./test-fixtures";
++import type { Project } from "./types";
++
++const macbookId = EnvironmentId.make("env-macbook");
++const remoteMacId = EnvironmentId.make("env-remote-mac");
++const linuxId = EnvironmentId.make("env-linux");
++const environments = [
++  { environmentId: remoteMacId, label: "Remote Mac" },
++  { environmentId: macbookId, label: "MacBook" },
++  { environmentId: linuxId, label: "Linux box" },
++];
++
++const sharedRepository = {
++  canonicalKey: "github.com/example/shared",
++  locator: {
++    source: "git-remote" as const,
++    remoteName: "origin",
++    remoteUrl: "https://github.com/example/shared.git",
++  },
++};
++
++function makeProject(overrides: Partial<Project> & Pick<Project, "id" | "environmentId">): Project {
++  return {
++    title: overrides.id,
++    workspaceRoot: `/work/${overrides.id}`,
++    repositoryIdentity: null,
++    defaultModelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
++    createdAt: "2026-01-01T00:00:00.000Z",
++    updatedAt: "2026-01-01T00:00:00.000Z",
++    scripts: [],
++    ...overrides,
++  };
++}
++
++const sharedOnMacbook = makeProject({
++  id: ProjectId.make("shared-macbook"),
++  environmentId: macbookId,
++  title: "shared",
++  repositoryIdentity: sharedRepository,
++});
++const sharedOnRemoteMac = makeProject({
++  id: ProjectId.make("shared-remote"),
++  environmentId: remoteMacId,
++  title: "shared",
++  repositoryIdentity: sharedRepository,
++});
++const macbookOnly = makeProject({ id: ProjectId.make("macbook-only"), environmentId: macbookId });
++const linuxOnly = makeProject({ id: ProjectId.make("linux-only"), environmentId: linuxId });
++
++const projectGroups = buildSidebarProjectSnapshots({
++  projects: [sharedOnMacbook, sharedOnRemoteMac, macbookOnly, linuxOnly],
++  settings: { sidebarProjectGroupingMode: "repository", sidebarProjectGroupingOverrides: {} },
++  primaryEnvironmentId: macbookId,
++  resolveEnvironmentLabel: () => null,
++});
++const groupingInput = {
++  projects: [sharedOnMacbook, sharedOnRemoteMac, macbookOnly, linuxOnly],
++  settings: {
++    sidebarProjectGroupingMode: "repository" as const,
++    sidebarProjectGroupingOverrides: {},
++  },
++  primaryEnvironmentId: macbookId,
++};
++const sharedGroup = projectGroups.find((group) => group.displayName === "shared")!;
++
++function threadOn(project: Project, id: string) {
++  return makeThreadFixture({
++    id: ThreadId.make(id),
++    environmentId: project.environmentId,
++    projectId: project.id,
++  });
++}
++
++const threads = [
++  threadOn(sharedOnMacbook, "shared-on-macbook"),
++  threadOn(sharedOnRemoteMac, "shared-on-remote"),
++  threadOn(macbookOnly, "macbook-only"),
++  threadOn(linuxOnly, "linux-only"),
++];
++
++function projectKeysOf(group: (typeof projectGroups)[number]) {
++  return new Set(group.memberProjectRefs.map((ref) => `${ref.environmentId}:${ref.projectId}`));
++}
++
++describe("sidebar machine scope items", () => {
++  it("offers no machine filter with a single environment", () => {
++    expect(
++      buildSidebarEnvironmentScopeItems({
++        environments: [{ environmentId: macbookId, label: "MacBook" }],
++        primaryEnvironmentId: macbookId,
++      }),
++    ).toEqual([]);
++  });
++
++  it("lists all machines first, then this machine, then the rest in catalog order", () => {
++    expect(
++      buildSidebarEnvironmentScopeItems({ environments, primaryEnvironmentId: macbookId }).map(
++        (item) => [item.label, item.environmentId],
++      ),
++    ).toEqual([
++      ["All machines", null],
++      ["MacBook", macbookId],
++      ["Remote Mac", remoteMacId],
++      ["Linux box", linuxId],
++    ]);
++  });
++});
++
++describe("resolving the sidebar machine scope", () => {
++  it.each([
++    { keys: [linuxId], expected: [linuxId], normalized: [linuxId], plain: [], additive: [] },
++    { keys: [], expected: [], normalized: [], plain: [linuxId], additive: [linuxId] },
++    {
++      keys: ["env-gone"],
++      expected: [],
++      normalized: ["env-gone"],
++      plain: [linuxId],
++      additive: ["env-gone", linuxId],
++    },
++    {
++      keys: [linuxId, "env-gone", remoteMacId],
++      expected: [remoteMacId, linuxId],
++      normalized: [linuxId, "env-gone", remoteMacId],
++      plain: [linuxId],
++      additive: ["env-gone", remoteMacId],
++    },
++    {
++      keys: [linuxId, remoteMacId, macbookId],
++      expected: [],
++      normalized: [],
++      plain: [linuxId],
++      additive: [remoteMacId, macbookId],
++    },
++    {
++      keys: [remoteMacId, macbookId],
++      expected: [remoteMacId, macbookId],
++      normalized: [remoteMacId, macbookId],
++      plain: [linuxId],
++      additive: [],
++    },
++  ])("resolves $keys in catalog order", ({ keys, expected, normalized, plain, additive }) => {
++    expect(
++      resolveSidebarEnvironmentScope({ environments, keys }).map((entry) => entry.environmentId),
++    ).toEqual(expected);
++    expect(
++      resolveSidebarEnvironmentScope({ environments: environments.slice(0, 1), keys }),
++    ).toEqual([]);
++    const knownIds = environments.map((entry) => entry.environmentId);
++    expect(normalizeSidebarEnvironmentScopeKeys(keys, knownIds)).toEqual(normalized);
++    expect(nextSidebarEnvironmentScopeKeys(keys, linuxId, false, knownIds)).toEqual(plain);
++    expect(nextSidebarEnvironmentScopeKeys(keys, linuxId, true, knownIds)).toEqual(additive);
++  });
++});
++
++describe("scoping project groups to a machine", () => {
++  it("uses the remote scratch member for settings, project refs and the favicon source", () => {
++    const local = makeProject({
++      id: ProjectId.make("local-scratch"),
++      environmentId: macbookId,
++      workspaceRoot: "/local/scratch",
++      faviconPath: "/local/icon.png",
++      isScratch: true,
++    });
++    const remote = makeProject({
++      id: ProjectId.make("remote-scratch"),
++      environmentId: remoteMacId,
++      workspaceRoot: "/remote/scratch",
++      faviconPath: "/remote/icon.png",
++      isScratch: true,
++    });
++    const input = {
++      projects: [local, remote],
++      settings: {
++        sidebarProjectGroupingMode: "repository" as const,
++        sidebarProjectGroupingOverrides: {},
++      },
++      primaryEnvironmentId: macbookId,
++      resolveEnvironmentLabel: (environmentId: EnvironmentId) =>
++        environments.find((environment) => environment.environmentId === environmentId)?.label ??
++        null,
++    };
++    const groups = buildSidebarProjectSnapshots({ ...input, groupScratchProjects: true });
++    expect(groups).toHaveLength(1);
++
++    const scoped = scopeSidebarProjectGroupsToEnvironment(groups, new Set([remoteMacId]), input);
++    expect(scoped).toHaveLength(1);
++    const group = scoped[0]!;
++    const remoteSettingsGroup = buildSidebarProjectSnapshots({ ...input, projects: [remote] })[0]!;
++    expect(getSidebarProjectSettingsKey(group, input.settings, input.projects)).toBe(
++      remoteSettingsGroup.projectKey,
++    );
++    expect(group.memberProjectRefs).toEqual([{ environmentId: remoteMacId, projectId: remote.id }]);
++    expect(group).toMatchObject({ environmentId: remoteMacId, id: remote.id });
++    expect(
++      getProjectFaviconResourceKey(group.environmentId, group.workspaceRoot, group.faviconPath),
++    ).toBe(getProjectFaviconResourceKey(remoteMacId, remote.workspaceRoot, remote.faviconPath));
++    expect(group.environmentPresence).toBe("remote-only");
++    expect(group.remoteEnvironmentLabels).toEqual(["Remote Mac"]);
++  });
++
++  it("reduces groups to their members on the machine and drops groups without one", () => {
++    const scoped = scopeSidebarProjectGroupsToEnvironment(
++      projectGroups,
++      new Set([remoteMacId]),
++      groupingInput,
++    );
++
++    expect(scoped).toHaveLength(1);
++    expect(scoped[0]?.projectKey).toBe(sharedGroup.projectKey);
++    expect(scoped[0]?.memberProjectRefs).toEqual([
++      { environmentId: remoteMacId, projectId: sharedOnRemoteMac.id },
++    ]);
++    expect(scoped[0]?.memberProjects.map((member) => member.id)).toEqual([sharedOnRemoteMac.id]);
++    expect(scoped[0]?.groupedProjectCount).toBe(1);
++
++    const olderRemote = {
++      ...sharedOnRemoteMac,
++      id: ProjectId.make("older-remote"),
++      updatedAt: "2025-01-01T00:00:00.000Z",
++    };
++    const currentRemote = { ...sharedOnRemoteMac, repositoryIdentity: null };
++    const input = { ...groupingInput, projects: [sharedOnMacbook, olderRemote, currentRemote] };
++    const groups = buildSidebarProjectSnapshots({ ...input, resolveEnvironmentLabel: () => null });
++    const reduced = scopeSidebarProjectGroupsToEnvironment(groups, new Set([remoteMacId]), input);
++    expect(reduced).toHaveLength(1);
++    expect(reduced[0]?.projectKey).toBe(sharedGroup.projectKey);
++    expect(reduced[0]?.memberProjects.map((member) => member.id)).toEqual([currentRemote.id]);
++    expect(reduced[0]?.memberProjectRefs).toEqual([
++      { environmentId: remoteMacId, projectId: olderRemote.id },
++      { environmentId: remoteMacId, projectId: currentRemote.id },
++    ]);
++  });
++
++  it("ignores saved projects absent from the scoped machine without changing the saved keys", () => {
++    const scoped = scopeSidebarProjectGroupsToEnvironment(
++      projectGroups,
++      new Set([linuxId]),
++      groupingInput,
++    );
++    const savedKeys = [sharedGroup.projectKey];
++    const effectiveKeys = filterSidebarProjectScopeKeysToEnvironment(scoped, savedKeys, null);
++    expect(effectiveKeys).toEqual([]);
++    expect(savedKeys).toEqual([sharedGroup.projectKey]);
++    const selectedGroups = scoped.filter((group) => effectiveKeys.includes(group.projectKey));
++    const projectKeys = selectedGroups.length === 0 ? null : projectKeysOf(selectedGroups[0]!);
++    expect(
++      filterSidebarV2VisibleThreads(threads, projectKeys, new Set(), new Set([linuxId])).map(
++        (thread) => thread.id,
++      ),
++    ).toEqual(["linux-only"]);
++    expect(
++      filterSidebarEnvironmentIds([macbookId, linuxId], projectKeys, new Set([linuxId])),
++    ).toEqual([linuxId]);
++    const linuxGroup = scoped[0]!;
++    expect(
++      filterSidebarProjectScopeKeysToEnvironment(
++        scoped,
++        [...savedKeys, linuxGroup.projectKey],
++        null,
++      ),
++    ).toEqual([linuxGroup.projectKey]);
++  });
++
++  it("keeps the groups untouched for all machines", () => {
++    expect(scopeSidebarProjectGroupsToEnvironment(projectGroups, null, groupingInput)).toBe(
++      projectGroups,
++    );
++    const multiple = scopeSidebarProjectGroupsToEnvironment(
++      projectGroups,
++      new Set([remoteMacId, linuxId]),
++      groupingInput,
++    );
++    expect(multiple).toHaveLength(2);
++    expect(multiple[0]).toBe(sharedGroup);
++    expect(multiple[0]?.memberProjectRefs).toEqual(sharedGroup.memberProjectRefs);
++  });
++
++  it("tells whether a project group lives on a machine", () => {
++    expect(projectGroupHasEnvironment(sharedGroup, remoteMacId)).toBe(true);
++    expect(projectGroupHasEnvironment(sharedGroup, linuxId)).toBe(false);
++    const selected = projectGroups.map((group) => group.projectKey);
++    expect(
++      filterSidebarProjectScopeKeysToEnvironment(projectGroups, selected, new Set([remoteMacId])),
++    ).toEqual([sharedGroup.projectKey]);
++    expect(
++      filterSidebarProjectScopeKeysToEnvironment(projectGroups, selected, new Set([macbookId])),
++    ).toEqual(
++      projectGroups
++        .filter((group) =>
++          group.memberProjects.some((member) => member.environmentId === macbookId),
++        )
++        .map((group) => group.projectKey),
++    );
++    expect(filterSidebarProjectScopeKeysToEnvironment(projectGroups, selected, null)).toBe(
++      selected,
++    );
++  });
++});
++
++describe("filtering sidebar threads by machine", () => {
++  const idsOf = (list: readonly { id: string }[]) => list.map((thread) => thread.id);
++
++  it("keeps only the threads that live on the scoped machine", () => {
++    expect(
++      idsOf(filterSidebarV2VisibleThreads(threads, null, new Set(), new Set([macbookId]))),
++    ).toEqual(["shared-on-macbook", "macbook-only"]);
++    expect(idsOf(filterSidebarV2VisibleThreads(threads, null, new Set(), null))).toHaveLength(
++      threads.length,
++    );
++  });
++
++  it("composes the machine scope with the project scope", () => {
++    const sharedKeys = projectKeysOf(sharedGroup);
++
++    expect(idsOf(filterSidebarV2VisibleThreads(threads, sharedKeys, new Set(), null))).toEqual([
++      "shared-on-macbook",
++      "shared-on-remote",
++    ]);
++    expect(
++      idsOf(filterSidebarV2VisibleThreads(threads, sharedKeys, new Set(), new Set([remoteMacId]))),
++    ).toEqual(["shared-on-remote"]);
++    expect(
++      filterSidebarV2VisibleThreads(threads, sharedKeys, new Set(), new Set([linuxId])),
++    ).toEqual([]);
++    const environmentIds = environments.map((environment) => environment.environmentId);
++    expect(filterSidebarEnvironmentIds(environmentIds, sharedKeys, new Set([linuxId]))).toEqual([]);
++    expect(filterSidebarEnvironmentIds(environmentIds, sharedKeys, new Set([remoteMacId]))).toEqual(
++      [remoteMacId],
++    );
++    expect(filterSidebarEnvironmentIds(environmentIds, sharedKeys, null)).toEqual([
++      remoteMacId,
++      macbookId,
++    ]);
++    expect(filterSidebarEnvironmentIds(environmentIds, null, new Set([linuxId]))).toEqual([
++      linuxId,
++    ]);
++    expect(filterSidebarEnvironmentIds(environmentIds, new Set(), null)).toEqual([]);
++    const selectedMachines = new Set([remoteMacId, linuxId]);
++    expect(
++      idsOf(filterSidebarV2VisibleThreads(threads, null, new Set(), selectedMachines)),
++    ).toEqual(["shared-on-remote", "linux-only"]);
++    expect(filterSidebarEnvironmentIds(environmentIds, sharedKeys, selectedMachines)).toEqual([
++      remoteMacId,
++    ]);
++    expect(
++      filterSidebarProjectScopeKeysToEnvironment(
++        projectGroups,
++        projectGroups.map((group) => group.projectKey),
++        selectedMachines,
++      ),
++    ).toEqual([
++      sharedGroup.projectKey,
++      projectGroups.find((group) => group.id === linuxOnly.id)!.projectKey,
++    ]);
++    const selectedKeys = new Set([...sharedKeys, `${macbookOnly.environmentId}:${macbookOnly.id}`]);
++    expect(
++      idsOf(filterSidebarV2VisibleThreads(threads, selectedKeys, new Set(), new Set([macbookId]))),
++    ).toEqual(["shared-on-macbook", "macbook-only"]);
++    expect(
++      idsOf(
++        filterSidebarV2VisibleThreads(threads, selectedKeys, new Set(), new Set([remoteMacId])),
++      ),
++    ).toEqual(["shared-on-remote"]);
++  });
++
++  it("applies the same scope to drafts", () => {
++    const draft = { environmentId: linuxId, projectId: linuxOnly.id };
++
++    expect(isInSidebarScope(draft, null, new Set([linuxId]))).toBe(true);
++    expect(isInSidebarScope(draft, null, new Set([macbookId]))).toBe(false);
++    expect(isInSidebarScope(draft, projectKeysOf(sharedGroup), new Set([linuxId]))).toBe(false);
++  });
++});
++
++describe("sidebar empty thread copy", () => {
++  it("names the scoped project and machine", () => {
++    expect(sidebarEmptyThreadsLabel({ projectName: null, machineLabel: null })).toBe(
++      "No threads yet",
++    );
++    expect(sidebarEmptyThreadsLabel({ projectName: "shared", machineLabel: null })).toBe(
++      "No threads in shared yet",
++    );
++    expect(sidebarEmptyThreadsLabel({ projectName: null, machineLabel: "Linux box" })).toBe(
++      "No threads on Linux box yet",
++    );
++    expect(sidebarEmptyThreadsLabel({ projectName: "shared", machineLabel: "Remote Mac" })).toBe(
++      "No threads in shared on Remote Mac yet",
++    );
++  });
++});
+diff --git a/apps/web/src/sidebarEnvironmentScope.ts b/apps/web/src/sidebarEnvironmentScope.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1cf2f6f506c03461e2aa1d28d112ba0c3f0fbdf5
+--- /dev/null
++++ b/apps/web/src/sidebarEnvironmentScope.ts
+@@ -0,0 +1,152 @@
++import type { EnvironmentId } from "@t3tools/contracts";
++
++import {
++  buildSidebarProjectSnapshots,
++  type SidebarProjectSnapshot,
++} from "./sidebarProjectGrouping";
++
++interface SidebarEnvironmentIdentity {
++  readonly environmentId: EnvironmentId;
++  readonly label: string;
++}
++
++interface SidebarEnvironmentScopeItem {
++  readonly value: string;
++  readonly label: string;
++  readonly environmentId: EnvironmentId | null;
++}
++
++export function buildSidebarEnvironmentScopeItems(input: {
++  readonly environments: ReadonlyArray<SidebarEnvironmentIdentity>;
++  readonly primaryEnvironmentId: EnvironmentId | null;
++}): ReadonlyArray<SidebarEnvironmentScopeItem> {
++  if (input.environments.length < 2) return [];
++  const isPrimary = (environment: SidebarEnvironmentIdentity) =>
++    environment.environmentId === input.primaryEnvironmentId;
++  return [
++    { value: "all", label: "All machines", environmentId: null },
++    ...[
++      ...input.environments.filter(isPrimary),
++      ...input.environments.filter((environment) => !isPrimary(environment)),
++    ].map((environment) => ({
++      value: environment.environmentId,
++      label: environment.label,
++      environmentId: environment.environmentId,
++    })),
++  ];
++}
++
++export function normalizeSidebarEnvironmentScopeKeys(
++  keys: readonly string[],
++  environmentIds: readonly EnvironmentId[],
++): string[] {
++  const selected = new Set(keys);
++  return environmentIds.length > 0 && environmentIds.every((id) => selected.has(id))
++    ? []
++    : [...selected];
++}
++
++export function nextSidebarEnvironmentScopeKeys(
++  keys: readonly string[],
++  key: string,
++  additive: boolean,
++  environmentIds: readonly EnvironmentId[],
++): string[] {
++  if (!additive) return keys.length === 1 && keys[0] === key ? [] : [key];
++  const next = keys.includes(key) ? keys.filter((candidate) => candidate !== key) : [...keys, key];
++  return normalizeSidebarEnvironmentScopeKeys(next, environmentIds);
++}
++
++export function resolveSidebarEnvironmentScope(input: {
++  readonly environments: ReadonlyArray<SidebarEnvironmentIdentity>;
++  readonly keys: readonly string[];
++}): ReadonlyArray<SidebarEnvironmentIdentity> {
++  if (input.environments.length < 2) return [];
++  const keys = new Set(input.keys);
++  const selected = input.environments.filter((environment) => keys.has(environment.environmentId));
++  return selected.length === input.environments.length ? [] : selected;
++}
++
++export function projectGroupHasEnvironment(
++  group: Pick<SidebarProjectSnapshot, "memberProjectRefs">,
++  environmentId: EnvironmentId,
++): boolean {
++  return group.memberProjectRefs.some((ref) => ref.environmentId === environmentId);
++}
++
++export function filterSidebarEnvironmentIds(
++  environmentIds: ReadonlyArray<EnvironmentId>,
++  scopedProjectKeys: ReadonlySet<string> | null,
++  scopedEnvironmentIds: ReadonlySet<EnvironmentId> | null,
++): EnvironmentId[] {
++  const projectKeys = scopedProjectKeys === null ? null : [...scopedProjectKeys];
++  return environmentIds.filter(
++    (id) =>
++      (scopedEnvironmentIds === null || scopedEnvironmentIds.has(id)) &&
++      (projectKeys === null || projectKeys.some((key) => key.startsWith(`${id}:`))),
++  );
++}
++
++export function filterSidebarProjectScopeKeysToEnvironment(
++  groups: ReadonlyArray<SidebarProjectSnapshot>,
++  keys: ReadonlyArray<string>,
++  environmentIds: ReadonlySet<EnvironmentId> | null,
++): ReadonlyArray<string> {
++  const availableKeys = new Set(
++    groups
++      .filter(
++        (group) =>
++          environmentIds === null ||
++          [...environmentIds].some((id) => projectGroupHasEnvironment(group, id)),
++      )
++      .map((group) => group.projectKey),
++  );
++  const filteredKeys = keys.filter((key) => availableKeys.has(key));
++  return filteredKeys.length === keys.length ? keys : filteredKeys;
++}
++
++export function scopeSidebarProjectGroupsToEnvironment(
++  groups: ReadonlyArray<SidebarProjectSnapshot>,
++  environmentIds: ReadonlySet<EnvironmentId> | null,
++  input: Pick<
++    Parameters<typeof buildSidebarProjectSnapshots>[0],
++    "projects" | "settings" | "primaryEnvironmentId"
++  >,
++): ReadonlyArray<SidebarProjectSnapshot> {
++  if (environmentIds === null) return groups;
++  if (environmentIds.size !== 1) {
++    return groups.filter((group) =>
++      [...environmentIds].some((id) => projectGroupHasEnvironment(group, id)),
++    );
++  }
++  const environmentId = [...environmentIds][0]!;
++  const projectByKey = new Map(
++    input.projects.map((project) => [`${project.environmentId}:${project.id}`, project] as const),
++  );
++  const projects = groups.flatMap((group) =>
++    group.memberProjectRefs.flatMap((ref) => {
++      if (ref.environmentId !== environmentId) return [];
++      const project = projectByKey.get(`${ref.environmentId}:${ref.projectId}`);
++      return project ? [project] : [];
++    }),
++  );
++  const environmentLabel =
++    groups
++      .flatMap((group) => group.memberProjects)
++      .find((member) => member.environmentId === environmentId)?.environmentLabel ?? null;
++  return buildSidebarProjectSnapshots({
++    ...input,
++    projects,
++    groupScratchProjects: true,
++    resolveEnvironmentLabel: () => environmentLabel,
++  });
++}
++
++export function sidebarEmptyThreadsLabel(input: {
++  readonly projectName: string | null;
++  readonly machineLabel: string | null;
++}): string {
++  const project = input.projectName === null ? "" : ` in ${input.projectName}`;
++  const machine = input.machineLabel === null ? "" : ` on ${input.machineLabel}`;
++  return `No threads${project}${machine} yet`;
++}
+diff --git a/apps/web/src/uiStateStore.test.ts b/apps/web/src/uiStateStore.test.ts
+index dbfb60d15bd20cfb7208457b42386767f54de5dc..116e766afc6b6645f6098a576666480d1f9309ac 100644
+--- a/apps/web/src/uiStateStore.test.ts
++++ b/apps/web/src/uiStateStore.test.ts
+@@ -20,6 +20,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
+     projectExpandedById: {},
+     projectOrder: [],
+     sidebarProjectScopeKeys: [],
++    sidebarEnvironmentScopeKeys: [],
+     threadLastVisitedAtById: {},
+     threadChangedFilesExpandedById: {},
+     defaultAdvertisedEndpointKey: null,
+@@ -95,6 +96,23 @@ describe("uiStateStore pure functions", () => {
+ });
+ 
+ describe("parsePersistedState", () => {
++  it.each([
++    { legacy: undefined, keys: undefined, expected: [] },
++    { legacy: null, keys: undefined, expected: [] },
++    { legacy: "", keys: undefined, expected: [] },
++    { legacy: 42, keys: undefined, expected: [] },
++    { legacy: "mac", keys: undefined, expected: ["mac"] },
++    { legacy: "mac", keys: [], expected: [] },
++    { legacy: "mac", keys: ["linux", "unknown", "linux", "", 42], expected: ["linux", "unknown"] },
++  ])("migrates and sanitizes machine scopes $legacy / $keys", ({ legacy, keys, expected }) => {
++    expect(
++      parsePersistedState({
++        sidebarEnvironmentScopeKey: legacy as string | null,
++        ...(keys === undefined ? {} : { sidebarEnvironmentScopeKeys: keys as string[] }),
++      }).sidebarEnvironmentScopeKeys,
++    ).toEqual(expected);
++  });
++
+   it("hydrates raw UI-owned state without server entities", () => {
+     const parsed = parsePersistedState({
+       projectExpandedById: {
+@@ -126,6 +144,7 @@ describe("parsePersistedState", () => {
+       },
+       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
+       sidebarProjectScopeKeys: [],
++      sidebarEnvironmentScopeKeys: [],
+       pullRequestMergeMethod: "merge",
+       threadChangedFilesExpandedById: {
+         "environment:thread-1": {
+@@ -231,6 +250,7 @@ describe("uiStateStore persistence", () => {
+       },
+       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
+       sidebarProjectScopeKeys: [],
++      sidebarEnvironmentScopeKeys: [],
+       sidebarProjectScopeKey: null,
+       threadChangedFilesExpansionVersion: 2,
+       threadChangedFilesExpandedById: {
+@@ -248,13 +268,21 @@ describe("uiStateStore persistence", () => {
+ 
+   it("restores the sidebar project scope across reloads", () => {
+     const keys = ["github.com/pingdotgg/t3code", "github.com/pingdotgg/uploadthing"];
+-    persistState(makeUiState({ sidebarProjectScopeKeys: keys }));
++    persistState(
++      makeUiState({
++        sidebarProjectScopeKeys: keys,
++        sidebarEnvironmentScopeKeys: ["environment-remote-mac"],
++      }),
++    );
+ 
+     const persisted = JSON.parse(
+       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
+     ) as PersistedUiState;
+ 
+     expect(parsePersistedState(persisted).sidebarProjectScopeKeys).toEqual(keys);
++    expect(parsePersistedState(persisted).sidebarEnvironmentScopeKeys).toEqual([
++      "environment-remote-mac",
++    ]);
+   });
+ 
+   it("keeps a single-project scope readable by older clients", () => {
+diff --git a/apps/web/src/uiStateStore.ts b/apps/web/src/uiStateStore.ts
+index 328e1a6477132057c7a709573a4420ade1b9fd9f..6acc82937e5de6e29ff18e19beefafa94e9017ec 100644
+--- a/apps/web/src/uiStateStore.ts
++++ b/apps/web/src/uiStateStore.ts
+@@ -28,6 +28,8 @@ export interface PersistedUiState {
+   defaultAdvertisedEndpointKey?: string | null;
+   sidebarProjectScopeKey?: string | null;
+   sidebarProjectScopeKeys?: string[];
++  sidebarEnvironmentScopeKey?: string | null;
++  sidebarEnvironmentScopeKeys?: string[];
+   threadChangedFilesExpansionVersion?: number;
+   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
+   pullRequestMergeMethod?: string;
+@@ -37,6 +39,7 @@ export interface UiProjectState {
+   projectExpandedById: Record<string, boolean>;
+   projectOrder: string[];
+   sidebarProjectScopeKeys: string[];
++  sidebarEnvironmentScopeKeys: string[];
+ }
+ 
+ export interface UiThreadState {
+@@ -59,6 +62,7 @@ const initialState: UiState = {
+   projectExpandedById: {},
+   projectOrder: [],
+   sidebarProjectScopeKeys: [],
++  sidebarEnvironmentScopeKeys: [],
+   threadLastVisitedAtById: {},
+   threadChangedFilesExpandedById: {},
+   defaultAdvertisedEndpointKey: null,
+@@ -154,6 +158,9 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
+     sidebarProjectScopeKeys: sanitizeStringArray(
+       parsed.sidebarProjectScopeKeys ?? [parsed.sidebarProjectScopeKey],
+     ),
++    sidebarEnvironmentScopeKeys: sanitizeStringArray(
++      parsed.sidebarEnvironmentScopeKeys ?? [parsed.sidebarEnvironmentScopeKey],
++    ),
+     pullRequestMergeMethod: isPullRequestMergeMethod(parsed.pullRequestMergeMethod)
+       ? parsed.pullRequestMergeMethod
+       : initialState.pullRequestMergeMethod,
+@@ -228,6 +235,7 @@ export function persistState(state: UiState): void {
+         threadLastVisitedAtById: state.threadLastVisitedAtById,
+         defaultAdvertisedEndpointKey: state.defaultAdvertisedEndpointKey,
+         sidebarProjectScopeKeys: state.sidebarProjectScopeKeys,
++        sidebarEnvironmentScopeKeys: state.sidebarEnvironmentScopeKeys,
+         // Older clients read only this field.
+         sidebarProjectScopeKey:
+           state.sidebarProjectScopeKeys.length === 1
+@@ -345,6 +353,17 @@ function setSidebarProjectScopeKeys(state: UiState, projectKeys: readonly string
+   };
+ }
+ 
++function setSidebarEnvironmentScopeKeys(
++  state: UiState,
++  environmentKeys: readonly string[],
++): UiState {
++  const nextKeys = sanitizeStringArray(environmentKeys);
++  return nextKeys.length === state.sidebarEnvironmentScopeKeys.length &&
++    nextKeys.every((key) => state.sidebarEnvironmentScopeKeys.includes(key))
++    ? state
++    : { ...state, sidebarEnvironmentScopeKeys: nextKeys };
++}
++
+ function setPullRequestMergeMethod(state: UiState, method: PullRequestMergeMethod): UiState {
+   return state.pullRequestMergeMethod === method
+     ? state
+@@ -434,6 +453,7 @@ interface UiStateStore extends UiState {
+   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
+   setDefaultAdvertisedEndpointKey: (key: string | null) => void;
+   setSidebarProjectScopeKeys: (projectKeys: readonly string[]) => void;
++  setSidebarEnvironmentScopeKeys: (environmentKeys: readonly string[]) => void;
+   setPullRequestMergeMethod: (method: PullRequestMergeMethod) => void;
+   setProjectExpanded: (projectIds: string | readonly string[], expanded: boolean) => void;
+   reorderProjects: (
+@@ -455,6 +475,8 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
+     set((state) => setDefaultAdvertisedEndpointKey(state, key)),
+   setSidebarProjectScopeKeys: (projectKeys) =>
+     set((state) => setSidebarProjectScopeKeys(state, projectKeys)),
++  setSidebarEnvironmentScopeKeys: (environmentKeys) =>
++    set((state) => setSidebarEnvironmentScopeKeys(state, environmentKeys)),
+   setPullRequestMergeMethod: (method) => set((state) => setPullRequestMergeMethod(state, method)),
+   setProjectExpanded: (projectIds, expanded) =>
+     set((state) => setProjectExpanded(state, projectIds, expanded)),

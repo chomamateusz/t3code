@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mateusz Choma <chomamateusz@gmail.com>
+Date: Fri, 25 Sep 2026 12:31:05 +0200
+Subject: =?UTF-8?q?=F0=9F=94=90=20Keep=20paired=20devices=20signed=20in=20?=
+ =?UTF-8?q?for=20ten=20years?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Behaviours:
+- Change the default session lifetime from 30 days to 3650 days so newly issued direct-pairing sessions last ten years on this private, single-operator deployment.
+- Preserve explicit lifetime overrides and device revocation through Settings > Connections; existing expired sessions still require pairing again.
+- Guard the default 3650-day issued-session lifetime in the existing active-session listing test.
+
+Integration details:
+- Preserve upstream DPoP renewal-chain behavior and every explicit TTL; only the default changes.
+
+Port to 965ddc1d6c:
+- Applied without conflicts. On 965ddc1d6c SessionStore.ts still declares DEFAULT_SESSION_TTL = Duration.days(30) and issues with input?.ttl ?? DEFAULT_SESSION_TTL (SessionStore.ts:653); the separate 30-day MCP client session TTL is untouched.
+
+Files:
+apps/server:
+- apps/server/src/auth/SessionStore.test.ts
+- apps/server/src/auth/SessionStore.ts
+
+Tests:
+- apps/server/src/auth/EnvironmentAuth.test.ts
+- apps/server/src/auth/EnvironmentAuthAdmin.test.ts
+- apps/server/src/auth/SessionStore.test.ts
+- apps/server/src/ws.test.ts
+- Whole-stack focused validation on 965ddc1d6c: 1,321 passed and 2 baseline failures across 48 test files (every test file the stack touches plus CommandPalette.logic.test.ts and chatRouteCommands.browser.test.ts). Web: 679 / 32 files; desktop: 118 / 9; server: 432 passed and 2 baseline failures / 4; contracts: 36 / 1; scripts: 56 / 2.
+- vp run typecheck passed in apps/web, apps/desktop, apps/server, packages/contracts and scripts; vp lint and vp fmt --check passed on the 119 changed files.
+- Baseline: UsageService.test.ts on detached 965ddc1d6c fails the same 2 assertions (Pi /var versus /private/var path equality; Codex open-spy raw-path equality); no assertion was changed to hide them.
+- No installed-client or live remote/relay/tunnel pass: no development servers or installed app changes were authorized.
+
+Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
+---
+ apps/server/src/auth/SessionStore.test.ts | 4 ++++
+ apps/server/src/auth/SessionStore.ts      | 2 +-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/apps/server/src/auth/SessionStore.test.ts b/apps/server/src/auth/SessionStore.test.ts
+index b224112168bb96ebf0236f9b4e5a5c8fe08d675f..c23485e86b0143f3dc32d15e9575aff9fb8b33de 100644
+--- a/apps/server/src/auth/SessionStore.test.ts
++++ b/apps/server/src/auth/SessionStore.test.ts
+@@ -568,6 +568,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("SessionStore.lay
+       );
+ 
+       expect(beforeRevoke).toHaveLength(2);
++      const pairedClient = beforeRevoke.find((entry) => entry.sessionId === client.sessionId)!;
++      expect(
++        pairedClient.expiresAt.epochMilliseconds - pairedClient.issuedAt.epochMilliseconds,
++      ).toBe(Duration.toMillis(Duration.days(3650)));
+       expect(beforeRevoke.find((entry) => entry.sessionId === client.sessionId)?.connected).toBe(
+         true,
+       );
+diff --git a/apps/server/src/auth/SessionStore.ts b/apps/server/src/auth/SessionStore.ts
+index 5a25d152c5174ff0b016faec866ff4a5099da2a2..10ed9d54b62748308130f9a7f83a9a619e91fb4e 100644
+--- a/apps/server/src/auth/SessionStore.ts
++++ b/apps/server/src/auth/SessionStore.ts
+@@ -425,7 +425,7 @@ export class SessionStore extends Context.Service<
+ >()("t3/auth/SessionStore") {}
+ 
+ const SIGNING_SECRET_NAME = "server-signing-key";
+-const DEFAULT_SESSION_TTL = Duration.days(30);
++const DEFAULT_SESSION_TTL = Duration.days(3650);
+ const DEFAULT_WEBSOCKET_TOKEN_TTL = Duration.minutes(5);
+ 
+ const SessionClaims = Schema.Struct({

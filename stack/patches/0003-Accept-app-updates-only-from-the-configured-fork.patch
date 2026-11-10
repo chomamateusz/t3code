@@ -1,0 +1,2444 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mateusz Choma <chomamateusz@gmail.com>
+Date: Thu, 1 Oct 2026 15:30:00 +0200
+Subject: =?UTF-8?q?=F0=9F=94=92=20Accept=20app=20updates=20only=20from=20t?=
+ =?UTF-8?q?he=20configured=20fork?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Behaviours:
+Desktop feed enforcement:
+- Bake the normalized allowed update repository into packaged metadata and inspect app-update.yml and Electron's active feed override before checking, downloading or installing updates.
+- Restrict configured builds to the expected GitHub repository, host, protocol and latest channel; reject malformed, duplicate, missing, generic and foreign feeds, including mock-feed bypasses, and recheck around asynchronous installation.
+- Publish refusal state and reasons to local and remote callers; keep Settings, sidebar update controls and update-everything consistent with disabled or refused updates.
+- Preserve upstream server delegation of desktop-managed updates to the shell. Standalone server, CLI, SSH download and shared release behavior remain upstream.
+
+Client release discovery and recovery:
+- Bake the client release repository into desktop and web bundles. Resolve desktop startup recovery/reinstall links locally in the shell, without altering server-imported shared helpers.
+- Use fork release-history links for renderer boot-failure downloads and tagged release links for update details; keep stock stable/nightly downloads in unconfigured clients.
+- Discover configured web publication and release tracks through paginated fork GitHub releases, excluding drafts and preserving stable/nightly/preview selection, without official npm fallback for missing or malformed fork releases. Unconfigured clients keep upstream discovery.
+- Refuse pinned-out local and remote desktop channel switches while retaining upstream expected-version guards, update recovery and cross-track database safety.
+
+Fork release pipeline:
+- Add a manually dispatched workflow restricted to chomamateusz/t3code, validating unused/increasing fork versions, resolving the source ref and supporting drafts and per-version concurrency.
+- Require macOS signing inputs and reuse desktop release packaging for signed macOS arm64 and Linux x64 artifacts with fork feeds and desktop allowlists.
+- Verify signatures, notarization, stapling, packaged AppImage/deb feeds and metadata, update manifests and CLI archive presence; publish artifacts and archive checksums. CLI archives retain upstream update behavior.
+
+Integration details:
+- Keep upstream managed update policy in force. Configured forks also refuse generic managed mirror feeds; fork checks bypass the new server npm-registry RPC, while unconfigured clients retain that RPC and its environment selection. The removed global publication check in update-everything remains removed; per-server delegation and guarded shell actions stay upstream. Track-switch missing-release copy names the configured repository.
+- The upstream ManagedPolicy startup-recovery offer (#30319) composes with startupRecoveryReleaseUrl: Reinstall and Releases open the configured fork's releases.
+
+Port to 965ddc1d6c:
+- Applied without conflicts. Upstream #33142 added a Linux packaging-tool cache step to release-desktop.yml; the fork repository env lines are unchanged beside it. Upstream #33150 and #33153 install the t3 command from npx t3 and the desktop app; they add no desktop or web update feed or release endpoint, and CLI updates stay upstream.
+
+Files:
+.github:
+- .github/workflows/release-desktop.yml
+- .github/workflows/release-fork.yml
+apps/desktop:
+- apps/desktop/src/app/DesktopStartupRecovery.test.ts
+- apps/desktop/src/app/DesktopStartupRecovery.ts
+- apps/desktop/src/electron/ElectronUpdater.test.ts
+- apps/desktop/src/electron/ElectronUpdater.ts
+- apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
+- apps/desktop/src/updates/DesktopRemoteUpdates.ts
+- apps/desktop/src/updates/DesktopUpdates.ts
+- apps/desktop/src/updates/forkFeedPolicy.test.ts
+- apps/desktop/src/updates/forkUpdateProvider.test.ts
+- apps/desktop/src/updates/remoteUpdateFlow.ts
+- apps/desktop/src/updates/updatesTestHarness.ts
+- apps/desktop/vite.config.test.ts
+- apps/desktop/vite.config.ts
+apps/web:
+- apps/web/src/bundledDev.test.ts
+- apps/web/src/components/desktopUpdate.logic.test.ts
+- apps/web/src/components/desktopUpdate.logic.ts
+- apps/web/src/components/settings/SettingsPanels.tsx
+- apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx
+- apps/web/src/components/settings/updateTrackSwitch.logic.test.ts
+- apps/web/src/components/settings/updateTrackSwitch.logic.ts
+- apps/web/src/components/sidebar/SidebarUpdatePill.tsx
+- apps/web/src/lib/bootError.ts
+- apps/web/src/state/npmRelease.test.ts
+- apps/web/src/state/npmRelease.ts
+- apps/web/src/vite-env.d.ts
+- apps/web/vite.config.ts
+scripts:
+- scripts/build-desktop-artifact.test.ts
+- scripts/build-desktop-artifact.ts
+- scripts/verify-fork-update-feed.test.ts
+- scripts/verify-fork-update-feed.ts
+
+Tests:
+- apps/desktop/scripts/main-process-bundle.test.mjs
+- apps/desktop/src/app/DesktopApp.test.ts
+- apps/desktop/src/app/DesktopStartupRecovery.test.ts
+- apps/desktop/src/electron/ElectronUpdater.test.ts
+- apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
+- apps/desktop/src/updates/DesktopUpdates.test.ts
+- apps/desktop/src/updates/forkFeedPolicy.test.ts
+- apps/desktop/src/updates/forkUpdateProvider.test.ts
+- apps/desktop/src/updates/remoteUpdateFlow.test.ts
+- apps/desktop/src/window/DesktopApplicationMenu.test.ts
+- apps/desktop/vite.config.test.ts
+- apps/web/src/bundledDev.test.ts
+- apps/web/src/components/desktopUpdate.logic.test.ts
+- apps/web/src/components/settings/updateTrackSwitch.logic.test.ts
+- apps/web/src/components/sidebar/SidebarUpdatePill.browser.test.tsx
+- apps/web/src/lib/bootError.test.ts
+- apps/web/src/state/npmRelease.test.ts
+- scripts/build-desktop-artifact.test.ts
+- scripts/verify-fork-update-feed.test.ts
+- Whole-stack focused validation on 965ddc1d6c: 1,321 passed and 2 baseline failures across 48 test files (every test file the stack touches plus CommandPalette.logic.test.ts and chatRouteCommands.browser.test.ts). Web: 679 / 32 files; desktop: 118 / 9; server: 432 passed and 2 baseline failures / 4; contracts: 36 / 1; scripts: 56 / 2.
+- vp run typecheck passed in apps/web, apps/desktop, apps/server, packages/contracts and scripts; vp lint and vp fmt --check passed on the 119 changed files.
+- Baseline: UsageService.test.ts on detached 965ddc1d6c fails the same 2 assertions (Pi /var versus /private/var path equality; Codex open-spy raw-path equality); no assertion was changed to hide them.
+- No installed-client or live remote/relay/tunnel pass: no development servers or installed app changes were authorized.
+
+Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
+---
+ .github/workflows/release-desktop.yml         |   3 +
+ .github/workflows/release-fork.yml            | 442 ++++++++++++++++++
+ .../src/app/DesktopStartupRecovery.test.ts    |  17 +-
+ .../desktop/src/app/DesktopStartupRecovery.ts |  15 +-
+ .../src/electron/ElectronUpdater.test.ts      |  47 ++
+ apps/desktop/src/electron/ElectronUpdater.ts  |   7 +-
+ .../src/updates/DesktopRemoteUpdates.test.ts  | 135 +++++-
+ .../src/updates/DesktopRemoteUpdates.ts       |  11 +
+ apps/desktop/src/updates/DesktopUpdates.ts    |  92 +++-
+ .../src/updates/forkFeedPolicy.test.ts        | 206 ++++++++
+ .../src/updates/forkUpdateProvider.test.ts    | 128 +++++
+ apps/desktop/src/updates/remoteUpdateFlow.ts  |   2 +-
+ .../desktop/src/updates/updatesTestHarness.ts |  24 +-
+ apps/desktop/vite.config.test.ts              |  30 ++
+ apps/desktop/vite.config.ts                   |   5 +
+ apps/web/src/bundledDev.test.ts               |   8 +-
+ .../components/desktopUpdate.logic.test.ts    |  52 ++-
+ .../web/src/components/desktopUpdate.logic.ts |  30 +-
+ .../components/settings/SettingsPanels.tsx    |  43 +-
+ .../settings/UpdateTrackSwitchDialog.tsx      |   5 +-
+ .../settings/updateTrackSwitch.logic.test.ts  |   8 +-
+ .../settings/updateTrackSwitch.logic.ts       |   3 +
+ .../components/sidebar/SidebarUpdatePill.tsx  |  12 +-
+ apps/web/src/lib/bootError.ts                 |   5 +-
+ apps/web/src/state/npmRelease.test.ts         |  96 +++-
+ apps/web/src/state/npmRelease.ts              |  51 +-
+ apps/web/src/vite-env.d.ts                    |   1 +
+ apps/web/vite.config.ts                       |   5 +
+ scripts/build-desktop-artifact.test.ts        |  64 +++
+ scripts/build-desktop-artifact.ts             |  15 +-
+ scripts/verify-fork-update-feed.test.ts       |  37 ++
+ scripts/verify-fork-update-feed.ts            |  36 ++
+ 32 files changed, 1585 insertions(+), 50 deletions(-)
+ create mode 100644 .github/workflows/release-fork.yml
+ create mode 100644 apps/desktop/src/electron/ElectronUpdater.test.ts
+ create mode 100644 apps/desktop/src/updates/forkFeedPolicy.test.ts
+ create mode 100644 apps/desktop/src/updates/forkUpdateProvider.test.ts
+ create mode 100644 apps/desktop/vite.config.test.ts
+ create mode 100644 scripts/verify-fork-update-feed.test.ts
+ create mode 100644 scripts/verify-fork-update-feed.ts
+
+diff --git a/.github/workflows/release-desktop.yml b/.github/workflows/release-desktop.yml
+index b227a2b8b12fe26756374b64a84f1e2f25931ca0..526054912f80012205e7e9a77233300d84e61f4c 100644
+--- a/.github/workflows/release-desktop.yml
++++ b/.github/workflows/release-desktop.yml
+@@ -133,6 +133,9 @@ jobs:
+       T3CODE_CLERK_JWT_TEMPLATE: ${{ inputs.clerk_jwt_template }}
+       T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: ${{ inputs.clerk_cli_oauth_client_id }}
+       T3CODE_RELAY_URL: ${{ inputs.relay_url }}
++      T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository == 'chomamateusz/t3code' && github.repository || '' }}
++      T3CODE_ALLOWED_UPDATE_REPOSITORY: ${{ github.repository == 'chomamateusz/t3code' && github.repository || '' }}
++      T3CODE_RELEASE_REPOSITORY: ${{ github.repository == 'chomamateusz/t3code' && github.repository || '' }}
+     steps:
+       # This repository is public, so Git needs no credentials. checkout's
+       # credential cleanup runs submodule foreach even with submodules disabled,
+diff --git a/.github/workflows/release-fork.yml b/.github/workflows/release-fork.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..65b33f5ed17a389b082c908de46c4f0e5a3324e9
+--- /dev/null
++++ b/.github/workflows/release-fork.yml
+@@ -0,0 +1,442 @@
++name: Release fork
++
++on:
++  workflow_dispatch:
++    inputs:
++      version:
++        description: "Fork version (for example 0.1.2-fork.2026102201)"
++        required: true
++        type: string
++      ref:
++        description: "Git ref to build; defaults to the dispatching ref"
++        required: false
++        type: string
++      draft:
++        description: "Create a draft release"
++        required: false
++        default: true
++        type: boolean
++
++concurrency:
++  group: release-fork-${{ inputs.version }}
++  cancel-in-progress: false
++
++permissions:
++  actions: read
++  contents: read
++
++jobs:
++  preflight:
++    name: Preflight
++    if: ${{ github.repository == 'chomamateusz/t3code' }}
++    runs-on: ubuntu-24.04
++    timeout-minutes: 5
++    outputs:
++      ref: ${{ steps.release_meta.outputs.ref }}
++      tag: ${{ steps.release_meta.outputs.tag }}
++      version: ${{ steps.release_meta.outputs.version }}
++    steps:
++      - name: Checkout release commit
++        uses: actions/checkout@v6
++        with:
++          ref: ${{ inputs.ref || github.ref }}
++          fetch-depth: 1
++          persist-credentials: false
++
++      - id: release_meta
++        name: Resolve release metadata
++        shell: bash
++        env:
++          VERSION: ${{ inputs.version }}
++        run: |
++          set -euo pipefail
++          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-fork\.(0|[1-9][0-9]*)$ ]]; then
++            echo "Invalid fork release version: $VERSION" >&2
++            exit 1
++          fi
++          {
++            echo "version=$VERSION"
++            echo "tag=v$VERSION"
++            echo "ref=$(git rev-parse HEAD)"
++          } >> "$GITHUB_OUTPUT"
++
++      - name: Require an unused and increasing release version
++        uses: actions/github-script@v8
++        env:
++          TAG: ${{ steps.release_meta.outputs.tag }}
++        with:
++          script: |
++            const missing = async (request) => {
++              try {
++                await request();
++                return false;
++              } catch (error) {
++                if (error.status === 404) return true;
++                throw error;
++              }
++            };
++
++            const owner = context.repo.owner;
++            const repo = context.repo.repo;
++            const tag = process.env.TAG;
++            const tagMissing = await missing(() => github.rest.git.getRef({
++              owner,
++              repo,
++              ref: `tags/${tag}`,
++            }));
++            const releases = await github.paginate(github.rest.repos.listReleases, {
++              owner, repo, per_page: 100,
++            });
++            const { compareExactServiceVersions, isExactServiceVersion } = await import(
++              `${process.env.GITHUB_WORKSPACE}/apps/server/src/cloud/serviceProtocol.ts`
++            );
++            const version = tag.slice(1);
++            const versions = releases
++              .filter((release) => !release.draft)
++              .map((release) => release.tag_name.replace(/^v/, ''))
++              .filter((candidate) => isExactServiceVersion(candidate) && /-fork\./.test(candidate))
++              .sort((a, b) => compareExactServiceVersions(b, a));
++            const newest = versions[0];
++            if (newest !== undefined && compareExactServiceVersions(version, newest) <= 0) {
++              core.setFailed(`Version ${version} must be greater than the newest existing fork release: ${newest}.`);
++              return;
++            }
++            if (!tagMissing || releases.some((release) => release.tag_name === tag)) {
++              core.setFailed(`Tag or release ${tag} already exists.`);
++              return;
++            }
++
++  mac_signing_preflight:
++    name: Require macOS signing inputs
++    needs: [preflight]
++    if: ${{ github.repository == 'chomamateusz/t3code' && needs.preflight.result == 'success' }}
++    runs-on: ubuntu-24.04
++    timeout-minutes: 5
++    env:
++      CSC_LINK: ${{ secrets.CSC_LINK }}
++      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
++      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
++      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
++      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
++      MACOS_PROVISIONING_PROFILE: ${{ secrets.MACOS_PROVISIONING_PROFILE }}
++      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
++    steps:
++      - name: Check signing inputs
++        shell: bash
++        run: |
++          set -euo pipefail
++          required=(
++            CSC_LINK
++            CSC_KEY_PASSWORD
++            APPLE_API_KEY
++            APPLE_API_KEY_ID
++            APPLE_API_ISSUER
++            MACOS_PROVISIONING_PROFILE
++            APPLE_TEAM_ID
++          )
++          missing=()
++          for name in "${required[@]}"; do
++            if [[ -z "${!name:-}" ]]; then
++              missing+=("$name")
++            fi
++          done
++          if (( ${#missing[@]} > 0 )); then
++            printf 'Missing required macOS signing inputs: %s\n' "${missing[*]}" >&2
++            exit 1
++          fi
++
++  build_bundle:
++    name: Build JS bundle
++    env:
++      T3CODE_RELEASE_REPOSITORY: ${{ github.repository == 'chomamateusz/t3code' && github.repository || '' }}
++      T3CODE_ALLOWED_UPDATE_REPOSITORY: ${{ github.repository == 'chomamateusz/t3code' && github.repository || '' }}
++    needs: [preflight]
++    if: ${{ github.repository == 'chomamateusz/t3code' && needs.preflight.result == 'success' }}
++    runs-on: ubuntu-24.04
++    timeout-minutes: 30
++    outputs:
++      clerk_publishable_key: ${{ steps.public_config.outputs.clerk_publishable_key }}
++      clerk_jwt_template: ${{ steps.public_config.outputs.clerk_jwt_template }}
++      clerk_cli_oauth_client_id: ${{ steps.public_config.outputs.clerk_cli_oauth_client_id }}
++      relay_url: ${{ steps.public_config.outputs.relay_url }}
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v6
++        with:
++          ref: ${{ needs.preflight.outputs.ref }}
++          sparse-checkout: |
++            /*
++            !/.repos/
++          sparse-checkout-cone-mode: false
++
++      - id: public_config
++        name: Read T3 Connect public config
++        shell: bash
++        run: |
++          set -euo pipefail
++          read_value() {
++            sed -n "s/^$1=//p" .env.example
++          }
++
++          clerk_publishable_key="$(read_value T3CODE_CLERK_PUBLISHABLE_KEY)"
++          clerk_jwt_template="$(read_value T3CODE_CLERK_JWT_TEMPLATE)"
++          clerk_cli_oauth_client_id="$(read_value T3CODE_CLERK_CLI_OAUTH_CLIENT_ID)"
++          relay_url="$(read_value T3CODE_RELAY_URL)"
++          if [[ -z "$clerk_publishable_key" || -z "$clerk_jwt_template" || -z "$clerk_cli_oauth_client_id" || -z "$relay_url" ]]; then
++            echo ".env.example is missing required public T3 Connect configuration." >&2
++            exit 1
++          fi
++
++          {
++            echo "clerk_publishable_key=$clerk_publishable_key"
++            echo "clerk_jwt_template=$clerk_jwt_template"
++            echo "clerk_cli_oauth_client_id=$clerk_cli_oauth_client_id"
++            echo "relay_url=$relay_url"
++          } >> "$GITHUB_OUTPUT"
++          {
++            echo "T3CODE_CLERK_PUBLISHABLE_KEY=$clerk_publishable_key"
++            echo "T3CODE_CLERK_JWT_TEMPLATE=$clerk_jwt_template"
++            echo "T3CODE_CLERK_CLI_OAUTH_CLIENT_ID=$clerk_cli_oauth_client_id"
++            echo "T3CODE_RELAY_URL=$relay_url"
++          } >> "$GITHUB_ENV"
++
++      - name: Setup Vite+
++        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
++        with:
++          node-version-file: package.json
++          cache: true
++          run-install: false
++
++      - name: Install bundle dependencies
++        run: vp install --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
++
++      - name: Align package versions to release version
++        run: node scripts/update-release-package-versions.ts "${{ needs.preflight.outputs.version }}"
++
++      - uses: ./.github/actions/setup-apt-mirrors
++
++      - name: Install browser secret helper build libraries
++        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config
++
++      - name: Build JS bundle
++        run: vp run build:desktop
++
++      - name: Upload JS bundle
++        uses: actions/upload-artifact@v7
++        with:
++          name: js-bundle
++          path: |
++            apps/server/dist
++            apps/desktop/dist-electron
++          if-no-files-found: error
++          retention-days: 1
++
++  desktop_mac_arm64:
++    name: Desktop macOS arm64
++    needs: [preflight, mac_signing_preflight, build_bundle]
++    if: ${{ github.repository == 'chomamateusz/t3code' && !cancelled() && needs.preflight.result == 'success' && needs.mac_signing_preflight.result == 'success' && needs.build_bundle.result == 'success' }}
++    uses: ./.github/workflows/release-desktop.yml
++    secrets:
++      CSC_LINK: ${{ secrets.CSC_LINK }}
++      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
++      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
++      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
++      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
++      MACOS_PROVISIONING_PROFILE: ${{ secrets.MACOS_PROVISIONING_PROFILE }}
++    with:
++      version: ${{ needs.preflight.outputs.version }}
++      ref: ${{ needs.preflight.outputs.ref }}
++      release_channel: stable
++      relay_client_tracing: false
++      clerk_publishable_key: ${{ needs.build_bundle.outputs.clerk_publishable_key }}
++      clerk_jwt_template: ${{ needs.build_bundle.outputs.clerk_jwt_template }}
++      clerk_cli_oauth_client_id: ${{ needs.build_bundle.outputs.clerk_cli_oauth_client_id }}
++      relay_url: ${{ needs.build_bundle.outputs.relay_url }}
++      label: macOS arm64
++      runner: macos-15
++      platform: mac
++      target: dmg
++      arch: arm64
++      rust_target: aarch64-apple-darwin
++      resource_key: darwin-arm64
++      cli_archive: true
++
++  desktop_linux_x64:
++    name: Desktop Linux x64
++    needs: [preflight, build_bundle]
++    if: ${{ github.repository == 'chomamateusz/t3code' && !cancelled() && needs.preflight.result == 'success' && needs.build_bundle.result == 'success' }}
++    uses: ./.github/workflows/release-desktop.yml
++    with:
++      version: ${{ needs.preflight.outputs.version }}
++      ref: ${{ needs.preflight.outputs.ref }}
++      release_channel: stable
++      relay_client_tracing: false
++      clerk_publishable_key: ${{ needs.build_bundle.outputs.clerk_publishable_key }}
++      clerk_jwt_template: ${{ needs.build_bundle.outputs.clerk_jwt_template }}
++      clerk_cli_oauth_client_id: ${{ needs.build_bundle.outputs.clerk_cli_oauth_client_id }}
++      relay_url: ${{ needs.build_bundle.outputs.relay_url }}
++      label: Linux x64
++      runner: ubuntu-24.04
++      platform: linux
++      target: AppImage
++      arch: x64
++      rust_target: x86_64-unknown-linux-gnu
++      resource_key: linux-x64
++      cli_archive: true
++
++  verify_mac:
++    name: Verify macOS release artifacts
++    needs: [preflight, desktop_mac_arm64]
++    if: ${{ github.repository == 'chomamateusz/t3code' && !cancelled() && needs.desktop_mac_arm64.result == 'success' }}
++    runs-on: macos-15
++    timeout-minutes: 15
++    steps:
++      - uses: actions/checkout@v6
++        with:
++          ref: ${{ needs.preflight.outputs.ref }}
++          persist-credentials: false
++
++      - uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
++        with:
++          node-version-file: package.json
++          run-install: false
++
++      - run: vp install --filter=@t3tools/scripts...
++
++      - uses: actions/download-artifact@v8
++        with:
++          name: desktop-mac-arm64
++          path: release-assets
++
++      - name: Verify signature, notarization, staple, and fork feed
++        shell: bash
++        run: |
++          set -euo pipefail
++          shopt -s nullglob
++          archives=(release-assets/*.zip)
++          [[ ${#archives[@]} -eq 1 ]]
++          ditto -x -k "${archives[0]}" unpacked
++          apps=(unpacked/*.app)
++          [[ ${#apps[@]} -eq 1 ]]
++          codesign --verify --deep --strict "${apps[0]}"
++          spctl -a -vv --type execute "${apps[0]}"
++          xcrun stapler validate "${apps[0]}"
++          node scripts/verify-fork-update-feed.ts "${apps[0]}/Contents/Resources"
++
++  verify_linux:
++    name: Verify Linux release artifacts
++    needs: [preflight, desktop_linux_x64]
++    if: ${{ github.repository == 'chomamateusz/t3code' && !cancelled() && needs.desktop_linux_x64.result == 'success' }}
++    runs-on: ubuntu-24.04
++    timeout-minutes: 15
++    steps:
++      - uses: actions/checkout@v6
++        with:
++          ref: ${{ needs.preflight.outputs.ref }}
++          persist-credentials: false
++
++      - uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
++        with:
++          node-version-file: package.json
++          run-install: false
++
++      - run: vp install --filter=@t3tools/scripts...
++
++      - uses: actions/download-artifact@v8
++        with:
++          name: desktop-linux-x64
++          path: release-assets
++
++      - name: Verify AppImage and deb fork feeds and allowlists
++        shell: bash
++        run: |
++          set -euo pipefail
++          shopt -s nullglob
++          images=(release-assets/*.AppImage)
++          debs=(release-assets/*.deb)
++          [[ ${#images[@]} -eq 1 && ${#debs[@]} -eq 1 ]]
++          chmod +x "${images[0]}"
++          "${images[0]}" --appimage-extract > /dev/null
++          dpkg-deb -x "${debs[0]}" unpacked-deb
++          for root in squashfs-root unpacked-deb; do
++            mapfile -t archives < <(find "$root" -type f -name app.asar)
++            [[ ${#archives[@]} -eq 1 ]]
++            node scripts/verify-fork-update-feed.ts "$(dirname "${archives[0]}")"
++          done
++
++  release:
++    name: Publish GitHub Release
++    needs: [preflight, verify_mac, verify_linux]
++    if: ${{ github.repository == 'chomamateusz/t3code' && !failure() && !cancelled() && needs.preflight.result == 'success' && needs.verify_mac.result == 'success' && needs.verify_linux.result == 'success' }}
++    runs-on: ubuntu-24.04
++    timeout-minutes: 15
++    permissions:
++      actions: read
++      contents: write
++    steps:
++      - name: Download desktop artifacts
++        uses: actions/download-artifact@v8
++        with:
++          pattern: desktop-*
++          merge-multiple: true
++          path: release-assets
++
++      - name: Download CLI archives
++        uses: actions/download-artifact@v8
++        with:
++          pattern: cli-*
++          merge-multiple: true
++          path: release-assets
++
++      - name: Verify CLI archives and both update manifests
++        shell: bash
++        env:
++          VERSION: ${{ needs.preflight.outputs.version }}
++        run: |
++          set -euo pipefail
++          test -s release-assets/latest-mac.yml
++          test -s release-assets/latest-linux.yml
++          for platform in linux-x64 darwin-arm64; do
++            archive="release-assets/t3-$VERSION-$platform.tar.gz"
++            test -s "$archive"
++            mkdir -p "unpacked-cli/$platform"
++            tar -xzf "$archive" --strip-components=1 -C "unpacked-cli/$platform"
++            test -f "unpacked-cli/$platform/t3"
++          done
++
++      - name: Write CLI archive checksums
++        shell: bash
++        run: |
++          set -euo pipefail
++          cd release-assets
++          shopt -s nullglob
++          archives=(t3-*.tar.gz t3-*.zip)
++          if [[ ${#archives[@]} -eq 0 ]]; then
++            echo "No CLI archives were produced." >&2
++            exit 1
++          fi
++          sha256sum "${archives[@]}" > SHA256SUMS
++          cat SHA256SUMS
++
++      - name: Publish release
++        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
++        with:
++          tag_name: ${{ needs.preflight.outputs.tag }}
++          target_commitish: ${{ needs.preflight.outputs.ref }}
++          name: T3 Code ${{ needs.preflight.outputs.tag }}
++          generate_release_notes: true
++          draft: ${{ inputs.draft }}
++          prerelease: false
++          make_latest: ${{ !inputs.draft }}
++          files: |
++            release-assets/*.dmg
++            release-assets/*.zip
++            release-assets/*.AppImage
++            release-assets/*.deb
++            release-assets/*.blockmap
++            release-assets/latest*.yml
++            release-assets/t3-*-darwin-arm64.tar.gz
++            release-assets/t3-*-linux-x64.tar.gz
++            release-assets/SHA256SUMS
++          fail_on_unmatched_files: true
++          token: ${{ github.token }}
+diff --git a/apps/desktop/src/app/DesktopStartupRecovery.test.ts b/apps/desktop/src/app/DesktopStartupRecovery.test.ts
+index 029bcaac2b4876e4d6254da74367cee7b7643a06..51cf8220566d5e5366317d0fb1dce50e6a7c81da 100644
+--- a/apps/desktop/src/app/DesktopStartupRecovery.test.ts
++++ b/apps/desktop/src/app/DesktopStartupRecovery.test.ts
+@@ -1,5 +1,6 @@
+ import type { DesktopUpdateState } from "@t3tools/contracts";
+ import { describe, expect, it } from "@effect/vitest";
++import { vi } from "vite-plus/test";
+ import * as Deferred from "effect/Deferred";
+ import * as Effect from "effect/Effect";
+ import * as FileSystem from "effect/FileSystem";
+@@ -17,7 +18,11 @@ import * as ElectronWindow from "../electron/ElectronWindow.ts";
+ import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
+ 
+ import { createInitialDesktopUpdateState } from "../updates/updateMachine.ts";
+-import { listen, resolveStartupRecoveryOffer } from "./DesktopStartupRecovery.ts";
++import {
++  listen,
++  resolveStartupRecoveryOffer,
++  startupRecoveryReleaseUrl,
++} from "./DesktopStartupRecovery.ts";
+ 
+ const updateState = (patch: Partial<DesktopUpdateState>): DesktopUpdateState => ({
+   ...createInitialDesktopUpdateState(
+@@ -94,6 +99,16 @@ describe("resolveStartupRecoveryOffer", () => {
+     expect(resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), null)).toEqual({
+       _tag: "Releases",
+     });
++    expect(startupRecoveryReleaseUrl()).toBe("https://github.com/pingdotgg/t3code/releases");
++    vi.stubGlobal("__T3CODE_BUILD_RELEASE_REPOSITORY__", " Chomamateusz/T3Code ");
++    try {
++      expect(startupRecoveryReleaseUrl()).toBe("https://github.com/chomamateusz/t3code/releases");
++      expect(startupRecoveryReleaseUrl("0.1.4-fork.1")).toBe(
++        "https://github.com/chomamateusz/t3code/releases/tag/v0.1.4-fork.1",
++      );
++    } finally {
++      vi.unstubAllGlobals();
++    }
+   });
+ });
+ 
+diff --git a/apps/desktop/src/app/DesktopStartupRecovery.ts b/apps/desktop/src/app/DesktopStartupRecovery.ts
+index c8228183aad91a82ae376f2c31cac2469ee0c6c9..1f7ba4fbff158b1cc5496ef02a981f65dd6fb70a 100644
+--- a/apps/desktop/src/app/DesktopStartupRecovery.ts
++++ b/apps/desktop/src/app/DesktopStartupRecovery.ts
+@@ -18,7 +18,16 @@ import * as DesktopEnvironment from "./DesktopEnvironment.ts";
+ import * as DesktopObservability from "./DesktopObservability.ts";
+ import * as DesktopState from "./DesktopState.ts";
+ 
+-const RELEASES_URL = "https://github.com/pingdotgg/t3code/releases";
++declare const __T3CODE_BUILD_RELEASE_REPOSITORY__: string | undefined;
++
++export function startupRecoveryReleaseUrl(version?: string): string {
++  const repository =
++    (typeof __T3CODE_BUILD_RELEASE_REPOSITORY__ === "undefined"
++      ? undefined
++      : __T3CODE_BUILD_RELEASE_REPOSITORY__?.trim().toLowerCase()) || "pingdotgg/t3code";
++  return `https://github.com/${repository}/releases${version === undefined ? "" : `/tag/v${version}`}`;
++}
++
+ const LAST_STARTED_VERSION_FILE = "desktop-last-started-version";
+ // Buttons are plain links to this host; will-navigate cancels them and runs the action.
+ const ACTION_ORIGIN = "https://startup-recovery.invalid";
+@@ -223,11 +232,11 @@ export const listen: Effect.Effect<
+       }
+       case "reinstall":
+         if (current._tag === "Reinstall") {
+-          yield* electronShell.openExternal(`${RELEASES_URL}/tag/v${current.version}`);
++          yield* electronShell.openExternal(startupRecoveryReleaseUrl(current.version));
+         }
+         return;
+       case "releases":
+-        yield* electronShell.openExternal(RELEASES_URL);
++        yield* electronShell.openExternal(startupRecoveryReleaseUrl());
+         return;
+       case "copy": {
+         const failure = yield* Ref.get(failureRef);
+diff --git a/apps/desktop/src/electron/ElectronUpdater.test.ts b/apps/desktop/src/electron/ElectronUpdater.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..58cc58e0c69f80add9a82818d210d1f8eb9d08c4
+--- /dev/null
++++ b/apps/desktop/src/electron/ElectronUpdater.test.ts
+@@ -0,0 +1,47 @@
++import { assert, describe, it } from "@effect/vitest";
++import * as Effect from "effect/Effect";
++import { vi } from "vite-plus/test";
++
++const { autoUpdaterMock } = vi.hoisted(() => ({
++  autoUpdaterMock: {
++    allowDowngrade: false,
++    allowPrerelease: false,
++    autoDownload: true,
++    autoInstallOnAppQuit: true,
++    channel: "latest",
++    disableDifferentialDownload: false,
++    fullChangelog: false,
++    checkForUpdates: vi.fn(() => Promise.resolve(null)),
++    downloadUpdate: vi.fn(() => Promise.resolve([])),
++    on: vi.fn(),
++    quitAndInstall: vi.fn(),
++    removeListener: vi.fn(),
++    setFeedURL: vi.fn(),
++  },
++}));
++
++vi.mock("electron-updater", () => ({
++  autoUpdater: autoUpdaterMock,
++}));
++
++import * as ElectronUpdater from "./ElectronUpdater.ts";
++
++describe("ElectronUpdater", () => {
++  it.effect("tracks an immutable snapshot of the feed passed to electron-updater", () =>
++    Effect.gen(function* () {
++      const updater = yield* ElectronUpdater.ElectronUpdater;
++      const options = {
++        provider: "github" as const,
++        owner: "chomamateusz",
++        repo: "t3code",
++        host: "github.com",
++      };
++      yield* updater.setFeedURL(options);
++      options.host = "updates.example.com";
++      assert.deepEqual(yield* updater.feedURL, { ...options, host: "github.com" });
++      assert.deepEqual(autoUpdaterMock.setFeedURL.mock.calls, [
++        [{ ...options, host: "github.com" }],
++      ]);
++    }).pipe(Effect.provide(ElectronUpdater.layer)),
++  );
++});
+diff --git a/apps/desktop/src/electron/ElectronUpdater.ts b/apps/desktop/src/electron/ElectronUpdater.ts
+index c71b42040db292bf81b9c35b8d4ae779a5170e59..29d1d35748e05aab5f8ba6d4ddda7500757cdb50 100644
+--- a/apps/desktop/src/electron/ElectronUpdater.ts
++++ b/apps/desktop/src/electron/ElectronUpdater.ts
+@@ -58,6 +58,7 @@ export type ElectronUpdaterError = typeof ElectronUpdaterError.Type;
+ export class ElectronUpdater extends Context.Service<
+   ElectronUpdater,
+   {
++    readonly feedURL: Effect.Effect<ElectronUpdaterFeedUrl | undefined>;
+     readonly setFeedURL: (options: ElectronUpdaterFeedUrl) => Effect.Effect<void>;
+     readonly setAutoDownload: (value: boolean) => Effect.Effect<void>;
+     readonly setAutoInstallOnAppQuit: (value: boolean) => Effect.Effect<void>;
+@@ -80,11 +81,15 @@ export class ElectronUpdater extends Context.Service<
+   }
+ >()("@t3tools/desktop/electron/ElectronUpdater") {}
+ 
++let feedURL: ElectronUpdaterFeedUrl | undefined;
++
+ /** @public */
+ export const make = ElectronUpdater.of({
++  feedURL: Effect.sync(() => feedURL),
+   setFeedURL: Effect.fn("ElectronUpdater.setFeedURL")(function (options) {
+     return Effect.suspend(() => {
+-      autoUpdater.setFeedURL(options);
++      feedURL = typeof options === "string" ? options : { ...options };
++      autoUpdater.setFeedURL(feedURL);
+       return Effect.void;
+     });
+   }),
+diff --git a/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts b/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
+index 1f5321148b77bcc418fca4569ce75f33e1fca920..ccd2b5821276a1ffa6585cb5a37b1d208ae9e522 100644
+--- a/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
++++ b/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
+@@ -40,10 +40,15 @@ function runRemoteUpdatesTest(
+   harness: ReturnType<typeof makeHarness>,
+   body: (context: {
+     readonly reports: DesktopUpdateStatusReport[];
++    readonly nextReport: Effect.Effect<DesktopUpdateStatusReport>;
+     readonly requests: Queue.Queue<DesktopTelemetryRequestDesktopUpdate>;
+     readonly commits: Queue.Queue<DesktopTelemetryCommitDesktopUpdate>;
+     readonly cancellations: Queue.Queue<DesktopTelemetryCancelDesktopUpdate>;
+-  }) => Effect.Effect<void, never, DesktopUpdates.DesktopUpdates | DesktopState.DesktopState>,
++  }) => Effect.Effect<
++    void,
++    never,
++    DesktopUpdates.DesktopUpdates | DesktopState.DesktopState | ElectronUpdater.ElectronUpdater
++  >,
+ ) {
+   return Effect.scoped(
+     Effect.gen(function* () {
+@@ -51,6 +56,7 @@ function runRemoteUpdatesTest(
+       const commits = yield* Queue.unbounded<DesktopTelemetryCommitDesktopUpdate>();
+       const cancellations = yield* Queue.unbounded<DesktopTelemetryCancelDesktopUpdate>();
+       const reports: DesktopUpdateStatusReport[] = [];
++      const reportQueue = yield* Queue.unbounded<DesktopUpdateStatusReport>();
+       const publisher = DesktopTelemetryPublisher.DesktopTelemetryPublisher.of({
+         latest: Effect.succeedNone,
+         changes: Stream.empty,
+@@ -60,7 +66,7 @@ function runRemoteUpdatesTest(
+         publishUpdateReport: (report) =>
+           Effect.sync(() => {
+             reports.push(report);
+-          }),
++          }).pipe(Effect.andThen(Queue.offer(reportQueue, report)), Effect.asVoid),
+         updateRequests: Stream.fromQueue(requests),
+         updateCommits: Stream.fromQueue(commits),
+         updateCancellations: Stream.fromQueue(cancellations),
+@@ -72,7 +78,13 @@ function runRemoteUpdatesTest(
+         Effect.provideService(DesktopTelemetryPublisher.DesktopTelemetryPublisher, publisher),
+       );
+       yield* settle;
+-      yield* body({ reports, requests, commits, cancellations });
++      yield* body({
++        reports,
++        nextReport: Queue.take(reportQueue),
++        requests,
++        commits,
++        cancellations,
++      });
+     }),
+   ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+ }
+@@ -82,6 +94,90 @@ function terminalReports(reports: DesktopUpdateStatusReport[]): DesktopUpdateSta
+ }
+ 
+ describe("DesktopRemoteUpdates", () => {
++  it.effect.each([
++    undefined,
++    "provider: github\nowner: pingdotgg\nrepo: t3code\n",
++    "provider: github\nowner: chomamateusz\nrepo: t3code\nhost: updates.example.com\n",
++  ])("terminates a refused fork-feed request: %s", (appUpdateYml) => {
++    const harness = makeHarness({
++      allowedUpdateRepository: "chomamateusz/t3code",
++      appUpdateYml,
++      env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
++    });
++    return runRemoteUpdatesTest(harness, ({ requests, nextReport }) =>
++      Effect.gen(function* () {
++        yield* Queue.offer(requests, request("fork-refused"));
++        let report = yield* nextReport;
++        while (report.requestId !== "fork-refused" || report.outcome === undefined) {
++          report = yield* nextReport;
++        }
++        assert.equal(report.outcome, "failed");
++        assert.equal(report.reason, "Updates for this build come only from chomamateusz/t3code");
++        assert.equal(harness.checkCount(), 0);
++        assert.equal(harness.downloadCount(), 0);
++        assert.equal(harness.quitAndInstalls(), 0);
++      }),
++    );
++  });
++
++  it.effect("reports the fork refusal when the feed changes during a remote check", () => {
++    const harness = makeHarness({
++      allowedUpdateRepository: "chomamateusz/t3code",
++      appUpdateYml: "provider: github\nowner: chomamateusz\nrepo: t3code\n",
++      env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
++    });
++    return runRemoteUpdatesTest(harness, ({ requests, nextReport }) =>
++      Effect.gen(function* () {
++        yield* Queue.offer(requests, request("fork-redirected"));
++        let report = yield* nextReport;
++        while (report.requestId !== "fork-redirected" || report.state.status !== "checking")
++          report = yield* nextReport;
++        const updater = yield* ElectronUpdater.ElectronUpdater;
++        yield* updater.setFeedURL("https://updates.example.com");
++        harness.emit("update-available", { version: "0.0.46-fork.2" });
++        while (report.outcome === undefined) report = yield* nextReport;
++        assert.equal(report.outcome, "failed");
++        assert.equal(report.reason, "Updates for this build come only from chomamateusz/t3code");
++        assert.equal(harness.downloadCount(), 0);
++        assert.equal(harness.quitAndInstalls(), 0);
++      }),
++    );
++  });
++
++  it.effect("downloads and commits a remote update from the allowed fork", () =>
++    Effect.gen(function* () {
++      const installed = yield* Deferred.make<void>();
++      const harness = makeHarness({
++        allowedUpdateRepository: "chomamateusz/t3code",
++        appUpdateYml: "provider: github\nowner: chomamateusz\nrepo: t3code\n",
++        appVersion: "0.0.46-fork.1",
++        quitAndInstall: Deferred.succeed(installed, undefined).pipe(Effect.asVoid),
++        env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
++      });
++      yield* runRemoteUpdatesTest(harness, ({ requests, commits, nextReport }) =>
++        Effect.gen(function* () {
++          yield* Queue.offer(requests, request("fork-allowed"));
++          let report = yield* nextReport;
++          while (report.requestId !== "fork-allowed" || report.state.status !== "checking")
++            report = yield* nextReport;
++          harness.emit("update-available", { version: "0.0.46-fork.2" });
++          while (report.state.status !== "downloading") report = yield* nextReport;
++          harness.emit("update-downloaded", { version: "0.0.46-fork.2" });
++          while (report.outcome !== "ready-to-install") report = yield* nextReport;
++          assert.equal(report.state.downloadedVersion, "0.0.46-fork.2");
++          yield* Queue.offer(commits, {
++            version: 1,
++            type: "commitDesktopUpdate",
++            requestId: "fork-allowed",
++          });
++          yield* Deferred.await(installed);
++          assert.equal(harness.downloadCount(), 1);
++          assert.equal(harness.quitAndInstalls(), 1);
++        }),
++      );
++    }),
++  );
++
+   it.effect("drives check, download, and install with no local confirmation", () => {
+     const harness = makeHarness();
+ 
+@@ -119,6 +215,39 @@ describe("DesktopRemoteUpdates", () => {
+     );
+   });
+ 
++  it.effect("refuses a remote track switch pinned out by the fork build", () => {
++    const harness = makeHarness({
++      allowedUpdateRepository: "chomamateusz/t3code",
++      appUpdateYml: "provider: github\nowner: chomamateusz\nrepo: t3code\n",
++      env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
++    });
++    return runRemoteUpdatesTest(harness, ({ nextReport, requests }) =>
++      Effect.gen(function* () {
++        yield* Queue.offer(requests, {
++          ...request("req-fork-track"),
++          channel: "nightly",
++          targetVersion: "1.2.4-nightly.20261027.1",
++        });
++        const terminal = yield* Stream.fromEffectRepeat(nextReport).pipe(
++          Stream.filter(
++            (report) => report.requestId === "req-fork-track" && report.outcome !== undefined,
++          ),
++          Stream.runHead,
++        );
++        assert.equal(terminal._tag, "Some");
++        if (terminal._tag === "Some") {
++          assert.equal(terminal.value.outcome, "failed");
++          assert.equal(
++            terminal.value.reason,
++            "This build does not offer the requested update track.",
++          );
++        }
++        assert.equal(harness.downloadCount(), 0);
++        assert.equal(harness.quitAndInstalls(), 0);
++      }),
++    );
++  });
++
+   it.effect("switches to the requested track before preparing its release", () => {
+     // In-memory settings keep the channel write off real disk I/O.
+     const harness = makeHarness({ beforeSetUpdateChannel: Effect.void });
+diff --git a/apps/desktop/src/updates/DesktopRemoteUpdates.ts b/apps/desktop/src/updates/DesktopRemoteUpdates.ts
+index 560e2e78d4bb166b134b4a40a4061259e2f9b299..248a49f27c329249b1f5264581f617c63ad6a6cf 100644
+--- a/apps/desktop/src/updates/DesktopRemoteUpdates.ts
++++ b/apps/desktop/src/updates/DesktopRemoteUpdates.ts
+@@ -226,6 +226,17 @@ export const listen: Effect.Effect<
+           // A host already running the target only needed its track saved; installing a newer
+           // build here would restart it without the dialog having said so.
+           const state = yield* updates.getState;
++          if (state.channel !== request.channel) {
++            yield* publishReport(
++              state,
++              {
++                outcome: "failed",
++                reason: "This build does not offer the requested update track.",
++              },
++              request.requestId,
++            );
++            return;
++          }
+           if (request.targetVersion === state.currentVersion) {
+             yield* publishReport(state, { outcome: "up-to-date" }, request.requestId);
+             return;
+diff --git a/apps/desktop/src/updates/DesktopUpdates.ts b/apps/desktop/src/updates/DesktopUpdates.ts
+index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1edebee1e911 100644
+--- a/apps/desktop/src/updates/DesktopUpdates.ts
++++ b/apps/desktop/src/updates/DesktopUpdates.ts
+@@ -278,9 +278,21 @@ export function describeUpdateErrorCause(cause: unknown): string {
+   }
+ }
+ 
+-function parseAppUpdateYml(raw: string): Effect.Effect<Option.Option<AppUpdateYmlConfig>> {
++function parseAppUpdateYml(
++  raw: string,
++  strict = false,
++): Effect.Effect<Option.Option<AppUpdateYmlConfig>> {
+   const entries: Record<string, string> = {};
+   for (const line of raw.split("\n")) {
++    if (strict) {
++      if (/^\s*(?:#.*)?$/.test(line)) continue;
++      const scalar = line.match(
++        /^(\w+):[ \t]*(?:([\w./-]+)|"([\w./-]+)"|'([\w./-]+)')[ \t]*(?:#.*)?$/,
++      );
++      if (!scalar?.[1] || Object.hasOwn(entries, scalar[1])) return Effect.succeedNone;
++      entries[scalar[1]] = scalar[2] ?? scalar[3] ?? scalar[4] ?? "";
++      continue;
++    }
+     const match = line.match(/^(\w+):\s*(.+)$/);
+     if (match?.[1] && match[2]) {
+       entries[match[1]] = match[2].trim();
+@@ -375,6 +387,32 @@ export const make = Effect.gen(function* () {
+   // Any user can set the mock flag, so it never replaces an administrator's update source.
+   const mockUpdates = config.mockUpdates && policy.message === null;
+ 
++  const allowedUpdateRepository = yield* fileSystem
++    .readFileString(environment.path.join(environment.appPath, "package.json"))
++    .pipe(
++      Effect.flatMap(
++        Schema.decodeUnknownEffect(
++          Schema.fromJsonString(
++            Schema.Struct({
++              t3codeAllowedUpdateRepository: Schema.optional(Schema.String),
++            }),
++          ),
++        ),
++      ),
++      Effect.map((metadata) => metadata.t3codeAllowedUpdateRepository?.trim().toLowerCase() ?? ""),
++      Effect.orElseSucceed(() => ""),
++    );
++  const isAllowedFeed = (
++    feed: ElectronUpdater.ElectronUpdaterFeedUrl | AppUpdateYmlConfig | undefined,
++  ) =>
++    typeof feed === "object" &&
++    feed.provider === "github" &&
++    "owner" in feed &&
++    "repo" in feed &&
++    `${feed.owner}/${feed.repo}`.toLowerCase() === allowedUpdateRepository &&
++    (!("host" in feed) || feed.host === "github.com") &&
++    (!("protocol" in feed) || feed.protocol === "https");
++
+   const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
+   const activeUpdateActionRef = yield* Ref.make<Option.Option<UpdateAction>>(Option.none());
+   const installRunningBackendsRef = yield* Ref.make<
+@@ -436,7 +474,7 @@ export const make = Effect.gen(function* () {
+     Effect.flatMap(
+       Option.match({
+         onNone: () => Effect.succeed(Option.none<AppUpdateYmlConfig>()),
+-        onSome: parseAppUpdateYml,
++        onSome: (raw) => parseAppUpdateYml(raw, allowedUpdateRepository !== ""),
+       }),
+     ),
+   );
+@@ -459,7 +497,32 @@ export const make = Effect.gen(function* () {
+     ),
+   );
+ 
++  const feedRefusalReason = Effect.gen(function* () {
++    if (!allowedUpdateRepository) return Option.none<string>();
++    const packagedFeed = Option.getOrUndefined(yield* readAppUpdateYml);
++    const override = yield* electronUpdater.feedURL;
++    return isAllowedFeed(packagedFeed) && (override === undefined || isAllowedFeed(override))
++      ? Option.none<string>()
++      : Option.some(`Updates for this build come only from ${allowedUpdateRepository}`);
++  });
++
++  const refuseDisallowedFeed = Effect.gen(function* () {
++    const reason = yield* feedRefusalReason;
++    if (Option.isNone(reason)) return false;
++    yield* updateState((state) => ({
++      ...state,
++      enabled: false,
++      status: "disabled",
++      message: reason.value,
++      errorContext: null,
++      canRetry: false,
++    }));
++    return true;
++  });
++
+   const resolveDisabledReason = Effect.gen(function* () {
++    const refusal = yield* feedRefusalReason;
++    if (Option.isSome(refusal)) return refusal;
+     const hasFeedConfig = yield* hasUpdateFeedConfig;
+     return Option.fromNullishOr(
+       getAutoUpdateDisabledReason({
+@@ -514,6 +577,7 @@ export const make = Effect.gen(function* () {
+     channel: DesktopUpdateChannel,
+   ) {
+     yield* Effect.annotateCurrentSpan({ channel });
++    if (allowedUpdateRepository) channel = "latest";
+     const allowsPrerelease = channel === "nightly";
+     yield* electronUpdater.setChannel(channel);
+     yield* electronUpdater.setAllowPrerelease(allowsPrerelease);
+@@ -536,6 +600,7 @@ export const make = Effect.gen(function* () {
+     yield* Effect.annotateCurrentSpan({ reason });
+     if (yield* Ref.get(desktopState.quitting)) return false;
+     if (!(yield* Ref.get(updaterConfiguredRef))) return false;
++    if (yield* refuseDisallowedFeed) return false;
+ 
+     const state = yield* Ref.get(updateStateRef);
+     // A configured updater is disabled only by a channel the managed policy blocks.
+@@ -589,6 +654,7 @@ export const make = Effect.gen(function* () {
+   });
+ 
+   const downloadAvailableUpdate = Effect.gen(function* () {
++    if (yield* refuseDisallowedFeed) return { accepted: false, completed: false };
+     const state = yield* Ref.get(updateStateRef);
+     if (!(yield* Ref.get(updaterConfiguredRef)) || state.status !== "available") {
+       return { accepted: false, completed: false };
+@@ -604,6 +670,7 @@ export const make = Effect.gen(function* () {
+         isArm64HostRunningIntelBuild(environment.runtimeInfo),
+       );
+       yield* logUpdaterInfo("downloading update");
++      if (yield* refuseDisallowedFeed) return { accepted: false, completed: false };
+       yield* electronUpdater.downloadUpdate;
+       return { accepted: true, completed: true };
+     }).pipe(
+@@ -759,6 +826,7 @@ export const make = Effect.gen(function* () {
+   const installDownloadedUpdate = (expectedVersion?: string) =>
+     Effect.scoped(
+       Effect.gen(function* () {
++        if (yield* refuseDisallowedFeed) return { accepted: false, completed: false, failed: true };
+         const actionCompletions = yield* PubSub.subscribe(finishedUpdateActions);
+         let admission: "admitted" | "refused" | "wait-for-check" = "wait-for-check";
+         while (admission === "wait-for-check") {
+@@ -804,6 +872,10 @@ export const make = Effect.gen(function* () {
+           return { accepted: false, completed: false, failed: false };
+         }
+ 
++        if (yield* refuseDisallowedFeed) {
++          yield* finishUpdateAction("install");
++          return { accepted: false, completed: false, failed: true };
++        }
+         yield* Ref.set(desktopState.quitting, true);
+         yield* Ref.set(installRunningBackendsRef, []);
+ 
+@@ -824,6 +896,12 @@ export const make = Effect.gen(function* () {
+               instance.stop({ timeout: DesktopBackendManager.BACKEND_QUIT_STOP_TIMEOUT }),
+             { concurrency: "unbounded" },
+           );
++          const refusal = yield* feedRefusalReason;
++          if (Option.isSome(refusal)) {
++            yield* recoverFailedInstall(refusal.value);
++            yield* refuseDisallowedFeed;
++            return { accepted: false, completed: false, failed: true };
++          }
+           yield* electronUpdater.quitAndInstall({
+             isSilent: true,
+             isForceRunAfter: true,
+@@ -1131,7 +1209,7 @@ export const make = Effect.gen(function* () {
+         });
+       }
+ 
+-      if (mockUpdates) {
++      if (mockUpdates && !allowedUpdateRepository) {
+         yield* electronUpdater.setFeedURL({
+           provider: "generic",
+           url: `http://localhost:${config.mockUpdateServerPort}`,
+@@ -1146,10 +1224,11 @@ export const make = Effect.gen(function* () {
+ 
+       const settings = yield* desktopSettings.get;
+       const disabledReason = yield* resolveDisabledReason;
++      const channel = allowedUpdateRepository ? "latest" : settings.updateChannel;
+       yield* setState(
+         yield* baseUpdateState(
+-          settings.updateChannel,
+-          Option.orElse(disabledReason, () => channelBlockedReason(settings.updateChannel)),
++          channel,
++          Option.orElse(disabledReason, () => channelBlockedReason(channel)),
+         ),
+       );
+       if (Option.isSome(disabledReason)) {
+@@ -1199,6 +1278,9 @@ export const make = Effect.gen(function* () {
+       nextChannel: DesktopUpdateChannel,
+       options?: { readonly minimumVersion?: string | undefined },
+     ) {
++      if (allowedUpdateRepository && nextChannel !== "latest") {
++        return yield* Ref.get(updateStateRef);
++      }
+       yield* Effect.annotateCurrentSpan({ channel: nextChannel });
+       if (Option.isSome(channelBlockedReason(nextChannel))) {
+         return yield* new DesktopUpdateChannelManagedError({
+diff --git a/apps/desktop/src/updates/forkFeedPolicy.test.ts b/apps/desktop/src/updates/forkFeedPolicy.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..59fff8b025be66b1a7cdc41bf93110bf49128339
+--- /dev/null
++++ b/apps/desktop/src/updates/forkFeedPolicy.test.ts
+@@ -0,0 +1,206 @@
++import { assert, describe, it } from "@effect/vitest";
++import * as Effect from "effect/Effect";
++import * as Fiber from "effect/Fiber";
++import * as Stream from "effect/Stream";
++
++import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
++import * as DesktopUpdates from "./DesktopUpdates.ts";
++import { makeHarness } from "./updatesTestHarness.ts";
++
++const repository = "chomamateusz/t3code";
++const feed = "provider: github\nowner: chomamateusz\nrepo: t3code\n";
++const refusal = `Updates for this build come only from ${repository}`;
++
++function emitState(
++  harness: ReturnType<typeof makeHarness>,
++  event: "update-available" | "update-downloaded",
++) {
++  return Effect.gen(function* () {
++    const updates = yield* DesktopUpdates.DesktopUpdates;
++    const { changes } = yield* updates.subscribe;
++    const next = yield* Stream.runHead(changes).pipe(Effect.forkChild);
++    harness.emit(event, { version: "0.0.46-fork.2" });
++    yield* Fiber.join(next);
++  });
++}
++
++describe("configured desktop update repository", () => {
++  it.effect.each([
++    undefined,
++    "provider: github\nowner: pingdotgg\nrepo: t3code\n",
++    `${feed}host: updates.example.com\n`,
++    `${feed}protocol: http\n`,
++    "provider: generic\nurl: https://github.com/chomamateusz/t3code\n",
++  ])("refuses a missing or foreign packaged feed: %s", (appUpdateYml) => {
++    const harness = makeHarness({
++      allowedUpdateRepository: repository,
++      appUpdateYml,
++      env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
++    });
++    return Effect.scoped(
++      Effect.gen(function* () {
++        const updates = yield* DesktopUpdates.DesktopUpdates;
++        yield* updates.configure;
++        const download = yield* updates.download;
++        const install = yield* updates.install;
++        const prepared = yield* updates.installPrepared("0.0.46-fork.2");
++        for (const result of [download, install, prepared]) {
++          assert.equal(result.accepted, false);
++          assert.equal(result.state.enabled, false);
++          assert.equal(result.state.status, "disabled");
++          assert.equal(result.state.message, refusal);
++        }
++        assert.equal(harness.downloadCount(), 0);
++        assert.equal(harness.quitAndInstalls(), 0);
++      }),
++    ).pipe(Effect.provide(harness.layer));
++  });
++
++  it.effect("downloads and installs from a case-insensitive packaged fork feed on latest", () => {
++    const harness = makeHarness({
++      allowedUpdateRepository: "Chomamateusz/T3code",
++      appUpdateYml: "provider: github\nowner: chomamateusz\nrepo: T3Code\n",
++      appVersion: "0.0.46-fork.1",
++      env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
++    });
++    return Effect.scoped(
++      Effect.gen(function* () {
++        const updates = yield* DesktopUpdates.DesktopUpdates;
++        yield* updates.configure;
++        assert.equal((yield* updates.getState).enabled, true);
++        assert.equal(harness.channel(), "latest");
++        assert.equal(harness.allowPrerelease(), false);
++        assert.equal(harness.allowDowngrade(), false);
++        yield* updates.setChannel("nightly");
++        assert.equal((yield* updates.getState).channel, "latest");
++        assert.equal(harness.channel(), "latest");
++        assert.equal(harness.allowPrerelease(), false);
++        assert.equal(harness.allowDowngrade(), false);
++        yield* emitState(harness, "update-available");
++        assert.equal((yield* updates.download).completed, true);
++        yield* emitState(harness, "update-downloaded");
++        assert.equal((yield* updates.install).accepted, true);
++        assert.equal(harness.downloadCount(), 1);
++        assert.equal(harness.quitAndInstalls(), 1);
++      }),
++    ).pipe(Effect.provide(harness.layer));
++  });
++
++  it.effect("ignores runtime feed overrides when the allowed repository is baked", () => {
++    const harness = makeHarness({
++      allowedUpdateRepository: repository,
++      appUpdateYml: feed,
++      env: {
++        T3CODE_DESKTOP_MOCK_UPDATES: "true",
++        T3CODE_DESKTOP_UPDATE_REPOSITORY: "pingdotgg/t3code",
++        T3CODE_ALLOWED_UPDATE_REPOSITORY: "pingdotgg/t3code",
++        T3CODE_RELEASE_REPOSITORY: "pingdotgg/t3code",
++        T3CODE_RELEASE_BASE_URL: "https://mirror.example/t3",
++      },
++    });
++    return Effect.scoped(
++      Effect.gen(function* () {
++        const updates = yield* DesktopUpdates.DesktopUpdates;
++        const updater = yield* ElectronUpdater.ElectronUpdater;
++        yield* updates.configure;
++        assert.equal((yield* updates.getState).enabled, true);
++        assert.equal(yield* updater.feedURL, undefined);
++        yield* emitState(harness, "update-available");
++        assert.equal((yield* updates.download).completed, true);
++      }),
++    ).pipe(Effect.provide(harness.layer));
++  });
++
++  it.effect.each([undefined, "https://mirror.example/t3"])(
++    "keeps managed update restrictions alongside the fork allowlist: %s",
++    (feedUrl) => {
++      const harness = makeHarness({
++        allowedUpdateRepository: repository,
++        appUpdateYml: feed,
++        policy: {
++          mode: "off",
++          feedUrl,
++          allowNightly: false,
++          message: "Managed updates are disabled.",
++        },
++      });
++      return Effect.scoped(
++        Effect.gen(function* () {
++          const updates = yield* DesktopUpdates.DesktopUpdates;
++          yield* updates.configure;
++          const state = yield* updates.getState;
++          assert.equal(state.enabled, false);
++          assert.equal(
++            state.message,
++            feedUrl === undefined ? "Managed updates are disabled." : refusal,
++          );
++          assert.equal((yield* updates.check("menu")).checked, false);
++          assert.equal((yield* updates.download).accepted, false);
++          assert.equal((yield* updates.install).accepted, false);
++          assert.equal(harness.downloadCount(), 0);
++          assert.equal(harness.quitAndInstalls(), 0);
++        }),
++      ).pipe(Effect.provide(harness.layer));
++    },
++  );
++
++  it.effect("rechecks the feed after stopping backends and recovers a refused install", () => {
++    let redirect = Effect.void;
++    const harness = makeHarness({
++      allowedUpdateRepository: repository,
++      appUpdateYml: feed,
++      env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
++      stopBackend: Effect.suspend(() => redirect),
++    });
++    return Effect.scoped(
++      Effect.gen(function* () {
++        const updates = yield* DesktopUpdates.DesktopUpdates;
++        const updater = yield* ElectronUpdater.ElectronUpdater;
++        yield* updates.configure;
++        yield* emitState(harness, "update-downloaded");
++        redirect = updater.setFeedURL("https://updates.example.com");
++        const result = yield* updates.installPrepared("0.0.46-fork.2");
++        assert.equal(result.failed, true);
++        assert.equal(result.state.status, "disabled");
++        assert.equal(result.state.message, refusal);
++        assert.equal(harness.quitAndInstalls(), 0);
++        assert.deepEqual(harness.installSteps, ["startBackend"]);
++        assert.equal(harness.updateRestartMarkers.size, 0);
++      }),
++    ).pipe(Effect.provide(harness.layer));
++  });
++
++  it.effect.each(["download", "install", "installPrepared"] as const)(
++    "refuses a feed override before %s",
++    (action) => {
++      const harness = makeHarness({
++        allowedUpdateRepository: repository,
++        appUpdateYml: feed,
++        env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
++      });
++      return Effect.scoped(
++        Effect.gen(function* () {
++          const updates = yield* DesktopUpdates.DesktopUpdates;
++          const updater = yield* ElectronUpdater.ElectronUpdater;
++          yield* updates.configure;
++          yield* emitState(harness, "update-available");
++          if (action !== "download") yield* emitState(harness, "update-downloaded");
++          yield* updater.setFeedURL({
++            provider: "github",
++            owner: "chomamateusz",
++            repo: "t3code",
++            host: "updates.example.com",
++          });
++          const result = yield* action === "installPrepared"
++            ? updates.installPrepared("0.0.46-fork.2")
++            : updates[action];
++          assert.equal(result.accepted, false);
++          assert.equal(result.state.status, "disabled");
++          assert.equal(result.state.message, refusal);
++          assert.equal(harness.downloadCount(), 0);
++          assert.equal(harness.quitAndInstalls(), 0);
++        }),
++      ).pipe(Effect.provide(harness.layer));
++    },
++  );
++});
+diff --git a/apps/desktop/src/updates/forkUpdateProvider.test.ts b/apps/desktop/src/updates/forkUpdateProvider.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..5aeee351553d854ce241aa784112894449d5abc6
+--- /dev/null
++++ b/apps/desktop/src/updates/forkUpdateProvider.test.ts
+@@ -0,0 +1,128 @@
++import { assert, describe, it } from "@effect/vitest";
++import { afterEach, vi } from "vite-plus/test";
++import * as Effect from "effect/Effect";
++import { AppUpdater } from "electron-updater/out/AppUpdater.js";
++import { ElectronHttpExecutor } from "electron-updater/out/electronHttpExecutor.js";
++import { GitHubProvider } from "electron-updater/out/providers/GitHubProvider.js";
++
++import * as DesktopUpdates from "./DesktopUpdates.ts";
++import { makeHarness } from "./updatesTestHarness.ts";
++
++class DiscoveryUpdater extends AppUpdater {
++  provider: GitHubProvider | undefined;
++
++  constructor() {
++    super(undefined, {
++      version: "0.0.46-fork.1",
++      name: "T3 Code",
++      isPackaged: true,
++      appUpdateConfigPath: "/unused/app-update.yml",
++      userDataPath: "/unused/userdata",
++      baseCachePath: "/unused/cache",
++      whenReady: () => Promise.resolve(),
++      relaunch: () => {},
++      quit: () => {},
++      onQuit: () => {},
++    });
++    this.autoDownload = false;
++    this.logger = null;
++  }
++
++  protected override async getUpdateInfoAndProvider() {
++    if (!this.provider) {
++      throw new Error("Missing test provider");
++    }
++    return { info: await this.provider.getLatestVersion(), provider: this.provider };
++  }
++
++  protected override doDownloadUpdate(): Promise<string[]> {
++    throw new Error("Unexpected download during discovery");
++  }
++
++  override quitAndInstall() {
++    throw new Error("Unexpected install during discovery");
++  }
++}
++
++afterEach(() => {
++  vi.restoreAllMocks();
++  vi.unstubAllEnvs();
++});
++
++describe("fork GitHub release discovery", () => {
++  it.effect.each(
++    (["darwin", "linux"] as const).flatMap((platform) =>
++      (
++        [
++          ["0.0.46-fork.2", true],
++          ["0.0.47-fork.1", true],
++          ["0.0.46", true],
++          ["0.0.46-fork.1", false],
++          ["0.0.46-fork.0", false],
++          ["0.0.45", false],
++        ] as const
++      ).map(([version, available]) => ({ platform, version, available })),
++    ),
++  )(
++    "$platform: $version availability on latest is $available",
++    ({ platform, version, available }) => {
++      const harness = makeHarness({
++        allowedUpdateRepository: "chomamateusz/t3code",
++        appUpdateYml: "provider: github\nowner: chomamateusz\nrepo: t3code\n",
++        appVersion: "0.0.46-fork.1",
++        env: {
++          T3CODE_DESKTOP_MOCK_UPDATES: "false",
++          ...(platform === "linux" ? { APPIMAGE: "/tmp/t3.AppImage" } : {}),
++        },
++        platform,
++      });
++      return Effect.gen(function* () {
++        const updates = yield* DesktopUpdates.DesktopUpdates;
++        yield* updates.configure;
++        yield* updates.setChannel("nightly");
++        vi.stubEnv("TEST_UPDATER_ARCH", "x64");
++        const updater = new DiscoveryUpdater();
++        updater.channel = harness.channel();
++        updater.allowPrerelease = harness.allowPrerelease();
++        updater.allowDowngrade = harness.allowDowngrade();
++        assert.equal(updater.channel, "latest");
++        assert.equal(updater.allowPrerelease, false);
++        assert.equal(updater.allowDowngrade, false);
++
++        const manifest = platform === "darwin" ? "latest-mac.yml" : "latest-linux.yml";
++        const basePath = "/chomamateusz/t3code/releases";
++        const requests: string[] = [];
++        const executor = new ElectronHttpExecutor();
++        vi.spyOn(executor, "request").mockImplementation(async (options) => {
++          assert.equal(options.hostname, "github.com");
++          const path = options.path ?? "";
++          requests.push(path);
++          if (path === `${basePath}.atom`) {
++            return `<feed><entry><title>Prerelease</title><link href="https://github.com/chomamateusz/t3code/releases/tag/v99.0.0-fork.1"/><content>Preview</content></entry><entry><title>Production release</title><link href="https://github.com/chomamateusz/t3code/releases/tag/v${version}"/><content>Release notes</content></entry></feed>`;
++          }
++          if (path === `${basePath}/latest`) {
++            return JSON.stringify({ tag_name: `v${version}`, prerelease: false });
++          }
++          if (path === `${basePath}/download/v${version}/${manifest}`) {
++            return `version: ${version}\nfiles:\n  - url: t3.zip\n    sha512: test\n`;
++          }
++          throw new Error(`Unexpected release request: ${path}`);
++        });
++        updater.provider = new GitHubProvider(
++          { provider: "github", owner: "chomamateusz", repo: "t3code" },
++          updater,
++          { platform, executor, isUseMultipleRangeRequest: false },
++        );
++        const result = yield* Effect.promise(() => updater.checkForUpdates());
++        assert.equal(result?.isUpdateAvailable, available);
++        assert.equal(result?.updateInfo.version, version);
++        assert.equal(result?.updateInfo.releaseName, "Production release");
++        assert.deepEqual(requests, [
++          `${basePath}.atom`,
++          `${basePath}/latest`,
++          `${basePath}/download/v${version}/${manifest}`,
++        ]);
++      }).pipe(Effect.provide(harness.layer), Effect.scoped);
++    },
++  );
++});
+diff --git a/apps/desktop/src/updates/remoteUpdateFlow.ts b/apps/desktop/src/updates/remoteUpdateFlow.ts
+index 1d9588315559c3bc4e649c934ab9fb1c7e025f7e..6ff186138b736486e3dbda3fe5f579323f805076 100644
+--- a/apps/desktop/src/updates/remoteUpdateFlow.ts
++++ b/apps/desktop/src/updates/remoteUpdateFlow.ts
+@@ -38,7 +38,7 @@ export function nextRemoteDesktopUpdateStep(
+     return {
+       action: "done",
+       outcome: "failed",
+-      reason: disabledReason ?? "Automatic updates are disabled on this machine.",
++      reason: disabledReason ?? state.message ?? "Automatic updates are disabled on this machine.",
+     };
+   }
+   // Reinstalling a failed version disrupts threads without updating; retries require the local user.
+diff --git a/apps/desktop/src/updates/updatesTestHarness.ts b/apps/desktop/src/updates/updatesTestHarness.ts
+index 226f00f8cba89651547a97055cddd1abebb95755..02f0c94c0585fedbc7d131a26701a04b8a85a1ab 100644
+--- a/apps/desktop/src/updates/updatesTestHarness.ts
++++ b/apps/desktop/src/updates/updatesTestHarness.ts
+@@ -20,6 +20,8 @@ import * as DesktopUpdates from "./DesktopUpdates.ts";
+ export const flushCallbacks = Effect.yieldNow;
+ 
+ export interface UpdatesHarnessOptions {
++  readonly allowedUpdateRepository?: string;
++  readonly appUpdateYml?: string | undefined;
+   readonly checkForUpdates?: Effect.Effect<
+     void,
+     ElectronUpdater.ElectronUpdaterCheckForUpdatesError
+@@ -52,6 +54,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+   let allowDowngrade = false;
+   const checkAllowedDowngrade: boolean[] = [];
+   let fullChangelog = false;
++  let channel = "latest";
++  let allowPrerelease = true;
+   const feedUrls: ElectronUpdater.ElectronUpdaterFeedUrl[] = [];
+   const listeners = new Map<string, Set<(...args: readonly unknown[]) => void>>();
+   const sentStates: DesktopUpdateState[] = [];
+@@ -75,14 +79,22 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+   };
+ 
+   const layerUpdater = Layer.succeed(ElectronUpdater.ElectronUpdater, {
++    feedURL: Effect.sync(() => feedUrls.at(-1)),
+     setFeedURL: (options) =>
+       Effect.sync(() => {
+         feedUrls.push(options);
+       }),
+     setAutoDownload: () => Effect.void,
+     setAutoInstallOnAppQuit: () => Effect.void,
+-    setChannel: () => Effect.void,
+-    setAllowPrerelease: () => Effect.void,
++    setChannel: (value) =>
++      Effect.sync(() => {
++        channel = value;
++        allowDowngrade = true;
++      }),
++    setAllowPrerelease: (value) =>
++      Effect.sync(() => {
++        allowPrerelease = value;
++      }),
+     allowDowngrade: Effect.sync(() => allowDowngrade),
+     setAllowDowngrade: (value) =>
+       Effect.sync(() => {
+@@ -243,6 +255,12 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+     path.endsWith(DesktopUpdates.DESKTOP_UPDATE_INSTALL_RECORD_FILE);
+   const layerFileSystem = FileSystem.layerNoop({
+     readFileString: (path) => {
++      if (path === "/repo/package.json")
++        return Effect.succeed(
++          JSON.stringify({ t3codeAllowedUpdateRepository: options.allowedUpdateRepository }),
++        );
++      if (path === "/missing/resources/app-update.yml" && options.appUpdateYml !== undefined)
++        return Effect.succeed(options.appUpdateYml);
+       const installRecord = isInstallRecord(path)
+         ? (installRecords.get(path) ?? previousInstallRecord)
+         : undefined;
+@@ -305,6 +323,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+     fullChangelog: () => fullChangelog,
+     /** Whether each feed check could offer an older release, and the flag now. */
+     checkAllowedDowngrade,
++    channel: () => channel,
++    allowPrerelease: () => allowPrerelease,
+     allowDowngrade: () => allowDowngrade,
+     listenerCount: () =>
+       Array.from(listeners.values()).reduce(
+diff --git a/apps/desktop/vite.config.test.ts b/apps/desktop/vite.config.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..a487da04636c707c54cf9c41f54f698ba58f31bb
+--- /dev/null
++++ b/apps/desktop/vite.config.test.ts
+@@ -0,0 +1,30 @@
++import { afterEach, expect, it, vi } from "vite-plus/test";
++
++vi.mock("../../scripts/lib/public-config.ts", () => ({
++  loadRepoEnv: () => process.env,
++}));
++
++afterEach(() => {
++  vi.unstubAllEnvs();
++  vi.resetModules();
++});
++
++it.each(["T3CODE_RELEASE_REPOSITORY", "T3CODE_ALLOWED_UPDATE_REPOSITORY"])(
++  "bakes %s into the desktop main bundle used by startup recovery",
++  async (key) => {
++    vi.stubEnv("T3CODE_RELEASE_REPOSITORY", "");
++    vi.stubEnv("T3CODE_ALLOWED_UPDATE_REPOSITORY", "");
++    vi.stubEnv(key, " Chomamateusz/T3Code ");
++    const { default: config } = await import("./vite.config.ts");
++    expect(config).toMatchObject({
++      pack: expect.arrayContaining([
++        expect.objectContaining({
++          entry: ["src/main.ts"],
++          define: expect.objectContaining({
++            __T3CODE_BUILD_RELEASE_REPOSITORY__: '"chomamateusz/t3code"',
++          }),
++        }),
++      ]),
++    });
++  },
++);
+diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
+index ba375768150971d21761ca38f5afd3715a4f1c03..4efbcb04ee27ffef37479331d0336248022cc0b5 100644
+--- a/apps/desktop/vite.config.ts
++++ b/apps/desktop/vite.config.ts
+@@ -11,6 +11,11 @@ const isMainProcessExternal = (id: string) =>
+   id === "electron" || id.startsWith("electron/") || isDesktopRuntimeExternalDependency(id);
+ const shouldLaunchElectronAfterPack = process.env.T3CODE_DESKTOP_DEV === "1";
+ const publicConfigDefine = {
++  __T3CODE_BUILD_RELEASE_REPOSITORY__: JSON.stringify(
++    repoEnv.T3CODE_RELEASE_REPOSITORY?.trim().toLowerCase() ||
++      repoEnv.T3CODE_ALLOWED_UPDATE_REPOSITORY?.trim().toLowerCase() ||
++      "",
++  ),
+   __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: JSON.stringify(
+     repoEnv.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() ?? "",
+   ),
+diff --git a/apps/web/src/bundledDev.test.ts b/apps/web/src/bundledDev.test.ts
+index 770b26e0a686b75139c3c4e87f33e34e6a211f3d..7faf63b77e22f93cfdf9ee357013913cbf8f1512 100644
+--- a/apps/web/src/bundledDev.test.ts
++++ b/apps/web/src/bundledDev.test.ts
+@@ -25,8 +25,14 @@ it("initializes React refresh before a shared UI chunk runs in bundled dev", asy
+ 
+   try {
+     await NodeFSP.mkdir(NodePath.join(root, "src/lib"), { recursive: true });
++    await NodeFSP.mkdir(NodePath.join(root, "src/components"), { recursive: true });
+     await NodeFSP.writeFile(NodePath.join(root, "package.json"), '{"type":"module"}');
+-    for (const file of ["index.html", "src/bootstrap.ts", "src/lib/bootError.ts"]) {
++    for (const file of [
++      "index.html",
++      "src/bootstrap.ts",
++      "src/lib/bootError.ts",
++      "src/components/desktopUpdate.logic.ts",
++    ]) {
+       await NodeFSP.copyFile(new URL(`../${file}`, import.meta.url), NodePath.join(root, file));
+     }
+     await NodeFSP.writeFile(
+diff --git a/apps/web/src/components/desktopUpdate.logic.test.ts b/apps/web/src/components/desktopUpdate.logic.test.ts
+index c7d7c607ea2382c6c56b1eae8dfc72dd59c50eaa..515b5d5f3c84cab51be5bd5c7d46fbe966808cba 100644
+--- a/apps/web/src/components/desktopUpdate.logic.test.ts
++++ b/apps/web/src/components/desktopUpdate.logic.test.ts
+@@ -1,9 +1,13 @@
+ import { describe, expect, it } from "vite-plus/test";
+-import type { DesktopUpdateState } from "@t3tools/contracts";
++import type { DesktopUpdateActionResult, DesktopUpdateState } from "@t3tools/contracts";
+ 
+ import {
+   canCheckForUpdate,
++  getDesktopUpdateActionError,
++  isDesktopUpdateButtonDisabled,
++  shouldToastDesktopUpdateActionResult,
+   getDesktopUpdateButtonTooltip,
++  getDesktopUpdateDownloadUrl,
+   getDesktopUpdateReleaseHistoryUrl,
+   getDesktopUpdateReleaseUrl,
+   resolveDesktopUpdateButtonAction,
+@@ -29,6 +33,35 @@ const baseState: DesktopUpdateState = {
+ };
+ 
+ describe("desktop update button state", () => {
++  it("keeps reinstall downloads on the baked release repository", () => {
++    for (const channel of ["stable", "nightly"]) {
++      expect(getDesktopUpdateDownloadUrl(channel, "chomamateusz/t3code")).toBe(
++        "https://github.com/chomamateusz/t3code/releases",
++      );
++    }
++    expect(getDesktopUpdateDownloadUrl("stable", "")).toBe("https://t3.codes/download");
++    expect(getDesktopUpdateDownloadUrl("nightly", "")).toBe(
++      "https://t3.codes/download?channel=nightly",
++    );
++  });
++
++  it.each(["available", "downloaded", "disabled"] as const)(
++    "shows the desktop refusal instead of the %s action when updates are disabled",
++    (status) => {
++      const state: DesktopUpdateState = {
++        ...baseState,
++        enabled: false,
++        status,
++        availableVersion: "0.0.47-fork.1",
++        downloadedVersion: "0.0.47-fork.1",
++        message: "Updates for this build come only from chomamateusz/t3code",
++      };
++      expect(resolveDesktopUpdateButtonAction(state)).toBe("none");
++      expect(isDesktopUpdateButtonDisabled(state)).toBe(true);
++      expect(getDesktopUpdateButtonTooltip(state)).toBe(state.message);
++    },
++  );
++
+   it("keeps retry action available after a download error", () => {
+     const state: DesktopUpdateState = {
+       ...baseState,
+@@ -64,6 +97,23 @@ describe("desktop update button state", () => {
+   });
+ });
+ 
++describe("getDesktopUpdateActionError", () => {
++  it("shows the refusal when the desktop disables an update action", () => {
++    const result: DesktopUpdateActionResult = {
++      accepted: false,
++      completed: false,
++      state: {
++        ...baseState,
++        enabled: false,
++        status: "disabled",
++        message: "Updates for this build come only from chomamateusz/t3code",
++      },
++    };
++    expect(getDesktopUpdateActionError(result)).toBe(result.state.message);
++    expect(shouldToastDesktopUpdateActionResult(result)).toBe(true);
++  });
++});
++
+ describe("desktop update UI helpers", () => {
+   it.each(["owner/repo/extra", "owner#notes/repo", "owner/repo?tab=notes"])(
+     "falls back to upstream for an invalid configured repository: %s",
+diff --git a/apps/web/src/components/desktopUpdate.logic.ts b/apps/web/src/components/desktopUpdate.logic.ts
+index 51b2b92b0a8baf23e7d7f9fad47e69a8175a1d1a..623aba0ef20d0df701fa2890a2a3dd9485ce6b49 100644
+--- a/apps/web/src/components/desktopUpdate.logic.ts
++++ b/apps/web/src/components/desktopUpdate.logic.ts
+@@ -21,6 +21,12 @@ function desktopReleaseRepositoryUrl(repository: string | undefined): string {
+   return `https://github.com/${releaseRepository}/releases`;
+ }
+ 
++function configuredDesktopReleaseRepository() {
++  return (
++    import.meta.env.T3CODE_RELEASE_REPOSITORY || import.meta.env.T3CODE_DESKTOP_UPDATE_REPOSITORY
++  );
++}
++
+ /** The download RPC can beat the updater's downloadedVersion event; fall back to the requested version. */
+ export function getDesktopUpdateDownloadedVersion(state: DesktopUpdateState): string | null {
+   return state.downloadedVersion ?? state.availableVersion;
+@@ -28,7 +34,7 @@ export function getDesktopUpdateDownloadedVersion(state: DesktopUpdateState): st
+ 
+ export function getDesktopUpdateReleaseUrl(
+   version: string | null,
+-  repository: string | undefined = import.meta.env.T3CODE_DESKTOP_UPDATE_REPOSITORY,
++  repository: string | undefined = configuredDesktopReleaseRepository(),
+ ): string | null {
+   const normalizedVersion = version?.trim();
+   if (!normalizedVersion) return null;
+@@ -36,14 +42,23 @@ export function getDesktopUpdateReleaseUrl(
+ }
+ 
+ export function getDesktopUpdateReleaseHistoryUrl(
+-  repository: string | undefined = import.meta.env.T3CODE_DESKTOP_UPDATE_REPOSITORY,
++  repository: string | undefined = configuredDesktopReleaseRepository(),
+ ): string {
+   return desktopReleaseRepositoryUrl(repository);
+ }
+ 
++export function getDesktopUpdateDownloadUrl(
++  channel: string,
++  repository: string | undefined = configuredDesktopReleaseRepository(),
++): string {
++  if (repository?.trim()) return getDesktopUpdateReleaseHistoryUrl(repository);
++  return `https://t3.codes/download${channel === "nightly" ? "?channel=nightly" : ""}`;
++}
++
+ export function resolveDesktopUpdateButtonAction(
+   state: DesktopUpdateState,
+ ): DesktopUpdateButtonAction {
++  if (!state.enabled || state.status === "disabled") return "none";
+   if (
+     state.downloadedVersion &&
+     (state.status === "downloaded" ||
+@@ -68,7 +83,10 @@ export function shouldShowArm64IntelBuildWarning(state: DesktopUpdateState | nul
+ }
+ 
+ export function isDesktopUpdateButtonDisabled(state: DesktopUpdateState | null): boolean {
+-  return state?.status === "downloading";
++  return (
++    state !== null &&
++    (!state.enabled || state.status === "disabled" || state.status === "downloading")
++  );
+ }
+ 
+ export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState): string {
+@@ -87,6 +105,9 @@ export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState):
+ }
+ 
+ export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string {
++  if (!state.enabled || state.status === "disabled") {
++    return state.message ?? "Automatic updates are not available in this build.";
++  }
+   if (
+     state.notAppliedVersion !== undefined &&
+     (state.status === "available" || state.status === "downloaded") &&
+@@ -128,7 +149,8 @@ export function getDesktopUpdateInstallConfirmationMessage(
+ }
+ 
+ export function getDesktopUpdateActionError(result: DesktopUpdateActionResult): string | null {
+-  if (!result.accepted || result.completed) return null;
++  if (result.completed) return null;
++  if (!result.accepted && result.state.enabled && result.state.status !== "disabled") return null;
+   if (typeof result.state.message !== "string") return null;
+   const message = result.state.message.trim();
+   return message.length > 0 ? message : null;
+diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
+index a37bf1581990ee387424ef4b50cf8806538a9336..bb0ca4baa48e7437040834774c20bd7818457d8f 100644
+--- a/apps/web/src/components/settings/SettingsPanels.tsx
++++ b/apps/web/src/components/settings/SettingsPanels.tsx
+@@ -35,6 +35,7 @@ import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
+ import { MobileAppSettingsRow } from "./MobileAppSettingsRow";
+ import {
+   canCheckForUpdate,
++  getDesktopUpdateActionError,
+   getDesktopUpdateButtonTooltip,
+   getDesktopUpdateDisabledReason,
+   getDesktopUpdateInstallConfirmationMessage,
+@@ -201,15 +202,28 @@ function AboutVersionSection() {
+     const action = updateState ? resolveDesktopUpdateButtonAction(updateState) : "none";
+ 
+     if (action === "download") {
+-      void bridge.downloadUpdate().catch((error: unknown) => {
+-        toastManager.add(
+-          stackedThreadToast({
+-            type: "error",
+-            title: "Could not download update",
+-            description: error instanceof Error ? error.message : "Download failed.",
+-          }),
+-        );
+-      });
++      void bridge
++        .downloadUpdate()
++        .then((result) => {
++          const message = getDesktopUpdateActionError(result);
++          if (message)
++            toastManager.add(
++              stackedThreadToast({
++                type: "error",
++                title: "Could not download update",
++                description: message,
++              }),
++            );
++        })
++        .catch((error: unknown) => {
++          toastManager.add(
++            stackedThreadToast({
++              type: "error",
++              title: "Could not download update",
++              description: error instanceof Error ? error.message : "Download failed.",
++            }),
++          );
++        });
+       return;
+     }
+ 
+@@ -240,6 +254,17 @@ function AboutVersionSection() {
+       }
+       void bridge
+         .installUpdate()
++        .then((result) => {
++          const message = getDesktopUpdateActionError(result);
++          if (message)
++            toastManager.add(
++              stackedThreadToast({
++                type: "error",
++                title: "Could not install update",
++                description: message,
++              }),
++            );
++        })
+         .catch((error: unknown) => {
+           toastManager.add(
+             stackedThreadToast({
+diff --git a/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx b/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx
+index f5db42c452c1438dc3e5ad7a7185d2460e4a77d5..1c32f4653bc9070cebd2f23b01ef4f200f567f4f 100644
+--- a/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx
++++ b/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx
+@@ -39,7 +39,6 @@ export function UpdateTrackSwitchDialog({
+   readonly channel: DesktopUpdateChannel;
+   readonly onClose: () => void;
+ }) {
+-  // npm dist-tags match the desktop channel names.
+   const release = useAtomValue(npmReleaseAtom(channel));
+   if (AsyncResult.isSuccess(release) && release.value !== null) {
+     return <SwitchPlan release={{ channel, ...release.value }} onClose={onClose} />;
+@@ -54,7 +53,9 @@ export function UpdateTrackSwitchDialog({
+             {AsyncResult.isFailure(release)
+               ? npmReleaseFailureMessage(release.cause)
+               : AsyncResult.isSuccess(release)
+-                ? `Could not find the latest ${label} release in this environment's npm registry.`
++                ? import.meta.env.T3CODE_RELEASE_REPOSITORY?.trim()
++                  ? `Could not find the latest ${label} release in this build's configured repository.`
++                  : `Could not find the latest ${label} release in this environment's npm registry.`
+                 : "Checking releases…"}
+           </AlertDialogDescription>
+         </AlertDialogHeader>
+diff --git a/apps/web/src/components/settings/updateTrackSwitch.logic.test.ts b/apps/web/src/components/settings/updateTrackSwitch.logic.test.ts
+index abc27d1f525e61bf4b3554c1e5bc1a06245483f6..7ab7de912b3b093cb0c8f5b0c28428354f98fdcc 100644
+--- a/apps/web/src/components/settings/updateTrackSwitch.logic.test.ts
++++ b/apps/web/src/components/settings/updateTrackSwitch.logic.test.ts
+@@ -6,7 +6,7 @@ import { localUpdaterStaysPut, prepareLocalTrackSwitch } from "./updateTrackSwit
+ const STABLE = "0.1.3";
+ 
+ /** Like the desktop app, saving a track re-checks the feed and reports what it offers. */
+-function fakeBridge(offer: string | null | Error) {
++function fakeBridge(offer: string | null | Error, retainedChannel?: DesktopUpdateChannel) {
+   const saved: DesktopUpdateChannel[] = [];
+   const base: DesktopUpdateState = {
+     enabled: true,
+@@ -34,7 +34,7 @@ function fakeBridge(offer: string | null | Error) {
+         if (offer instanceof Error) throw offer;
+         return {
+           ...base,
+-          channel,
++          channel: retainedChannel ?? channel,
+           status: offer === null ? ("up-to-date" as const) : ("available" as const),
+           availableVersion: offer,
+         };
+@@ -62,6 +62,10 @@ describe("prepareLocalTrackSwitch", () => {
+   });
+ 
+   it("reports a track that could not be saved", async () => {
++    expect(await prepare(fakeBridge(null, "nightly").bridge, false)).toEqual({
++      ok: false,
++      message: "This build does not offer the requested update track.",
++    });
+     expect(await prepare(fakeBridge(new Error("feed check failed")).bridge)).toEqual({
+       ok: false,
+       message: "feed check failed",
+diff --git a/apps/web/src/components/settings/updateTrackSwitch.logic.ts b/apps/web/src/components/settings/updateTrackSwitch.logic.ts
+index 41d478e050dca1a184bc5b56adb28f7f27a684fb..78c7e0394aa3f113c289eba76f46b82c46ebc961 100644
+--- a/apps/web/src/components/settings/updateTrackSwitch.logic.ts
++++ b/apps/web/src/components/settings/updateTrackSwitch.logic.ts
+@@ -31,6 +31,9 @@ export async function prepareLocalTrackSwitch(
+       message: error instanceof Error ? error.message : "The update track did not change.",
+     };
+   }
++  if (local.channel !== input.channel) {
++    return { ok: false, message: "This build does not offer the requested update track." };
++  }
+   if (!input.reinstall) return { ok: true, local: null };
+   const found = local.downloadedVersion ?? local.availableVersion;
+   if (
+diff --git a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
+index 3c18b2c7a927b5f5fd7d25f60b359b2c55f8d109..03d6398f7edf7adabb1655fcfe4d37ff4599e34f 100644
+--- a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
++++ b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
+@@ -173,16 +173,16 @@ export async function installLocalUpdate(
+ ): Promise<boolean> {
+   try {
+     const result = await bridge.installUpdate(expectedVersion);
++    const actionError = getDesktopUpdateActionError(result);
++    if (actionError) {
++      reportError("Could not install update", actionError);
++      return false;
++    }
+     if (!result.accepted) {
+       showDesktopUpdateDownloadedToast(bridge, result.state);
+       return false;
+     }
+-    const actionError = shouldToastDesktopUpdateActionResult(result)
+-      ? getDesktopUpdateActionError(result)
+-      : null;
+-    if (!actionError) return true;
+-    reportError("Could not install update", actionError);
+-    return false;
++    return true;
+   } catch (error) {
+     reportError(
+       "Could not install update",
+diff --git a/apps/web/src/lib/bootError.ts b/apps/web/src/lib/bootError.ts
+index 3e0b05a0164fe061229a46862822a9fc60160d22..4b61106c918d05ba7cdfa40ca44aece327dcedf0 100644
+--- a/apps/web/src/lib/bootError.ts
++++ b/apps/web/src/lib/bootError.ts
+@@ -1,7 +1,8 @@
+ import type { DesktopBridge, DesktopUpdateState } from "@t3tools/contracts";
+ 
++import { getDesktopUpdateDownloadUrl } from "../components/desktopUpdate.logic";
++
+ const FALLBACK_TRIAGE_COMMAND = "npx t3 triage";
+-const DOWNLOAD_URL = "https://t3.codes/download";
+ const ISSUE_URL = "https://github.com/pingdotgg/t3code/issues/new";
+ const LAST_FAILURE_KEY = "t3code:boot-failed-at";
+ const REPEAT_FAILURE_MS = 5 * 60_000;
+@@ -357,7 +358,7 @@ export function showBootError(error: unknown) {
+     ...(bridge
+       ? [
+           link(
+-            nightly ? `${DOWNLOAD_URL}?channel=nightly` : DOWNLOAD_URL,
++            getDesktopUpdateDownloadUrl(environment.channel),
+             nightly
+               ? "Download and reinstall the latest nightly build"
+               : "Download and reinstall T3 Code",
+diff --git a/apps/web/src/state/npmRelease.test.ts b/apps/web/src/state/npmRelease.test.ts
+index d11ef8d76985b838ba0405ef9b64fc1c0f4ac7e5..001d0f4eb2e4f388b8e31557886e5acfad866f50 100644
+--- a/apps/web/src/state/npmRelease.test.ts
++++ b/apps/web/src/state/npmRelease.test.ts
+@@ -6,7 +6,7 @@ import * as Cause from "effect/Cause";
+ import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
+ import * as Effect from "effect/Effect";
+ import * as Schema from "effect/Schema";
+-import { vi } from "vite-plus/test";
++import { afterAll, afterEach, vi } from "vite-plus/test";
+ 
+ import { npmReleaseAtom, npmReleaseFailureMessage } from "./npmRelease";
+ import { primaryEnvironmentIdAtom } from "./primaryEnvironment";
+@@ -22,6 +22,16 @@ vi.mock("./primaryEnvironment", () => ({
+   primaryEnvironmentIdAtom: Atom.make<EnvironmentId | null>(null),
+ }));
+ 
++const fetchMock = vi.fn<typeof globalThis.fetch>();
++vi.stubGlobal("fetch", fetchMock);
++afterEach(() => {
++  fetchMock.mockReset();
++  vi.unstubAllEnvs();
++});
++afterAll(() => {
++  vi.unstubAllGlobals();
++});
++
+ const version = "0.0.46-nightly.20261012.3021";
+ const first = EnvironmentId.make("first");
+ const second = EnvironmentId.make("second");
+@@ -134,9 +144,7 @@ it.effect("resolves track metadata through a supporting server when there is no
+ it.effect("does not call an unsupported RPC or fetch public npm for an older primary server", () =>
+   Effect.gen(function* () {
+     const query = setup(false);
+-    using fetch = vi
+-      .spyOn(globalThis, "fetch")
+-      .mockRejectedValue(new Error("Unexpected browser fetch"));
++    fetchMock.mockRejectedValue(new Error("Unexpected browser fetch"));
+     const registry = AtomRegistry.make();
+     NodeAssert.ok(
+       Atom.isWritable<EnvironmentId | null, EnvironmentId | null>(primaryEnvironmentIdAtom),
+@@ -151,7 +159,7 @@ it.effect("does not call an unsupported RPC or fetch public npm for an older pri
+         "Update it before switching tracks",
+       );
+       expect(query).not.toHaveBeenCalled();
+-      expect(fetch).not.toHaveBeenCalled();
++      expect(fetchMock).not.toHaveBeenCalled();
+     } finally {
+       unmount();
+       registry.dispose();
+@@ -166,3 +174,81 @@ it("only displays the safe release error, not arbitrary transport diagnostics",
+     npmReleaseFailureMessage(Cause.fail(new Error("sensitive transport details"))),
+   ).not.toContain("sensitive");
+ });
++
++it.effect("checks fork versions and tracks without consulting a server registry", () =>
++  Effect.gen(function* () {
++    const query = setup();
++    vi.stubEnv("T3CODE_RELEASE_REPOSITORY", " Chomamateusz/T3Code ");
++    const registry = AtomRegistry.make();
++    const exact = npmReleaseAtom(version);
++    const latest = npmReleaseAtom("latest");
++    try {
++      fetchMock.mockResolvedValueOnce(Response.json({ tag_name: `v${version}` }));
++      expect(yield* AtomRegistry.getResult(registry, exact, { suspendOnWaiting: true })).toEqual({
++        version,
++        databaseMigration: undefined,
++      });
++      const request = new Request(fetchMock.mock.calls[0]![0], fetchMock.mock.calls[0]![1]);
++      expect(request.url).toBe(
++        `https://api.github.com/repos/chomamateusz/t3code/releases/tags/v${version}`,
++      );
++      expect(request.headers.get("traceparent")).toBeNull();
++      expect(request.headers.get("b3")).toBeNull();
++      fetchMock.mockClear();
++      fetchMock.mockResolvedValueOnce(
++        Response.json(
++          Array.from({ length: 100 }, () => ({ tag_name: `v${version}`, prerelease: true })),
++        ),
++      );
++      fetchMock.mockResolvedValueOnce(
++        Response.json([{ tag_name: "v0.1.4-fork.2", draft: true }, { tag_name: "v0.1.4-fork.1" }]),
++      );
++      expect(yield* AtomRegistry.getResult(registry, latest, { suspendOnWaiting: true })).toEqual({
++        version: "0.1.4-fork.1",
++        databaseMigration: undefined,
++      });
++      expect(fetchMock.mock.calls.map(([input, init]) => new Request(input, init).url)).toEqual([
++        "https://api.github.com/repos/chomamateusz/t3code/releases?per_page=100&page=1",
++        "https://api.github.com/repos/chomamateusz/t3code/releases?per_page=100&page=2",
++      ]);
++      expect(query).not.toHaveBeenCalled();
++    } finally {
++      registry.dispose();
++      vi.unstubAllEnvs();
++    }
++  }),
++);
++
++it.effect.each([
++  { repository: "chomamateusz/t3code", body: null, status: 404, fails: false },
++  {
++    repository: "chomamateusz/t3code",
++    body: { tag_name: `v${version}`, draft: true },
++    status: 200,
++    fails: false,
++  },
++  { repository: "chomamateusz/t3code", body: { tag_name: "v0.0.1" }, status: 200, fails: false },
++  { repository: "chomamateusz/t3code", body: { version }, status: 200, fails: true },
++  { repository: "invalid/repository/path", body: null, status: 404, fails: false },
++])(
++  "does not fall back from an unavailable fork release: %o",
++  ({ repository, body, status, fails }) =>
++    Effect.gen(function* () {
++      const query = setup();
++      fetchMock.mockResolvedValue(Response.json(body, { status }));
++      vi.stubEnv("T3CODE_RELEASE_REPOSITORY", repository);
++      const registry = AtomRegistry.make();
++      try {
++        const result = yield* AtomRegistry.getResult(registry, npmReleaseAtom(version), {
++          suspendOnWaiting: true,
++        }).pipe(Effect.result);
++        expect(result._tag).toBe(fails ? "Failure" : "Success");
++        if (result._tag === "Success") expect(result.success).toBeNull();
++        expect(fetchMock).toHaveBeenCalledTimes(repository === "chomamateusz/t3code" ? 1 : 0);
++        expect(query).not.toHaveBeenCalled();
++      } finally {
++        registry.dispose();
++        vi.unstubAllEnvs();
++      }
++    }),
++);
+diff --git a/apps/web/src/state/npmRelease.ts b/apps/web/src/state/npmRelease.ts
+index 2e8159c0b9b88d8c3344f15d8dc92bf22bbcd74d..dd3b7acc3f43db581cbed3372dda4f7230db3811 100644
+--- a/apps/web/src/state/npmRelease.ts
++++ b/apps/web/src/state/npmRelease.ts
+@@ -1,4 +1,6 @@
+ import { type ServerConfig, ServerNpmReleaseError } from "@t3tools/contracts";
++import { newestCliReleaseVersion } from "@t3tools/shared/cliRelease";
++import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/http";
+ import * as Cause from "effect/Cause";
+ import * as Effect from "effect/Effect";
+ import * as Option from "effect/Option";
+@@ -26,11 +28,58 @@ export function npmReleaseFailureMessage(cause: Cause.Cause<unknown>): string {
+   const error = Option.getOrUndefined(Cause.findErrorOption(cause));
+   return isServerNpmReleaseError(error)
+     ? error.message
+-    : "Could not check this environment's npm registry. Check the connection and registry settings.";
++    : import.meta.env.T3CODE_RELEASE_REPOSITORY?.trim()
++      ? "Could not check this build's configured release repository. Check the connection and try again."
++      : "Could not check this environment's npm registry. Check the connection and registry settings.";
+ }
+ 
++const ForkRelease = Schema.Struct({
++  tag_name: Schema.String,
++  draft: Schema.optional(Schema.Boolean),
++  prerelease: Schema.optional(Schema.Boolean),
++});
++
++const forkRelease = Effect.fn("updates.forkRelease")(function* (repository: string, spec: string) {
++  if (!/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(repository)) return null;
++  if (spec !== "latest" && spec !== "nightly" && spec !== "preview") {
++    const response = yield* HttpClient.get(
++      `https://api.github.com/repos/${repository}/releases/tags/v${encodeURIComponent(spec)}`,
++    );
++    if (response.status === 404) return null;
++    const release = yield* HttpClientResponse.filterStatusOk(response).pipe(
++      Effect.flatMap(HttpClientResponse.schemaBodyJson(ForkRelease)),
++    );
++    return !release.draft && release.tag_name === `v${spec}`
++      ? { version: spec, databaseMigration: undefined }
++      : null;
++  }
++  for (let page = 1; page <= 10; page += 1) {
++    const response = yield* HttpClient.get(
++      `https://api.github.com/repos/${repository}/releases?per_page=100&page=${page}`,
++    );
++    if (response.status === 404) return null;
++    const releases = yield* HttpClientResponse.filterStatusOk(response).pipe(
++      Effect.flatMap(HttpClientResponse.schemaBodyJson(Schema.Array(ForkRelease))),
++    );
++    const version = newestCliReleaseVersion(
++      spec === "latest" ? releases.filter((release) => !release.prerelease) : releases,
++      spec === "latest" ? "stable" : spec,
++    );
++    if (version !== undefined) return { version, databaseMigration: undefined };
++    if (releases.length < 100) return null;
++  }
++  return null;
++});
++
+ export const npmReleaseAtom = Atom.family((spec: string) =>
+   Atom.make((get) => {
++    const repository = import.meta.env.T3CODE_RELEASE_REPOSITORY?.trim().toLowerCase();
++    if (repository) {
++      return forkRelease(repository, spec).pipe(
++        Effect.provideService(HttpClient.TracerPropagationEnabled, false),
++        Effect.provide(FetchHttpClient.layer),
++      );
++    }
+     const primary = get(primaryEnvironmentIdAtom);
+     // With the desktop's local server turned off there is no primary, so a connected server answers.
+     const candidates =
+diff --git a/apps/web/src/vite-env.d.ts b/apps/web/src/vite-env.d.ts
+index 63f7cca9cbfc679ee82dee992176e51d0cbac8c8..ec4f10e8e9fd893062ae53c347efdbed9f0ad011 100644
+--- a/apps/web/src/vite-env.d.ts
++++ b/apps/web/src/vite-env.d.ts
+@@ -15,6 +15,7 @@ interface ImportMetaEnv {
+   readonly VITE_RELAY_OTLP_TRACES_DATASET: string;
+   readonly VITE_RELAY_OTLP_TRACES_TOKEN: string;
+   readonly T3CODE_DESKTOP_UPDATE_REPOSITORY: string;
++  readonly T3CODE_RELEASE_REPOSITORY: string;
+   readonly T3CODE_FEATURE_SECRETS: string;
+   readonly APP_VERSION: string;
+ }
+diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
+index 217294de3762c220028d6ac985b64fa7fcd02d5e..1aca5de32d7b214ae6b2b45ef476ad392ccf3894 100644
+--- a/apps/web/vite.config.ts
++++ b/apps/web/vite.config.ts
+@@ -298,6 +298,11 @@ export default defineConfig(() => {
+       ],
+     },
+     define: {
++      "import.meta.env.T3CODE_RELEASE_REPOSITORY": JSON.stringify(
++        repoEnv.T3CODE_RELEASE_REPOSITORY?.trim().toLowerCase() ||
++          repoEnv.T3CODE_ALLOWED_UPDATE_REPOSITORY?.trim().toLowerCase() ||
++          "",
++      ),
+       "import.meta.env.VITE_WS_URL": JSON.stringify(configuredWsUrl ?? ""),
+       // Override .env URLs with empty values in single-origin dev so clients use window.location.origin.
+       "import.meta.env.VITE_HTTP_URL": JSON.stringify(configuredHttpUrl ?? ""),
+diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
+index aef49abea7c63bb83c22db4b0f9ebb648822bfce..529997065008e4a06fd69e8f04cb2b2382a8a50f 100644
+--- a/scripts/build-desktop-artifact.test.ts
++++ b/scripts/build-desktop-artifact.test.ts
+@@ -1855,3 +1855,67 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+     assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
+   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+ );
++
++it.effect("bakes the allowed update repository only when configured", () =>
++  Effect.gen(function* () {
++    const build = (env: Record<string, string>) =>
++      createBuildConfig(
++        "linux",
++        "AppImage",
++        "0.0.46-fork.1",
++        false,
++        false,
++        undefined,
++        undefined,
++      ).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env }))));
++    const configured = yield* build({
++      T3CODE_ALLOWED_UPDATE_REPOSITORY: " Chomamateusz/T3Code ",
++      T3CODE_DESKTOP_UPDATE_REPOSITORY: " Chomamateusz/T3Code ",
++    });
++    assert.deepEqual(configured.extraMetadata, {
++      t3codeAllowedUpdateRepository: "chomamateusz/t3code",
++    });
++    assert.deepEqual(configured.publish, [
++      { provider: "github", owner: "chomamateusz", repo: "t3code", releaseType: "release" },
++    ]);
++    const upstream = yield* build({ T3CODE_DESKTOP_UPDATE_REPOSITORY: "pingdotgg/t3code" });
++    assert.equal(upstream.extraMetadata, undefined);
++  }).pipe(Effect.provide(NodeServices.layer)),
++);
++
++it.effect("treats empty fork build variables as unset", () =>
++  Effect.gen(function* () {
++    const config = yield* createBuildConfig(
++      "linux",
++      "AppImage",
++      "0.0.46-nightly.20261001.1",
++      false,
++      false,
++      undefined,
++      undefined,
++    ).pipe(
++      Effect.provide(
++        ConfigProvider.layer(
++          ConfigProvider.fromEnv({
++            env: {
++              T3CODE_ALLOWED_UPDATE_REPOSITORY: "",
++              T3CODE_DESKTOP_UPDATE_REPOSITORY: "",
++              T3CODE_RELEASE_REPOSITORY: "",
++              GITHUB_REPOSITORY: "pingdotgg/t3code",
++            },
++          }),
++        ),
++      ),
++    );
++    assert.equal(config.extraMetadata, undefined);
++    assert.deepEqual(config.publish, [
++      {
++        provider: "github",
++        owner: "pingdotgg",
++        repo: "t3code",
++        releaseType: "prerelease",
++        channel: "nightly",
++      },
++    ]);
++  }).pipe(Effect.provide(NodeServices.layer)),
++);
+diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
+index 2fff4919c40d35d1e9d566002bee6681f3bfaf83..11939a17b12563e3ff1ea0e46b88a4e6e47f52c2 100644
+--- a/scripts/build-desktop-artifact.ts
++++ b/scripts/build-desktop-artifact.ts
+@@ -2688,6 +2688,13 @@ export function resolveDesktopRuntimeDependencies(
+   );
+ }
+ 
++export const allowedDesktopUpdateRepository = Config.String(
++  "T3CODE_ALLOWED_UPDATE_REPOSITORY",
++).pipe(
++  Config.withDefault(""),
++  Config.map((repository) => repository.trim().toLowerCase()),
++);
++
+ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig")(function* (
+   updateChannel: "latest" | "nightly",
+ ) {
+@@ -2699,7 +2706,9 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
+     Option.getOrUndefined(env.updateRepository)?.trim() ||
+     Option.getOrUndefined(env.githubRepository)?.trim() ||
+     ""
+-  ).trim();
++  )
++    .trim()
++    .toLowerCase();
+   if (!rawRepo) return undefined;
+ 
+   const [owner, repo, ...rest] = rawRepo.split("/");
+@@ -2808,6 +2817,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+       ...(platform === "win" && wslRuntimeBundled ? WSL_RUNTIME_EXTRA_RESOURCES : []),
+     ],
+   };
++  const allowedUpdateRepository = yield* allowedDesktopUpdateRepository;
++  if (allowedUpdateRepository) {
++    buildConfig.extraMetadata = { t3codeAllowedUpdateRepository: allowedUpdateRepository };
++  }
+   const updateChannel = resolveDesktopUpdateChannel(version);
+   // Missing publish config infers a GitHub feed from tokens; staging has no repository, so manifest generation would crash.
+   buildConfig.publish = null;
+diff --git a/scripts/verify-fork-update-feed.test.ts b/scripts/verify-fork-update-feed.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e562a401b21b4aadc718d02e8b573624710e8b0d
+--- /dev/null
++++ b/scripts/verify-fork-update-feed.test.ts
+@@ -0,0 +1,37 @@
++// @effect-diagnostics nodeBuiltinImport:off - Packaged archive verification uses asar's synchronous filesystem API.
++import * as NodeFSP from "node:fs/promises";
++import * as NodePath from "node:path";
++import * as NodeOS from "node:os";
++import { createPackage } from "@electron/asar";
++import { expect, it } from "vite-plus/test";
++
++import { verifyForkUpdateFeed } from "./verify-fork-update-feed.ts";
++
++it.each([
++  ["chomamateusz", "chomamateusz/t3code", true],
++  ["pingdotgg", "chomamateusz/t3code", false],
++  ["chomamateusz", "pingdotgg/t3code", false],
++  ["chomamateusz", undefined, false],
++] as const)(
++  "checks the packaged feed owner %s and baked allowlist %s",
++  async (owner, allowed, valid) => {
++    const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-fork-feed-"));
++    try {
++      const app = NodePath.join(root, "app");
++      await NodeFSP.mkdir(app);
++      await NodeFSP.writeFile(
++        NodePath.join(app, "package.json"),
++        JSON.stringify({ t3codeAllowedUpdateRepository: allowed }),
++      );
++      await createPackage(app, NodePath.join(root, "app.asar"));
++      await NodeFSP.writeFile(
++        NodePath.join(root, "app-update.yml"),
++        `provider: github\nowner: ${owner}\nrepo: t3code\n`,
++      );
++      if (valid) expect(() => verifyForkUpdateFeed(root)).not.toThrow();
++      else expect(() => verifyForkUpdateFeed(root)).toThrow();
++    } finally {
++      await NodeFSP.rm(root, { recursive: true, force: true });
++    }
++  },
++);
+diff --git a/scripts/verify-fork-update-feed.ts b/scripts/verify-fork-update-feed.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..701a37780c84a68aa9cc2b7583bc3b5a28c78588
+--- /dev/null
++++ b/scripts/verify-fork-update-feed.ts
+@@ -0,0 +1,36 @@
++// @effect-diagnostics nodeBuiltinImport:off - Packaged archive verification uses asar's synchronous filesystem API.
++import * as NodeFS from "node:fs";
++import * as NodePath from "node:path";
++import { extractFile } from "@electron/asar";
++import { fromYaml } from "@t3tools/shared/schemaYaml";
++import * as Schema from "effect/Schema";
++
++const decodeFeed = Schema.decodeUnknownSync(
++  fromYaml(
++    Schema.Struct({
++      provider: Schema.Literal("github"),
++      owner: Schema.Literal("chomamateusz"),
++      repo: Schema.Literal("t3code"),
++    }),
++  ),
++);
++const decodePackage = Schema.decodeUnknownSync(
++  Schema.fromJsonString(
++    Schema.Struct({
++      t3codeAllowedUpdateRepository: Schema.Literal("chomamateusz/t3code"),
++    }),
++  ),
++);
++
++export function verifyForkUpdateFeed(resourcesPath: string): void {
++  decodeFeed(NodeFS.readFileSync(NodePath.join(resourcesPath, "app-update.yml"), "utf8"));
++  decodePackage(
++    extractFile(NodePath.join(resourcesPath, "app.asar"), "package.json").toString("utf8"),
++  );
++}
++
++if (import.meta.main) {
++  const paths = process.argv.slice(2);
++  if (paths.length === 0) throw new Error("Expected at least one packaged resources directory.");
++  for (const path of paths) verifyForkUpdateFeed(path);
++}

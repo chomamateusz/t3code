@@ -1,0 +1,1229 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mateusz Choma <chomamateusz@gmail.com>
+Date: Fri, 6 Nov 2026 13:09:19 +0100
+Subject: =?UTF-8?q?=F0=9F=9B=9F=20Take=20the=20usage-limit=20reset=20time?=
+ =?UTF-8?q?=20from=20the=20fleet=20proxy=20when=20the=20CLI=20has=20none?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Behaviours:
+When a Claude turn ends in a usage_limit failure and neither the CLI's
+rate-limit info nor the 429 text carries a reset time, the Claude adapter
+now asks the fleet proxy at ANTHROPIC_BASE_URL (GET /v1/fleet/limits) when
+it can next serve the turn's model and stores that as the failure's
+resetAt, so the composer banner shows a time and auto-resume can arm.
+
+- A reset time the CLI already reported always wins; the lookup runs only
+  for usage_limit failures whose resetAt is still null. The failure message
+  is unchanged, and the rate_limit_event notice path is untouched.
+- A stop that lands while the lookup is pending still settles the turn as
+  interrupted, with no usage_limit failure.
+- The proxy answer yields a time only when every Claude credential that is
+  neither disabled nor in the error state is blocked: credential-scoped
+  cooldowns, cooldowns for the model, and rejected bars that apply to it
+  (session_5h, weekly_all, window_*; weekly_fable only for Fable models),
+  ignoring passed resets and past timestamps. The earliest-freeing
+  credential sets the time; a matching future exclusion can only push it
+  later, and a matching permanent exclusion (until null) gives null. Any
+  usable credential, no Claude credentials or a malformed body gives null.
+- Base URL: Claude settings env ANTHROPIC_BASE_URL, then the instance
+  environment. Key: ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY, then the
+  settings apiKeyHelper run with /bin/sh -c in the turn cwd (5 s, 4 KiB
+  stdout; skipped on Windows). The request has a 4 s timeout and does not
+  follow redirects; the whole lookup is bounded at 6 s. Every failure
+  resolves to null and only the outcome is logged at debug level
+  (fleet-proxy.limits.reset-at, including reason timeout, failed or defect
+  on the outer fallbacks), never the key.
+- The adapter receives the HTTP client through a new optional
+  fleetProxyHttpClient option; ClaudeDriver passes the server's client, and
+  adapters built without it skip the lookup.
+- readClaudeApiSettings also reads apiKeyHelper, and readClaudeSettingsEnv delegates to it.
+
+Integration details:
+- createClaudeAdapterV2 picks scopedLimitNames, onUsageLimits, modelCatalog and fleetProxyHttpClient, and ClaudeDriver passes both modelCatalog and the server HTTP client.
+
+Port to 965ddc1d6c:
+- Upstream #28047 added a promptSuggestions harness option to ClaudeAdapterV2.test.ts beside this commit's fleetProxyHttpClient; both stay. Upstream #33291 and #27753 changed compaction and delegated-task reporting in ClaudeAdapterV2.ts without touching usage-limit reset handling; 965ddc1d6c still has no reset-time fallback for undated usage_limit failures.
+
+Files:
+apps/server:
+- apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+- apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+- apps/server/src/provider/Drivers/ClaudeDriver.ts
+- apps/server/src/provider/Drivers/ClaudeSkills.ts
+- apps/server/src/provider/fleetProxyLimits.fixture.json
+- apps/server/src/provider/fleetProxyLimits.test.ts
+- apps/server/src/provider/fleetProxyLimits.ts
+
+Tests:
+- apps/server: src/provider/fleetProxyLimits.test.ts (new, against the
+  recorded proxy answer in src/provider/fleetProxyLimits.fixture.json:
+  usable credential, earliest blocked credential, model-scoped cooldowns,
+  weekly and Fable-weekly bars, passed and past resets, disabled and
+  errored credentials, malformed input, exclusions including permanent
+  ones, settings/env key and URL resolution, apiKeyHelper, non-200,
+  invalid JSON, network failure, overall 6 s timeout),
+  src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts (an undated 429
+  takes the proxy's reset; a CLI-reported reset is kept without a request;
+  a stop during a pending lookup settles as interrupted)
+- Whole-stack focused validation on 965ddc1d6c: 1,321 passed and 2 baseline failures across 48 test files (every test file the stack touches plus CommandPalette.logic.test.ts and chatRouteCommands.browser.test.ts). Web: 679 / 32 files; desktop: 118 / 9; server: 432 passed and 2 baseline failures / 4; contracts: 36 / 1; scripts: 56 / 2.
+- vp run typecheck passed in apps/web, apps/desktop, apps/server, packages/contracts and scripts; vp lint and vp fmt --check passed on the 119 changed files.
+- Baseline: UsageService.test.ts on detached 965ddc1d6c fails the same 2 assertions (Pi /var versus /private/var path equality; Codex open-spy raw-path equality); no assertion was changed to hide them.
+
+Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
+---
+ .../Adapters/ClaudeAdapterV2.test.ts          | 172 ++++++++++
+ .../Adapters/ClaudeAdapterV2.ts               |  49 ++-
+ .../src/provider/Drivers/ClaudeDriver.ts      |   1 +
+ .../src/provider/Drivers/ClaudeSkills.ts      |  27 +-
+ .../provider/fleetProxyLimits.fixture.json    | 207 ++++++++++++
+ .../src/provider/fleetProxyLimits.test.ts     | 306 ++++++++++++++++++
+ apps/server/src/provider/fleetProxyLimits.ts  | 238 ++++++++++++++
+ 7 files changed, 987 insertions(+), 13 deletions(-)
+ create mode 100644 apps/server/src/provider/fleetProxyLimits.fixture.json
+ create mode 100644 apps/server/src/provider/fleetProxyLimits.test.ts
+ create mode 100644 apps/server/src/provider/fleetProxyLimits.ts
+
+diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+index 1add2822a01e9fde10fe2046432dbee07c7fa052..7abab4ba0726f40c3d2d4771df7e86f7d3cdeedc 100644
+--- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
++++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+@@ -75,6 +75,7 @@ import * as Scope from "effect/Scope";
+ import * as Stream from "effect/Stream";
+ import * as TestClock from "effect/testing/TestClock";
+ import { Tool } from "effect/ai";
++import { HttpClient, HttpClientResponse } from "effect/http";
+ import { formatClaudeResumeCompactionQuestion } from "@t3tools/shared/claudeCompaction";
+ import * as HostProcess from "@t3tools/shared/HostProcess";
+ import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
+@@ -99,6 +100,7 @@ import {
+   BUNDLED_CLAUDE_MODEL_CATALOG,
+   type ClaudeModelCatalog,
+ } from "../../provider/ClaudeModelCatalog.ts";
++import fleetLimitsSample from "../../provider/fleetProxyLimits.fixture.json" with { type: "json" };
+ import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+ import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
+@@ -3166,6 +3168,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+     readonly forkSession?: ClaudeAdapterV2.ClaudeAgentSdkQueryRunnerShape["forkSession"];
+     readonly allocateSessionId?: Effect.Effect<string>;
+     readonly promptSuggestions?: boolean;
++    readonly fleetProxyHttpClient?: HttpClient.HttpClient;
+   }) =>
+     Effect.gen(function* () {
+       const fileSystem = yield* FileSystem.FileSystem;
+@@ -3229,6 +3232,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+         path: yield* Path.Path,
+         random: yield* SecureRandom.SecureRandom,
+         idAllocator,
++        ...(options?.fleetProxyHttpClient === undefined
++          ? {}
++          : { fleetProxyHttpClient: options.fleetProxyHttpClient }),
+         continuationRequests: {
+           offer: (request) =>
+             Effect.sync(() => {
+@@ -7669,6 +7675,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+     ),
+   );
+ 
++  const FLEET_PROXY_ATTEMPT = RunAttemptId.make("attempt-fleet-proxy-limit");
++  const UNDATED_RATE_LIMIT =
++    "API Error: Request rejected (429) · This request would exceed your account's rate limit. Please try again later.";
++
++  const makeFleetProxyLimitsHarness = Effect.fn(function* (options?: {
++    readonly beforeResponse?: Effect.Effect<void>;
++    readonly interrupt?: Effect.Effect<void>;
++  }) {
++    const fileSystem = yield* FileSystem.FileSystem;
++    const homePath = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-fleet-" });
++    const authorizations: Array<string | undefined> = [];
++    const blockedLimits = {
++      ...fleetLimitsSample,
++      credentials: fleetLimitsSample.credentials.filter(
++        (credential) => credential.label !== "claude-0128af49",
++      ),
++    };
++    const harness = yield* makeWakeHarnessWithOptions({
++      settings: { ...DEFAULT_CLAUDE_SETTINGS, homePath },
++      environment: {
++        ANTHROPIC_BASE_URL: "http://fleet-proxy.test:8317",
++        ANTHROPIC_AUTH_TOKEN: "fleet-client-key",
++      },
++      fleetProxyHttpClient: HttpClient.make((request) =>
++        Effect.sync(() => {
++          authorizations.push(request.headers.authorization);
++        }).pipe(
++          Effect.andThen(options?.beforeResponse ?? Effect.void),
++          Effect.as(HttpClientResponse.fromWeb(request, Response.json(blockedLimits))),
++        ),
++      ),
++      ...(options?.interrupt === undefined ? {} : { interrupt: options.interrupt }),
++    });
++    return { harness, authorizations };
++  });
++
++  const offerRateLimitResult = Effect.fn(function* (
++    harness: Effect.Success<typeof makeWakeHarness>,
++    result: string,
++  ) {
++    const now = yield* DateTime.now;
++    yield* harness.runtime.startTurn(
++      makeClaudeTestTurnInput({
++        threadId: harness.threadId,
++        providerThread: harness.providerThread,
++        now,
++        attemptId: FLEET_PROXY_ATTEMPT,
++        text: "Continue.",
++        attachments: [],
++      }),
++    );
++    yield* Queue.offerAll(harness.sdkMessages, [
++      makeAssistantErrorFrame({
++        uuid: "00000000-0000-4000-8000-000000000656",
++        error: "rate_limit",
++        text: result,
++      }),
++      makeResultFrame({
++        uuid: "00000000-0000-4000-8000-000000000657",
++        result,
++        terminalReason: "api_error",
++        isError: true,
++        apiErrorStatus: 429,
++      }),
++    ]);
++    return now;
++  });
++
++  const offerDirectRateLimit = Effect.fn(function* (
++    harness: Effect.Success<typeof makeWakeHarness>,
++    result: string,
++  ) {
++    const now = yield* offerRateLimitResult(harness, result);
++    const terminal = yield* Queue.take(harness.terminalReceipts);
++    assert.equal(terminal.status, "failed");
++    if (terminal.status !== "failed") throw new Error("Expected a failed terminal.");
++    return { terminal, now };
++  });
++
++  it.effect("dates an undated 429 from the fleet proxy's limits", () =>
++    Effect.gen(function* () {
++      const { harness, authorizations } = yield* makeFleetProxyLimitsHarness();
++      const { terminal } = yield* offerDirectRateLimit(harness, UNDATED_RATE_LIMIT);
++      assert.equal(terminal.failure.class, "usage_limit");
++      assert.equal(terminal.failure.message, "Claude API rate limit reached. Try again later.");
++      assert.equal(terminal.failure.resetAt, "2026-11-06T14:20:30.000Z");
++      assert.deepEqual(authorizations, ["Bearer fleet-client-key"]);
++    }).pipe(
++      Effect.provide(
++        Layer.mergeAll(
++          IdAllocator.layer,
++          McpProviderSessions.layer,
++          NodeServices.layer,
++          NodeCrypto.layer,
++        ),
++      ),
++    ),
++  );
++
++  it.effect("settles a turn stopped during the fleet proxy lookup as interrupted", () =>
++    Effect.gen(function* () {
++      const requested = yield* Deferred.make<void>();
++      const release = yield* Deferred.make<void>();
++      const interruptStarted = yield* Deferred.make<void>();
++      const { harness, authorizations } = yield* makeFleetProxyLimitsHarness({
++        beforeResponse: Deferred.succeed(requested, undefined).pipe(
++          Effect.andThen(Deferred.await(release)),
++        ),
++        interrupt: Deferred.succeed(interruptStarted, undefined).pipe(Effect.asVoid),
++      });
++      yield* offerRateLimitResult(harness, UNDATED_RATE_LIMIT);
++      yield* Deferred.await(requested);
++      const idAllocator = yield* IdAllocator.IdAllocatorV2;
++      yield* harness.runtime
++        .interruptTurn({
++          providerThread: harness.providerThread,
++          providerTurnId: idAllocator.derive.providerTurn({
++            driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
++            nativeTurnId: `turn:${FLEET_PROXY_ATTEMPT}`,
++          }),
++        })
++        .pipe(Effect.forkChild);
++      yield* Deferred.await(interruptStarted);
++      yield* Deferred.succeed(release, undefined);
++      const terminal = yield* Queue.take(harness.terminalReceipts);
++      assert.equal(terminal.status, "interrupted");
++      assert.isNull(terminal.failure);
++      assert.lengthOf(authorizations, 1);
++      assert.notInclude(JSON.stringify(harness.events), "usage_limit");
++    }).pipe(
++      Effect.provide(
++        Layer.mergeAll(
++          IdAllocator.layer,
++          McpProviderSessions.layer,
++          NodeServices.layer,
++          NodeCrypto.layer,
++        ),
++      ),
++    ),
++  );
++
++  it.effect("keeps a reset the CLI already reported over the fleet proxy's", () =>
++    Effect.gen(function* () {
++      const { harness, authorizations } = yield* makeFleetProxyLimitsHarness();
++      const { terminal, now } = yield* offerDirectRateLimit(
++        harness,
++        "API Error: Request rejected (429) · All credentials for model claude-sonnet-4-6 are cooling down (reset after 4m 6s)",
++      );
++      assert.equal(terminal.failure.class, "usage_limit");
++      assert.equal(
++        terminal.failure.resetAt,
++        DateTime.formatIso(DateTime.makeUnsafe(DateTime.toEpochMillis(now) + 246_000)),
++      );
++      assert.deepEqual(authorizations, []);
++    }).pipe(
++      Effect.provide(
++        Layer.mergeAll(
++          IdAllocator.layer,
++          McpProviderSessions.layer,
++          NodeServices.layer,
++          NodeCrypto.layer,
++        ),
++      ),
++    ),
++  );
++
+   it.effect("keeps the measured context when a usage limit ends the turn", () =>
+     Effect.gen(function* () {
+       const harness = yield* makeWakeHarness;
+diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+index 7b63b7efc0b65bac2927a26631e75231a01c977d..1dc7a1a75f6c575237eb711b9372134bbd6e230b 100644
+--- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
++++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+@@ -36,6 +36,7 @@ import {
+   type ClaudeModelLedger,
+ } from "../../provider/ClaudeTurnTokenUsage.ts";
+ import { toMcpElicitationResponse } from "../../provider/CodexMcpElicitation.ts";
++import { resolveFleetProxyResetAt } from "../../provider/fleetProxyLimits.ts";
+ import {
+   type CanUseTool,
+   type ElicitationRequest,
+@@ -155,6 +156,7 @@ import * as Semaphore from "effect/Semaphore";
+ import * as Stream from "effect/Stream";
+ import * as ChildProcess from "effect/process/ChildProcess";
+ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
++import { HttpClient } from "effect/http";
+ 
+ import { resolveAttachmentPath } from "../../attachmentStore.ts";
+ import { snapshotMcpApp } from "../../mcpApps/McpAppSnapshot.ts";
+@@ -4859,6 +4861,7 @@ export interface ClaudeAdapterV2Options {
+   readonly queryRunner: ClaudeAgentSdkQueryRunnerShape;
+   readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
+   readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
++  readonly fleetProxyHttpClient?: HttpClient.HttpClient;
+   readonly continuationRequests?: {
+     readonly offer: (
+       request: ProviderContinuationRequests.ProviderContinuationRequest,
+@@ -10120,17 +10123,44 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+                     failureHint,
+                     usageLimited,
+                   );
+-            const terminalFailure =
++            const knownResetAt =
+               resultFailure?.class === "usage_limit"
+-                ? { ...resultFailure, resetAt: resetAt ?? resultFailure.resetAt ?? null }
++                ? (resetAt ?? resultFailure.resetAt ?? null)
++                : null;
++            const fleetProxyHttpClient = adapterOptions.fleetProxyHttpClient;
++            const lookUpFleetProxy =
++              resultFailure?.class === "usage_limit" &&
++              knownResetAt === null &&
++              fleetProxyHttpClient !== undefined;
++            const usageLimitResetAt = lookUpFleetProxy
++              ? yield* resolveFleetProxyResetAt({
++                  model: context.input.modelSelection.model,
++                  settings: adapterOptions.settings,
++                  cwd: context.input.runtimePolicy.cwd ?? undefined,
++                  environment: adapterOptions.environment,
++                  now: completedAt,
++                }).pipe(
++                  Effect.provideService(FileSystem.FileSystem, fileSystem),
++                  Effect.provideService(Path.Path, path),
++                  Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
++                  Effect.provideService(HttpClient.HttpClient, fleetProxyHttpClient),
++                )
++              : knownResetAt;
++            const interruptedDuringLookup =
++              lookUpFleetProxy && (yield* Ref.get(interruptedTurns)).has(context.providerTurnId);
++            const terminalFailure = interruptedDuringLookup
++              ? null
++              : resultFailure?.class === "usage_limit"
++                ? { ...resultFailure, resetAt: usageLimitResetAt }
+                 : resultFailure;
+             yield* finalizeActiveTurn({
+               context,
+-              status: interrupted
+-                ? "interrupted"
+-                : limitedCompaction !== null
+-                  ? "failed"
+-                  : terminalStatusFromResult(message, failureHint),
++              status:
++                interrupted || interruptedDuringLookup
++                  ? "interrupted"
++                  : limitedCompaction !== null
++                    ? "failed"
++                    : terminalStatusFromResult(message, failureHint),
+               completedAt,
+               result: message,
+               ...(terminalFailure === null ? {} : { failure: terminalFailure }),
+@@ -12433,7 +12463,10 @@ export type ClaudeAdapterV2DriverEnv =
+ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+   function* (
+     input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
+-    hooks: Pick<ClaudeAdapterV2Options, "scopedLimitNames" | "onUsageLimits" | "modelCatalog"> = {},
++    hooks: Pick<
++      ClaudeAdapterV2Options,
++      "scopedLimitNames" | "onUsageLimits" | "modelCatalog" | "fleetProxyHttpClient"
++    > = {},
+   ) {
+     const { instanceId, environment, enabled, config } = input;
+     const fileSystem = yield* FileSystem.FileSystem;
+diff --git a/apps/server/src/provider/Drivers/ClaudeDriver.ts b/apps/server/src/provider/Drivers/ClaudeDriver.ts
+index c2d4b638610746125ad6e07264c9717e555d61ee..4f05c95f7ac23bf86006901e8d6bf705a43bd793 100644
+--- a/apps/server/src/provider/Drivers/ClaudeDriver.ts
++++ b/apps/server/src/provider/Drivers/ClaudeDriver.ts
+@@ -159,6 +159,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
+         scopedLimitNames,
+         onUsageLimits: (update) => snapshot.applyUsageLimits(update),
+         modelCatalog,
++        fleetProxyHttpClient: httpClient,
+       },
+     ).pipe(
+       Effect.mapError(
+diff --git a/apps/server/src/provider/Drivers/ClaudeSkills.ts b/apps/server/src/provider/Drivers/ClaudeSkills.ts
+index 0d62109cce828ef8acb7b31a65f7b9dc2473406b..98ca41d510847ff831954055552cf51d92b1a98d 100644
+--- a/apps/server/src/provider/Drivers/ClaudeSkills.ts
++++ b/apps/server/src/provider/Drivers/ClaudeSkills.ts
+@@ -441,20 +441,29 @@ const SettingsEnv = Schema.Struct({
+   CLAUDE_CODE_GATEWAY_MODEL_DISCOVERY_TIMEOUT_MS: Schema.optional(Schema.Unknown),
+ });
+ const decodeSettingsEnv = Schema.decodeUnknownEffect(
+-  fromLenientJson(Schema.Struct({ env: Schema.optional(SettingsEnv) })),
++  fromLenientJson(
++    Schema.Struct({
++      env: Schema.optional(SettingsEnv),
++      apiKeyHelper: Schema.optional(Schema.Unknown),
++    }),
++  ),
+ );
+ 
+-/** The `env` values T3 Code reads from Claude's user and managed settings; later files win. */
+-export const readClaudeSettingsEnv = Effect.fn("readClaudeSettingsEnv")(function* (
++export const readClaudeApiSettings = Effect.fn("readClaudeApiSettings")(function* (
+   config: Pick<ClaudeSettings, "homePath">,
+   cwd: string | undefined,
+   environment: NodeJS.ProcessEnv,
+-): Effect.fn.Return<typeof SettingsEnv.Type, never, FileSystem.FileSystem | Path.Path> {
++): Effect.fn.Return<
++  { readonly env: typeof SettingsEnv.Type; readonly apiKeyHelper: string | undefined },
++  never,
++  FileSystem.FileSystem | Path.Path
++> {
+   const fileSystem = yield* FileSystem.FileSystem;
+   const path = yield* Path.Path;
+   const platform = yield* HostProcess.Platform;
+   const configDirPath = yield* resolveClaudeConfigDirPath(config, environment, cwd);
+   const settingsEnv: typeof SettingsEnv.Type = {};
++  let apiKeyHelper: string | undefined;
+   for (const settingsPath of claudeSettingsPaths(
+     path,
+     configDirPath,
+@@ -468,10 +477,18 @@ export const readClaudeSettingsEnv = Effect.fn("readClaudeSettingsEnv")(function
+     if (contents === undefined) continue;
+     const parsed = yield* decodeSettingsEnv(contents).pipe(Effect.orElseSucceed(() => undefined));
+     Object.assign(settingsEnv, parsed?.env);
++    if (typeof parsed?.apiKeyHelper === "string") apiKeyHelper = parsed.apiKeyHelper;
+   }
+-  return settingsEnv;
++  return { env: settingsEnv, apiKeyHelper };
+ });
+ 
++/** The `env` values T3 Code reads from Claude's user and managed settings; later files win. */
++export const readClaudeSettingsEnv = (
++  config: Pick<ClaudeSettings, "homePath">,
++  cwd: string | undefined,
++  environment: NodeJS.ProcessEnv,
++) => readClaudeApiSettings(config, cwd, environment).pipe(Effect.map((settings) => settings.env));
++
+ // Claude's --add-dir is repeatable and variadic; parseCliArgs keeps only one value.
+ export function claudeLaunchArgDirectories(launchArgs?: string): ReadonlyArray<string> {
+   const directories: string[] = [];
+diff --git a/apps/server/src/provider/fleetProxyLimits.fixture.json b/apps/server/src/provider/fleetProxyLimits.fixture.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..73b7c86f220fe088215a92a70a58f2a448fcef3d
+--- /dev/null
++++ b/apps/server/src/provider/fleetProxyLimits.fixture.json
+@@ -0,0 +1,207 @@
++{
++  "object": "fleet.limits",
++  "generated_at": "2026-11-06T11:53:49Z",
++  "proxy_version": "fleet-f2fc6f47",
++  "client": { "name": "macbook-pro" },
++  "models": [
++    { "id": "claude-3-5-haiku-20241022", "providers": ["claude"] },
++    { "id": "claude-3-7-sonnet-20250219", "providers": ["claude"] },
++    { "id": "claude-fable-5", "providers": ["claude"] },
++    { "id": "claude-fable-5-1", "providers": ["claude"] },
++    { "id": "claude-haiku-4-5-20251001", "providers": ["claude"] },
++    { "id": "claude-haiku-5-5", "providers": ["claude"] },
++    { "id": "claude-opus-4-1-20250805", "providers": ["claude"] },
++    { "id": "claude-opus-4-20250514", "providers": ["claude"] },
++    { "id": "claude-opus-4-5-20251101", "providers": ["claude"] },
++    { "id": "claude-opus-4-6", "providers": ["claude"] },
++    { "id": "claude-opus-4-7", "providers": ["claude"] },
++    { "id": "claude-opus-4-8", "providers": ["claude"] },
++    { "id": "claude-opus-5", "providers": ["claude"] },
++    { "id": "claude-opus-5-5", "providers": ["claude"] },
++    { "id": "claude-sonnet-4-20250514", "providers": ["claude"] },
++    { "id": "claude-sonnet-4-5-20250929", "providers": ["claude"] },
++    { "id": "claude-sonnet-4-6", "providers": ["claude"] },
++    { "id": "claude-sonnet-5", "providers": ["claude"] },
++    { "id": "claude-sonnet-5-5", "providers": ["claude"] },
++    { "id": "codex-auto-review", "providers": ["codex"] },
++    { "id": "gpt-5.6-luna", "providers": ["codex"] },
++    { "id": "gpt-5.6-sol", "providers": ["codex"] },
++    { "id": "gpt-5.6-terra", "providers": ["codex"] },
++    { "id": "gpt-6-astra", "providers": ["codex"] },
++    { "id": "gpt-6-chat-thinking", "providers": ["codex"] },
++    { "id": "gpt-6-luna", "providers": ["codex"] },
++    { "id": "gpt-6-sol", "providers": ["codex"] },
++    { "id": "gpt-6.1-sol", "providers": ["codex"] },
++    { "id": "gpt-6.1-terra", "providers": ["codex"] },
++    { "id": "gpt-image-1.5", "providers": ["codex"] },
++    { "id": "gpt-image-2", "providers": ["codex"] },
++    { "id": "gpt-image-2.5", "providers": ["codex"] },
++    { "id": "gpt-image-2.5-flare", "providers": ["codex"] },
++    { "id": "gpt-image-2.5-sunburst", "providers": ["codex"] }
++  ],
++  "exclusions": [],
++  "credentials": [
++    {
++      "label": "claude-0128af49",
++      "provider": "claude",
++      "plan": null,
++      "state": "active",
++      "bars": [
++        {
++          "id": "weekly_all",
++          "percent": 38,
++          "status": "allowed",
++          "resets_at": "2026-11-09T19:00:00Z",
++          "sampled_at": "2026-11-06T11:53:46Z",
++          "reset_passed": false
++        },
++        {
++          "id": "weekly_fable",
++          "percent": 47,
++          "status": "allowed",
++          "resets_at": "2026-11-09T19:00:00Z",
++          "sampled_at": "2026-11-06T11:53:01Z",
++          "reset_passed": false
++        }
++      ],
++      "cooldowns": []
++    },
++    {
++      "label": "claude-032ce27c",
++      "provider": "claude",
++      "plan": null,
++      "state": "disabled",
++      "bars": [],
++      "cooldowns": []
++    },
++    {
++      "label": "claude-6f83155b",
++      "provider": "claude",
++      "plan": null,
++      "state": "cooldown",
++      "bars": [
++        {
++          "id": "weekly_all",
++          "percent": 1,
++          "status": "allowed",
++          "resets_at": "2026-11-13T11:00:00Z",
++          "sampled_at": "2026-11-06T11:44:03Z",
++          "reset_passed": false
++        },
++        {
++          "id": "weekly_fable",
++          "percent": 2,
++          "status": "allowed",
++          "resets_at": "2026-11-13T11:00:00Z",
++          "sampled_at": "2026-11-06T11:44:03Z",
++          "reset_passed": false
++        },
++        {
++          "id": "session_5h",
++          "percent": 100,
++          "status": "rejected",
++          "resets_at": "2026-11-06T14:20:00Z",
++          "sampled_at": "2026-11-06T11:44:03Z",
++          "reset_passed": false
++        }
++      ],
++      "cooldowns": [
++        {
++          "scope": "credential",
++          "model": null,
++          "reason": "credential_quota",
++          "until": "2026-11-06T14:20:30Z",
++          "http_status": null
++        },
++        {
++          "scope": "model",
++          "model": "claude-fable-5-1",
++          "reason": "credential_quota",
++          "until": "2026-11-06T14:20:30Z",
++          "http_status": null
++        },
++        {
++          "scope": "model",
++          "model": "claude-haiku-5-5",
++          "reason": "credential_quota",
++          "until": "2026-11-06T14:20:30Z",
++          "http_status": null
++        },
++        {
++          "scope": "model",
++          "model": "claude-opus-5-5",
++          "reason": "credential_quota",
++          "until": "2026-11-06T14:20:30Z",
++          "http_status": null
++        },
++        {
++          "scope": "model",
++          "model": "claude-sonnet-5-5",
++          "reason": "quota",
++          "until": "2026-11-06T14:20:30Z",
++          "http_status": 429
++        }
++      ]
++    },
++    {
++      "label": "claude-dfb6a006",
++      "provider": "claude",
++      "plan": null,
++      "state": "active",
++      "bars": [
++        {
++          "id": "weekly_all",
++          "percent": 100,
++          "status": "rejected",
++          "resets_at": "2026-11-08T16:00:00Z",
++          "sampled_at": "2026-11-06T11:49:03Z",
++          "reset_passed": false
++        },
++        {
++          "id": "weekly_fable",
++          "percent": 100,
++          "status": "rejected",
++          "resets_at": "2026-11-08T16:00:00Z",
++          "sampled_at": "2026-11-06T11:49:03Z",
++          "reset_passed": false
++        }
++      ],
++      "cooldowns": []
++    },
++    {
++      "label": "codex-28862b33",
++      "provider": "codex",
++      "plan": "pro",
++      "state": "active",
++      "bars": [
++        {
++          "id": "weekly_all",
++          "percent": 48,
++          "status": null,
++          "resets_at": "2026-11-11T08:42:18Z",
++          "sampled_at": "2026-11-06T11:40:24Z",
++          "reset_passed": false
++        }
++      ],
++      "credits": { "has_credits": true, "unlimited": false, "balance": 13314.98 },
++      "cooldowns": []
++    }
++  ],
++  "summary": {
++    "claude": {
++      "usable_credentials": 2,
++      "bars": {
++        "session_5h": { "percent": 0, "resets_at": null },
++        "weekly_all": { "percent": 38, "resets_at": "2026-11-09T19:00:00Z" },
++        "weekly_fable": { "percent": 47, "resets_at": "2026-11-09T19:00:00Z" }
++      }
++    },
++    "codex": {
++      "usable_credentials": 1,
++      "bars": {
++        "session_5h": { "percent": 0, "resets_at": null },
++        "weekly_all": { "percent": 48, "resets_at": "2026-11-11T08:42:18Z" }
++      }
++    }
++  }
++}
+diff --git a/apps/server/src/provider/fleetProxyLimits.test.ts b/apps/server/src/provider/fleetProxyLimits.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..dda0112e625f3222afeac252dad3c611a26b75ab
+--- /dev/null
++++ b/apps/server/src/provider/fleetProxyLimits.test.ts
+@@ -0,0 +1,306 @@
++import * as NodeServices from "@effect/platform-node/NodeServices";
++import { it as effectIt } from "@effect/vitest";
++import * as HostProcess from "@t3tools/shared/HostProcess";
++import * as DateTime from "effect/DateTime";
++import * as Effect from "effect/Effect";
++import * as Fiber from "effect/Fiber";
++import * as FileSystem from "effect/FileSystem";
++import * as Path from "effect/Path";
++import * as TestClock from "effect/testing/TestClock";
++import { HttpClient, HttpClientResponse } from "effect/http";
++import { describe, expect, it } from "vite-plus/test";
++
++import sample from "./fleetProxyLimits.fixture.json" with { type: "json" };
++import { fleetProxyUsableAt, resolveFleetProxyResetAt } from "./fleetProxyLimits.ts";
++
++const NOW_MS = Date.parse("2026-11-06T12:00:00.000Z");
++const SONNET = "claude-sonnet-5-5";
++const FABLE = "claude-fable-5-1";
++
++type Credential = (typeof sample.credentials)[number];
++
++const withCredentials = (
++  keep: (credential: Credential) => boolean,
++  map: (credential: Credential) => unknown = (credential) => credential,
++  exclusions: ReadonlyArray<unknown> = [],
++) => ({
++  ...sample,
++  exclusions,
++  credentials: sample.credentials.filter(keep).map(map),
++});
++const withoutUsable = (exclusions: ReadonlyArray<unknown> = []) =>
++  withCredentials((credential) => credential.label !== "claude-0128af49", undefined, exclusions);
++const usableAt = (limits: unknown, model = SONNET) =>
++  fleetProxyUsableAt(limits, { model, nowMs: NOW_MS });
++
++describe("fleetProxyUsableAt", () => {
++  it("returns null while any Claude credential can still serve the model", () => {
++    expect(usableAt(sample)).toBeNull();
++    expect(usableAt(sample, FABLE)).toBeNull();
++  });
++
++  it("returns the earliest time a blocked credential frees", () => {
++    expect(usableAt(withoutUsable())).toEqual({
++      resetAt: "2026-11-06T14:20:30.000Z",
++      label: "claude-6f83155b",
++    });
++    expect(usableAt(withoutUsable(), FABLE)?.resetAt).toBe("2026-11-06T14:20:30.000Z");
++  });
++
++  it("applies model-scoped cooldowns only to their model", () => {
++    const modelScopedOnly = withCredentials(
++      (credential) => credential.label === "claude-6f83155b",
++      (credential) => ({
++        ...credential,
++        bars: [],
++        cooldowns: credential.cooldowns.filter((cooldown) => cooldown.scope === "model"),
++      }),
++    );
++    expect(usableAt(modelScopedOnly, FABLE)?.resetAt).toBe("2026-11-06T14:20:30.000Z");
++    expect(usableAt(modelScopedOnly, "claude-opus-4-8")).toBeNull();
++  });
++
++  it("dates a weekly-only rejection by the weekly reset", () => {
++    const weeklyOnly = withCredentials((credential) => credential.label === "claude-dfb6a006");
++    expect(usableAt(weeklyOnly)).toEqual({
++      resetAt: "2026-11-08T16:00:00.000Z",
++      label: "claude-dfb6a006",
++    });
++  });
++
++  it("applies the Fable weekly bar only to Fable models", () => {
++    const fableWeekly = withCredentials(
++      (credential) => credential.label === "claude-dfb6a006",
++      (credential) => ({
++        ...credential,
++        bars: credential.bars.filter((bar) => bar.id === "weekly_fable"),
++      }),
++    );
++    expect(usableAt(fableWeekly, FABLE)?.resetAt).toBe("2026-11-08T16:00:00.000Z");
++    expect(usableAt(fableWeekly, SONNET)).toBeNull();
++  });
++
++  it("ignores passed resets and past timestamps", () => {
++    const only = (bars: ReadonlyArray<unknown>, cooldowns: ReadonlyArray<unknown> = []) =>
++      withCredentials(
++        (credential) => credential.label === "claude-dfb6a006",
++        (credential) => ({ ...credential, bars, cooldowns }),
++      );
++    const rejected = sample.credentials.find(
++      (credential) => credential.label === "claude-dfb6a006",
++    )!.bars[0]!;
++    expect(usableAt(only([{ ...rejected, reset_passed: true }]))).toBeNull();
++    expect(usableAt(only([{ ...rejected, resets_at: "2026-11-06T11:00:00Z" }]))).toBeNull();
++    expect(
++      usableAt(
++        only(
++          [],
++          [{ scope: "credential", model: null, until: "2026-11-06T11:59:59Z", reason: "quota" }],
++        ),
++      ),
++    ).toBeNull();
++  });
++
++  it("ignores disabled credentials", () => {
++    const disabledAndWeekly = withCredentials(
++      (credential) =>
++        credential.label === "claude-032ce27c" || credential.label === "claude-dfb6a006",
++    );
++    expect(usableAt(disabledAndWeekly)?.resetAt).toBe("2026-11-08T16:00:00.000Z");
++    expect(
++      usableAt(withCredentials((credential) => credential.label === "claude-032ce27c")),
++    ).toBeNull();
++  });
++
++  it("ignores credentials in the error state", () => {
++    const erroredAndWeekly = withCredentials(
++      (credential) =>
++        credential.label === "claude-0128af49" || credential.label === "claude-dfb6a006",
++      (credential) =>
++        credential.label === "claude-0128af49" ? { ...credential, state: "error" } : credential,
++    );
++    expect(usableAt(erroredAndWeekly)?.resetAt).toBe("2026-11-08T16:00:00.000Z");
++    expect(
++      usableAt(
++        withCredentials(
++          (credential) => credential.label === "claude-0128af49",
++          (credential) => ({ ...credential, state: "error" }),
++        ),
++      ),
++    ).toBeNull();
++  });
++
++  it("returns null without Claude credentials or for malformed input", () => {
++    expect(usableAt(withCredentials((credential) => credential.provider === "codex"))).toBeNull();
++    for (const garbage of [
++      null,
++      "nope",
++      42,
++      [],
++      { credentials: "x" },
++      { credentials: [null, 1] },
++    ]) {
++      expect(usableAt(garbage)).toBeNull();
++    }
++  });
++
++  it("extends the reset to a matching exclusion only when no credential is usable", () => {
++    const exclusion = {
++      pattern: "claude-sonnet-*",
++      provider: "claude",
++      until: "2026-11-07T00:00:00Z",
++    };
++    expect(usableAt(withoutUsable([exclusion]))?.resetAt).toBe("2026-11-07T00:00:00.000Z");
++    expect(usableAt({ ...sample, exclusions: [exclusion] })).toBeNull();
++    expect(usableAt(withoutUsable([exclusion]), FABLE)?.resetAt).toBe("2026-11-06T14:20:30.000Z");
++    expect(usableAt(withoutUsable([{ ...exclusion, provider: "codex" }]))?.resetAt).toBe(
++      "2026-11-06T14:20:30.000Z",
++    );
++    expect(usableAt(withoutUsable([{ ...exclusion, until: null }]))).toBeNull();
++    expect(
++      usableAt(withoutUsable([{ ...exclusion, until: null, provider: "codex" }]))?.resetAt,
++    ).toBe("2026-11-06T14:20:30.000Z");
++  });
++});
++
++const recordingClient = (status: number, body: string) => {
++  const requests: Array<{ readonly url: string; readonly headers: Record<string, string> }> = [];
++  const client = HttpClient.make((request) =>
++    Effect.sync(() => {
++      requests.push({ url: request.url, headers: { ...request.headers } });
++      return HttpClientResponse.fromWeb(request, new Response(body, { status }));
++    }),
++  );
++  return { client, requests };
++};
++
++const writeSettings = Effect.fn(function* (settings: unknown) {
++  const fileSystem = yield* FileSystem.FileSystem;
++  const path = yield* Path.Path;
++  const homePath = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-fleet-limits-" });
++  yield* fileSystem.writeFileString(path.join(homePath, "settings.json"), JSON.stringify(settings));
++  return homePath;
++});
++
++const resolve = (input: {
++  readonly homePath: string;
++  readonly environment: NodeJS.ProcessEnv;
++  readonly client: HttpClient.HttpClient;
++}) =>
++  resolveFleetProxyResetAt({
++    model: SONNET,
++    settings: { homePath: input.homePath },
++    cwd: undefined,
++    environment: input.environment,
++    now: DateTime.makeUnsafe(NOW_MS),
++  }).pipe(
++    Effect.provideService(HttpClient.HttpClient, input.client),
++    Effect.provideService(HostProcess.Platform, "linux"),
++  );
++
++describe("resolveFleetProxyResetAt", () => {
++  effectIt.effect("asks the settings base URL with the apiKeyHelper key", () =>
++    Effect.gen(function* () {
++      const homePath = yield* writeSettings({
++        env: { ANTHROPIC_BASE_URL: "http://proxy.test:8317/" },
++        apiKeyHelper: "printf ' helper-key\\n'",
++      });
++      const { client, requests } = recordingClient(200, JSON.stringify(withoutUsable()));
++      const resetAt = yield* resolve({
++        homePath,
++        environment: { ANTHROPIC_BASE_URL: "http://ignored.test" },
++        client,
++      });
++      expect(resetAt).toBe("2026-11-06T14:20:30.000Z");
++      expect(requests).toHaveLength(1);
++      expect(requests[0]!.url).toBe("http://proxy.test:8317/v1/fleet/limits");
++      expect(requests[0]!.headers.authorization).toBe("Bearer helper-key");
++      expect(requests[0]!.headers.accept).toBe("application/json");
++    }).pipe(Effect.provide(NodeServices.layer)),
++  );
++
++  effectIt.effect("prefers the environment token and keeps a base path", () =>
++    Effect.gen(function* () {
++      const homePath = yield* writeSettings({ apiKeyHelper: "exit 1" });
++      const { client, requests } = recordingClient(200, JSON.stringify(withoutUsable()));
++      const resetAt = yield* resolve({
++        homePath,
++        environment: {
++          ANTHROPIC_BASE_URL: "https://proxy.test/claude",
++          ANTHROPIC_AUTH_TOKEN: "env-token",
++          ANTHROPIC_API_KEY: "api-key",
++        },
++        client,
++      });
++      expect(resetAt).toBe("2026-11-06T14:20:30.000Z");
++      expect(requests[0]!.url).toBe("https://proxy.test/claude/v1/fleet/limits");
++      expect(requests[0]!.headers.authorization).toBe("Bearer env-token");
++    }).pipe(Effect.provide(NodeServices.layer)),
++  );
++
++  effectIt.effect("returns null without a base URL, a key, a 200 or valid JSON", () =>
++    Effect.gen(function* () {
++      const emptyHome = yield* writeSettings({});
++      const failingHelperHome = yield* writeSettings({ apiKeyHelper: "exit 3" });
++      const ok = recordingClient(200, JSON.stringify(withoutUsable()));
++      expect(
++        yield* resolve({
++          homePath: emptyHome,
++          environment: { ANTHROPIC_API_KEY: "k" },
++          client: ok.client,
++        }),
++      ).toBeNull();
++      expect(
++        yield* resolve({
++          homePath: failingHelperHome,
++          environment: { ANTHROPIC_BASE_URL: "http://proxy.test" },
++          client: ok.client,
++        }),
++      ).toBeNull();
++      expect(ok.requests).toHaveLength(0);
++      for (const [status, body] of [
++        [404, "{}"],
++        [200, "not json"],
++      ] as const) {
++        const { client } = recordingClient(status, body);
++        expect(
++          yield* resolve({
++            homePath: emptyHome,
++            environment: { ANTHROPIC_BASE_URL: "http://proxy.test", ANTHROPIC_API_KEY: "k" },
++            client,
++          }),
++        ).toBeNull();
++      }
++      const failing = HttpClient.make(() => Effect.die(new Error("network down")));
++      expect(
++        yield* resolve({
++          homePath: emptyHome,
++          environment: { ANTHROPIC_BASE_URL: "http://proxy.test", ANTHROPIC_API_KEY: "k" },
++          client: failing,
++        }),
++      ).toBeNull();
++    }).pipe(Effect.provide(NodeServices.layer)),
++  );
++
++  effectIt.effect("returns null once the overall lookup exceeds six seconds", () =>
++    Effect.gen(function* () {
++      const { client, requests } = recordingClient(200, JSON.stringify(withoutUsable()));
++      const pending = yield* resolve({
++        homePath: "/fleet-home",
++        environment: { ANTHROPIC_BASE_URL: "http://proxy.test", ANTHROPIC_API_KEY: "k" },
++        client,
++      }).pipe(
++        Effect.provideService(
++          FileSystem.FileSystem,
++          FileSystem.makeNoop({ readFileString: () => Effect.never }),
++        ),
++        Effect.forkChild({ startImmediately: true }),
++      );
++      yield* TestClock.adjust("5999 millis");
++      expect(pending.pollUnsafe()).toBeUndefined();
++      yield* TestClock.adjust("1 millis");
++      expect(yield* Fiber.join(pending)).toBeNull();
++      expect(requests).toHaveLength(0);
++    }).pipe(Effect.provide(NodeServices.layer)),
++  );
++});
+diff --git a/apps/server/src/provider/fleetProxyLimits.ts b/apps/server/src/provider/fleetProxyLimits.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0311281c729a638e5aabb643b4f22dfd16bb400d
+--- /dev/null
++++ b/apps/server/src/provider/fleetProxyLimits.ts
+@@ -0,0 +1,238 @@
++import type { ClaudeSettings } from "@t3tools/contracts";
++import * as HostProcess from "@t3tools/shared/HostProcess";
++import * as Cause from "effect/Cause";
++import * as DateTime from "effect/DateTime";
++import * as Effect from "effect/Effect";
++import * as Option from "effect/Option";
++import * as Schema from "effect/Schema";
++import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
++
++import * as ProcessRunner from "../processRunner.ts";
++import { readClaudeApiSettings } from "./Drivers/ClaudeSkills.ts";
++
++const OptionalString = Schema.optional(Schema.NullOr(Schema.String));
++const OptionalList = Schema.optional(Schema.NullOr(Schema.Array(Schema.Unknown)));
++
++const decodeLimits = Schema.decodeUnknownOption(
++  Schema.Struct({ credentials: OptionalList, exclusions: OptionalList }),
++);
++const decodeCredential = Schema.decodeUnknownOption(
++  Schema.Struct({
++    label: OptionalString,
++    provider: OptionalString,
++    state: OptionalString,
++    bars: OptionalList,
++    cooldowns: OptionalList,
++  }),
++);
++const decodeBar = Schema.decodeUnknownOption(
++  Schema.Struct({
++    id: Schema.String,
++    status: OptionalString,
++    resets_at: OptionalString,
++    reset_passed: Schema.optional(Schema.NullOr(Schema.Boolean)),
++  }),
++);
++const decodeCooldown = Schema.decodeUnknownOption(
++  Schema.Struct({ scope: OptionalString, model: OptionalString, until: OptionalString }),
++);
++const decodeExclusion = Schema.decodeUnknownOption(
++  Schema.Struct({ pattern: Schema.String, provider: OptionalString, until: OptionalString }),
++);
++
++const decodeEach = <A>(
++  values: ReadonlyArray<unknown> | null | undefined,
++  decode: (value: unknown) => Option.Option<A>,
++): ReadonlyArray<A> => (values ?? []).flatMap((value) => Option.toArray(decode(value)));
++
++const futureMs = (iso: string | null | undefined, nowMs: number): number | undefined => {
++  const ms = iso == null ? Number.NaN : Date.parse(iso);
++  return Number.isFinite(ms) && ms > nowMs ? ms : undefined;
++};
++
++const barAppliesToModel = (barId: string, model: string): boolean =>
++  barId === "session_5h" ||
++  barId === "weekly_all" ||
++  barId.startsWith("window_") ||
++  (barId === "weekly_fable" && model.includes("fable"));
++
++const globMatches = (pattern: string, value: string): boolean =>
++  new RegExp(
++    `^${pattern
++      .split("*")
++      .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
++      .join(".*")}$`,
++  ).test(value);
++
++export interface FleetProxyUsableAt {
++  readonly resetAt: string;
++  readonly label: string | null;
++}
++
++export function fleetProxyUsableAt(
++  limits: unknown,
++  input: { readonly model: string; readonly nowMs: number },
++): FleetProxyUsableAt | null {
++  const decoded = decodeLimits(limits);
++  if (Option.isNone(decoded)) return null;
++  const credentials = decodeEach(decoded.value.credentials, decodeCredential).filter(
++    (credential) =>
++      credential.provider === "claude" &&
++      credential.state !== "disabled" &&
++      credential.state !== "error",
++  );
++  if (credentials.length === 0) return null;
++
++  let earliest: { readonly ms: number; readonly label: string | null } | undefined;
++  for (const credential of credentials) {
++    const cooldownUntil = decodeEach(credential.cooldowns, decodeCooldown)
++      .filter((cooldown) => cooldown.scope === "credential" || cooldown.model === input.model)
++      .map((cooldown) => futureMs(cooldown.until, input.nowMs));
++    const barResets = decodeEach(credential.bars, decodeBar)
++      .filter(
++        (bar) =>
++          bar.status === "rejected" &&
++          bar.reset_passed !== true &&
++          barAppliesToModel(bar.id, input.model),
++      )
++      .map((bar) => futureMs(bar.resets_at, input.nowMs));
++    const blocks = [...cooldownUntil, ...barResets].filter((ms) => ms !== undefined);
++    if (blocks.length === 0) return null;
++    const blockedUntilMs = Math.max(...blocks);
++    if (earliest === undefined || blockedUntilMs < earliest.ms) {
++      earliest = { ms: blockedUntilMs, label: credential.label ?? null };
++    }
++  }
++  if (earliest === undefined) return null;
++
++  const exclusions = decodeEach(decoded.value.exclusions, decodeExclusion).filter(
++    (exclusion) =>
++      (exclusion.provider == null || exclusion.provider === "claude") &&
++      globMatches(exclusion.pattern, input.model),
++  );
++  if (exclusions.some((exclusion) => exclusion.until == null)) return null;
++  const exclusionUntil = exclusions
++    .map((exclusion) => futureMs(exclusion.until, input.nowMs))
++    .filter((ms) => ms !== undefined);
++  const resetMs = Math.max(earliest.ms, ...exclusionUntil);
++  return { resetAt: DateTime.formatIso(DateTime.makeUnsafe(resetMs)), label: earliest.label };
++}
++
++const HELPER_TIMEOUT = "5 seconds";
++const HELPER_MAX_OUTPUT_BYTES = 4 * 1024;
++const REQUEST_TIMEOUT = "4 seconds";
++const OVERALL_TIMEOUT = "6 seconds";
++
++const logResetAt = (model: string, outcome: Record<string, unknown>) =>
++  Effect.logDebug("fleet-proxy.limits.reset-at", { model, ...outcome });
++
++const nonEmpty = (value: string | undefined): string | undefined => {
++  const trimmed = value?.trim();
++  return trimmed ? trimmed : undefined;
++};
++
++const runApiKeyHelper = Effect.fn("runFleetProxyApiKeyHelper")(function* (
++  command: string,
++  cwd: string | undefined,
++  environment: NodeJS.ProcessEnv,
++) {
++  if ((yield* HostProcess.Platform) === "win32") return undefined;
++  const runner = yield* ProcessRunner.make();
++  const output = yield* runner.run({
++    command: "/bin/sh",
++    args: ["-c", command],
++    cwd,
++    env: environment,
++    timeout: HELPER_TIMEOUT,
++    maxOutputBytes: HELPER_MAX_OUTPUT_BYTES,
++  });
++  return output.code === 0 ? nonEmpty(output.stdout) : undefined;
++});
++
++const fetchFleetLimits = Effect.fn("fetchFleetProxyLimits")(function* (baseUrl: URL, key: string) {
++  const client = yield* HttpClient.HttpClient;
++  const response = yield* client
++    .execute(
++      HttpClientRequest.get(new URL("v1/fleet/limits", baseUrl)).pipe(
++        HttpClientRequest.bearerToken(key),
++        HttpClientRequest.acceptJson,
++      ),
++    )
++    .pipe(Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual" }));
++  if (response.status !== 200) return { status: response.status } as const;
++  return { status: 200, body: yield* response.json } as const;
++});
++
++const parseBaseUrl = (value: string | undefined): URL | undefined => {
++  const base = URL.parse(value?.trim() ?? "");
++  if (base === null || (base.protocol !== "http:" && base.protocol !== "https:")) return undefined;
++  if (!base.pathname.endsWith("/")) base.pathname = `${base.pathname}/`;
++  return base;
++};
++
++export const resolveFleetProxyResetAt = Effect.fn("resolveFleetProxyResetAt")(
++  function* (input: {
++    readonly model: string;
++    readonly settings: Pick<ClaudeSettings, "homePath">;
++    readonly cwd: string | undefined;
++    readonly environment: NodeJS.ProcessEnv;
++    readonly now: DateTime.Utc;
++  }) {
++    const logOutcome = (outcome: Record<string, unknown>) => logResetAt(input.model, outcome);
++    const settings = yield* readClaudeApiSettings(input.settings, input.cwd, input.environment);
++    const baseUrl = parseBaseUrl(
++      settings.env.ANTHROPIC_BASE_URL ?? input.environment.ANTHROPIC_BASE_URL,
++    );
++    if (baseUrl === undefined) {
++      yield* logOutcome({ resetAt: null, reason: "no-base-url" });
++      return null;
++    }
++    const helper = nonEmpty(settings.apiKeyHelper);
++    const key =
++      nonEmpty(input.environment.ANTHROPIC_AUTH_TOKEN) ??
++      nonEmpty(input.environment.ANTHROPIC_API_KEY) ??
++      (helper === undefined
++        ? undefined
++        : yield* runApiKeyHelper(helper, input.cwd, input.environment).pipe(
++            Effect.orElseSucceed(() => undefined),
++          ));
++    if (key === undefined) {
++      yield* logOutcome({ resetAt: null, reason: "no-key" });
++      return null;
++    }
++    const response = yield* fetchFleetLimits(baseUrl, key).pipe(
++      Effect.timeout(REQUEST_TIMEOUT),
++      Effect.orElseSucceed(() => undefined),
++    );
++    if (response === undefined || response.status !== 200) {
++      yield* logOutcome({
++        resetAt: null,
++        reason: response === undefined ? "request-failed" : `http-${response.status}`,
++      });
++      return null;
++    }
++    const usable = fleetProxyUsableAt(response.body, {
++      model: input.model,
++      nowMs: DateTime.toEpochMillis(input.now),
++    });
++    yield* logOutcome(
++      usable === null
++        ? { resetAt: null, reason: "usable-or-unknown" }
++        : { resetAt: usable.resetAt, label: usable.label },
++    );
++    return usable?.resetAt ?? null;
++  },
++  (effect, input) =>
++    effect.pipe(
++      Effect.timeout(OVERALL_TIMEOUT),
++      Effect.catch((error) =>
++        logResetAt(input.model, {
++          resetAt: null,
++          reason: Cause.isTimeoutError(error) ? "timeout" : "failed",
++        }).pipe(Effect.as(null)),
++      ),
++      Effect.catchDefect(() =>
++        logResetAt(input.model, { resetAt: null, reason: "defect" }).pipe(Effect.as(null)),
++      ),
++    ),
++);

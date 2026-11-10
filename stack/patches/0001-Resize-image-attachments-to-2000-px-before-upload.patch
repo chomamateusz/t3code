@@ -1,0 +1,709 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mateusz Choma <chomamateusz@gmail.com>
+Date: Fri, 25 Sep 2026 12:25:29 +0200
+Subject: =?UTF-8?q?=F0=9F=8D=B1=20Resize=20image=20attachments=20to=202000?=
+ =?UTF-8?q?=20px=20before=20upload?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Behaviours:
+Attachment sizing:
+- Decode web and desktop image attachments before deciding whether they fit; check both bytes and dimensions, including images already below the upload byte cap.
+- Limit the longest edge to 2000 pixels while preserving aspect ratio and the existing WebP/JPEG byte-budget compression path; keep files within both limits byte-for-byte unchanged.
+- Reuse the decoded bitmap during recompression, close it on pass-through and unsupported compression paths, and retain source-size refusal and unreadable-image errors.
+
+Guidance and coverage:
+- Document resizing for new uploads and recommend crops for small text; previously sent attachments remain unchanged.
+- Cover oversized dimensions below the byte cap, unchanged compliant images, byte-budget compression, source-size guards and decoding failures.
+
+Integration details:
+- Use valid PNG fixtures in upstream desktop snapshot-delivery browser tests so decoding stays exercised without bypassing the compressor.
+
+- Route desktop preview annotation screenshots and images imported from another thread through the composer preparation helper before attachment insertion, enforcing both the 2000 px longest edge and byte limit. Await screenshot preparation and use prepared image metadata; checkpoint rewind attachments remain unchanged.
+
+- Preserve upstream deleted-chip protection after the final asynchronous image preparation for both downloaded and cached context images; a removed reference cannot reappear while decoding.
+
+Port to 965ddc1d6c:
+- Applied without conflicts. Upstream did not touch imageCompression.ts, previewAnnotation.ts or useComposerContextImport.ts between 3fa57b92a2 and 965ddc1d6c; preview annotation screenshots and images imported from another thread still attach without the 2000 px preparation upstream.
+
+Files:
+apps/web:
+- apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
+- apps/web/src/components/chat/useComposerContextImport.ts
+- apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts
+- apps/web/src/components/preview/PreviewView.tsx
+- apps/web/src/lib/imageCompression.test.ts
+- apps/web/src/lib/imageCompression.ts
+- apps/web/src/lib/previewAnnotation.test.ts
+- apps/web/src/lib/previewAnnotation.ts
+docs:
+- docs/user/composer.md
+
+Tests:
+- apps/web/src/components/chat/composerImagePersistence.test.ts
+- apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
+- apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts
+- apps/web/src/components/preview/PreviewView.browser.test.tsx
+- apps/web/src/lib/imageCompression.test.ts
+- apps/web/src/lib/previewAnnotation.test.ts
+- Failing-first image proof: 2 deletion-during-decode cases failed before the guard moved; both pass in the final browser suite.
+- Whole-stack focused validation on 965ddc1d6c: 1,321 passed and 2 baseline failures across 48 test files (every test file the stack touches plus CommandPalette.logic.test.ts and chatRouteCommands.browser.test.ts). Web: 679 / 32 files; desktop: 118 / 9; server: 432 passed and 2 baseline failures / 4; contracts: 36 / 1; scripts: 56 / 2.
+- vp run typecheck passed in apps/web, apps/desktop, apps/server, packages/contracts and scripts; vp lint and vp fmt --check passed on the 119 changed files.
+- Baseline: UsageService.test.ts on detached 965ddc1d6c fails the same 2 assertions (Pi /var versus /private/var path equality; Codex open-spy raw-path equality); no assertion was changed to hide them.
+- No installed-client or live remote/relay/tunnel pass: no development servers or installed app changes were authorized.
+
+Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
+---
+ .../useComposerContextImport.browser.test.tsx |  52 ++++++-
+ .../chat/useComposerContextImport.ts          |  26 +++-
+ .../SnapShotCoordinator.browser.test.ts       |  20 ++-
+ .../src/components/preview/PreviewView.tsx    |   2 +-
+ apps/web/src/lib/imageCompression.test.ts     | 145 ++++++++++++++++--
+ apps/web/src/lib/imageCompression.ts          |  46 +++---
+ apps/web/src/lib/previewAnnotation.test.ts    |  50 +++++-
+ apps/web/src/lib/previewAnnotation.ts         |  15 +-
+ docs/user/composer.md                         |   4 +
+ 9 files changed, 302 insertions(+), 58 deletions(-)
+
+diff --git a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
+index a050b0f51edf0951c558e8f4cafdfe9d51d8030a..6c603314b319e3b2d2b3eab0b616a67d2040e15f 100644
+--- a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
++++ b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
+@@ -42,6 +42,10 @@ function deferred<T>() {
+ it.each([
+   { kind: "file", edit: "delete" },
+   { kind: "image", edit: "delete" },
++  { kind: "image", edit: "delete-during-decode" },
++  { kind: "image", edit: "cached-delete-during-decode" },
++  { kind: "image", edit: "retain" },
++  { kind: "image", edit: "cached" },
+   { kind: "file", edit: "undo" },
+   { kind: "file", edit: "retain" },
+   { kind: "file", edit: "switch" },
+@@ -55,11 +59,22 @@ it.each([
+   const store = useComposerDraftStore.getState();
+   using _draft = { [Symbol.dispose]: () => store.clearComposerContent(target) };
+   const sourceEnvironmentId = EnvironmentId.make("clipboard-source");
++  const bytes =
++    kind === "image"
++      ? Uint8Array.from(
++          atob(
++            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==",
++          ),
++          (character) => character.charCodeAt(0),
++        )
++      : "notes";
++  const mimeType = kind === "image" ? "image/png" : "text/plain";
++  const file = new File([bytes], "notes.txt", { type: mimeType });
++  const cached = edit === "cached" || edit === "cached-delete-during-decode";
++  const delayDecode = edit === "delete-during-decode" || edit === "cached-delete-during-decode";
+   rememberCopiedComposerAttachments(
+     sourceEnvironmentId,
+-    edit === "cached"
+-      ? new Map([["source-attachment", new File(["notes"], "notes.txt")]])
+-      : new Map(),
++    cached ? new Map([["source-attachment", file]]) : new Map(),
+   );
+   using _copy = {
+     [Symbol.dispose]: () => rememberCopiedComposerAttachments(sourceEnvironmentId, new Map()),
+@@ -68,6 +83,8 @@ it.each([
+   const downloaded = deferred<Response>();
+   const requested = deferred<void>();
+   const settled = deferred<void>();
++  const decoding = deferred<void>();
++  const resumeDecode = deferred<void>();
+   const input = {
+     environmentId: EnvironmentId.make("clipboard-target"),
+     linkedEnvironments: new Map(),
+@@ -105,6 +122,18 @@ it.each([
+     requested.resolve();
+     return downloaded.promise;
+   });
++  const decode = globalThis.createImageBitmap.bind(globalThis);
++  using _decode = stubGlobal(
++    "createImageBitmap",
++    async (image: ImageBitmapSource, options?: ImageBitmapOptions) => {
++      const bitmap = await decode(image, options);
++      if (delayDecode) {
++        decoding.resolve();
++        await resumeDecode.promise;
++      }
++      return bitmap;
++    },
++  );
+   const contextId = ComposerContextId.make(`${kind}_source`);
+   const attachmentFields = {
+     version: 1 as const,
+@@ -112,8 +141,8 @@ it.each([
+     label: "notes.txt",
+     attachmentId: "source-attachment",
+     name: "notes.txt",
+-    mimeType: kind === "file" ? "text/plain" : "image/png",
+-    sizeBytes: 5,
++    mimeType,
++    sizeBytes: file.size,
+   };
+   const attachment = (
+     kind === "file"
+@@ -148,9 +177,15 @@ it.each([
+     if (edit === "question") pastedPrompt = "Question answer";
+     promptRef.current = pastedPrompt;
+     store.setPrompt(target, pastedPrompt);
+-    if (edit !== "cached") await requested.promise;
++    if (!cached) await requested.promise;
+   });
+-  if (edit !== "cached") expect(pendingDraftWork.has(target)).toBe(true);
++  if (!cached || delayDecode) expect(pendingDraftWork.has(target)).toBe(true);
++  if (delayDecode) {
++    await act(async () => {
++      downloaded.resolve(new Response(bytes, { headers: { "Content-Type": mimeType } }));
++      await decoding.promise;
++    });
++  }
+   await act(() => {
+     if (
+       edit !== "annotation" &&
+@@ -169,7 +204,8 @@ it.each([
+     if (edit === "switch") input.attachmentTargetKeyRef.current = DraftId.make("other-draft");
+   });
+   await act(async () => {
+-    downloaded.resolve(new Response("notes", { headers: { "Content-Type": attachment.mimeType } }));
++    downloaded.resolve(new Response(bytes, { headers: { "Content-Type": mimeType } }));
++    resumeDecode.resolve();
+     await settled.promise;
+   });
+   expect(pendingDraftWork.has(target)).toBe(false);
+diff --git a/apps/web/src/components/chat/useComposerContextImport.ts b/apps/web/src/components/chat/useComposerContextImport.ts
+index 74e97a5076d7df11c9b15d58b7587708e55b90c3..832c6b469711e5d69afb01088849984d1912e41e 100644
+--- a/apps/web/src/components/chat/useComposerContextImport.ts
++++ b/apps/web/src/components/chat/useComposerContextImport.ts
+@@ -12,6 +12,7 @@ import {
+   type ComposerContextRecord,
+   type EnvironmentId,
+   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
++  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+ } from "@t3tools/contracts";
+ import {
+   type ComposerFileAttachment,
+@@ -56,6 +57,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
+ import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
+ import { useStableCallback } from "../../hooks/useStableCallback";
+ import { countPreparingComposerImages } from "./preparingComposerImages";
++import { prepareImageForAttachment } from "~/lib/imageCompression";
+ 
+ const isUnreachable = Schema.is(
+   Schema.Union([ConnectionTransientError, ConnectionBlockedError, EnvironmentRpcUnavailableError]),
+@@ -165,7 +167,8 @@ export function useComposerContextImport(input: {
+         description: `${reason} Remove the chip or attach the file again.`,
+       });
+     };
+-    let file = copiedComposerAttachmentFile(sourceEnvironmentId, record.attachmentId);
++    const cachedFile = copiedComposerAttachmentFile(sourceEnvironmentId, record.attachmentId);
++    let file = cachedFile;
+     if (!file) {
+       const sourceConnection = readPreparedConnection(sourceEnvironmentId);
+       if (!sourceConnection) {
+@@ -194,6 +197,24 @@ export function useComposerContextImport(input: {
+         fail("Downloading it from the source failed.");
+         return;
+       }
++      file = new File([blob], record.name, { type: record.mimeType || blob.type });
++    }
++    if (record.kind === "image") {
++      const prepared = await prepareImageForAttachment(
++        file,
++        PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
++      ).catch(() => ({ ok: false, reason: "unreadable" }) as const);
++      if (!prepared.ok) {
++        fail(
++          prepared.reason === "unreadable"
++            ? "It could not be read as an image."
++            : "It is too large to attach, even after compression.",
++        );
++        return;
++      }
++      file = prepared.file;
++    }
++    if (!cachedFile || record.kind === "image") {
+       // Question attachments have no inline reference; annotations can own their screenshots.
+       const references = new Set(collectInlineContextIds(promptRef.current));
+       if (
+@@ -208,7 +229,6 @@ export function useComposerContextImport(input: {
+         )
+       )
+         return;
+-      file = new File([blob], record.name, { type: record.mimeType || blob.type });
+     }
+     // The draft these bytes belong to may have been sent or switched away from while they
+     // downloaded. Dropping them here keeps them out of whatever draft is open now.
+@@ -239,7 +259,7 @@ export function useComposerContextImport(input: {
+           {
+             type: "image",
+             id: localId,
+-            name: record.name,
++            name: file.name,
+             mimeType: file.type,
+             sizeBytes: file.size,
+             previewUrl: URL.createObjectURL(file),
+diff --git a/apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts b/apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts
+index a504d429185af303565549a5d1230edec56f41ca..9e16d277cadc806af26d02b5caac654c8c28b7f2 100644
+--- a/apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts
++++ b/apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts
+@@ -114,8 +114,9 @@ describe("open question delivery", () => {
+     id: "12345678-1234-1234-1234-123456789abc",
+     name: "window.png",
+     mimeType: "image/png" as const,
+-    sizeBytes: 3,
+-    dataUrl: "data:image/png;base64,AQID",
++    sizeBytes: 70,
++    dataUrl:
++      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==",
+     source: {
+       kind: "snap-shot" as const,
+       capturedAt: "2026-09-01T00:00:00.000Z",
+@@ -212,8 +213,9 @@ describe("durable snapshot delivery", () => {
+         id: "12345678-1234-1234-1234-123456789abc",
+         name: "window.png",
+         mimeType: "image/png" as const,
+-        sizeBytes: 3,
+-        dataUrl: "data:image/png;base64,AQID",
++        sizeBytes: 70,
++        dataUrl:
++          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==",
+         source: {
+           kind: "snap-shot" as const,
+           capturedAt: "2026-09-01T00:00:00.000Z",
+@@ -237,7 +239,15 @@ describe("durable snapshot delivery", () => {
+             type: "image",
+             ...capture,
+             previewUrl: capture.dataUrl,
+-            file: new File([new Uint8Array([1, 2, 3])], capture.name, { type: capture.mimeType }),
++            file: new File(
++              [
++                Uint8Array.from(atob(capture.dataUrl.split(",")[1]!), (character) =>
++                  character.charCodeAt(0),
++                ),
++              ],
++              capture.name,
++              { type: capture.mimeType },
++            ),
+           });
+           void store.syncPersistedAttachments(target, [capture]);
+         }
+diff --git a/apps/web/src/components/preview/PreviewView.tsx b/apps/web/src/components/preview/PreviewView.tsx
+index 253a4fc14e568fdcc0dfa772d07d9fead27f2700..abe81016b30a19115e88b77ff5f75fe25d65f7e6 100644
+--- a/apps/web/src/components/preview/PreviewView.tsx
++++ b/apps/web/src/components/preview/PreviewView.tsx
+@@ -793,7 +793,7 @@ export function PreviewView({
+       const { annotation: picked, submission, screenshotFailed = false } = result;
+       // Send annotations even if the optional crop fails or stalls; drop failed screenshots so prompts cannot
+       // claim an attachment.
+-      const capture = capturePreviewAnnotationScreenshot(picked);
++      const capture = await capturePreviewAnnotationScreenshot(picked);
+       const cropDropped = screenshotFailed || capture.status === "failed";
+       const annotation = capture.status === "failed" ? { ...picked, screenshot: null } : picked;
+       addPreviewAnnotation(threadRef, annotation);
+diff --git a/apps/web/src/lib/imageCompression.test.ts b/apps/web/src/lib/imageCompression.test.ts
+index 079c52df5d573f630099fefc26ff790f4a22eb04..2480bed5c935ed9a16cf3f7d30b1983fc1637033 100644
+--- a/apps/web/src/lib/imageCompression.test.ts
++++ b/apps/web/src/lib/imageCompression.test.ts
+@@ -232,6 +232,72 @@ describe("compressImageForStash", () => {
+     });
+   });
+ 
++  it("compressImageToByteLimit passes small files through byte-for-byte", async () => {
++    const close = vi.fn();
++    const bitmapSpy = vi.fn(async () => ({ width: 1600, height: 900, close }));
++    vi.stubGlobal("createImageBitmap", bitmapSpy);
++
++    const original = makeFile(1024);
++    const result = await compressImageToByteLimit(original, 10 * 1024 * 1024);
++
++    expect(result.ok).toBe(true);
++    expect(result.ok && result.recompressed).toBe(false);
++    expect(result.ok && result.file).toBe(original);
++    expect(close).toHaveBeenCalledOnce();
++  });
++
++  it.each([
++    [5120, 2880, 2000, 1125],
++    [2880, 5120, 1125, 2000],
++    [2048, 1024, 2000, 1000],
++  ])(
++    "resizes a small %i x %i attachment to %i x %i",
++    async (width, height, targetWidth, targetHeight) => {
++      stubCanvasPipeline(() => 100_000);
++      const close = vi.fn();
++      vi.stubGlobal(
++        "createImageBitmap",
++        vi.fn(async () => ({ width, height, close })),
++      );
++      const Canvas = globalThis.OffscreenCanvas;
++      const sizes: number[][] = [];
++      vi.stubGlobal(
++        "OffscreenCanvas",
++        class extends Canvas {
++          constructor(w: number, h: number) {
++            super(w, h);
++            sizes.push([w, h]);
++          }
++        },
++      );
++      const result = await prepareImageForAttachment(makeFile(1_071_334), 10_000_000);
++      expect(result.ok && result.recompressed).toBe(true);
++      expect(sizes).toEqual([[targetWidth, targetHeight]]);
++      expect(globalThis.createImageBitmap).toHaveBeenCalledOnce();
++      expect(close).toHaveBeenCalledOnce();
++    },
++  );
++
++  it("rejects an unreadable image even when its bytes fit", async () => {
++    vi.stubGlobal("createImageBitmap", vi.fn().mockRejectedValue(new Error("Invalid PNG")));
++    expect(await prepareImageForAttachment(makeFile(1024), 10_000_000)).toEqual({
++      ok: false,
++      reason: "unreadable",
++    });
++  });
++
++  it("compressImageToByteLimit re-encodes an oversized file under the byte cap", async () => {
++    stubCanvasPipeline(() => 200_000);
++
++    const result = await compressImageToByteLimit(makeFile(2_000_000, "image/webp"), 1_000_000);
++
++    expect(result.ok).toBe(true);
++    expect(result.ok && result.recompressed).toBe(true);
++    expect(result.ok && result.file.type).toBe("image/webp");
++    expect(result.ok && result.file.name).toBe("shot.webp");
++    expect(result.ok && result.file.size).toBeLessThanOrEqual(1_000_000);
++  });
++
+   it("compressImageToByteLimit refuses sources above the decode-safety ceiling", async () => {
+     const bitmapSpy = vi.fn();
+     vi.stubGlobal("createImageBitmap", bitmapSpy);
+@@ -263,6 +329,16 @@ describe("composer image thumbnails", () => {
+ });
+ 
+ describe("HEIC attachment preparation", () => {
++  beforeEach(() => {
++    vi.stubGlobal(
++      "createImageBitmap",
++      vi.fn(async () => ({
++        width: 1600,
++        height: 900,
++        close: vi.fn(),
++      })),
++    );
++  });
+   it("converts a HEIC photo with a missing MIME type into a named JPEG", async () => {
+     const original = makeHeicFile({
+       name: "IMG_1234.HEIC",
+@@ -419,22 +495,69 @@ describe("attachment max edge", () => {
+     expect(result.ok && result.imageSize).toEqual({ width: 1500, height: 2000 });
+   });
+ 
+-  it.each([
+-    { label: "a 2000px PNG", header: pngHeader(2000, 1200), type: "image/png" },
+-    {
+-      label: "a 3000px GIF",
+-      header: [0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0xb8, 0x0b, 0x10, 0x04],
+-      type: "image/gif",
+-    },
+-  ])("passes $label through without decoding it", async ({ header, type }) => {
+-    const { decode } = stubDecoder({ width: 3000, height: 1040 });
+-    const original = image(header, "image", type);
++  it("passes a 2000px PNG through after checking its decoded size", async () => {
++    const { decode, canvases } = stubDecoder({ width: 2000, height: 1200 });
++    const original = image(pngHeader(2000, 1200), "image.png", "image/png");
+ 
+     const result = await prepareImageForAttachment(original, 10 * 1024 * 1024);
+ 
+     expect(result.ok && result.file).toBe(original);
+     expect(result.ok && result.recompressed).toBe(false);
+-    expect(decode).not.toHaveBeenCalled();
++    expect(decode).toHaveBeenCalledOnce();
++    expect(canvases).toEqual([]);
++  });
++
++  it.each(["image/gif", "image/webp"])(
++    "resizes oversized %s attachments below the byte cap",
++    async (type) => {
++      const { decode, canvases } = stubDecoder({ width: 3000, height: 1040 });
++      const original = makeFile(1024, type);
++
++      const result = await prepareImageForAttachment(original, 10 * 1024 * 1024);
++
++      expect(result.ok && result.recompressed).toBe(true);
++      expect(result.ok && result.imageSize).toEqual({ width: 2000, height: 693 });
++      expect(decode).toHaveBeenCalledOnce();
++      expect(canvases).toEqual([{ width: 2000, height: 693 }]);
++    },
++  );
++
++  it("reuses the decoded bitmap when a resized PNG still exceeds the byte cap", async () => {
++    const { close } = stubCanvasPipeline(() => 100_000);
++    const Canvas = globalThis.OffscreenCanvas;
++    vi.stubGlobal(
++      "OffscreenCanvas",
++      class extends Canvas {
++        override async convertToBlob(options: { type: string; quality: number }) {
++          return options.type === "image/png"
++            ? new Blob([new Uint8Array(2_000_000)], { type: options.type })
++            : super.convertToBlob(options);
++        }
++      },
++    );
++
++    const result = await prepareImageForAttachment(makeFile(1024), 1_000_000);
++
++    expect(result.ok && result.file.type).toBe("image/webp");
++    expect(result.ok && result.file.size).toBeLessThanOrEqual(1_000_000);
++    expect(globalThis.createImageBitmap).toHaveBeenCalledOnce();
++    expect(close).toHaveBeenCalledOnce();
++  });
++
++  it("closes the decoded bitmap when resizing is unavailable", async () => {
++    const close = vi.fn();
++    vi.stubGlobal(
++      "createImageBitmap",
++      vi.fn(async () => ({ width: 3000, height: 2000, close })),
++    );
++    vi.stubGlobal("OffscreenCanvas", undefined);
++    vi.stubGlobal("document", undefined);
++
++    expect(await prepareImageForAttachment(makeFile(1024), 10_000_000)).toEqual({
++      ok: false,
++      reason: "too-large",
++    });
++    expect(close).toHaveBeenCalledOnce();
+   });
+ });
+ 
+diff --git a/apps/web/src/lib/imageCompression.ts b/apps/web/src/lib/imageCompression.ts
+index ed41b9ec453200c10fce2e0a519e91ceebfe0c61..1cb020f32d4f6bc167ede7c37962fa30be0eb2cc 100644
+--- a/apps/web/src/lib/imageCompression.ts
++++ b/apps/web/src/lib/imageCompression.ts
+@@ -3,10 +3,6 @@ import {
+   fitImageAttachmentSize,
+   IMAGE_ATTACHMENT_MAX_EDGE,
+ } from "@t3tools/client-runtime/image-attachment-size";
+-import {
+-  IMAGE_DIMENSIONS_HEADER_BYTES,
+-  readImageDimensions,
+-} from "@t3tools/shared/imageDimensions";
+ 
+ const MAX_DIMENSION = IMAGE_ATTACHMENT_MAX_EDGE;
+ export const MAX_STASH_IMAGE_DATA_URL_CHARS = 1_300_000;
+@@ -313,14 +309,16 @@ async function reencodeWithinBudget(
+   file: File,
+   budgetChars: number,
+   preferredMimeType?: "image/jpeg",
++  decodedBitmap?: ImageBitmap,
+ ): Promise<ReencodeResult> {
+   if (!canRecompress()) {
++    decodedBitmap?.close();
+     return { ok: false, reason: "too-large" };
+   }
+ 
+   let bitmap: ImageBitmap;
+   try {
+-    bitmap = await createImageBitmap(file);
++    bitmap = decodedBitmap ?? (await createImageBitmap(file));
+   } catch {
+     return { ok: false, reason: "unreadable" };
+   }
+@@ -389,16 +387,13 @@ export async function compressImageForStash(
+   }
+ }
+ 
+-async function fitImageToMaxEdge(file: File): Promise<{ file: File; imageSize: ImageSize } | null> {
++async function fitImageToMaxEdge(
++  file: File,
++  bitmap: ImageBitmap,
++): Promise<{ file: File; imageSize: ImageSize } | null> {
+   const mimeType = downscalableImageMimeType(file.type);
+-  if (!mimeType || !canRecompress() || file.size > MAX_COMPRESSIBLE_SOURCE_BYTES) return null;
+-  let bitmap: ImageBitmap | undefined;
++  if (!mimeType || !canRecompress()) return null;
+   try {
+-    const header = readImageDimensions(
+-      new Uint8Array(await file.slice(0, IMAGE_DIMENSIONS_HEADER_BYTES).arrayBuffer()),
+-    );
+-    if (!header || !fitImageAttachmentSize(header)) return null;
+-    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+     const imageSize = fitImageAttachmentSize(bitmap);
+     if (!imageSize) return null;
+     const target = createCanvas(imageSize.width, imageSize.height);
+@@ -413,8 +408,6 @@ async function fitImageToMaxEdge(file: File): Promise<{ file: File; imageSize: I
+     };
+   } catch {
+     return null;
+-  } finally {
+-    bitmap?.close();
+   }
+ }
+ 
+@@ -423,21 +416,30 @@ export async function compressImageToByteLimit(
+   maxBytes: number,
+   options?: { preferredMimeType?: "image/jpeg"; sourceSizeBytes?: number },
+ ): Promise<CompressImageFileResult> {
+-  const fitted = await fitImageToMaxEdge(file);
+-  if (fitted && fitted.file.size <= maxBytes) {
+-    return { ok: true, file: fitted.file, recompressed: true, imageSize: fitted.imageSize };
++  if ((options?.sourceSizeBytes ?? file.size) > MAX_COMPRESSIBLE_SOURCE_BYTES) {
++    return { ok: false, reason: "too-large" };
+   }
+-  if (!fitted && file.size <= maxBytes) {
++  let bitmap: ImageBitmap;
++  try {
++    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
++  } catch {
++    return { ok: false, reason: "unreadable" };
++  }
++  if (file.size <= maxBytes && Math.max(bitmap.width, bitmap.height) <= MAX_DIMENSION) {
++    bitmap.close();
+     return { ok: true, file, recompressed: false };
+   }
+-  if ((options?.sourceSizeBytes ?? file.size) > MAX_COMPRESSIBLE_SOURCE_BYTES) {
+-    return { ok: false, reason: "too-large" };
++  const fitted = await fitImageToMaxEdge(file, bitmap);
++  if (fitted && fitted.file.size <= maxBytes) {
++    bitmap.close();
++    return { ok: true, file: fitted.file, recompressed: true, imageSize: fitted.imageSize };
+   }
+   const budgetChars = Math.floor(maxBytes / 3) * 4;
+   const reencoded = await reencodeWithinBudget(
+-    fitted?.file ?? file,
++    file,
+     budgetChars,
+     options?.preferredMimeType,
++    bitmap,
+   );
+   if (!reencoded.ok) {
+     return reencoded;
+diff --git a/apps/web/src/lib/previewAnnotation.test.ts b/apps/web/src/lib/previewAnnotation.test.ts
+index 56439437d3d3ffba8a7baee34e291702c8d45471..e72e510dca4fd676f646ae945107580c6d9abb89 100644
+--- a/apps/web/src/lib/previewAnnotation.test.ts
++++ b/apps/web/src/lib/previewAnnotation.test.ts
+@@ -30,7 +30,8 @@ describe("preview annotation capture", () => {
+   it("preserves the PNG bytes, MIME type, and filename without fetching", async () => {
+     const fetch = vi.fn().mockRejectedValue(new TypeError("Blocked by connect-src"));
+     vi.stubGlobal("fetch", fetch);
+-    const capture = capturePreviewAnnotationScreenshot(annotation);
++    vi.stubGlobal("createImageBitmap", async () => ({ width: 1, height: 1, close: vi.fn() }));
++    const capture = await capturePreviewAnnotationScreenshot(annotation);
+     expect(capture.status).toBe("captured");
+     if (capture.status !== "captured") throw new Error("Expected a screenshot file");
+     expect(capture.file.name).toBe("preview-annotation-annotation_1.png");
+@@ -41,12 +42,55 @@ describe("preview annotation capture", () => {
+     expect(fetch).not.toHaveBeenCalled();
+   });
+ 
++  it("resizes a Retina annotation screenshot to 2000px before attaching it", async () => {
++    const bytes = Buffer.from(annotation.screenshot!.dataUrl.split(",")[1]!, "base64");
++    bytes.writeUInt32BE(4000, 16);
++    bytes.writeUInt32BE(2400, 20);
++    const canvases: Array<{ width: number; height: number }> = [];
++    vi.stubGlobal("createImageBitmap", async () => ({
++      width: 4000,
++      height: 2400,
++      close: vi.fn(),
++    }));
++    vi.stubGlobal(
++      "OffscreenCanvas",
++      class {
++        constructor(width: number, height: number) {
++          canvases.push({ width, height });
++        }
++        getContext() {
++          return { drawImage: vi.fn() };
++        }
++        async convertToBlob({ type }: { type: string }) {
++          return new Blob(["resized"], { type });
++        }
++      },
++    );
++
++    const capture = await capturePreviewAnnotationScreenshot({
++      ...annotation,
++      screenshot: {
++        ...annotation.screenshot!,
++        dataUrl: `data:image/png;base64,${bytes.toString("base64")}`,
++        width: 4000,
++        height: 2400,
++      },
++    });
++
++    expect(canvases).toEqual([{ width: 2000, height: 1200 }]);
++    expect(capture.status).toBe("captured");
++    if (capture.status !== "captured") throw new Error("Expected a screenshot file");
++    expect(await capture.file.text()).toBe("resized");
++    expect(capture.file.type).toBe("image/png");
++    expect(capture.file.name).toBe("preview-annotation-annotation_1.png");
++  });
++
+   // regression: #12636 desktop annotation screenshots must be decoded without fetch (CSP)
+   it.each(["data:image/jpeg;base64,AA==", "data:image/png;base64,", "data:image/png;base64,%%%"])(
+     "reports a malformed screenshot as failed: %s",
+-    (dataUrl) => {
++    async (dataUrl) => {
+       const picked = { ...annotation, screenshot: { ...annotation.screenshot!, dataUrl } };
+-      expect(capturePreviewAnnotationScreenshot(picked)).toEqual({ status: "failed" });
++      expect(await capturePreviewAnnotationScreenshot(picked)).toEqual({ status: "failed" });
+     },
+   );
+ });
+diff --git a/apps/web/src/lib/previewAnnotation.ts b/apps/web/src/lib/previewAnnotation.ts
+index 8f8b944e2fa1ce73444ca9f27e41d37da76b07af..fdd8b9af2e1ca40c29b5d3eb0885a10e47de1b11 100644
+--- a/apps/web/src/lib/previewAnnotation.ts
++++ b/apps/web/src/lib/previewAnnotation.ts
+@@ -1,6 +1,9 @@
+-import type { PreviewAnnotationPayload } from "@t3tools/contracts";
++import {
++  type PreviewAnnotationPayload,
++  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
++} from "@t3tools/contracts";
+ 
+-import { dataUrlToFile } from "./imageCompression";
++import { dataUrlToFile, prepareImageForAttachment } from "./imageCompression";
+ 
+ export type PreviewAnnotationCapture =
+   | { readonly status: "captured"; readonly file: File }
+@@ -10,9 +13,9 @@ export type PreviewAnnotationCapture =
+ const PNG_DATA_URL_PREFIX = "data:image/png;base64,";
+ 
+ /** Decode Electron's PNG crop locally; fetching a data URL violates desktop connect-src. */
+-export function capturePreviewAnnotationScreenshot(
++export async function capturePreviewAnnotationScreenshot(
+   annotation: PreviewAnnotationPayload,
+-): PreviewAnnotationCapture {
++): Promise<PreviewAnnotationCapture> {
+   if (!annotation.screenshot) return { status: "none" };
+   try {
+     const { dataUrl } = annotation.screenshot;
+@@ -20,7 +23,9 @@ export function capturePreviewAnnotationScreenshot(
+       return { status: "failed" };
+     }
+     const file = dataUrlToFile(dataUrl, `preview-annotation-${annotation.id}.png`, "image/png");
+-    return file.size > 0 ? { status: "captured", file } : { status: "failed" };
++    if (file.size === 0) return { status: "failed" };
++    const prepared = await prepareImageForAttachment(file, PROVIDER_SEND_TURN_MAX_IMAGE_BYTES);
++    return prepared.ok ? { status: "captured", file: prepared.file } : { status: "failed" };
+   } catch {
+     return { status: "failed" };
+   }
+diff --git a/docs/user/composer.md b/docs/user/composer.md
+index 32de36e13b8424de67ae4db321ef632e36b70743..1f97651e566fdb32fa83c87e27d7eb47685fe16d 100644
+--- a/docs/user/composer.md
++++ b/docs/user/composer.md
+@@ -58,6 +58,10 @@ also send files to T3 Code through another app's system share sheet.
+ On Android, you can also drag images from another app into the message input
+ in split screen.
+ 
++On web and desktop, images larger than 2000 pixels on either side are resized before
++upload, preserving their proportions. For small text, attach a crop of the relevant
++area. Previously sent images are not changed.
++
+ See [images and videos](#images-and-videos-in-messages) for previewing and saving media.
+ 
+ ## Send while the agent is working

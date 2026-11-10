@@ -1,0 +1,309 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mateusz Choma <chomamateusz@gmail.com>
+Date: Sat, 31 Oct 2026 13:31:56 +0100
+Subject: =?UTF-8?q?=F0=9F=94=8C=20Load=20a=20newer=20web=20client=20in=20t?=
+ =?UTF-8?q?he=20desktop=20app=20without=20a=20restart?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Behaviours:
+Choose the production desktop renderer root on every protocol request from
+<T3 home>/web-override/current, resolved to its real path. Use the override only
+when index.html is a file and t3-web-override.json has an appVersion exactly
+matching the running desktop app. Otherwise serve the bundled client.
+
+Pass the desktop environment's baseDir and appVersion to protocol registration;
+these are the home used by the bundled server and Electron's app.getVersion().
+Resolve current once per request, cache validation while its resolved target is
+unchanged, and revalidate after target changes or removal. Log invalid or
+incompatible targets once each. Placing, switching, rolling back or removing
+current takes effect through the existing main-window reload action.
+
+Reuse serveDesktopAsset and confine each resolved file to the selected real
+root, rejecting symlink escapes as well as lexical traversal. Preserve HTML
+no-store, filename-based immutable caching for hashed assets, other-asset
+no-cache, CSP and development proxy behavior. Server HTTP serving is unchanged.
+
+Integration details:
+- Preserve upstream early renderer startup and use the same desktop environment baseDir/appVersion supplied to its bundled server; no server protocol or serving changes.
+
+Port to 965ddc1d6c:
+- Applied without conflicts. DesktopApp.ts gained the fresh-install t3 command setup (#33153); packaged builds still pass baseDir and appVersion to registerDesktopProtocol.
+
+Files:
+apps/desktop:
+- apps/desktop/src/app/DesktopApp.ts
+- apps/desktop/src/electron/ElectronProtocol.test.ts
+- apps/desktop/src/electron/ElectronProtocol.ts
+
+Tests:
+- apps/desktop/src/app/DesktopApp.test.ts
+- apps/desktop/src/electron/ElectronProtocol.test.ts
+- Whole-stack focused validation on 965ddc1d6c: 1,321 passed and 2 baseline failures across 48 test files (every test file the stack touches plus CommandPalette.logic.test.ts and chatRouteCommands.browser.test.ts). Web: 679 / 32 files; desktop: 118 / 9; server: 432 passed and 2 baseline failures / 4; contracts: 36 / 1; scripts: 56 / 2.
+- vp run typecheck passed in apps/web, apps/desktop, apps/server, packages/contracts and scripts; vp lint and vp fmt --check passed on the 119 changed files.
+- Baseline: UsageService.test.ts on detached 965ddc1d6c fails the same 2 assertions (Pi /var versus /private/var path equality; Codex open-spy raw-path equality); no assertion was changed to hide them.
+- No installed-client or live remote/relay/tunnel pass: no development servers or installed app changes were authorized.
+
+Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
+---
+ apps/desktop/src/app/DesktopApp.ts            |  6 +-
+ .../src/electron/ElectronProtocol.test.ts     | 92 +++++++++++++++++++
+ apps/desktop/src/electron/ElectronProtocol.ts | 75 ++++++++++++++-
+ 3 files changed, 169 insertions(+), 4 deletions(-)
+
+diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
+index fd9070178247ccda46b6e1610c3d931e29cb8a00..b48303eaa53e3015f11b2da316cda0c5693a4c1a 100644
+--- a/apps/desktop/src/app/DesktopApp.ts
++++ b/apps/desktop/src/app/DesktopApp.ts
+@@ -198,7 +198,11 @@ const bootstrap = Effect.gen(function* () {
+     scheme: ElectronProtocol.getDesktopScheme(environment.isDevelopment),
+     ...(environment.isDevelopment
+       ? { targetOrigin: Option.getOrThrow(environment.devServerUrl) }
+-      : { assetDirectory: environment.clientAssetsDir }),
++      : {
++          assetDirectory: environment.clientAssetsDir,
++          baseDir: environment.baseDir,
++          appVersion: environment.appVersion,
++        }),
+     clerkFrontendApiHostname: DesktopClerk.desktopClerkFrontendApiHostname,
+   });
+   yield* installDesktopIpcHandlers();
+diff --git a/apps/desktop/src/electron/ElectronProtocol.test.ts b/apps/desktop/src/electron/ElectronProtocol.test.ts
+index 1e7378c3c3642dfb07099cd5c943bcf508a88750..3a308ebf9c4a4795b5858c73388b6a5fee52c04c 100644
+--- a/apps/desktop/src/electron/ElectronProtocol.test.ts
++++ b/apps/desktop/src/electron/ElectronProtocol.test.ts
+@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
+ import * as NodeServices from "@effect/platform-node/NodeServices";
+ import * as FileSystem from "effect/FileSystem";
+ import * as Layer from "effect/Layer";
++import * as Logger from "effect/Logger";
+ import { beforeEach, vi } from "vite-plus/test";
+ 
+ const { handleMock, netFetchMock, unhandleMock } = vi.hoisted(() => ({
+@@ -59,6 +60,8 @@ describe("ElectronProtocol", () => {
+       yield* protocol.registerDesktopProtocol({
+         scheme: "t3code",
+         assetDirectory: directory,
++        baseDir: directory,
++        appVersion: "1.2.3",
+         clerkFrontendApiHostname: undefined,
+       });
+ 
+@@ -95,6 +98,8 @@ describe("ElectronProtocol", () => {
+       yield* protocol.registerDesktopProtocol({
+         scheme: "t3code",
+         assetDirectory: directory,
++        baseDir: directory,
++        appVersion: "1.2.3",
+         clerkFrontendApiHostname: undefined,
+       });
+       const request = (pathname: string, init?: RequestInit) =>
+@@ -145,6 +150,93 @@ describe("ElectronProtocol", () => {
+     }).pipe(Effect.provide(Layer.merge(layerProtocol, NodeServices.layer)), Effect.scoped),
+   );
+ 
++  it.effect("selects versioned overrides per request and confines their assets", () =>
++    Effect.gen(function* () {
++      const fileSystem = yield* FileSystem.FileSystem;
++      const directory = yield* fileSystem.makeTempDirectoryScoped();
++      const bundled = `${directory}/bundled`;
++      const overrides = `${directory}/web-override`;
++      yield* fileSystem.makeDirectory(bundled);
++      yield* fileSystem.makeDirectory(overrides);
++      yield* fileSystem.writeFileString(`${bundled}/index.html`, "bundled");
++      yield* fileSystem.writeFileString(`${directory}/secret.txt`, "secret");
++      let handler: ((request: Request) => Promise<Response>) | undefined;
++      handleMock.mockImplementation((_scheme, nextHandler) => {
++        handler = nextHandler;
++      });
++      const warnings: unknown[] = [];
++      const logger = Logger.make(({ message }) => warnings.push(message));
++      const protocol = yield* ElectronProtocol.make.pipe(
++        Effect.provide(Logger.layer([logger], { mergeWithExisting: false })),
++      );
++      yield* protocol.registerDesktopProtocol({
++        scheme: "t3code",
++        assetDirectory: bundled,
++        baseDir: directory,
++        appVersion: "1.2.3-local",
++        clerkFrontendApiHostname: undefined,
++      });
++      const request = (pathname = "/") =>
++        Effect.promise(() => handler!(new Request(`t3code://app${pathname}`)));
++      const page = () =>
++        request().pipe(Effect.flatMap((response) => Effect.promise(() => response.text())));
++      const select = (target: string) =>
++        Effect.gen(function* () {
++          yield* fileSystem.symlink(target, `${overrides}/next`);
++          yield* fileSystem.rename(`${overrides}/next`, `${overrides}/current`);
++        });
++      assert.equal(yield* page(), "bundled");
++      for (const [name, stamp, hasIndex] of [
++        ["missing", null, true],
++        ["mismatch", '{"appVersion":"1.2.3"}', true],
++        ["malformed", "{", true],
++        ["wrong-shape", '{"appVersion":123}', true],
++        ["no-index", '{"appVersion":"1.2.3-local"}', false],
++      ] as const) {
++        const target = `${overrides}/${name}`;
++        yield* fileSystem.makeDirectory(target);
++        if (hasIndex) yield* fileSystem.writeFileString(`${target}/index.html`, name);
++        if (stamp !== null)
++          yield* fileSystem.writeFileString(`${target}/t3-web-override.json`, stamp);
++        yield* select(target);
++        assert.equal(yield* page(), "bundled", name);
++        assert.equal(yield* page(), "bundled", name);
++      }
++      assert.equal(warnings.length, 5);
++      for (const name of ["first", "second"]) {
++        const target = `${overrides}/${name}`;
++        yield* fileSystem.makeDirectory(`${target}/assets`, { recursive: true });
++        yield* fileSystem.writeFileString(`${target}/index.html`, name);
++        yield* fileSystem.writeFileString(`${target}/assets/app-12345678.js`, name);
++        yield* fileSystem.writeFileString(
++          `${target}/t3-web-override.json`,
++          '{"appVersion":"1.2.3-local"}',
++        );
++        yield* fileSystem.symlink(`${directory}/secret.txt`, `${target}/escape.txt`);
++        yield* select(target);
++        const response = yield* request();
++        assert.equal(yield* Effect.promise(() => response.text()), name);
++        assert.equal(response.headers.get("cache-control"), "no-store");
++        const asset = yield* request("/assets/app-12345678.js");
++        assert.equal(yield* Effect.promise(() => asset.text()), name);
++        assert.equal(asset.headers.get("cache-control"), "public, max-age=31536000, immutable");
++        for (const pathname of ["/escape.txt", "/%2e%2e%2fsecret.txt"]) {
++          const refused = yield* request(pathname);
++          assert.equal(refused.status, 404);
++          assert.equal(refused.headers.get("cache-control"), "no-store");
++        }
++      }
++      yield* select(`${overrides}/malformed`);
++      assert.equal(yield* page(), "bundled");
++      assert.equal(warnings.length, 5);
++      yield* select(`${overrides}/first`);
++      assert.equal(yield* page(), "first");
++      yield* fileSystem.remove(`${overrides}/current`);
++      assert.equal(yield* page(), "bundled");
++      assert.equal(netFetchMock.mock.calls.length, 0);
++    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
++  );
++
+   it.effect("proxies the stable renderer origin to the current app server", () =>
+     Effect.gen(function* () {
+       let handler: ((request: Request) => Promise<Response>) | undefined;
+diff --git a/apps/desktop/src/electron/ElectronProtocol.ts b/apps/desktop/src/electron/ElectronProtocol.ts
+index 34c59a8a71a8a59f1a7030fbcd4c0ca823fad5e3..7e616e0675a77f5fc0a2de3517b706b15b1e5894 100644
+--- a/apps/desktop/src/electron/ElectronProtocol.ts
++++ b/apps/desktop/src/electron/ElectronProtocol.ts
+@@ -70,7 +70,10 @@ export class ElectronProtocolUnregistrationError extends Schema.TaggedError<Elec
+ export type DesktopProtocolRegistrationInput = {
+   readonly scheme: string;
+   readonly clerkFrontendApiHostname: string | undefined;
+-} & ({ readonly targetOrigin: URL } | { readonly assetDirectory: string });
++} & (
++  | { readonly targetOrigin: URL }
++  | { readonly assetDirectory: string; readonly baseDir: string; readonly appVersion: string }
++);
+ 
+ export class ElectronProtocol extends Context.Service<
+   ElectronProtocol,
+@@ -221,6 +224,60 @@ const proxyRequest = Effect.fn("desktop.protocol.proxyRequest")(function* (
+   return withContentSecurityPolicy(response, contentSecurityPolicy);
+ });
+ 
++const decodeWebOverride = Schema.decodeUnknownOption(
++  Schema.fromJsonString(Schema.Struct({ appVersion: Schema.String })),
++);
++
++const makeAssetDirectoryResolver = Effect.fn("desktop.protocol.makeAssetDirectoryResolver")(
++  function* (input: Extract<DesktopProtocolRegistrationInput, { assetDirectory: string }>) {
++    const fileSystem = yield* FileSystem.FileSystem;
++    const path = yield* Path.Path;
++    const bundled = yield* fileSystem
++      .realPath(input.assetDirectory)
++      .pipe(Effect.orElseSucceed(() => path.resolve(input.assetDirectory)));
++    const current = path.join(input.baseDir, "web-override", "current");
++    const warnedTargets = new Set<string>();
++    let cached: { target: string; directory: Effect.Effect<string> } | undefined;
++    const validate = Effect.fn("desktop.protocol.validateWebOverride")(function* (target: string) {
++      const index = yield* fileSystem
++        .stat(path.join(target, "index.html"))
++        .pipe(Effect.orElseSucceed(() => null));
++      const stamp = yield* fileSystem
++        .readFileString(path.join(target, "t3-web-override.json"))
++        .pipe(
++          Effect.map(decodeWebOverride),
++          Effect.orElseSucceed(() => Option.none()),
++        );
++      if (
++        index?.type === "File" &&
++        Option.isSome(stamp) &&
++        stamp.value.appVersion === input.appVersion
++      ) {
++        return target;
++      }
++      if (!warnedTargets.has(target)) {
++        warnedTargets.add(target);
++        yield* Effect.logWarning("Ignoring invalid or incompatible desktop web override.", {
++          target,
++          appVersion: input.appVersion,
++        });
++      }
++      return bundled;
++    });
++    return Effect.fn("desktop.protocol.resolveAssetDirectory")(function* () {
++      const target = yield* fileSystem.realPath(current).pipe(Effect.orElseSucceed(() => null));
++      if (target === null) {
++        cached = undefined;
++        return bundled;
++      }
++      if (cached?.target !== target) {
++        cached = { target, directory: yield* Effect.cached(validate(target)) };
++      }
++      return yield* cached.directory;
++    });
++  },
++);
++
+ const serveDesktopAsset = Effect.fn("desktop.protocol.serveAsset")(function* (
+   request: Request,
+   assetDirectory: string,
+@@ -250,7 +307,11 @@ const serveDesktopAsset = Effect.fn("desktop.protocol.serveAsset")(function* (
+     }
+     filePath = path.join(root, "index.html");
+   }
+-  const contents = yield* fileSystem.readFile(filePath).pipe(Effect.orElseSucceed(() => null));
++  const realFilePath = yield* fileSystem.realPath(filePath).pipe(Effect.orElseSucceed(() => null));
++  if (realFilePath === null || !realFilePath.startsWith(root + path.sep)) {
++    return new Response(null, { status: 404, headers: { "cache-control": "no-store" } });
++  }
++  const contents = yield* fileSystem.readFile(realFilePath).pipe(Effect.orElseSucceed(() => null));
+   if (contents === null)
+     return new Response(null, { status: 404, headers: { "cache-control": "no-store" } });
+   const relativePath = path.relative(root, filePath).split(path.sep).join("/");
+@@ -279,6 +340,10 @@ export const make = Effect.gen(function* () {
+       if (yield* Ref.get(registered)) return;
+ 
+       const contentSecurityPolicy = makeDesktopContentSecurityPolicy(input);
++      const resolveAssetDirectory =
++        "assetDirectory" in input
++          ? yield* makeAssetDirectoryResolver(input).pipe(Effect.provide(context))
++          : undefined;
+ 
+       yield* Effect.acquireRelease(
+         Effect.try({
+@@ -286,7 +351,11 @@ export const make = Effect.gen(function* () {
+             Electron.protocol.handle(input.scheme, async (request) => {
+               if ("assetDirectory" in input) {
+                 return withContentSecurityPolicy(
+-                  await runPromise(serveDesktopAsset(request, input.assetDirectory)),
++                  await runPromise(
++                    resolveAssetDirectory!().pipe(
++                      Effect.flatMap((directory) => serveDesktopAsset(request, directory)),
++                    ),
++                  ),
+                   contentSecurityPolicy,
+                 );
+               }

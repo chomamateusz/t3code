@@ -1,0 +1,2842 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mateusz Choma <chomamateusz@gmail.com>
+Date: Fri, 30 Oct 2026 16:52:08 +0100
+Subject: =?UTF-8?q?=E2=9C=A8=20Start=20new=20threads=20inside=20the=20side?=
+ =?UTF-8?q?bar=20filter?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Behaviours:
+- Make sidebar New thread and chat.new respect combined machine/include/exclude filters, ignoring search text. Start directly for one reachable project member, offer a restricted picker for several, and open the full upstream list with an unreachable note when no target is reachable.
+- With several selected machines, rank each project's selected members online first, then by latest existing thread update/creation activity; ties or absent activity use primary-first catalog order. Keep separate clone choices on the chosen machine. Preserve singleton behavior and treat empty, unknown, all-known and fewer-than-two-machine scopes as unfiltered.
+- Without a filter, preserve upstream current-project behavior with one open project group; default and grouped multi-project sidebars show the full list. Preserve Shift-click/current-project shortcuts, Shift-over-Alt precedence and the zero-project disabled button.
+- Restricted pickers show explicit project/machine members including separate clones, with primary machine first, then project activity, and offline members last/disabled. A singleton scoped offline member can offer reachable siblings; several-machine targeting chooses an online in-scope sibling before an offline member, so the unreachable note appears only when no filtered project is reachable. Reuse quiet client data without a visit map, traffic or storage.
+- Full and unreachable pickers preserve upstream grouped rows, contextual environment choice, load balancing, offline handling and No project's position. Alt-click and widening use that list. Palette-root New thread in always remains full, stably promoting reachable filter matches and recomputing from live metadata/connectivity/filter inputs while open.
+- Carry contextual headings and frozen restricted members through the palette. Empty-query Backspace, Back and the persistent All projects row widen; Escape cancels. Restricted searches cannot fall through to root commands or filesystem browsing. Already-open palettes keep upstream shortcut behavior: run a matching displayed item or do nothing.
+- Exact active keybindings win over the Alt-plus-chat.new fallback, which applies only to otherwise unbound chords; preserve mod+alt+n for No project, physical/remapped keys and conditional bindings.
+- Share exact-member creation for direct and restricted picks. Reuse empty drafts only for the exact project and environment, including unmapped/concurrent drafts; pin explicit members against load balancing while preserving model/workspace defaults and history. Scratch members use startScratchThread like No project.
+- Subscribe to project activity only for two or more explicitly scoped machines. Keep tooltips reactive to filter, metadata, connectivity and the same activity used by click-time targeting, naming the exact project and machine for direct creation. Show Shift hints only when plain click differs and Alt hints only when plain click does not already open all projects.
+- Document filtered/unfiltered starts, selected-machine activity choice, widening, modifiers, No project, draft reuse and history. Folder pens, agent/MCP creation, providers and native mobile retain their upstream behavior; web, Electron renderer and mobile browser share the behavior.
+- Reuse the shared project-scope environment filter in production targeting. Read only the active project-filter mode for both click-time and reactive new-thread targeting, so the Hide list retained by Cmd/Ctrl Show only never excludes the chosen project. Keep selector empty-list identities stable for Zustand shallow snapshots.
+
+Integration details:
+- Preserve current upstream one-open-project context policy and the picker in both default and grouped multi-project sidebars; keep archived-only/no-current fallback to the full palette. Use all/open group counts for tooltip and click agreement.
+- Exclude archived groups and archived exact members from filtered targets; treat archived-on-the-selected-machine keys as inactive in singleton machine scope, matching the sidebar while preserving global metadata for multiple selected machines. Retain pinned ordering and ignore archived-member activity. Recheck member existence/archive status before exact creation.
+- Preserve full-picker frozen pin ordering, No-project position, Add-project fallback, listed/visible-thread filtering and environment-keyed group lookup. Forward event.target through Alt fallback so editable-focus conditions remain correct. Update upstream browser/shortcut fixtures for the shared action and explicit full-target payload.
+
+Port to 965ddc1d6c:
+- Upstream #33131 removed the legacy sidebar setting. Sidebar New thread, chat.new and startNewThreadInSidebarFilter no longer read legacySidebarEnabled: without a filter the current project opens only with exactly one open project group. The legacy-sidebar case is gone from useHandleNewThread.test.ts and the legacy sentence from docs/user/thread-sidebar.md.
+- Upstream #33109 labels the current project in New thread in. buildNewThreadInProjectItems takes both upstream's currentProjectKey and this commit's isOnline, so ProjectLocationDescription can show Current and (Offline); restricted pickers pass currentProjectKey null, and the full list keeps upstream's label and order.
+
+Files:
+apps/web:
+- apps/web/src/commandPaletteBus.ts
+- apps/web/src/components/CommandPalette.browser.test.tsx
+- apps/web/src/components/CommandPalette.composition.browser.test.tsx
+- apps/web/src/components/CommandPalette.logic.ts
+- apps/web/src/components/CommandPalette.tsx
+- apps/web/src/components/CommandPaletteProjectItems.tsx
+- apps/web/src/components/Sidebar.browser.test.tsx
+- apps/web/src/components/Sidebar.tsx
+- apps/web/src/components/sidebar/SidebarThreadHeader.browser.test.tsx
+- apps/web/src/components/sidebar/SidebarThreadHeader.tsx
+- apps/web/src/hooks/useHandleNewThread.test.ts
+- apps/web/src/hooks/useHandleNewThread.ts
+- apps/web/src/keybindings.test.ts
+- apps/web/src/keybindings.ts
+- apps/web/src/newThreadActions.ts
+- apps/web/src/newThreadTarget.test.ts
+- apps/web/src/newThreadTarget.ts
+- apps/web/src/newThreadTargetState.ts
+- apps/web/src/shortcuts/chatRouteCommands.test.ts
+- apps/web/src/shortcuts/chatRouteCommands.ts
+docs:
+- docs/user/thread-sidebar.md
+
+Tests:
+- apps/web/src/components/AddProjectToMachineDialog.browser.test.tsx
+- apps/web/src/components/AppSidebarLayout.browser.test.tsx
+- apps/web/src/components/CommandPalette.browser.test.tsx
+- apps/web/src/components/CommandPalette.composition.browser.test.tsx
+- apps/web/src/components/CommandPalette.logic.test.ts
+- apps/web/src/components/Sidebar.browser.test.tsx
+- apps/web/src/components/chat/ThreadDetailsPrRow.browser.test.tsx
+- apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts
+- apps/web/src/components/settings/KeybindingsSettings.logic.test.ts
+- apps/web/src/components/sidebar/SidebarThreadHeader.browser.test.tsx
+- apps/web/src/hooks/useHandleNewThread.test.ts
+- apps/web/src/hooks/useThreadActionMenu.test.ts
+- apps/web/src/hooks/useThreadActions.permissions.test.ts
+- apps/web/src/hooks/useThreadActions.undo.test.ts
+- apps/web/src/keybindings.test.ts
+- apps/web/src/keybindingsFocus.test.ts
+- apps/web/src/newThreadTarget.test.ts
+- apps/web/src/projectScripts.test.ts
+- apps/web/src/shortcuts/chatRouteCommands.browser.test.ts
+- apps/web/src/shortcuts/chatRouteCommands.test.ts
+- apps/web/src/shortcuts/commandPaletteCommands.browser.test.tsx
+- apps/web/src/state/server.test.ts
+- apps/web/src/terminal/ghostty/core.test.ts
+- Whole-stack focused validation on 965ddc1d6c: 1,321 passed and 2 baseline failures across 48 test files (every test file the stack touches plus CommandPalette.logic.test.ts and chatRouteCommands.browser.test.ts). Web: 679 / 32 files; desktop: 118 / 9; server: 432 passed and 2 baseline failures / 4; contracts: 36 / 1; scripts: 56 / 2.
+- vp run typecheck passed in apps/web, apps/desktop, apps/server, packages/contracts and scripts; vp lint and vp fmt --check passed on the 119 changed files.
+- Baseline: UsageService.test.ts on detached 965ddc1d6c fails the same 2 assertions (Pi /var versus /private/var path equality; Codex open-spy raw-path equality); no assertion was changed to hide them.
+- No installed-client or live remote/relay/tunnel pass: no development servers or installed app changes were authorized.
+
+Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
+---
+ apps/web/src/commandPaletteBus.ts             |   7 +-
+ .../CommandPalette.browser.test.tsx           | 251 ++++++++-
+ ...ommandPalette.composition.browser.test.tsx |   1 +
+ .../src/components/CommandPalette.logic.ts    |  17 +-
+ apps/web/src/components/CommandPalette.tsx    | 161 ++++--
+ .../components/CommandPaletteProjectItems.tsx |  17 +-
+ .../src/components/Sidebar.browser.test.tsx   |  10 +-
+ apps/web/src/components/Sidebar.tsx           |  33 +-
+ .../SidebarThreadHeader.browser.test.tsx      |  87 +++
+ .../sidebar/SidebarThreadHeader.tsx           |  30 +-
+ apps/web/src/hooks/useHandleNewThread.test.ts | 232 +++++++-
+ apps/web/src/hooks/useHandleNewThread.ts      |  39 +-
+ apps/web/src/keybindings.test.ts              | 131 ++++-
+ apps/web/src/keybindings.ts                   |  27 +-
+ apps/web/src/newThreadActions.ts              |  79 +++
+ apps/web/src/newThreadTarget.test.ts          | 499 ++++++++++++++++++
+ apps/web/src/newThreadTarget.ts               | 248 +++++++++
+ apps/web/src/newThreadTargetState.ts          | 107 ++++
+ .../src/shortcuts/chatRouteCommands.test.ts   |   5 +-
+ apps/web/src/shortcuts/chatRouteCommands.ts   |  32 +-
+ docs/user/thread-sidebar.md                   |  31 +-
+ 21 files changed, 1912 insertions(+), 132 deletions(-)
+ create mode 100644 apps/web/src/components/sidebar/SidebarThreadHeader.browser.test.tsx
+ create mode 100644 apps/web/src/newThreadActions.ts
+ create mode 100644 apps/web/src/newThreadTarget.test.ts
+ create mode 100644 apps/web/src/newThreadTarget.ts
+ create mode 100644 apps/web/src/newThreadTargetState.ts
+
+diff --git a/apps/web/src/commandPaletteBus.ts b/apps/web/src/commandPaletteBus.ts
+index 2766f6db6b391e14eb5988ca536156b5383ae736..c2fb1d186370659f7ece7467c07b8932a938c63c 100644
+--- a/apps/web/src/commandPaletteBus.ts
++++ b/apps/web/src/commandPaletteBus.ts
+@@ -1,6 +1,7 @@
+ import type { EnvironmentId, PullRequestLinkedThreadsResult } from "@t3tools/contracts";
+ 
+ import { dispatchCommandPalette, isCommandPaletteMounted } from "./commandPaletteStore";
++import type { NewThreadTarget } from "./newThreadTarget";
+ 
+ export interface CommandPaletteLinkedThreads {
+   readonly environmentId: EnvironmentId;
+@@ -11,6 +12,7 @@ export interface CommandPaletteOpenDetail {
+   readonly open?: "add-project" | "new-thread-in";
+   readonly query?: string;
+   readonly linkedThreads?: CommandPaletteLinkedThreads;
++  readonly newThreadTarget?: Exclude<NewThreadTarget, { kind: "direct" }>;
+ }
+ 
+ export function openCommandPalette(detail: CommandPaletteOpenDetail = {}): void {
+@@ -18,7 +20,10 @@ export function openCommandPalette(detail: CommandPaletteOpenDetail = {}): void
+   // store, it would pop a stale palette once the app shell mounts.
+   if (!isCommandPaletteMounted()) return;
+   if (detail.open === "new-thread-in") {
+-    dispatchCommandPalette({ _tag: "OpenNewThreadIn" });
++    dispatchCommandPalette({
++      _tag: "OpenNewThreadIn",
++      ...(detail.newThreadTarget ? { target: detail.newThreadTarget } : {}),
++    });
+   } else if (detail.open === "add-project") {
+     dispatchCommandPalette({ _tag: "OpenAddProject" });
+   } else if (detail.query !== undefined) {
+diff --git a/apps/web/src/components/CommandPalette.browser.test.tsx b/apps/web/src/components/CommandPalette.browser.test.tsx
+index 112181def5b460cf7e591a2aa13a26d2d5053199..36e5dbda38d667310ec8a53c4a4a2cc209d37be0 100644
+--- a/apps/web/src/components/CommandPalette.browser.test.tsx
++++ b/apps/web/src/components/CommandPalette.browser.test.tsx
+@@ -2,30 +2,198 @@ import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+ import { describe, expect, it, vi } from "vite-plus/test";
+ import { page, userEvent } from "vite-plus/test/browser";
+ 
++import { makeThreadFixture } from "../test-fixtures";
++import type { Project, Thread } from "../types";
+ import { render } from "../../test/render";
+ import { openCommandPalette } from "../commandPaletteBus";
+ import { useCommandPaletteStore } from "../commandPaletteStore";
+-import { makeThreadFixture } from "../test-fixtures";
+-import type { Project, Thread } from "../types";
++import { useUiStateStore } from "../uiStateStore";
++import type { NewThreadTarget } from "../newThreadTarget";
++import { buildSidebarProjectSnapshots } from "../sidebarProjectGrouping";
++import { useProjects, useVisibleThreadShells } from "../state/entities";
++import { useNewThreadTargetInput } from "../newThreadTargetState";
++import { useScratchProject } from "../hooks/useScratchProject";
++import { useSortedProjectGroups } from "./CommandPaletteLookups";
+ import { CommandPalette } from "./CommandPalette";
+ 
+-const entities = vi.hoisted(() => ({
+-  projects: [] as ReadonlyArray<Project>,
+-  threads: [] as ReadonlyArray<Thread>,
+-}));
+-vi.mock("../state/entities", async (original) => ({
+-  ...(await original<typeof import("../state/entities")>()),
+-  useProjects: () => entities.projects,
+-  useVisibleThreadShells: () => entities.threads,
+-}));
++vi.mock("../state/entities", { spy: true });
++vi.mock("../newThreadTargetState", { spy: true });
++vi.mock("../hooks/useScratchProject", { spy: true });
++vi.mock("./CommandPaletteLookups", { spy: true });
+ 
+ function setup(state: { projects?: ReadonlyArray<Project>; threads?: ReadonlyArray<Thread> } = {}) {
++  vi.mocked(useProjects).mockReturnValue(state.projects ?? []);
++  vi.mocked(useVisibleThreadShells).mockReturnValue(state.threads ?? []);
++  vi.mocked(useSortedProjectGroups).mockReturnValue(
++    buildSidebarProjectSnapshots({
++      projects: state.projects ?? [],
++      settings: { sidebarProjectGroupingMode: "repository", sidebarProjectGroupingOverrides: {} },
++      primaryEnvironmentId: EnvironmentId.make("local"),
++      resolveEnvironmentLabel: () => null,
++    }),
++  );
++  vi.mocked(useNewThreadTargetInput).mockReturnValue({
++    groups: [],
++    environments: [],
++    environmentScopeKeys: [],
++    selection: { include: [], exclude: [] },
++    primaryEnvironmentId: null,
++  });
++  vi.mocked(useScratchProject).mockReturnValue({
++    scratchEnvironmentId: () => EnvironmentId.make("local"),
++    scratchWorkspaceRootFor: () => "/scratch",
++    startScratchThread: async () => {},
++    openScratchProject: async () => null,
++  });
+   useCommandPaletteStore.setState(useCommandPaletteStore.getInitialState(), true);
+-  entities.projects = state.projects ?? [];
+-  entities.threads = state.threads ?? [];
++  useUiStateStore.setState(useUiStateStore.getInitialState(), true);
++}
++
++function restrictedTarget(): Extract<NewThreadTarget, { kind: "restricted" }> {
++  return {
++    kind: "restricted",
++    title: "Choose a machine for print3d",
++    members: ["clone-a", "clone-b"].map((id) => ({
++      id: ProjectId.make(id),
++      environmentId: EnvironmentId.make("offline-machine"),
++      title: "print3d",
++      displayName: "print3d",
++      projectKey: "print3d",
++      environmentLabel: "Offline machine",
++      online: false,
++      workspaceRoot: `/work/${id}`,
++      createdAt: "2026-01-01T00:00:00.000Z",
++      updatedAt: "2026-01-01T00:00:00.000Z",
++      scripts: [],
++      defaultModelSelection: null,
++    })),
++  };
+ }
+ 
+ describe("CommandPalette open intents", () => {
++  it.each(["full", "unreachable-note", "root-filtered", "root-unfiltered"] as const)(
++    "keeps upstream grouped rows, manual order, No project position and offline choices for %s",
++    async (kind) => {
++      setup();
++      const local = EnvironmentId.make("local");
++      const remote = EnvironmentId.make("remote");
++      const offline = EnvironmentId.make("offline");
++      const projects = [
++        ["z-local", "Zulu", local],
++        ["z-remote", "Zulu", remote],
++        ["a-remote", "Alpha", offline],
++        ["b-local", "Beta", local],
++        ["old-local", "Archived", local],
++      ].map(([id, title, environmentId]) => ({
++        id: ProjectId.make(id!),
++        environmentId: EnvironmentId.make(environmentId!),
++        title: title!,
++        archivedAt: title === "Archived" ? "2026-01-02T00:00:00Z" : null,
++        pinnedAt: kind === "full" && title === "Zulu" ? "2026-01-02T00:00:00Z" : null,
++        workspaceRoot: `/work/${id}`,
++        scripts: [],
++        defaultModelSelection: null,
++        createdAt: "2026-01-01T00:00:00Z",
++        updatedAt: "2026-01-01T00:00:00Z",
++        repositoryIdentity: {
++          canonicalKey: `github.com/example/${title}`,
++          locator: {
++            source: "git-remote" as const,
++            remoteName: "origin",
++            remoteUrl: `https://github.com/example/${title}.git`,
++          },
++        },
++      }));
++      const groups = buildSidebarProjectSnapshots({
++        projects,
++        settings: { sidebarProjectGroupingMode: "repository", sidebarProjectGroupingOverrides: {} },
++        primaryEnvironmentId: local,
++        resolveEnvironmentLabel: () => null,
++      });
++      vi.mocked(useProjects).mockReturnValue(projects);
++      vi.mocked(useSortedProjectGroups).mockReturnValue(groups);
++      vi.mocked(useNewThreadTargetInput).mockReturnValue({
++        groups,
++        environments: [
++          { environmentId: local, label: "Local", online: true },
++          { environmentId: remote, label: "Remote", online: true },
++          { environmentId: offline, label: "Offline", online: false },
++        ],
++        environmentScopeKeys: [],
++        selection: {
++          include: kind === "root-filtered" ? ["github.com/example/Beta"] : [],
++          exclude: [],
++        },
++        primaryEnvironmentId: local,
++      });
++      await using _screen = await render(<CommandPalette>{null}</CommandPalette>);
++      if (kind === "root-filtered" || kind === "root-unfiltered") {
++        openCommandPalette({ query: ">New thread in" });
++        await userEvent.click(page.getByRole("option", { name: "New thread in..." }));
++        await expect.element(page.getByPlaceholder("Search...")).toHaveFocus();
++      } else {
++        openCommandPalette({
++          open: "new-thread-in",
++          newThreadTarget:
++            kind === "full"
++              ? { kind }
++              : { kind, note: "No project in the current filter is reachable" },
++        });
++      }
++      await vi.waitFor(() => {
++        expect(
++          page
++            .getByRole("option")
++            .all()
++            .map((item) => item.element().textContent),
++        ).toEqual(
++          (kind === "full"
++            ? ["Zulu", "Alpha", "No project", "Beta"]
++            : kind === "root-filtered"
++              ? ["Beta", "No project", "Zulu", "Alpha"]
++              : ["Zulu", "No project", "Alpha", "Beta"]
++          ).map((title) => expect.stringContaining(title)),
++        );
++      });
++      await expect
++        .element(page.getByRole("option", { name: /Alpha/ }))
++        .not.toHaveAttribute("aria-disabled", "true");
++      if (kind === "root-filtered" || kind === "root-unfiltered") {
++        const updatedProjects = projects.map((project) => ({
++          ...project,
++          title: project.title === "Zulu" ? "Zulu renamed" : project.title,
++        }));
++        vi.mocked(useProjects).mockReturnValue(updatedProjects);
++        vi.mocked(useSortedProjectGroups).mockReturnValue(
++          buildSidebarProjectSnapshots({
++            projects: updatedProjects,
++            settings: {
++              sidebarProjectGroupingMode: "repository",
++              sidebarProjectGroupingOverrides: {},
++            },
++            primaryEnvironmentId: local,
++            resolveEnvironmentLabel: () => null,
++          }),
++        );
++        await userEvent.fill(page.getByPlaceholder("Search..."), "Zulu");
++        await userEvent.fill(page.getByPlaceholder("Search..."), "");
++        await expect.element(page.getByRole("option", { name: /Zulu renamed/ })).toBeVisible();
++        await expect.element(page.getByRole("option", { name: /No project/ })).toBeVisible();
++        expect(
++          page
++            .getByRole("option")
++            .all()
++            .map((item) => item.element().textContent),
++        ).toEqual([
++          expect.stringContaining(kind === "root-filtered" ? "Beta" : "Zulu renamed"),
++          expect.stringContaining("No project"),
++          expect.stringContaining(kind === "root-filtered" ? "Zulu renamed" : "Alpha"),
++          expect.stringContaining(kind === "root-filtered" ? "Alpha" : "Beta"),
++        ]);
++      }
++    },
++  );
++
+   it("opens New thread in... with focus in the search input, not the Back button", async () => {
+     setup();
+     await using _screen = await render(<CommandPalette>{null}</CommandPalette>);
+@@ -124,4 +292,61 @@ describe("CommandPalette open intents", () => {
+ 
+     await vi.waitFor(() => expect(screen.router?.state.location.pathname).toBe("/local/parent"));
+   });
++
++  it.each(["Backspace", "All projects…"])(
++    "widens the frozen restricted list through %s",
++    async (wayBack) => {
++      setup();
++      await using _screen = await render(<CommandPalette>{null}</CommandPalette>);
++      openCommandPalette({ open: "new-thread-in", newThreadTarget: restrictedTarget() });
++      await expect.element(page.getByText("Choose a machine for print3d")).toBeVisible();
++      await expect.element(page.getByText("/work/clone-a", { exact: true })).toBeVisible();
++      await expect.element(page.getByText("/work/clone-b", { exact: true })).toBeVisible();
++      expect(page.getByRole("option", { name: /print3d/ }).all()).toHaveLength(0);
++
++      useUiStateStore.getState().setSidebarProjectScopeKeys(["another-project"]);
++      await expect.element(page.getByText("/work/clone-a", { exact: true })).toBeVisible();
++      const input = page.getByPlaceholder("Search...");
++      await userEvent.fill(input, "nonexistent-project");
++      await expect
++        .element(page.getByText("/work/clone-a", { exact: true }))
++        .not.toBeInTheDocument();
++      await expect.element(page.getByRole("option", { name: "All projects…" })).toBeVisible();
++      expect(page.getByRole("option").all()).toHaveLength(1);
++      await userEvent.fill(input, "");
++      if (wayBack === "Backspace") await userEvent.keyboard("{Backspace}");
++      else await userEvent.click(page.getByRole("option", { name: "All projects…" }));
++
++      await expect.element(page.getByText("Projects", { exact: true })).toBeVisible();
++      await expect
++        .element(page.getByText("/work/clone-a", { exact: true }))
++        .not.toBeInTheDocument();
++      await expect.element(input).toHaveFocus();
++    },
++  );
++
++  it("cancels a restricted picker with Escape and displays the unreachable note on a full picker", async () => {
++    setup();
++    await using _screen = await render(<CommandPalette>{null}</CommandPalette>);
++    openCommandPalette({ open: "new-thread-in", newThreadTarget: restrictedTarget() });
++    await expect.element(page.getByPlaceholder("Search...")).toHaveFocus();
++    const modifier = navigator.platform.includes("Mac") ? "Meta" : "Control";
++    await userEvent.keyboard(`{${modifier}>}n{/${modifier}}`);
++    await expect.element(page.getByText("Choose a machine for print3d")).toBeVisible();
++    await expect.element(page.getByText("/work/clone-a", { exact: true })).toBeVisible();
++    openCommandPalette({ open: "new-thread-in", newThreadTarget: restrictedTarget() });
++    await expect.element(page.getByText("Choose a machine for print3d")).toBeVisible();
++    await userEvent.keyboard("{Escape}");
++    await expect.element(page.getByTestId("command-palette")).not.toBeInTheDocument();
++    openCommandPalette({
++      open: "new-thread-in",
++      newThreadTarget: {
++        kind: "unreachable-note",
++        note: "No project in the current filter is reachable",
++      },
++    });
++    await expect
++      .element(page.getByText("No project in the current filter is reachable"))
++      .toBeVisible();
++  });
+ });
+diff --git a/apps/web/src/components/CommandPalette.composition.browser.test.tsx b/apps/web/src/components/CommandPalette.composition.browser.test.tsx
+index c0b5b3269ce8126d9b966c577c7f661f3e65d0d9..4b0e19df2d4c21e4b7d1be8c9d4f6a23a580eda1 100644
+--- a/apps/web/src/components/CommandPalette.composition.browser.test.tsx
++++ b/apps/web/src/components/CommandPalette.composition.browser.test.tsx
+@@ -24,6 +24,7 @@ vi.mock("../hooks/useSettings", async (original) => ({
+   useUpdateEnvironmentSettings: () => () => undefined,
+ }));
+ vi.mock("../hooks/useScratchProject", () => ({
++  createScratchProjectActions: vi.fn(),
+   useScratchProject: () => ({ scratchEnvironmentId: () => null }),
+ }));
+ vi.mock("../hooks/useNewProject", () => ({ useNewProject: () => async () => undefined }));
+diff --git a/apps/web/src/components/CommandPalette.logic.ts b/apps/web/src/components/CommandPalette.logic.ts
+index cc8fd9091ded8f3059ad536c1de0e683837c0b59..3d4a2d4769ea529ffabd3d31a129a4a3b1ffe8f1 100644
+--- a/apps/web/src/components/CommandPalette.logic.ts
++++ b/apps/web/src/components/CommandPalette.logic.ts
+@@ -11,6 +11,7 @@ import {
+ } from "@t3tools/shared/paletteSearch";
+ import { threadSearchSubject } from "@t3tools/client-runtime/state/thread-search";
+ import type { CommandPaletteLinkedThreads } from "../commandPaletteBus";
++import type { NewThreadTarget } from "../newThreadTarget";
+ import {
+   addProjectRemoteSourceLabel,
+   addProjectRemoteSourcePathHint,
+@@ -72,7 +73,11 @@ export function browseInputEndPaddingClass(input: {
+ export type SearchOverlayMode = "command" | "files" | "content";
+ 
+ export type CommandPaletteOpenIntent =
+-  | { readonly kind: "add-project" | "new-thread-in" | "change-theme" }
++  | { readonly kind: "add-project" | "change-theme" }
++  | {
++      readonly kind: "new-thread-in";
++      readonly target?: Exclude<NewThreadTarget, { kind: "direct" }>;
++    }
+   | {
+       readonly kind: "search";
+       readonly query: string;
+@@ -99,7 +104,10 @@ export type CommandPaletteUiAction =
+       readonly linkedThreads?: CommandPaletteLinkedThreads;
+     }
+   | { readonly _tag: "OpenAddProject" }
+-  | { readonly _tag: "OpenNewThreadIn" }
++  | {
++      readonly _tag: "OpenNewThreadIn";
++      readonly target?: Exclude<NewThreadTarget, { kind: "direct" }>;
++    }
+   | { readonly _tag: "OpenChangeTheme" }
+   | {
+       readonly _tag: "OpenChildSearch";
+@@ -155,7 +163,10 @@ export function reduceCommandPaletteUiState(
+     case "OpenAddProject":
+       return openWithIntent({ kind: "add-project" });
+     case "OpenNewThreadIn":
+-      return openWithIntent({ kind: "new-thread-in" });
++      return openWithIntent({
++        kind: "new-thread-in",
++        ...(action.target ? { target: action.target } : {}),
++      });
+     case "OpenChangeTheme":
+       return openWithIntent({ kind: "change-theme" });
+   }
+diff --git a/apps/web/src/components/CommandPalette.tsx b/apps/web/src/components/CommandPalette.tsx
+index 5d361311cdbac9632ffb9b9f403bd58766d6742c..e86135f641cc9be9f3f34cfdc1caa6ea2f2b76d4 100644
+--- a/apps/web/src/components/CommandPalette.tsx
++++ b/apps/web/src/components/CommandPalette.tsx
+@@ -94,6 +94,9 @@ import { useAtomValue } from "@effect/atom-react";
+ 
+ import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
+ import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
++import { newThreadTargetProjectKeys, type NewThreadTargetMember } from "../newThreadTarget";
++import { useNewThreadTargetInput } from "../newThreadTargetState";
++import { startNewThreadInMember } from "../newThreadActions";
+ import { useHandleNewThread } from "../hooks/useHandleNewThread";
+ import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
+ import { copyThreadReference } from "../lib/copyThreadReference";
+@@ -424,6 +427,11 @@ function OpenCommandPaletteDialog(props: {
+   const linkedEnvironmentId = linkedThreadSearch?.linkedThreads?.environmentId ?? null;
+   const hidingAnywhere = useAnyEnvironmentHiding();
+   const linkedThreadRefs = useEnvironmentThreadRefs(linkedEnvironmentId);
++  const [newThreadTarget, setNewThreadTarget] = useState(() =>
++    props.openIntent?.kind === "new-thread-in" ? props.openIntent.target : undefined,
++  );
++  const newThreadTargetInput = useNewThreadTargetInput();
++  const filteredProjectKeys = newThreadTargetProjectKeys(newThreadTargetInput);
+   const [searchState, dispatchSearch] = useReducer(reduceCommandPaletteSearchState, null, () => {
+     const view = props.initialContext ? null : openIntentView(props.openIntent);
+     return view
+@@ -514,6 +522,8 @@ function OpenCommandPaletteDialog(props: {
+   const providersByEnvironment = useEnvironmentProviders();
+   const { changeThemeItem, changeAppearanceItem, themeEditorItem } = useCommandPaletteThemeItems();
+   const currentView = viewStack.at(-1)?.view ?? null;
++  const isRestrictedNewThread =
++    currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP && newThreadTarget?.kind === "restricted";
+   const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
+   const [browseGeneration, setBrowseGeneration] = useState(0);
+   const [browseNavigation] = useState(createBrowseNavigationCoordinator);
+@@ -552,11 +562,12 @@ function OpenCommandPaletteDialog(props: {
+     ...targetProject,
+     displayName: group.displayName,
+   }));
+-  const projectGroupByTargetKey = new Map(
+-    projectPickerEntries.map(({ group, targetProject }) => [
+-      `${targetProject.environmentId}:${targetProject.id}`,
+-      group,
+-    ]),
++  const projectGroupByTargetKey = new Map<string, (typeof projectGroups)[number]>(
++    projectPickerEntries.flatMap(({ group }) =>
++      group.memberProjectRefs.map(
++        (ref) => [`${ref.environmentId}:${ref.projectId}`, group] as const,
++      ),
++    ),
+   );
+   const { canPinProjectGroup, toggleProjectGroupPin } = useProjectPin();
+   // A row's target record can change when another machine's copy loads, so the kept
+@@ -659,7 +670,10 @@ function OpenCommandPaletteDialog(props: {
+         )
+       : "";
+   const canBrowsePaths =
+-    browseEnvironmentId !== null && !isRemoteProjectRepositoryStep && newProjectFlow === null;
++    browseEnvironmentId !== null &&
++    !isRemoteProjectRepositoryStep &&
++    newProjectFlow === null &&
++    !isRestrictedNewThread;
+   const browsePath = getFilesystemBrowsePath(query, browseEnvironmentPlatform, canBrowsePaths);
+   const isBrowsing = browsePath.isBrowsing;
+   const browseDirectoryPath = browsePath.directoryPath;
+@@ -830,6 +844,22 @@ function OpenCommandPaletteDialog(props: {
+     true,
+   );
+ 
++  const makeNewThreadItems = (members: readonly NewThreadTargetMember[]) =>
++    enumerateCommandPaletteItems(
++      buildNewThreadInProjectItems({
++        projects: members,
++        currentProjectKey: null,
++        projectGroupByTargetKey,
++        locationByEnvironmentId: projectEnvironmentLocationById,
++        pin: projectPin,
++        runProject: (project) => startNewThreadInMember(handleNewThread, project),
++        isOnline: (project) =>
++          newThreadTargetInput.environments.some(
++            (environment) =>
++              environment.environmentId === project.environmentId && environment.online,
++          ),
++      }),
++    );
+   const openingOrderThreadItems = useOrderWhileOpen(
+     (() => {
+       const isScratch = (project: CommandPaletteProject) =>
+@@ -863,7 +893,6 @@ function OpenCommandPaletteDialog(props: {
+         },
+       });
+       if (scratchTargetEnvironmentId === null) return projectItems;
+-
+       const noProjectIndex = newThreadNoProjectIndex(
+         projectPickerEntries.map(({ group, targetProject, isPreferred }) => ({
+           isScratch: isScratchProject(
+@@ -891,15 +920,63 @@ function OpenCommandPaletteDialog(props: {
+     rowOrderKey("new-thread-in"),
+     true,
+   );
+-  // Jump shortcuts follow the rows as shown, so a pin cannot move a number to another row.
+-  const projectJumpItems = new Map(
+-    enumerateCommandPaletteItems(
+-      openingOrderThreadItems.filter((item) => item.value !== NEW_THREAD_NO_PROJECT_VALUE),
+-    ).map((item) => [item.value, item] as const),
++  const enumerateProjectItems = (items: readonly CommandPaletteActionItem[]) => {
++    const jumps = new Map(
++      enumerateCommandPaletteItems(
++        items.filter((item) => item.value !== NEW_THREAD_NO_PROJECT_VALUE),
++      ).map((item) => [item.value, item] as const),
++    );
++    return items.map((item) => jumps.get(item.value) ?? item);
++  };
++  const projectThreadItems = enumerateProjectItems(openingOrderThreadItems);
++  const noProjectIndex = openingOrderThreadItems.findIndex(
++    (item) => item.value === NEW_THREAD_NO_PROJECT_VALUE,
+   );
+-  const projectThreadItems = openingOrderThreadItems.map(
+-    (item) => projectJumpItems.get(item.value) ?? item,
++  const rootOrderedProjects = openingOrderThreadItems
++    .filter((item) => item.value !== NEW_THREAD_NO_PROJECT_VALUE)
++    .toSorted((left, right) => {
++      const matches = (item: CommandPaletteActionItem) =>
++        filteredProjectKeys.has(
++          projectGroupByTargetKey.get(item.value.slice("new-thread-in:".length))?.projectKey ?? "",
++        );
++      return Number(matches(right)) - Number(matches(left));
++    });
++  const rootProjectThreadItems = enumerateProjectItems(
++    noProjectIndex < 0
++      ? rootOrderedProjects
++      : [
++          ...rootOrderedProjects.slice(0, noProjectIndex),
++          openingOrderThreadItems[noProjectIndex]!,
++          ...rootOrderedProjects.slice(noProjectIndex),
++        ],
+   );
++  const rootNewThreadGroups = [
++    {
++      value: `${NEW_THREAD_IN_GROUP}:all-projects`,
++      label: "Projects",
++      items: rootProjectThreadItems,
++    },
++  ];
++  const widenNewThreadProjects = useStableCallback((): void => {
++    setNewThreadTarget({ kind: "full" });
++    setQuery("");
++    clearTypedHighlight();
++  });
++  const newThreadGroups = [
++    {
++      value: NEW_THREAD_IN_GROUP,
++      label:
++        newThreadTarget?.kind === "restricted"
++          ? newThreadTarget.title
++          : newThreadTarget?.kind === "unreachable-note"
++            ? newThreadTarget.note
++            : "Projects",
++      items:
++        newThreadTarget?.kind === "restricted"
++          ? makeNewThreadItems(newThreadTarget.members)
++          : projectThreadItems,
++    },
++  ];
+ 
+   const {
+     threadItems: allThreadItems,
+@@ -929,6 +1006,10 @@ function OpenCommandPaletteDialog(props: {
+   });
+ 
+   function popView(): void {
++    if (isRestrictedNewThread) {
++      widenNewThreadProjects();
++      return;
++    }
+     browseNavigation.invalidate();
+     setAddProjectCloneFlow(null);
+     setNewProjectFlow(null);
+@@ -1304,7 +1385,7 @@ function OpenCommandPaletteDialog(props: {
+       title: "New thread in...",
+       icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
+       addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
+-      groups: [{ value: NEW_THREAD_IN_GROUP, label: "Projects", items: projectThreadItems }],
++      groups: rootNewThreadGroups,
+     });
+   }
+ 
+@@ -1780,19 +1861,20 @@ function OpenCommandPaletteDialog(props: {
+       : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
+         ? addProjectEntryGroups()
+         : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
+-          ? [
+-              {
+-                value: NEW_THREAD_IN_GROUP,
+-                label: "Projects",
+-                // Every project archived and no "No project" home leaves only adding one.
+-                items: projectThreadItems.length > 0 ? projectThreadItems : [addProjectAction],
+-              },
+-            ]
+-          : currentView?.groups[0]?.value === "themes"
+-            ? changeThemeItem.groups
+-            : currentView?.groups[0]?.value === "appearance"
+-              ? changeAppearanceItem.groups
+-              : (currentView?.groups ?? rootGroups);
++          ? newThreadGroups.map((group) => ({
++              ...group,
++              items: group.items.length > 0 ? group.items : [addProjectAction],
++            }))
++          : currentView?.groups[0]?.value === `${NEW_THREAD_IN_GROUP}:all-projects`
++            ? rootNewThreadGroups.map((group) => ({
++                ...group,
++                items: group.items.length > 0 ? group.items : [addProjectAction],
++              }))
++            : currentView?.groups[0]?.value === "themes"
++              ? changeThemeItem.groups
++              : currentView?.groups[0]?.value === "appearance"
++                ? changeAppearanceItem.groups
++                : (currentView?.groups ?? rootGroups);
+ 
+   const isLinkedThreadSearch =
+     linkedThreadSearch?.linkedThreads !== undefined && deferredQuery === linkedThreadSearch.query;
+@@ -1800,7 +1882,7 @@ function OpenCommandPaletteDialog(props: {
+     activeGroups,
+     query: deferredQuery,
+     isInSubmenu: currentView !== null,
+-    ...(deferredQuery.trim().length > 0
++    ...(deferredQuery.trim().length > 0 && !isRestrictedNewThread
+       ? {
+           allOptions: {
+             rootGroups,
+@@ -2412,7 +2494,26 @@ function OpenCommandPaletteDialog(props: {
+           },
+         ];
+ 
+-  let displayedGroups: CommandPaletteView["groups"] = filteredGroups;
++  let displayedGroups: CommandPaletteView["groups"] = isRestrictedNewThread
++    ? [
++        ...filteredGroups,
++        {
++          value: "all-projects",
++          label: "",
++          items: [
++            {
++              kind: "action",
++              value: "new-thread-in:all-projects",
++              title: "All projects…",
++              searchTerms: [],
++              icon: <FolderIcon className={ITEM_ICON_CLASS} />,
++              keepOpen: true,
++              run: async () => widenNewThreadProjects(),
++            },
++          ],
++        },
++      ]
++    : filteredGroups;
+   if (newProjectFlow !== null) {
+     displayedGroups = [
+       ...(newProjectMachineGroup ? [newProjectMachineGroup] : []),
+diff --git a/apps/web/src/components/CommandPaletteProjectItems.tsx b/apps/web/src/components/CommandPaletteProjectItems.tsx
+index 3039ac9e6f2615771e116a577937e6a665e3c3df..1a52121bc571ce574d1ad54653456db15cad026b 100644
+--- a/apps/web/src/components/CommandPaletteProjectItems.tsx
++++ b/apps/web/src/components/CommandPaletteProjectItems.tsx
+@@ -74,7 +74,10 @@ export function buildProjectSearchItems(input: ProjectItemsInput) {
+ 
+ /** Projects as targets of the "New thread in..." submenu. */
+ export function buildNewThreadInProjectItems(
+-  input: ProjectItemsInput & { readonly currentProjectKey: string | null },
++  input: ProjectItemsInput & {
++    readonly currentProjectKey: string | null;
++    readonly isOnline?: (project: CommandPaletteProject) => boolean;
++  },
+ ) {
+   return buildProjectActionItems({
+     projects: input.projects,
+@@ -92,18 +95,23 @@ export function buildNewThreadInProjectItems(
+         location={input.locationByEnvironmentId.get(project.environmentId)}
+         workspaceRoot={project.workspaceRoot}
+         current={input.currentProjectKey === `${project.environmentId}:${project.id}`}
++        offline={input.isOnline?.(project) === false}
+       />
+     ),
+     icon: projectFaviconIcon,
+     runProject: input.runProject,
+     ...(input.pin ? { pin: input.pin } : {}),
+-  });
++  }).map((item, index) => ({
++    ...item,
++    disabled: input.isOnline?.(input.projects[index]!) === false,
++  }));
+ }
+ 
+ function ProjectLocationDescription(props: {
+   readonly location: CommandPaletteProjectLocation | undefined;
+   readonly workspaceRoot: string;
+   readonly current?: boolean;
++  readonly offline?: boolean;
+ }) {
+   const location = props.location ?? UNKNOWN_PROJECT_LOCATION;
+   return (
+@@ -122,7 +130,10 @@ function ProjectLocationDescription(props: {
+             className={COMMAND_PALETTE_META_ICON_CLASS}
+           />
+         ) : null}
+-        <span className="truncate">{location.label}</span>
++        <span className="truncate">
++          {location.label}
++          {props.offline ? " (Offline)" : ""}
++        </span>
+       </span>
+       <CommandPaletteMetaDot />
+       <span className="min-w-0 flex-1 truncate">{props.workspaceRoot}</span>
+diff --git a/apps/web/src/components/Sidebar.browser.test.tsx b/apps/web/src/components/Sidebar.browser.test.tsx
+index b948ed74b279b110c3903853e9f6a2e5d0d21c88..947a7a9fea8a928af87e7756cb2eb1968877f218 100644
+--- a/apps/web/src/components/Sidebar.browser.test.tsx
++++ b/apps/web/src/components/Sidebar.browser.test.tsx
+@@ -6,8 +6,9 @@ import { render } from "../../test/render";
+ import { openCommandPalette } from "../commandPaletteBus";
+ import { useHandleNewThread } from "../hooks/useHandleNewThread";
+ import { __setClientSettingsForTests, getClientSettings } from "../hooks/useSettings";
+-import { useProjects } from "../state/entities";
++import { readProjects, useProjects } from "../state/entities";
+ import type { Project } from "../types";
++import { useUiStateStore } from "../uiStateStore";
+ import Sidebar from "./Sidebar";
+ import { SidebarProvider } from "./ui/sidebar";
+ 
+@@ -44,6 +45,7 @@ describe("sidebar header new thread", () => {
+     { mode: "boring", count: 1, shift: false, picker: false },
+   ] as const)("$mode sidebar, $count projects, shift=$shift: picker=$picker", async (scenario) => {
+     using stack = new DisposableStack();
++    useUiStateStore.setState(useUiStateStore.getInitialState(), true);
+     const previousSettings = getClientSettings();
+     stack.defer(() => __setClientSettingsForTests(previousSettings));
+     __setClientSettingsForTests({
+@@ -57,6 +59,7 @@ describe("sidebar header new thread", () => {
+     };
+     const startThread = vi.fn().mockResolvedValue(null);
+     vi.mocked(useProjects).mockReturnValue(projects);
++    vi.mocked(readProjects).mockReturnValue(projects);
+     vi.mocked(useHandleNewThread).mockReturnValue({
+       activeDraftThread: null,
+       activeThread: null,
+@@ -78,7 +81,10 @@ describe("sidebar header new thread", () => {
+     });
+ 
+     if (scenario.picker) {
+-      expect(openCommandPalette).toHaveBeenCalledExactlyOnceWith({ open: "new-thread-in" });
++      expect(openCommandPalette).toHaveBeenCalledExactlyOnceWith({
++        open: "new-thread-in",
++        newThreadTarget: { kind: "full" },
++      });
+       expect(startThread).not.toHaveBeenCalled();
+     } else {
+       expect(openCommandPalette).not.toHaveBeenCalled();
+diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
+index 7304f2d1410a6ae33dda752e684b49ca1a925e80..bc5297ad001e72be4e8ce2359f14d4afe7a992af 100644
+--- a/apps/web/src/components/Sidebar.tsx
++++ b/apps/web/src/components/Sidebar.tsx
+@@ -124,6 +124,7 @@ import {
+   toggleSidebarProjectSelection,
+ } from "../sidebarProjectRow";
+ import { ConnectedSidebarProjectRow } from "./sidebar/SidebarProjectRow";
++import { startNewThreadInSidebarFilter } from "../newThreadActions";
+ import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
+ import {
+   getThreadKeysToDeselectAfterDelete,
+@@ -194,6 +195,7 @@ import {
+   isInSidebarScope,
+   isSidebarNestedLinkClick,
+   isTrailingDoubleClick,
++  shouldCreateNewThreadInCurrentProject,
+   orderItemsByPreferredIds,
+   planSidebarThreadDrop,
+   resolveAdjacentThreadId,
+@@ -204,7 +206,6 @@ import {
+   resolveSidebarReorderableThreadKeys,
+   resolveSidebarThreadShelfState,
+   searchSidebarThreads,
+-  shouldCreateNewThreadInCurrentProject,
+   shouldNavigateAfterThreadPark,
+   sidebarListItemId,
+   sidebarThreadKeyAtY,
+@@ -3055,13 +3056,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+   const showJumpHints = useThreadJumpHintsVisible(shouldShowJumpHintsNow);
+ 
+   const handleNewThreadClick = (event?: ReactMouseEvent) => {
+-    if (
+-      shouldCreateNewThreadInCurrentProject(
+-        event?.shiftKey ?? false,
+-        scopeGroups.length,
+-        projectGroups.length,
+-      )
+-    ) {
++    if (event?.shiftKey) {
+       if (isMobile) setOpenMobile(false);
+       // With no current or open project, such as when every project is archived, pick one.
+       void startNewThreadFromContext({
+@@ -3075,7 +3070,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+       return;
+     }
+     if (isMobile) setOpenMobile(false);
+-    openCommandPalette({ open: "new-thread-in" });
++    void startNewThreadInSidebarFilter(handleNewThread, {
++      allProjects: event?.altKey ?? false,
++      currentProject: {
++        activeDraftThread: newThreadContext.activeDraftThread,
++        activeThread: newThreadContext.activeThread ?? undefined,
++        defaultProjectRef: newThreadContext.defaultProjectRef,
++      },
++    });
+   };
+ 
+   const newThreadShortcutLabel =
+@@ -3121,16 +3123,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+               }
+               onNewProject={openAddProjectCommandPalette}
+               onNewThread={handleNewThreadClick}
+-              newThreadDisabled={projects.length === 0}
++              newThreadInCurrentProject={shouldCreateNewThreadInCurrentProject(
++                false,
++                scopeGroups.length,
++                projectGroups.length,
++              )}
+               newThreadShortcutLabel={newThreadShortcutLabel}
+               newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
+-              showNewThreadInProjectHint={
+-                !shouldCreateNewThreadInCurrentProject(
+-                  false,
+-                  scopeGroups.length,
+-                  projectGroups.length,
+-                )
+-              }
+               searchInputRef={threadSearchInputRef}
+               searchQuery={threadSearchQuery}
+               onSearchQueryChange={(value) => {
+diff --git a/apps/web/src/components/sidebar/SidebarThreadHeader.browser.test.tsx b/apps/web/src/components/sidebar/SidebarThreadHeader.browser.test.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..76c759959439bf31b034f3f949a99d3c1302dc08
+--- /dev/null
++++ b/apps/web/src/components/sidebar/SidebarThreadHeader.browser.test.tsx
+@@ -0,0 +1,87 @@
++import { useRef } from "react";
++import { expect, it } from "vite-plus/test";
++import { page, userEvent } from "vite-plus/test/browser";
++
++import { render } from "../../../test/render";
++import { openCommandPalette } from "../../commandPaletteBus";
++import { useCommandPaletteStore } from "../../commandPaletteStore";
++import { useUiStateStore } from "../../uiStateStore";
++import { CommandPalette } from "../CommandPalette";
++import { SidebarProvider } from "../ui/sidebar";
++import { SidebarThreadHeader } from "./SidebarThreadHeader";
++
++function Header({
++  hasProjects,
++  newThreadInCurrentProject = false,
++}: {
++  hasProjects: boolean;
++  newThreadInCurrentProject?: boolean;
++}) {
++  const inputRef = useRef<HTMLInputElement>(null);
++  return (
++    <SidebarProvider>
++      <SidebarThreadHeader
++        hasProjects={hasProjects}
++        onNewProject={() => openCommandPalette({ open: "add-project" })}
++        onNewThread={() => openCommandPalette({ open: "new-thread-in" })}
++        newThreadInCurrentProject={newThreadInCurrentProject}
++        newThreadShortcutLabel={null}
++        newThreadInProjectShortcutLabel={null}
++        searchInputRef={inputRef}
++        searchQuery=""
++        onSearchQueryChange={() => undefined}
++        onSearchKeyDown={() => undefined}
++        isSearching={false}
++        searchResultCount={0}
++        activeSearchResultIndex={0}
++        onClearSearch={() => undefined}
++      />
++      <button type="button">After header</button>
++      <CommandPalette>{null}</CommandPalette>
++    </SidebarProvider>
++  );
++}
++
++it("skips New thread with no projects, then allows keyboard creation when projects arrive", async () => {
++  useCommandPaletteStore.setState(useCommandPaletteStore.getInitialState(), true);
++  useUiStateStore.setState(useUiStateStore.getInitialState(), true);
++  await using screen = await render(<Header hasProjects={false} />);
++  await userEvent.click(screen.getByRole("combobox", { name: "Search threads" }));
++  await userEvent.tab();
++  await expect.element(screen.getByRole("button", { name: "After header" })).toHaveFocus();
++  await userEvent.keyboard("{Enter}");
++  await expect.element(page.getByTestId("command-palette")).not.toBeInTheDocument();
++
++  await screen.rerender(<Header hasProjects />);
++  await userEvent.click(screen.getByRole("combobox", { name: "Search threads" }));
++  await userEvent.tab();
++  await userEvent.tab();
++  await expect
++    .element(screen.getByRole("button", { name: "New thread", exact: true }))
++    .toHaveFocus();
++  await userEvent.keyboard("{Enter}");
++  await expect.element(page.getByPlaceholder("Search...")).toHaveFocus();
++});
++
++it.each([false, true])(
++  "only hints at clicks that differ from the default when current-project routing is %s",
++  async (newThreadInCurrentProject) => {
++    useCommandPaletteStore.setState(useCommandPaletteStore.getInitialState(), true);
++    useUiStateStore.setState(useUiStateStore.getInitialState(), true);
++    await using screen = await render(
++      <Header hasProjects newThreadInCurrentProject={newThreadInCurrentProject} />,
++    );
++    await userEvent.click(screen.getByRole("combobox", { name: "Search threads" }));
++    await userEvent.tab();
++    await userEvent.tab();
++    const tooltip = page.getByText(/^New thread/).first();
++    await expect.element(tooltip).toBeVisible();
++    if (newThreadInCurrentProject) {
++      await expect.element(page.getByText(/⌥-click: all projects/)).toBeVisible();
++      await expect.element(page.getByText(/Shift\+click/)).not.toBeInTheDocument();
++    } else {
++      await expect.element(page.getByText(/Shift\+click/)).toBeVisible();
++      await expect.element(page.getByText(/⌥-click: all projects/)).not.toBeInTheDocument();
++    }
++  },
++);
+diff --git a/apps/web/src/components/sidebar/SidebarThreadHeader.tsx b/apps/web/src/components/sidebar/SidebarThreadHeader.tsx
+index d2f305a246911422d17d47bb17b5621ba1b7e042..79c36ec05c19c0c2c353a6e250ca1903eaec3373 100644
+--- a/apps/web/src/components/sidebar/SidebarThreadHeader.tsx
++++ b/apps/web/src/components/sidebar/SidebarThreadHeader.tsx
+@@ -7,6 +7,8 @@ import {
+   type RefObject,
+ } from "react";
+ 
++import { newThreadTargetTooltip, resolveNewThreadTarget } from "../../newThreadTarget";
++import { useNewThreadTargetInput } from "../../newThreadTargetState";
+ import { cn } from "~/lib/utils";
+ import { Button } from "../ui/button";
+ import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
+@@ -18,10 +20,9 @@ export interface SidebarThreadHeaderProps {
+   projectRow?: ReactNode;
+   onNewProject: () => void;
+   onNewThread: (event: ReactMouseEvent) => void;
+-  newThreadDisabled: boolean;
++  newThreadInCurrentProject: boolean;
+   newThreadShortcutLabel: string | null | undefined;
+   newThreadInProjectShortcutLabel: string | null | undefined;
+-  showNewThreadInProjectHint: boolean;
+   searchInputRef: RefObject<HTMLInputElement | null>;
+   searchQuery: string;
+   onSearchQueryChange: (value: string) => void;
+@@ -38,10 +39,9 @@ export function SidebarThreadHeader({
+   projectRow,
+   onNewProject,
+   onNewThread,
+-  newThreadDisabled,
++  newThreadInCurrentProject,
+   newThreadShortcutLabel,
+   newThreadInProjectShortcutLabel,
+-  showNewThreadInProjectHint,
+   searchInputRef,
+   searchQuery,
+   onSearchQueryChange,
+@@ -54,9 +54,11 @@ export function SidebarThreadHeader({
+   const resultsVisible = isSearching && searchResultCount > 0;
+   // Shrinking results can remove the active option; never leave aria-activedescendant pointing at it.
+   const activeResultExists = resultsVisible && activeSearchResultIndex < searchResultCount;
+-  const newThreadLabel = newThreadShortcutLabel
+-    ? `New thread (${newThreadShortcutLabel})`
+-    : "New thread";
++  const newThreadTarget = resolveNewThreadTarget(useNewThreadTargetInput());
++  const opensCurrentProject = newThreadTarget.kind === "full" && newThreadInCurrentProject;
++  const newThreadLabel = opensCurrentProject
++    ? `New thread in current project${newThreadShortcutLabel ? ` (${newThreadShortcutLabel})` : ""}\n⌥-click: all projects`
++    : newThreadTargetTooltip(newThreadTarget, newThreadShortcutLabel);
+ 
+   return (
+     <>
+@@ -108,19 +110,17 @@ export function SidebarThreadHeader({
+           <SidebarHeaderIconButton
+             label="New thread"
+             tooltip={
+-              showNewThreadInProjectHint ? (
+-                <span className="flex flex-col gap-0.5">
+-                  <span>{newThreadLabel}</span>
++              <span className="flex flex-col gap-0.5">
++                <span className="whitespace-pre-line">{newThreadLabel}</span>
++                {!opensCurrentProject ? (
+                   <span className="text-muted-foreground">
+                     New thread in current project: Shift+click
+                     {newThreadInProjectShortcutLabel ? ` (${newThreadInProjectShortcutLabel})` : ""}
+                   </span>
+-                </span>
+-              ) : (
+-                newThreadLabel
+-              )
++                ) : null}
++              </span>
+             }
+-            disabled={newThreadDisabled}
++            disabled={!hasProjects}
+             onClick={onNewThread}
+           >
+             <SquarePenIcon />
+diff --git a/apps/web/src/hooks/useHandleNewThread.test.ts b/apps/web/src/hooks/useHandleNewThread.test.ts
+index 6f318bce409ce38cd287841138fe65c2bd4aeea7..f9127e2423d046eb0d8c68285a5eeb3d22afefc7 100644
+--- a/apps/web/src/hooks/useHandleNewThread.test.ts
++++ b/apps/web/src/hooks/useHandleNewThread.test.ts
+@@ -5,6 +5,9 @@ const testState = vi.hoisted(() => {
+   let completeProjectFileRead: (value: null) => void = () => undefined;
+   let projectFileRead = Promise.resolve<null>(null);
+   let projectRemoved = false;
++  let scratch = false;
++  let groupCount = 2;
++  let boringSidebarEnabled = false;
+   let connectedEnvironmentIds = ["environment-primary", "environment-ssh"];
+   let targetSettings = {
+     defaultThreadEnvMode: "local" as "local" | "worktree" | null,
+@@ -12,12 +15,15 @@ const testState = vi.hoisted(() => {
+     defaultModelSelection: null,
+     defaultRuntimeMode: "full-access" as RuntimeMode,
+   };
+-  let storedDraft: {
++  type StoredDraft = {
+     readonly draftId: string;
+     readonly environmentId: string;
++    readonly projectId: string;
+     readonly promotedTo: null;
+     readonly threadId: string;
+-  } | null = null;
++  };
++  let storedDraft: StoredDraft | null = null;
++  let additionalDrafts: Record<string, StoredDraft> = {};
+   let openDraftRoute: { readonly kind: "draft"; readonly draftId: string } | null = null;
+   let draftsWithUserText = new Set<string>();
+   const router = {
+@@ -30,6 +36,12 @@ const testState = vi.hoisted(() => {
+     }),
+   };
+   const draftStore = {
++    get draftThreadsByThreadKey() {
++      return {
++        ...(storedDraft ? { [storedDraft.draftId]: storedDraft } : {}),
++        ...additionalDrafts,
++      };
++    },
+     getComposerDraft: vi.fn((draftId: string) => ({ draftId })),
+     getDraftSessionByLogicalProjectKey: vi.fn(() => storedDraft),
+     getDraftSession: vi.fn(() =>
+@@ -54,6 +66,24 @@ const testState = vi.hoisted(() => {
+ 
+   return {
+     completeProjectFileRead: (value: null) => completeProjectFileRead(value),
++    configureStart: (input: {
++      scratch?: boolean;
++      groupCount?: number;
++      boringSidebarEnabled?: boolean;
++    }) => {
++      scratch = input.scratch ?? false;
++      groupCount = input.groupCount ?? 2;
++      boringSidebarEnabled = input.boringSidebarEnabled ?? false;
++    },
++    get scratch() {
++      return scratch;
++    },
++    get groupCount() {
++      return groupCount;
++    },
++    get clientSettings() {
++      return { boringSidebarEnabled };
++    },
+     draftStore,
+     get projectFileRead() {
+       return projectFileRead;
+@@ -78,6 +108,9 @@ const testState = vi.hoisted(() => {
+     get openDraftRoute() {
+       return openDraftRoute;
+     },
++    addDraft(draft: StoredDraft) {
++      additionalDrafts[draft.draftId] = draft;
++    },
+     openEmptyDraft(draftId: string) {
+       openDraftRoute = { kind: "draft", draftId };
+     },
+@@ -92,9 +125,13 @@ const testState = vi.hoisted(() => {
+       },
+     ) {
+       storedDraft = nextStoredDraft;
++      additionalDrafts = {};
+       openDraftRoute = null;
+       draftsWithUserText = new Set();
+       projectRemoved = false;
++      scratch = false;
++      groupCount = 2;
++      boringSidebarEnabled = false;
+       connectedEnvironmentIds = ["environment-primary", "environment-ssh"];
+       targetSettings = {
+         defaultThreadEnvMode: workspaceDefaults.envMode,
+@@ -134,7 +171,19 @@ vi.mock("../rpc/atomRegistry", () => ({
+     get: (atom: unknown) =>
+       atom === "connected-environment-ids"
+         ? testState.connectedEnvironmentIds
+-        : testServerConfigs(),
++        : atom === "presentations"
++          ? new Map([
++              [
++                "environment-ssh",
++                {
++                  connection: { phase: "connected" },
++                  serverConfig: { scratchWorkspaceRoot: "/remote/scratch" },
++                },
++              ],
++            ])
++          : atom === "primary-environment"
++            ? "environment-ssh"
++            : testServerConfigs(),
+   },
+ }));
+ 
+@@ -186,12 +235,14 @@ vi.mock("react", () => ({
+ }));
+ vi.mock("../components/Sidebar.logic", () => ({
+   orderItemsByPreferredIds: ({ items }: { items: unknown[] }) => items,
++  shouldCreateNewThreadInCurrentProject: () => testState.groupCount <= 1,
+ }));
+ vi.mock("../composerDraftStore", () => {
+   const useComposerDraftStore = Object.assign(() => null, {
+     getState: () => testState.draftStore,
+   });
+   return {
++    DraftId: { make: (value: string) => value },
+     composerDraftHasUserContent: (draft: { readonly draftId?: string } | null | undefined) =>
+       testState.hasUserText(draft),
+     markPromotedDraftThreadByRef: vi.fn(),
+@@ -211,7 +262,12 @@ vi.mock("../lib/utils", () => ({
+   newDraftId: () => "draft-delayed",
+   newThreadId: () => "thread-delayed",
+ }));
++vi.mock("@t3tools/client-runtime/state/projects", () => ({
++  isScratchProject: (project: { workspaceRoot: string }, root: string | undefined) =>
++    project.workspaceRoot === root,
++}));
+ vi.mock("@t3tools/client-runtime/state/project-grouping", () => ({
++  pickableProjectGroups: <T>(groups: readonly T[]) => groups,
+   deriveLogicalProjectKeyFromSettings: () => "remote-project",
+   getProjectOrderKey: () => "remote-project",
+   selectProjectGroupingSettings: () => ({}),
+@@ -220,7 +276,9 @@ vi.mock("../state/entities", () => {
+   const project = {
+     id: "project-remote",
+     environmentId: "environment-ssh",
+-    workspaceRoot: "/remote/project",
++    get workspaceRoot() {
++      return testState.scratch ? "/remote/scratch" : "/remote/project";
++    },
+     defaultThreadEnvMode: null,
+     defaultModelSelection: null,
+   };
+@@ -237,6 +295,7 @@ vi.mock("../state/projects", () => ({ defaultProjectFallbackReadyAtom: () => tru
+ vi.mock("../state/olderSettledShelf", () => ({ readUnloadedThreadCount: () => 0 }));
+ vi.mock("../state/presentation", () => ({
+   environmentSummaries: { connectedEnvironmentIdsAtom: "connected-environment-ids" },
++  environmentPresentations: { presentationsAtom: "presentations" },
+ }));
+ vi.mock("../state/server", () => ({
+   environmentServerConfigsAtom: {},
+@@ -249,9 +308,31 @@ vi.mock("../uiStateStore", () => ({
+   legacyProjectCwdPreferenceKey: () => "remote-project",
+   useUiStateStore: () => [],
+ }));
+-vi.mock("./useSettings", () => ({ getClientSettings: () => ({}) }));
++vi.mock("./useSettings", () => ({ getClientSettings: () => testState.clientSettings }));
++vi.mock("../state/primaryEnvironment", () => ({ primaryEnvironmentIdAtom: "primary-environment" }));
++vi.mock("../newThreadTargetState", () => ({
++  readNewThreadTargetInput: () => ({
++    groups: Array.from({ length: testState.groupCount }, () => ({
++      archived: false,
++      pinned: false,
++    })),
++  }),
++}));
++vi.mock("../newThreadTarget", () => ({ resolveNewThreadTarget: () => ({ kind: "full" }) }));
++vi.mock("../commandPaletteBus", () => ({ openCommandPalette: () => undefined }));
++vi.mock("./useScratchProject", () => ({
++  createScratchProjectActions: ({
++    handleNewThread,
++  }: {
++    handleNewThread: (ref: unknown) => Promise<unknown>;
++  }) => ({
++    startScratchThread: (environmentId: string) =>
++      handleNewThread({ environmentId, projectId: "project-remote" }),
++  }),
++}));
+ 
+ import { resolveDefaultProjectRef, useNewThreadHandler } from "./useHandleNewThread";
++import { startNewThreadInMember, startNewThreadInSidebarFilter } from "../newThreadActions";
+ 
+ describe.each([
+   ["new", null],
+@@ -260,6 +341,7 @@ describe.each([
+     {
+       draftId: "draft-existing",
+       environmentId: "environment-ssh",
++      projectId: "project-remote",
+       promotedTo: null,
+       threadId: "thread-existing",
+     },
+@@ -318,11 +400,151 @@ describe.each([
+ });
+ 
+ describe("useNewThreadHandler", () => {
++  it.each([
++    [{ groupCount: 1 }, false, "/draft/draft-delayed"],
++    [{ groupCount: 0 }, false, "/draft/draft-delayed"],
++    [{ boringSidebarEnabled: true }, false, "/"],
++    [{ groupCount: 2 }, false, "/"],
++    [{ boringSidebarEnabled: true }, true, "/"],
++  ] as const)(
++    "retains the upstream unfiltered policy with %j and allProjects=%s",
++    async (settings, allProjects, destination) => {
++      testState.reset(null);
++      testState.configureStart(settings);
++      await startNewThreadInSidebarFilter(useNewThreadHandler(), {
++        allProjects,
++        currentProject: {
++          activeDraftThread: null,
++          activeThread: { environmentId: "environment-ssh", projectId: "project-remote" },
++          defaultProjectRef: null,
++        },
++      } as never);
++      expect(testState.router.state.location.href).toBe(destination);
++    },
++  );
++
++  it("starts a filtered scratch member through No project without pinning its draft", async () => {
++    testState.reset(null);
++    testState.configureStart({ scratch: true });
++    await startNewThreadInMember(useNewThreadHandler(), {
++      environmentId: "environment-ssh",
++      id: "project-remote",
++    } as never);
++    expect(testState.router.state.location.href).toBe("/draft/draft-delayed");
++    expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
++      "remote-project",
++      { environmentId: "environment-ssh", projectId: "project-remote" },
++      "draft-delayed",
++      expect.not.objectContaining({ environmentSelection: "manual" }),
++    );
++  });
++  it.each([
++    ["same member", "environment-ssh", "project-remote", "draft-existing"],
++    ["another machine", "environment-primary", "project-remote", "draft-delayed"],
++    ["another clone", "environment-ssh", "project-clone", "draft-delayed"],
++  ])(
++    "starts in the exact member with an empty draft for %s",
++    async (_, environmentId, projectId, expectedDraftId) => {
++      testState.reset({
++        draftId: "draft-existing",
++        environmentId,
++        projectId,
++        promotedTo: null,
++        threadId: "thread-existing",
++      });
++
++      const opened = await useNewThreadHandler()(
++        { environmentId: "environment-ssh", projectId: "project-remote" } as never,
++        { exactProject: true },
++      );
++
++      expect(opened?.draftId).toBe(expectedDraftId);
++      expect(testState.router.navigate).toHaveBeenCalledWith({
++        to: "/draft/$draftId",
++        params: { draftId: expectedDraftId },
++        replace: false,
++      });
++      expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
++        "remote-project",
++        { environmentId: "environment-ssh", projectId: "project-remote" },
++        expectedDraftId,
++        expect.objectContaining({
++          envMode: "local",
++          runtimeMode: "full-access",
++          environmentSelection: "manual",
++          loadBalancedEnvironmentId: null,
++        }),
++      );
++    },
++  );
++
++  it("finds an empty exact-member draft behind a populated draft", async () => {
++    testState.reset({
++      draftId: "draft-populated",
++      environmentId: "environment-ssh",
++      projectId: "project-remote",
++      promotedTo: null,
++      threadId: "thread-populated",
++    });
++    testState.giveUserText("draft-populated");
++    testState.addDraft({
++      draftId: "draft-empty",
++      environmentId: "environment-ssh",
++      projectId: "project-remote",
++      promotedTo: null,
++      threadId: "thread-empty",
++    });
++
++    const opened = await useNewThreadHandler()(
++      { environmentId: "environment-ssh", projectId: "project-remote" } as never,
++      { exactProject: true },
++    );
++
++    expect(opened).toEqual({ draftId: "draft-empty", threadId: "thread-empty" });
++    expect(testState.draftStore.setLogicalProjectDraftThreadId).not.toHaveBeenCalledWith(
++      expect.anything(),
++      expect.anything(),
++      "draft-populated",
++      expect.anything(),
++    );
++  });
++
++  it("reuses an exact-member draft registered while project defaults resolve", async () => {
++    testState.reset(null, { envMode: null, startFromOrigin: false });
++    const pendingOpen = useNewThreadHandler()(
++      { environmentId: "environment-ssh", projectId: "project-remote" } as never,
++      { exactProject: true },
++    );
++    testState.addDraft({
++      draftId: "draft-raced",
++      environmentId: "environment-ssh",
++      projectId: "project-remote",
++      promotedTo: null,
++      threadId: "thread-raced",
++    });
++    testState.completeProjectFileRead(null);
++
++    await expect(pendingOpen).resolves.toEqual({
++      draftId: "draft-raced",
++      threadId: "thread-raced",
++    });
++    expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
++      "remote-project",
++      { environmentId: "environment-ssh", projectId: "project-remote" },
++      "draft-raced",
++      expect.objectContaining({
++        environmentSelection: "manual",
++        loadBalancedEnvironmentId: null,
++      }),
++    );
++  });
++
+   it("keeps the text of a draft that gained some while it waited", async () => {
+     testState.reset(null);
+     const raced = {
+       draftId: "draft-raced",
+       environmentId: "environment-ssh",
++      projectId: "project-remote",
+       promotedTo: null,
+       threadId: "thread-raced",
+     };
+diff --git a/apps/web/src/hooks/useHandleNewThread.ts b/apps/web/src/hooks/useHandleNewThread.ts
+index 44215edfc5be79fa7363a60be5c660fd0c778fc3..78a7fb6a8766dd2ea7b5aa481c364f43c2c0cd72 100644
+--- a/apps/web/src/hooks/useHandleNewThread.ts
++++ b/apps/web/src/hooks/useHandleNewThread.ts
+@@ -8,7 +8,7 @@ import { type AnyRouter, useRouter } from "@tanstack/react-router";
+ import {
+   composerDraftHasUserContent,
+   markPromotedDraftThreadByRef,
+-  type DraftId,
++  DraftId,
+   type DraftThreadEnvMode,
+   type DraftThreadState,
+   useComposerDraftStore,
+@@ -98,6 +98,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+       envMode?: DraftThreadEnvMode;
+       startFromOrigin?: boolean;
+       replace?: boolean;
++      exactProject?: boolean;
+       /** Composer text for the draft, set before it shows. A draft with user text keeps it. */
+       prompt?: string;
+     },
+@@ -226,11 +227,32 @@ export function createNewThreadHandler(router: AnyRouter) {
+     const logicalProjectKey = project
+       ? deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings)
+       : scopedProjectKey(projectRef);
++    const targetEnvironmentOptions = options?.exactProject
++      ? { environmentSelection: "manual" as const, loadBalancedEnvironmentId: null }
++      : {};
+     const hasBranchOption = options?.branch !== undefined;
+     const hasWorktreePathOption = options?.worktreePath !== undefined;
+     const hasEnvModeOption = options?.envMode !== undefined;
+     const hasStartFromOriginOption = options?.startFromOrigin !== undefined;
+-    const storedDraftThread = getDraftSessionByLogicalProjectKey(logicalProjectKey);
++    const readStoredDraft = () => {
++      if (!options?.exactProject) return getDraftSessionByLogicalProjectKey(logicalProjectKey);
++      for (const [key, draft] of Object.entries(
++        useComposerDraftStore.getState().draftThreadsByThreadKey,
++      )) {
++        const draftId = DraftId.make(key);
++        if (
++          draft.environmentId === projectRef.environmentId &&
++          draft.projectId === projectRef.projectId &&
++          draft.promotedTo == null &&
++          !composerDraftHasUserContent(getComposerDraft(draftId)) &&
++          readThreadShell(scopeThreadRef(draft.environmentId, draft.threadId)) === null
++        ) {
++          return { ...draft, draftId };
++        }
++      }
++      return null;
++    };
++    const storedDraftThread = readStoredDraft();
+     const storedDraftThreadRef = storedDraftThread
+       ? scopeThreadRef(storedDraftThread.environmentId, storedDraftThread.threadId)
+       : null;
+@@ -276,9 +298,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+             routeTargetNow.draftId === emptyStoredDraftThread.draftId;
+           const promotedMeanwhile =
+             storedDraftThreadRef !== null && readThreadShell(storedDraftThreadRef) !== null;
+-          const remappedMeanwhile =
+-            getDraftSessionByLogicalProjectKey(logicalProjectKey)?.draftId !==
+-            emptyStoredDraftThread.draftId;
++          const remappedMeanwhile = readStoredDraft()?.draftId !== emptyStoredDraftThread.draftId;
+           const investedMeanwhile = composerDraftHasUserContent(
+             getComposerDraft(emptyStoredDraftThread.draftId),
+           );
+@@ -321,6 +341,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+           projectRef,
+           emptyStoredDraftThread.draftId,
+           {
++            ...targetEnvironmentOptions,
+             threadId: emptyStoredDraftThread.threadId,
+             ...workspaceContext,
+             ...(!isDraftAlreadyOpen ? { runtimeMode: defaultRuntimeMode } : {}),
+@@ -352,6 +373,9 @@ export function createNewThreadHandler(router: AnyRouter) {
+       latestActiveDraftThread &&
+       currentRouteTarget?.kind === "draft" &&
+       latestActiveDraftThread.logicalProjectKey === logicalProjectKey &&
++      (!options?.exactProject ||
++        (latestActiveDraftThread.environmentId === projectRef.environmentId &&
++          latestActiveDraftThread.projectId === projectRef.projectId)) &&
+       latestActiveDraftThread.promotedTo == null &&
+       !composerDraftHasUserContent(getComposerDraft(currentRouteTarget.draftId))
+     ) {
+@@ -364,6 +388,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+         setDraftThreadContext(currentRouteTarget.draftId, pickExplicitWorkspaceOptions(options));
+       }
+       setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, currentRouteTarget.draftId, {
++        ...targetEnvironmentOptions,
+         threadId: latestActiveDraftThread.threadId,
+         createdAt: latestActiveDraftThread.createdAt,
+         runtimeMode: latestActiveDraftThread.runtimeMode,
+@@ -386,13 +411,14 @@ export function createNewThreadHandler(router: AnyRouter) {
+         return null;
+       }
+       // Reuse drafts registered while awaiting so their pending navigation cannot lose them.
+-      const racedDraft = getDraftSessionByLogicalProjectKey(logicalProjectKey);
++      const racedDraft = readStoredDraft();
+       if (
+         racedDraft &&
+         racedDraft.draftId !== storedDraftThread?.draftId &&
+         readThreadShell(scopeThreadRef(racedDraft.environmentId, racedDraft.threadId)) === null
+       ) {
+         setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, racedDraft.draftId, {
++          ...targetEnvironmentOptions,
+           threadId: racedDraft.threadId,
+           createdAt: racedDraft.createdAt,
+           runtimeMode: racedDraft.runtimeMode,
+@@ -408,6 +434,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+         return { draftId: racedDraft.draftId, threadId: racedDraft.threadId };
+       }
+       setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
++        ...targetEnvironmentOptions,
+         threadId,
+         createdAt,
+         branch: options?.branch ?? null,
+diff --git a/apps/web/src/keybindings.test.ts b/apps/web/src/keybindings.test.ts
+index 8708bbd297a9154f38d8f1322a4d6454a6622533..4e2c216fdc40dd658c83cfd58fde3db1a573b03d 100644
+--- a/apps/web/src/keybindings.test.ts
++++ b/apps/web/src/keybindings.test.ts
+@@ -1,4 +1,4 @@
+-import { assert, describe, it } from "vite-plus/test";
++import { assert, describe, it, vi } from "vite-plus/test";
+ import {
+   compileResolvedKeybindingsConfig,
+   DEFAULT_RESOLVED_KEYBINDINGS,
+@@ -541,6 +541,135 @@ describe("cross-command precedence", () => {
+   });
+ });
+ 
++describe("New thread shortcut override", () => {
++  it.each([
++    ["MacIntel", { metaKey: true }],
++    ["Linux", { ctrlKey: true }],
++  ] as const)("keeps the exact No project binding and its hint on %s", (platform, modifiers) => {
++    const input = event({ key: "n", code: "KeyN", altKey: true, ...modifiers });
++    assert.strictEqual(
++      resolveShortcutCommand(input, DEFAULT_RESOLVED_KEYBINDINGS, { platform }),
++      "chat.newWithoutProject",
++    );
++    assert.strictEqual(
++      shortcutLabelForCommand(DEFAULT_RESOLVED_KEYBINDINGS, "chat.newWithoutProject", platform),
++      platform === "MacIntel" ? "⌥⌘N" : "Ctrl+Alt+N",
++    );
++  });
++
++  it("follows a remapped New thread chord and its when clause", () => {
++    const bindings = compile([
++      {
++        shortcut: modShortcut("o", { shiftKey: true }),
++        command: "chat.new",
++        whenAst: whenNot(whenIdentifier("terminalFocus")),
++      },
++      { shortcut: modShortcut("n", { altKey: true }), command: "chat.newWithoutProject" },
++    ]);
++    const input = event({ key: "Ø", code: "KeyO", metaKey: true, shiftKey: true, altKey: true });
++    assert.strictEqual(
++      resolveShortcutCommand(input, bindings, { platform: "MacIntel" }),
++      "chat.new",
++    );
++    assert.isNull(
++      resolveShortcutCommand(input, bindings, {
++        platform: "MacIntel",
++        context: { terminalFocus: true },
++      }),
++    );
++    const conflicting = [
++      ...bindings,
++      ...compile([
++        {
++          shortcut: modShortcut("o", { shiftKey: true, altKey: true }),
++          command: "chat.newLocal",
++          whenAst: whenIdentifier("previewOpen"),
++        },
++      ]),
++    ];
++    assert.strictEqual(
++      resolveShortcutCommand(input, conflicting, {
++        platform: "MacIntel",
++        context: { previewOpen: true },
++      }),
++      "chat.newLocal",
++    );
++    assert.strictEqual(
++      resolveShortcutCommand(input, conflicting, {
++        platform: "MacIntel",
++        context: { previewOpen: false },
++      }),
++      "chat.new",
++    );
++
++    assert.strictEqual(
++      resolveShortcutCommand(event({ key: "n", metaKey: true, altKey: true }), bindings, {
++        platform: "MacIntel",
++      }),
++      "chat.newWithoutProject",
++    );
++    assert.strictEqual(
++      shortcutLabelForCommand(bindings, "chat.newWithoutProject", "MacIntel"),
++      "⌥⌘N",
++    );
++    class FocusTarget extends EventTarget {
++      constructor(readonly editable: boolean) {
++        super();
++      }
++      closest() {
++        return this.editable ? this : null;
++      }
++    }
++    const editableBindings = compile([
++      {
++        shortcut: modShortcut("o", { shiftKey: true }),
++        command: "chat.new",
++        whenAst: whenNot(whenIdentifier("editableFocus")),
++      },
++    ]);
++    vi.stubGlobal("Element", FocusTarget);
++    try {
++      for (const editable of [true, false]) {
++        vi.stubGlobal("document", { activeElement: new FocusTarget(!editable) });
++        assert.strictEqual(
++          resolveShortcutCommand(
++            { ...input, target: new FocusTarget(editable) },
++            editableBindings,
++            { platform: "MacIntel" },
++          ),
++          editable ? null : "chat.new",
++        );
++      }
++    } finally {
++      vi.unstubAllGlobals();
++    }
++  });
++
++  it("preserves ordinary shortcuts and AltGr text input", () => {
++    assert.strictEqual(
++      resolveShortcutCommand(
++        event({ key: "n", metaKey: true, shiftKey: true }),
++        DEFAULT_RESOLVED_KEYBINDINGS,
++        { platform: "MacIntel" },
++      ),
++      "chat.newLocal",
++    );
++    assert.isNull(
++      resolveShortcutCommand(
++        event({
++          key: "ń",
++          code: "KeyN",
++          ctrlKey: true,
++          altKey: true,
++          getModifierState: () => true,
++        }),
++        DEFAULT_RESOLVED_KEYBINDINGS,
++        { platform: "Linux" },
++      ),
++    );
++  });
++});
++
+ describe("resolveChatShortcutCommand", () => {
+   it("runs the active environment's script shortcut instead of the primary environment's", () => {
+     const primary = compile([{ shortcut: modShortcut("r"), command: "script.setup.run" }]);
+diff --git a/apps/web/src/keybindings.ts b/apps/web/src/keybindings.ts
+index fc96aa1f85896fc89f7ba08de185c3bcd14086a8..70146239bcea624113273490c48ed98915d695e4 100644
+--- a/apps/web/src/keybindings.ts
++++ b/apps/web/src/keybindings.ts
+@@ -175,7 +175,7 @@ function matchesCommandShortcut(
+   return resolveShortcutCommand(event, keybindings, options) === command;
+ }
+ 
+-export function resolveShortcutCommand(
++function resolveExactShortcutCommand(
+   event: ShortcutEventLike,
+   keybindings: ResolvedKeybindingsConfig,
+   options?: ShortcutMatchOptions,
+@@ -196,6 +196,31 @@ export function resolveShortcutCommand(
+   return null;
+ }
+ 
++export function resolveShortcutCommand(
++  event: ShortcutEventLike,
++  keybindings: ResolvedKeybindingsConfig,
++  options?: ShortcutMatchOptions,
++): KeybindingCommand | null {
++  const exactCommand = resolveExactShortcutCommand(event, keybindings, options);
++  if (exactCommand !== null) return exactCommand;
++  if (event.altKey) {
++    const withoutAlt = {
++      key: event.key,
++      ...(event.code !== undefined ? { code: event.code } : {}),
++      ...(event.target !== undefined ? { target: event.target } : {}),
++      metaKey: event.metaKey,
++      ctrlKey: event.ctrlKey,
++      shiftKey: event.shiftKey,
++      altKey: false,
++      getModifierState: (key: "AltGraph") => event.getModifierState?.(key) ?? false,
++    };
++    if (resolveExactShortcutCommand(withoutAlt, keybindings, options) === "chat.new") {
++      return "chat.new";
++    }
++  }
++  return null;
++}
++
+ export function resolveChatShortcutCommand(
+   event: ShortcutEventLike,
+   primaryKeybindings: ResolvedKeybindingsConfig,
+diff --git a/apps/web/src/newThreadActions.ts b/apps/web/src/newThreadActions.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f03b446ae97303ec788c76f1c37e5d60e0c1bc7a
+--- /dev/null
++++ b/apps/web/src/newThreadActions.ts
+@@ -0,0 +1,79 @@
++import { scopeProjectRef } from "@t3tools/client-runtime/environment";
++import { isScratchProject } from "@t3tools/client-runtime/state/projects";
++
++import { shouldCreateNewThreadInCurrentProject } from "./components/Sidebar.logic";
++import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
++import { openCommandPalette } from "./commandPaletteBus";
++import type { NewThreadHandler } from "./hooks/useHandleNewThread";
++import { createScratchProjectActions } from "./hooks/useScratchProject";
++import { startNewThreadFromContext, type ChatThreadActionContext } from "./lib/chatThreadActions";
++import { resolveNewThreadTarget, type NewThreadTargetMember } from "./newThreadTarget";
++import { readNewThreadTargetInput } from "./newThreadTargetState";
++import { appAtomRegistry } from "./rpc/atomRegistry";
++import { readProject } from "./state/entities";
++import { environmentPresentations, environmentSummaries } from "./state/presentation";
++import { primaryEnvironmentIdAtom } from "./state/primaryEnvironment";
++
++export async function startNewThreadInMember(
++  handleNewThread: NewThreadHandler,
++  member: Pick<NewThreadTargetMember, "environmentId" | "id">,
++): Promise<void> {
++  if (
++    !appAtomRegistry
++      .get(environmentSummaries.connectedEnvironmentIdsAtom)
++      .includes(member.environmentId)
++  )
++    return;
++  const projectRef = scopeProjectRef(member.environmentId, member.id);
++  const project = readProject(projectRef);
++  if (!project || project.archivedAt != null) return;
++  const presentations = appAtomRegistry.get(environmentPresentations.presentationsAtom);
++  if (
++    isScratchProject(
++      project,
++      presentations.get(member.environmentId)?.serverConfig?.scratchWorkspaceRoot,
++    )
++  ) {
++    const scratch = createScratchProjectActions({
++      environments: () =>
++        [...presentations].map(([environmentId, presentation]) => ({
++          ...presentation,
++          environmentId,
++        })),
++      primaryEnvironmentId: () => appAtomRegistry.get(primaryEnvironmentIdAtom),
++      registry: appAtomRegistry,
++      handleNewThread,
++    });
++    await scratch.startScratchThread(member.environmentId);
++    return;
++  }
++  await handleNewThread(projectRef, { exactProject: true });
++}
++
++export async function startNewThreadInSidebarFilter(
++  handleNewThread: NewThreadHandler,
++  options: {
++    readonly allProjects?: boolean;
++    readonly currentProject?: Omit<ChatThreadActionContext, "handleNewThread">;
++  } = {},
++): Promise<void> {
++  const input = readNewThreadTargetInput();
++  const target = options.allProjects ? { kind: "full" as const } : resolveNewThreadTarget(input);
++  if (target.kind === "direct") {
++    await startNewThreadInMember(handleNewThread, target.member);
++    return;
++  }
++  if (
++    target.kind === "full" &&
++    !options.allProjects &&
++    options.currentProject &&
++    shouldCreateNewThreadInCurrentProject(
++      false,
++      pickableProjectGroups(input.groups).length,
++      input.groups.length,
++    )
++  ) {
++    if (await startNewThreadFromContext({ ...options.currentProject, handleNewThread })) return;
++  }
++  openCommandPalette({ open: "new-thread-in", newThreadTarget: target });
++}
+diff --git a/apps/web/src/newThreadTarget.test.ts b/apps/web/src/newThreadTarget.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..3b90c934663412482b448fcdf6b05c945001658c
+--- /dev/null
++++ b/apps/web/src/newThreadTarget.test.ts
+@@ -0,0 +1,499 @@
++import { EnvironmentId, ProjectId, ProviderInstanceId } from "@t3tools/contracts";
++import { describe, expect, it } from "vite-plus/test";
++
++import {
++  buildNewThreadTargetCatalog,
++  newThreadTargetTooltip,
++  buildNewThreadProjectActivity,
++  resolveNewThreadTarget,
++  type NewThreadTargetInput,
++} from "./newThreadTarget";
++import { buildSidebarProjectSnapshots } from "./sidebarProjectGrouping";
++import type { Project } from "./types";
++
++const mac = EnvironmentId.make("mac");
++const linux = EnvironmentId.make("linux");
++const remote = EnvironmentId.make("remote");
++const offline = EnvironmentId.make("offline");
++
++function project(id: string, environmentId: EnvironmentId, repository: string): Project {
++  return {
++    id: ProjectId.make(id),
++    environmentId,
++    title: repository,
++    workspaceRoot: `/work/${id}`,
++    repositoryIdentity: {
++      canonicalKey: `github.com/example/${repository}`,
++      locator: {
++        source: "git-remote",
++        remoteName: "origin",
++        remoteUrl: `https://github.com/example/${repository}.git`,
++      },
++    },
++    defaultModelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
++    createdAt: "2026-01-01T00:00:00.000Z",
++    updatedAt: "2026-01-01T00:00:00.000Z",
++    scripts: [],
++  };
++}
++
++function input(overrides: Partial<NewThreadTargetInput> = {}): NewThreadTargetInput {
++  return {
++    groups: buildSidebarProjectSnapshots({
++      projects: [
++        project("print-remote", remote, "print3d"),
++        project("print-offline", offline, "print3d"),
++        project("print-linux", linux, "print3d"),
++        project("print-mac", mac, "print3d"),
++        project("app-mac", mac, "app"),
++        project("down-offline", offline, "down"),
++      ],
++      settings: { sidebarProjectGroupingMode: "repository", sidebarProjectGroupingOverrides: {} },
++      primaryEnvironmentId: mac,
++      resolveEnvironmentLabel: () => null,
++    }),
++    environments: [
++      { environmentId: remote, label: "Remote", online: true },
++      { environmentId: offline, label: "Offline", online: false },
++      { environmentId: linux, label: "Linux", online: true },
++      { environmentId: mac, label: "MacBook Pro", online: true },
++    ],
++    selection: { include: [], exclude: [] },
++    environmentScopeKeys: [],
++    primaryEnvironmentId: mac,
++    projectActivity: new Map([["linux:print-linux", Date.parse("2026-10-30T12:00:00Z")]]),
++    ...overrides,
++  };
++}
++
++const printKey = "github.com/example/print3d";
++const appKey = "github.com/example/app";
++const downKey = "github.com/example/down";
++
++describe("new thread targets", () => {
++  it("uses each project's latest thread update or creation, without a visit watermark", () => {
++    const activity = buildNewThreadProjectActivity([
++      {
++        environmentId: remote,
++        projectId: "print-remote",
++        updatedAt: "2026-10-30T14:00:00Z",
++        createdAt: "2026-10-30T09:00:00Z",
++      },
++      {
++        environmentId: remote,
++        projectId: "print-remote",
++        updatedAt: "2026-10-30T11:00:00Z",
++        createdAt: "2026-10-30T10:00:00Z",
++      },
++      {
++        environmentId: linux,
++        projectId: "print-linux",
++        updatedAt: "invalid-date",
++        createdAt: "2026-10-30T12:00:00Z",
++      },
++    ]);
++    expect([...activity]).toEqual([
++      ["remote:print-remote", Date.parse("2026-10-30T14:00:00Z")],
++      ["linux:print-linux", Date.parse("2026-10-30T12:00:00Z")],
++    ]);
++    expect(buildNewThreadProjectActivity([]).size).toBe(0);
++  });
++
++  it.each([
++    { name: "no filter", overrides: {}, kind: "full" },
++    {
++      name: "archived saved selection is inactive",
++      overrides: {
++        groups: input().groups.map((group) => ({
++          ...group,
++          archived: group.projectKey === appKey,
++        })),
++        selection: { include: [appKey], exclude: [] },
++      },
++      kind: "full",
++    },
++    {
++      name: "one open project beside archived selections",
++      overrides: {
++        groups: input().groups.map((group) => ({
++          ...group,
++          archived: group.projectKey !== appKey,
++        })),
++        selection: { include: [printKey, appKey], exclude: [] },
++      },
++      kind: "direct",
++    },
++    {
++      name: "only archived projects on the selected machine",
++      overrides: {
++        groups: input().groups.map((group) => ({ ...group, archived: true })),
++        environmentScopeKeys: [mac],
++      },
++      kind: "unreachable-note",
++    },
++    {
++      name: "one reachable member",
++      overrides: { selection: { include: [appKey], exclude: [] } },
++      kind: "direct",
++    },
++    {
++      name: "one project on several machines",
++      overrides: { selection: { include: [printKey], exclude: [] } },
++      kind: "restricted",
++    },
++    {
++      name: "several included projects",
++      overrides: { selection: { include: [printKey, appKey], exclude: [] } },
++      kind: "restricted",
++    },
++    {
++      name: "several projects after exclusions",
++      overrides: { selection: { include: [], exclude: [downKey] } },
++      kind: "restricted",
++    },
++    {
++      name: "everything offline",
++      overrides: { selection: { include: [downKey], exclude: [] } },
++      kind: "unreachable-note",
++    },
++    {
++      name: "everything filtered out",
++      overrides: { selection: { include: [], exclude: [printKey, appKey, downKey] } },
++      kind: "unreachable-note",
++    },
++    {
++      name: "include and exclude intersect",
++      overrides: { selection: { include: [printKey, appKey], exclude: [printKey] } },
++      kind: "direct",
++    },
++    {
++      name: "exclude wins over include",
++      overrides: { selection: { include: [appKey], exclude: [appKey] } },
++      kind: "unreachable-note",
++    },
++    {
++      name: "unknown machine with no project filter",
++      overrides: { environmentScopeKeys: ["removed"] },
++      kind: "full",
++    },
++    {
++      name: "unknown machine with a project filter",
++      overrides: {
++        environmentScopeKeys: ["removed"],
++        selection: { include: [printKey], exclude: [] },
++      },
++      kind: "restricted",
++    },
++    {
++      name: "all machines selected is unfiltered",
++      overrides: { environmentScopeKeys: [remote, offline, linux, mac] },
++      kind: "full",
++    },
++    {
++      name: "single known machine ignores saved scope",
++      overrides: {
++        environmentScopeKeys: [mac],
++        environments: [{ environmentId: mac, label: "MacBook Pro", online: true }],
++      },
++      kind: "full",
++    },
++    {
++      name: "machine and project scope",
++      overrides: { environmentScopeKeys: [mac], selection: { include: [printKey], exclude: [] } },
++      kind: "direct",
++    },
++    {
++      name: "empty Hide mode",
++      overrides: { selection: { include: [], exclude: [] }, sidebarProjectFilterMode: "exclude" },
++      kind: "full",
++    },
++    {
++      name: "empty Show only mode",
++      overrides: { selection: { include: [], exclude: [] }, sidebarProjectFilterMode: "include" },
++      kind: "full",
++    },
++  ])("resolves $name to $kind", ({ overrides, kind }) => {
++    const target = resolveNewThreadTarget(input(overrides));
++    expect(target.kind).toBe(kind);
++    if (target.kind === "unreachable-note") {
++      expect(target.note).toBe("No project in the current filter is reachable");
++    }
++  });
++
++  it("orders machines by this machine, project thread activity, then offline", () => {
++    const target = resolveNewThreadTarget(
++      input({ selection: { include: [printKey], exclude: [] } }),
++    );
++    expect(target.kind).toBe("restricted");
++    if (target.kind !== "restricted") return;
++    expect(target.title).toBe("print3d — which machine?");
++    expect(target.members.map((member) => [member.environmentId, member.online])).toEqual([
++      [mac, true],
++      [linux, true],
++      [remote, true],
++      [offline, false],
++    ]);
++    const activityInput = {
++      selection: { include: [printKey], exclude: [] },
++      projectActivity: new Map([
++        ["remote:print-remote", Date.parse("2026-10-30T14:00:00Z")],
++        ["linux:print-linux", Date.parse("2026-10-30T12:00:00Z")],
++        ["linux:unrelated-project", Date.parse("2026-10-30T16:00:00Z")],
++        ["offline:print-offline", Date.parse("2026-10-30T18:00:00Z")],
++      ]),
++    };
++    const byActivity = resolveNewThreadTarget(input(activityInput));
++    expect(byActivity.kind).toBe("restricted");
++    if (byActivity.kind !== "restricted") return;
++    expect(byActivity.members.map((member) => member.environmentId)).toEqual([
++      mac,
++      remote,
++      linux,
++      offline,
++    ]);
++    expect(newThreadTargetTooltip(target)).toBe(
++      "New thread — choose machine for print3d\n⌥-click: all projects",
++    );
++  });
++
++  it("offers reachable siblings of the single scoped offline member without picking one", () => {
++    const target = resolveNewThreadTarget(
++      input({ environmentScopeKeys: [offline], selection: { include: [printKey], exclude: [] } }),
++    );
++    expect(target.kind).toBe("restricted");
++    if (target.kind !== "restricted") return;
++    expect(target.members.map((member) => member.environmentId)).toEqual([
++      mac,
++      linux,
++      remote,
++      offline,
++    ]);
++    expect(target.members.at(-1)?.online).toBe(false);
++
++    const onlyOneOnline = input({
++      environmentScopeKeys: [offline],
++      selection: { include: [printKey], exclude: [] },
++      environments: input().environments.map((environment) => ({
++        ...environment,
++        online: environment.environmentId === linux,
++      })),
++    });
++    expect(resolveNewThreadTarget(onlyOneOnline).kind).toBe("restricted");
++    expect(resolveNewThreadTarget({ ...onlyOneOnline, environmentScopeKeys: [] })).toMatchObject({
++      kind: "direct",
++      member: { id: "print-linux", environmentId: linux },
++    });
++  });
++
++  it.each([[mac], [mac, linux]])(
++    "never blindly picks between two clones on one machine (%j)",
++    (...keys) => {
++      const target = resolveNewThreadTarget(
++        input({
++          environmentScopeKeys: keys,
++          selection: { include: [printKey], exclude: [] },
++          groups: buildSidebarProjectSnapshots({
++            projects: [project("clone-a", mac, "print3d"), project("clone-b", mac, "print3d")],
++            settings: {
++              sidebarProjectGroupingMode: "repository",
++              sidebarProjectGroupingOverrides: {},
++            },
++            primaryEnvironmentId: mac,
++            resolveEnvironmentLabel: () => null,
++          }),
++        }),
++      );
++      expect(target.kind).toBe("restricted");
++      if (target.kind !== "restricted") return;
++      expect(target.members.map((member) => [member.id, member.workspaceRoot])).toEqual([
++        ["clone-a", "/work/clone-a"],
++        ["clone-b", "/work/clone-b"],
++      ]);
++      expect(target.title).toBe("New thread in print3d");
++    },
++  );
++
++  it("ignores sidebar search and captures a target independently of later selection changes", () => {
++    const selection = { include: [printKey], exclude: [] };
++    const initial = input({ selection });
++    const withSearch = { ...initial, searchQuery: "no matching threads" };
++    const before = resolveNewThreadTarget(initial);
++    expect(resolveNewThreadTarget(withSearch)).toEqual(before);
++    selection.include = [appKey];
++    expect(resolveNewThreadTarget(initial)).toMatchObject({
++      kind: "direct",
++      member: { environmentId: mac, id: "app-mac" },
++    });
++    expect(before.kind).toBe("restricted");
++    if (before.kind !== "restricted") return;
++    expect(before.members.every((member) => member.projectKey === printKey)).toBe(true);
++  });
++
++  it("keeps the full catalog, with filtered targets first and offline entries last", () => {
++    const catalog = buildNewThreadTargetCatalog(
++      input({ selection: { include: [appKey], exclude: [] } }),
++    );
++    expect(catalog.map((member) => member.id)).toEqual([
++      "app-mac",
++      "print-mac",
++      "print-linux",
++      "print-remote",
++      "print-offline",
++      "down-offline",
++    ]);
++    expect(
++      buildNewThreadTargetCatalog(
++        input({ environmentScopeKeys: [linux], selection: { include: [printKey], exclude: [] } }),
++      )[0],
++    ).toMatchObject({ environmentId: linux, id: "print-linux" });
++    const archivedInput = input({
++      groups: input().groups.map((group) => ({
++        ...group,
++        archived: group.projectKey === printKey,
++      })),
++      selection: { include: [printKey], exclude: [] },
++    });
++    expect(buildNewThreadTargetCatalog(archivedInput).map((member) => member.id)).toEqual([
++      "app-mac",
++      "down-offline",
++    ]);
++    expect(
++      buildNewThreadTargetCatalog({
++        ...archivedInput,
++        groups: archivedInput.groups.map((group) => ({ ...group, archived: true })),
++      }),
++    ).toEqual([]);
++    expect(
++      buildNewThreadTargetCatalog(
++        input({
++          groups: input().groups.map((group) => ({
++            ...group,
++            pinned: group.projectKey === appKey,
++          })),
++          projectActivity: new Map([["mac:print-mac", 100]]),
++        }),
++      )[0],
++    ).toMatchObject({ id: "app-mac" });
++    const mixedInput = input({
++      groups: input().groups.map((group) => ({
++        ...group,
++        memberProjects: group.memberProjects.map((member) => ({
++          ...member,
++          archivedAt: member.id === "print-mac" ? "2026-11-03T00:00:00Z" : null,
++        })),
++      })),
++      environmentScopeKeys: [mac],
++      selection: { include: [printKey], exclude: [] },
++    });
++    expect(
++      buildNewThreadTargetCatalog(mixedInput).some((member) => member.id === "print-mac"),
++    ).toBe(false);
++    expect(resolveNewThreadTarget(mixedInput)).toMatchObject({
++      kind: "direct",
++      member: { id: "app-mac", environmentId: mac },
++    });
++    expect(
++      resolveNewThreadTarget({ ...mixedInput, selection: { include: [], exclude: [printKey] } }),
++    ).toMatchObject({ kind: "direct", member: { id: "app-mac", environmentId: mac } });
++    expect(resolveNewThreadTarget({ ...mixedInput, environmentScopeKeys: [linux] })).toMatchObject({
++      kind: "direct",
++      member: { id: "print-linux", environmentId: linux },
++    });
++    const mixedMachinesInput = {
++      ...mixedInput,
++      environmentScopeKeys: [mac, offline],
++      groups: mixedInput.groups.map((group) => ({
++        ...group,
++        memberProjects: group.memberProjects.map((member) => ({
++          ...member,
++          archivedAt: member.id === "print-offline" ? "2026-11-03T00:00:00Z" : member.archivedAt,
++        })),
++      })),
++    };
++    expect(resolveNewThreadTarget(mixedMachinesInput).kind).toBe("unreachable-note");
++    expect(
++      resolveNewThreadTarget({ ...mixedMachinesInput, environmentScopeKeys: [mac, linux] }),
++    ).toMatchObject({ kind: "direct", member: { id: "print-linux", environmentId: linux } });
++  });
++
++  it.each([
++    {
++      name: "online sibling ahead of the last-used offline machine",
++      keys: [offline, linux],
++      activity: new Map([
++        ["offline:print-offline", 20],
++        ["linux:print-linux", 10],
++      ]),
++      expected: linux,
++    },
++    {
++      name: "latest activity ahead of the primary machine",
++      keys: [mac, linux],
++      activity: new Map([["linux:print-linux", 10]]),
++      expected: linux,
++    },
++    {
++      name: "catalog order without activity, regardless of selection order",
++      keys: [linux, mac],
++      activity: new Map<string, number>(),
++      expected: mac,
++    },
++    {
++      name: "first non-primary catalog machine without activity",
++      keys: [linux, remote],
++      activity: new Map<string, number>(),
++      expected: remote,
++    },
++    {
++      name: "activity on unselected machines is ignored",
++      keys: [linux, remote],
++      activity: new Map([
++        ["mac:print-mac", 20],
++        ["linux:print-linux", 10],
++      ]),
++      expected: linux,
++    },
++    {
++      name: "activity in another project is ignored",
++      keys: [mac, linux],
++      activity: new Map([
++        ["mac:app-mac", 20],
++        ["linux:print-linux", 10],
++      ]),
++      expected: linux,
++    },
++  ])("chooses $name for multiple selected machines", ({ keys, activity, expected }) => {
++    const target = resolveNewThreadTarget(
++      input({
++        environmentScopeKeys: keys,
++        selection: { include: [printKey], exclude: [] },
++        projectActivity: activity,
++      }),
++    );
++    expect(target).toMatchObject({ kind: "direct", member: { environmentId: expected } });
++    if (target.kind !== "direct") return;
++    expect(newThreadTargetTooltip(target)).toBe(
++      `New thread in print3d · ${target.member.environmentLabel}\n⌥-click: all projects`,
++    );
++  });
++
++  it("describes direct creation with its exact project, machine and shortcut", () => {
++    const target = resolveNewThreadTarget(
++      input({ environmentScopeKeys: [mac], selection: { include: [printKey], exclude: [] } }),
++    );
++    expect(target).toMatchObject({
++      kind: "direct",
++      member: { id: "print-mac", environmentId: mac },
++    });
++    expect(newThreadTargetTooltip(target, "⌘N")).toBe(
++      "New thread in print3d · MacBook Pro (⌘N)\n⌥-click: all projects",
++    );
++    expect(
++      newThreadTargetTooltip({
++        kind: "unreachable-note",
++        note: "No project in the current filter is reachable",
++      }),
++    ).toBe("New thread…");
++    expect(newThreadTargetTooltip({ kind: "full" })).toBe("New thread…");
++  });
++});
+diff --git a/apps/web/src/newThreadTarget.ts b/apps/web/src/newThreadTarget.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..8af7962753b4535d674e76965cd3f8c16181ca2c
+--- /dev/null
++++ b/apps/web/src/newThreadTarget.ts
+@@ -0,0 +1,248 @@
++import type { EnvironmentId } from "@t3tools/contracts";
++import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
++
++import {
++  filterSidebarProjectScopeKeysToEnvironment,
++  resolveSidebarEnvironmentScope,
++} from "./sidebarEnvironmentScope";
++import type { SidebarProjectSnapshot } from "./sidebarProjectGrouping";
++import {
++  isInSidebarProjectScope,
++  sidebarProjectMemberScope,
++  type SidebarProjectSelection,
++} from "./sidebarProjectRow";
++import type { Project } from "./types";
++
++export interface NewThreadTargetInput {
++  readonly groups: readonly SidebarProjectSnapshot[];
++  readonly environments: readonly {
++    readonly environmentId: EnvironmentId;
++    readonly label: string;
++    readonly online: boolean;
++  }[];
++  readonly environmentScopeKeys: readonly string[];
++  readonly selection: SidebarProjectSelection;
++  readonly primaryEnvironmentId: EnvironmentId | null;
++  readonly projectActivity?: ReadonlyMap<string, number>;
++}
++
++export type NewThreadTargetMember = Project & {
++  readonly displayName: string;
++  readonly projectKey: string;
++  readonly environmentLabel: string;
++  readonly online: boolean;
++};
++
++export type NewThreadTarget =
++  | { readonly kind: "full" }
++  | { readonly kind: "direct"; readonly member: NewThreadTargetMember }
++  | {
++      readonly kind: "restricted";
++      readonly members: readonly NewThreadTargetMember[];
++      readonly title: string;
++    }
++  | { readonly kind: "unreachable-note"; readonly note: string };
++
++export function buildNewThreadProjectActivity(
++  threads: ReadonlyArray<{
++    readonly environmentId: string;
++    readonly projectId: string;
++    readonly updatedAt: string;
++    readonly createdAt: string;
++  }>,
++): ReadonlyMap<string, number> {
++  const activity = new Map<string, number>();
++  for (const thread of threads) {
++    const key = `${thread.environmentId}:${thread.projectId}`;
++    activity.set(
++      key,
++      Math.max(
++        activity.get(key) ?? 0,
++        Date.parse(thread.updatedAt) || 0,
++        Date.parse(thread.createdAt) || 0,
++      ),
++    );
++  }
++  return activity;
++}
++
++function targetScope(input: NewThreadTargetInput) {
++  const environments = resolveSidebarEnvironmentScope({
++    environments: input.environments,
++    keys: input.environmentScopeKeys,
++  });
++  const environmentIds = new Set(environments.map((environment) => environment.environmentId));
++  const openGroups = pickableProjectGroups(input.groups).filter(
++    (group) =>
++      environmentIds.size !== 1 ||
++      group.memberProjects.some(
++        (project) => environmentIds.has(project.environmentId) && project.archivedAt == null,
++      ),
++  );
++  const availableKeys = new Set(
++    filterSidebarProjectScopeKeysToEnvironment(
++      openGroups,
++      openGroups.map((group) => group.projectKey),
++      environmentIds.size === 0 ? null : environmentIds,
++    ),
++  );
++  const groups = openGroups.filter((group) => availableKeys.has(group.projectKey));
++  const projectKeys = sidebarProjectMemberScope(groups, input.selection);
++  return {
++    environmentIds,
++    filtered: environmentIds.size > 0 || projectKeys !== null,
++    matches: (member: NewThreadTargetMember) =>
++      (environmentIds.size === 0 || environmentIds.has(member.environmentId)) &&
++      isInSidebarProjectScope(
++        { environmentId: member.environmentId, projectId: member.id },
++        projectKeys,
++        null,
++      ),
++  };
++}
++
++export function buildNewThreadTargetCatalog(input: NewThreadTargetInput): NewThreadTargetMember[] {
++  const environments = new Map(
++    input.environments.map((environment) => [environment.environmentId, environment]),
++  );
++  const scope = targetScope(input);
++  const groups = pickableProjectGroups(input.groups);
++  const pinnedKeys = new Set(
++    groups.filter((group) => group.pinned).map((group) => group.projectKey),
++  );
++  const members = groups.flatMap((group) =>
++    group.memberProjects
++      .filter((project) => project.archivedAt == null)
++      .map((project) => ({
++        ...project,
++        displayName: group.displayName,
++        projectKey: group.projectKey,
++        environmentLabel: environments.get(project.environmentId)?.label ?? "Unknown machine",
++        online: environments.get(project.environmentId)?.online ?? false,
++      })),
++  );
++  const activityByGroup = new Map(
++    groups.map((group) => {
++      const activityByEnvironment = new Map<EnvironmentId, number>();
++      for (const project of group.memberProjects) {
++        if (project.archivedAt != null) continue;
++        activityByEnvironment.set(
++          project.environmentId,
++          Math.max(
++            activityByEnvironment.get(project.environmentId) ?? 0,
++            input.projectActivity?.get(`${project.environmentId}:${project.id}`) ?? 0,
++          ),
++        );
++      }
++      return [group.projectKey, activityByEnvironment] as const;
++    }),
++  );
++  const activity = (member: NewThreadTargetMember) =>
++    activityByGroup.get(member.projectKey)?.get(member.environmentId) ?? 0;
++  return members.sort(
++    (left, right) =>
++      Number(right.online) - Number(left.online) ||
++      Number(scope.matches(right)) - Number(scope.matches(left)) ||
++      Number(pinnedKeys.has(right.projectKey)) - Number(pinnedKeys.has(left.projectKey)) ||
++      Number(right.environmentId === input.primaryEnvironmentId) -
++        Number(left.environmentId === input.primaryEnvironmentId) ||
++      activity(right) - activity(left),
++  );
++}
++
++export function newThreadTargetProjectKeys(input: NewThreadTargetInput): ReadonlySet<string> {
++  const scope = targetScope(input);
++  if (!scope.filtered) return new Set();
++  return new Set(
++    buildNewThreadTargetCatalog(input)
++      .filter((member) => member.online && scope.matches(member))
++      .map((member) => member.projectKey),
++  );
++}
++
++function restrictedTarget(members: readonly NewThreadTargetMember[]): NewThreadTarget {
++  const projectNames = new Map(members.map((member) => [member.projectKey, member.displayName]));
++  const projectName = projectNames.size === 1 ? projectNames.values().next().value : undefined;
++  const severalMachines = new Set(members.map((member) => member.environmentId)).size > 1;
++  return {
++    kind: "restricted",
++    members,
++    title: projectName
++      ? severalMachines
++        ? // oxlint-disable-next-line t3code/no-em-dash-copy -- The signed-off picker copy requires this separator.
++          `${projectName} — which machine?`
++        : `New thread in ${projectName}`
++      : "New thread in…",
++  };
++}
++
++export function resolveNewThreadTarget(input: NewThreadTargetInput): NewThreadTarget {
++  const scope = targetScope(input);
++  if (!scope.filtered) return { kind: "full" };
++  const catalog = buildNewThreadTargetCatalog(input);
++  const scopedMembers = catalog.filter(scope.matches);
++  const preferredByProject = new Map<string, EnvironmentId>();
++  if (scope.environmentIds.size > 1) {
++    const environmentOrder = [
++      ...input.environments.filter(
++        (environment) => environment.environmentId === input.primaryEnvironmentId,
++      ),
++      ...input.environments.filter(
++        (environment) => environment.environmentId !== input.primaryEnvironmentId,
++      ),
++    ];
++    const orderedMembers = [...scopedMembers].sort(
++      (left, right) =>
++        Number(right.online) - Number(left.online) ||
++        (input.projectActivity?.get(`${right.environmentId}:${right.id}`) ?? 0) -
++          (input.projectActivity?.get(`${left.environmentId}:${left.id}`) ?? 0) ||
++        environmentOrder.findIndex(
++          (environment) => environment.environmentId === left.environmentId,
++        ) -
++          environmentOrder.findIndex(
++            (environment) => environment.environmentId === right.environmentId,
++          ),
++    );
++    for (const member of orderedMembers) {
++      if (!preferredByProject.has(member.projectKey)) {
++        preferredByProject.set(member.projectKey, member.environmentId);
++      }
++    }
++  }
++  const members = scopedMembers.filter(
++    (member) =>
++      preferredByProject.size === 0 ||
++      preferredByProject.get(member.projectKey) === member.environmentId,
++  );
++  const reachable = members.filter((member) => member.online);
++  if (reachable.length === 1) return { kind: "direct", member: reachable[0]! };
++  if (reachable.length > 1) return restrictedTarget(members);
++  if (members.length === 1 && scope.environmentIds.size <= 1) {
++    const siblings = catalog.filter((member) => member.projectKey === members[0]!.projectKey);
++    if (siblings.some((member) => member.online)) return restrictedTarget(siblings);
++  }
++  return {
++    kind: "unreachable-note",
++    note: "No project in the current filter is reachable",
++  };
++}
++
++export function newThreadTargetTooltip(
++  target: NewThreadTarget,
++  shortcutLabel?: string | null,
++): string {
++  let label = "New thread…";
++  if (target.kind === "direct") {
++    label = `New thread in ${target.member.displayName} · ${target.member.environmentLabel}`;
++  } else if (
++    target.kind === "restricted" &&
++    new Set(target.members.map((member) => member.projectKey)).size === 1 &&
++    new Set(target.members.map((member) => member.environmentId)).size > 1
++  ) {
++    // oxlint-disable-next-line t3code/no-em-dash-copy -- The signed-off tooltip copy requires this separator.
++    label = `New thread — choose machine for ${target.members[0]?.displayName}`;
++  }
++  const allProjectsHint =
++    target.kind === "direct" || target.kind === "restricted" ? "\n⌥-click: all projects" : "";
++  return `${label}${shortcutLabel ? ` (${shortcutLabel})` : ""}${allProjectsHint}`;
++}
+diff --git a/apps/web/src/newThreadTargetState.ts b/apps/web/src/newThreadTargetState.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d12d0604de0343f304d71d15cef6986ec57b9162
+--- /dev/null
++++ b/apps/web/src/newThreadTargetState.ts
+@@ -0,0 +1,107 @@
++import { useAtomValue } from "@effect/atom-react";
++import { Atom } from "effect/reactivity";
++import { selectProjectGroupingSettings } from "@t3tools/client-runtime/state/project-grouping";
++import { useShallow } from "zustand/react/shallow";
++
++import { getClientSettings, useClientSettings } from "./hooks/useSettings";
++import { appAtomRegistry } from "./rpc/atomRegistry";
++import {
++  buildSidebarProjectSnapshots,
++  resolveSidebarProjectScopeKeys,
++} from "./sidebarProjectGrouping";
++import { readProjects, useProjects } from "./state/entities";
++import {
++  useConnectedEnvironmentIds,
++  useEnvironmentIdentities,
++  usePrimaryEnvironmentId,
++} from "./state/environments";
++import { environmentSummaries } from "./state/presentation";
++import { primaryEnvironmentIdAtom } from "./state/primaryEnvironment";
++import { type UiState, useUiStateStore } from "./uiStateStore";
++import { buildNewThreadProjectActivity, type NewThreadTargetInput } from "./newThreadTarget";
++import { environmentThreadShells } from "./state/threads";
++import { activeSidebarProjectSelection } from "./sidebarProjectRow";
++import { resolveSidebarEnvironmentScope } from "./sidebarEnvironmentScope";
++
++const selectFilterState = (state: UiState) => ({
++  environmentScopeKeys: state.sidebarEnvironmentScopeKeys,
++  ...activeSidebarProjectSelection(
++    { include: state.sidebarProjectScopeKeys, exclude: state.sidebarProjectExcludeKeys },
++    state.sidebarProjectFilterMode,
++  ),
++});
++
++const noProjectActivityAtom = Atom.make<ReadonlyMap<string, number> | undefined>(undefined);
++
++const projectActivityAtom = Atom.make((get) =>
++  buildNewThreadProjectActivity(get(environmentThreadShells.quietThreadShellsAtom)),
++).pipe(
++  Atom.withEquality<ReadonlyMap<string, number>>(
++    (left, right) =>
++      left.size === right.size && [...left].every(([key, value]) => right.get(key) === value),
++  ),
++);
++
++function buildInput(
++  projects: ReturnType<typeof readProjects>,
++  settings: ReturnType<typeof selectProjectGroupingSettings>,
++  identities: ReturnType<typeof useEnvironmentIdentities>,
++  connected: ReturnType<typeof useConnectedEnvironmentIds>,
++  primaryEnvironmentId: NewThreadTargetInput["primaryEnvironmentId"],
++  filter: ReturnType<typeof selectFilterState>,
++  projectActivity?: ReadonlyMap<string, number>,
++): NewThreadTargetInput {
++  const labels = new Map(
++    identities.map((environment) => [environment.environmentId, environment.label]),
++  );
++  const groups = buildSidebarProjectSnapshots({
++    projects,
++    settings,
++    primaryEnvironmentId,
++    groupScratchProjects: true,
++    resolveEnvironmentLabel: (id) => labels.get(id) ?? null,
++  });
++  return {
++    groups,
++    environments: identities.map((environment) => ({
++      ...environment,
++      online: connected.includes(environment.environmentId),
++    })),
++    environmentScopeKeys: filter.environmentScopeKeys,
++    selection: {
++      include: resolveSidebarProjectScopeKeys({ groups, settings, keys: filter.include }),
++      exclude: resolveSidebarProjectScopeKeys({ groups, settings, keys: filter.exclude }),
++    },
++    primaryEnvironmentId,
++    ...(projectActivity ? { projectActivity } : {}),
++  };
++}
++
++export function readNewThreadTargetInput(): NewThreadTargetInput {
++  return buildInput(
++    readProjects(),
++    selectProjectGroupingSettings(getClientSettings()),
++    appAtomRegistry.get(environmentSummaries.identitiesAtom),
++    appAtomRegistry.get(environmentSummaries.connectedEnvironmentIdsAtom),
++    appAtomRegistry.get(primaryEnvironmentIdAtom),
++    selectFilterState(useUiStateStore.getState()),
++    appAtomRegistry.get(projectActivityAtom),
++  );
++}
++
++export function useNewThreadTargetInput(): NewThreadTargetInput {
++  const projects = useProjects();
++  const settings = useClientSettings(selectProjectGroupingSettings);
++  const identities = useEnvironmentIdentities();
++  const connected = useConnectedEnvironmentIds();
++  const primary = usePrimaryEnvironmentId();
++  const filter = useUiStateStore(useShallow(selectFilterState));
++  const scopedEnvironments = resolveSidebarEnvironmentScope({
++    environments: identities,
++    keys: filter.environmentScopeKeys,
++  });
++  const projectActivity = useAtomValue(
++    scopedEnvironments.length > 1 ? projectActivityAtom : noProjectActivityAtom,
++  );
++  return buildInput(projects, settings, identities, connected, primary, filter, projectActivity);
++}
+diff --git a/apps/web/src/shortcuts/chatRouteCommands.test.ts b/apps/web/src/shortcuts/chatRouteCommands.test.ts
+index a4c6b53279c8458ef7acf83b4e3e6ca1cc9fde48..8f1051ee392a1249051e214bea1720e14ccd2102 100644
+--- a/apps/web/src/shortcuts/chatRouteCommands.test.ts
++++ b/apps/web/src/shortcuts/chatRouteCommands.test.ts
+@@ -61,7 +61,10 @@ describe("new thread commands", () => {
+     commands[scenario.command]!(event);
+ 
+     if (scenario.picker) {
+-      expect(openPicker).toHaveBeenCalledWith({ open: "new-thread-in" });
++      expect(openPicker).toHaveBeenCalledWith({
++        open: "new-thread-in",
++        newThreadTarget: { kind: "full" },
++      });
+       expect(startLocal).not.toHaveBeenCalled();
+     } else {
+       expect(openPicker).not.toHaveBeenCalled();
+diff --git a/apps/web/src/shortcuts/chatRouteCommands.ts b/apps/web/src/shortcuts/chatRouteCommands.ts
+index 9b2e59f76d7e0b73b816c178b756d2910e8b91b6..447727d927801a94877156efd6bc3a20d2fd09f2 100644
+--- a/apps/web/src/shortcuts/chatRouteCommands.ts
++++ b/apps/web/src/shortcuts/chatRouteCommands.ts
+@@ -7,19 +7,16 @@ import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
+ import { useComposerDraftStore } from "../composerDraftStore";
+ import { dispatchPreviewAction, type PreviewAction } from "../components/preview/previewActionBus";
+ import { isAppModalPage } from "../components/sidebar/mainAppLocation";
+-import { shouldCreateNewThreadInCurrentProject } from "../components/Sidebar.logic";
+ import {
+   createNewThreadHandler,
+   readLastUsedProjectKey,
+   resolveDefaultProjectRef,
+ } from "../hooks/useHandleNewThread";
+ import { createScratchProjectActions } from "../hooks/useScratchProject";
+-import { getClientSettings } from "../hooks/useSettings";
+ import { startNewThreadFromContext } from "../lib/chatThreadActions";
+-import { selectProjectGroupingSettings } from "@t3tools/client-runtime/state/project-grouping";
++import { startNewThreadInSidebarFilter } from "../newThreadActions";
+ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
+ import { appAtomRegistry } from "../rpc/atomRegistry";
+-import { buildSidebarProjectSnapshots } from "../sidebarProjectGrouping";
+ import { readProjects, readThreadShell } from "../state/entities";
+ import { defaultProjectFallbackReadyAtom } from "../state/projects";
+ import { environmentPresentations } from "../state/presentation";
+@@ -85,15 +82,6 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
+       handleNewThread,
+     };
+   };
+-  // Grouped like the sidebar, so the shortcut and the New thread button agree.
+-  const readProjectGroups = () =>
+-    buildSidebarProjectSnapshots({
+-      projects: readProjects(),
+-      groupScratchProjects: true,
+-      settings: selectProjectGroupingSettings(getClientSettings()),
+-      primaryEnvironmentId: appAtomRegistry.get(primaryEnvironmentIdAtom),
+-      resolveEnvironmentLabel: () => null,
+-    });
+   const canOperatePreview = (environmentId: EnvironmentId) =>
+     readEnvironmentScope(environmentId, AuthPreviewOperateScope);
+ 
+@@ -131,19 +119,11 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
+         void scratch.startScratchThread(environmentId);
+       },
+       "chat.new": (event) => {
+-        const groups = readProjectGroups();
+-        if (
+-          !shouldCreateNewThreadInCurrentProject(
+-            false,
+-            groups.filter((group) => !group.archived).length,
+-            groups.length,
+-          )
+-        ) {
+-          claim(event);
+-          openCommandPalette({ open: "new-thread-in" });
+-          return;
+-        }
+-        startNewLocal(event);
++        claim(event);
++        void startNewThreadInSidebarFilter(handleNewThread, {
++          allProjects: event.altKey,
++          currentProject: readThreadContext(),
++        });
+       },
+       "preview.toggle": (event) => {
+         claim(event);
+diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
+index c28e6697d6050dd4f7d37bb312b454928a6e2e18..d60be0a0704495f6f6dbb90442c08c3e653262d3 100644
+--- a/docs/user/thread-sidebar.md
++++ b/docs/user/thread-sidebar.md
+@@ -5,12 +5,27 @@ need a separate branch and working directory.
+ 
+ ## Start a thread
+ 
+-On web and desktop, **New thread** opens the project picker when you have more than one
+-open project in the default or project-grouped sidebar. Archived projects don't count. **Shift-click** to start in
+-the current project, or use a project's own new-thread action. A new thread carries
+-your model and mode selections, unless the destination project has its own model default.
+-Its branch and workspace mode come from your configured defaults. To continue in
+-an existing worktree, use **New thread in this worktree** from the branch toolbar.
++On web and desktop, including a mobile browser, **New thread** and its keyboard
++shortcut follow the sidebar's machine and project filters. With one reachable
++project on one machine, the thread opens there directly. When several machines
++are selected, each project's target prefers connected selected machines, then the
++machine where that project was most recently active. Ties use the first matching
++machine in the list. With several project or folder choices, you choose from the filtered
++list. Sidebar search text does not
++affect this choice. Without a filter, the current project opens when there is
++exactly one open project. Otherwise the full project list opens, including in the
++project-grouped sidebar. Archived projects don't count and are not offered in the filtered picker. If nothing in the filter is reachable, the full list opens with a note.
++
++To choose outside the filter, **⌥-click** (Alt-click) **New thread**. In the
++filtered picker, press **Backspace** with an empty search or choose **All projects…** for the full list;
++**Esc** cancels. **Shift-click** starts in the current thread's project. The command
++palette's **New thread in…** always shows the full list, with filtered projects first.
++
++A new thread carries your model and mode selections, unless the destination
++project has its own model default. Its branch and workspace mode come from your
++configured defaults. An existing empty draft for that project and machine opens
++again. Use history back to return to the previous thread. To continue in an
++existing worktree, use **New thread in this worktree** from the branch toolbar.
+ 
+ On mobile, **New thread** starts in the current thread's project, or else in the
+ last project you opened or chose on that device. If neither is available, the
+@@ -26,8 +41,8 @@ if that project exists there. Otherwise it selects an environment that has it.
+ A thread does not need a project. To start one without a project, click **or
+ start without a project** under a new thread's heading, pick **No project** from
+ the project menu in that heading or from **New thread in...** in the command
+-palette, or press `mod+alt+n`. On mobile, pick **No project** from the project
+-list. It starts on your current machine; before sending, pick another machine
++palette, or press `mod+alt+n` (⌘⌥N on macOS). On mobile, pick **No project** from
++the project list. It starts on your current machine; before sending, pick another machine
+ from the machine menu to move it there. To move a draft into a project, pick the
+ project in the heading.
+ 

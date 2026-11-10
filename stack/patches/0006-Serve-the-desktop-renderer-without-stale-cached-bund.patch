@@ -1,0 +1,470 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mateusz Choma <chomamateusz@gmail.com>
+Date: Mon, 26 Oct 2026 13:35:36 +0100
+Subject: =?UTF-8?q?=F0=9F=A7=B9=20Serve=20the=20desktop=20renderer=20witho?=
+ =?UTF-8?q?ut=20stale=20cached=20bundles?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Behaviours:
+- Bundled HTML (index.html and its fallbacks) is served with Cache-Control: no-store; content-hashed files under assets/ are cached for one year as immutable; every other bundled file is served with no-cache; 400, 404 and 405 responses carry no-store. Content types, the CSP header and the Vite development proxy are unchanged.
+- Before the production renderer scheme is registered, the default session's HTTP cache and code caches are cleared on first launch and after every app-version change; the accepted version is persisted as rendererCacheVersion in the desktop settings only after both clears finish (null default for existing settings; no purge when the version is unchanged). A failed purge or settings write logs a warning and keeps the previous version, so startup never blocks on it and the purge is retried at the next launch.
+
+Integration details:
+- Preserve upstream named Effect operation spans and bounds-span regression; the cache-version setters follow the same tracing convention.
+
+- Keep cache refresh before protocol registration and every production window path, including the upstream early renderer during backend startup.
+- serveDesktopAsset keeps upstream's Option.liftThrowable URI decoding (#31217) and adds no-store to its 400 response.
+
+Port to 965ddc1d6c:
+- Applied without conflicts. ElectronProtocol.ts did not change upstream. DesktopApp.ts gained the fresh-install t3 command setup (#33153) later in bootstrap; the renderer cache refresh still runs before registerDesktopProtocol.
+
+Files:
+apps/desktop:
+- apps/desktop/src/app/DesktopApp.ts
+- apps/desktop/src/electron/ElectronProtocol.test.ts
+- apps/desktop/src/electron/ElectronProtocol.ts
+- apps/desktop/src/settings/DesktopAppSettings.test.ts
+- apps/desktop/src/settings/DesktopAppSettings.ts
+- apps/desktop/src/updates/updatesTestHarness.ts
+- apps/desktop/src/window/DesktopWindow.test.ts
+
+Tests:
+- apps/desktop/src/app/DesktopApp.test.ts
+- apps/desktop/src/backend/DesktopBackendConfiguration.test.ts
+- apps/desktop/src/backend/DesktopBackendPool.test.ts
+- apps/desktop/src/backend/DesktopServerExposure.test.ts
+- apps/desktop/src/electron/ElectronProtocol.test.ts
+- apps/desktop/src/ipc/methods/localEnvironment.test.ts
+- apps/desktop/src/ipc/methods/window.test.ts
+- apps/desktop/src/ipc/methods/wsl.test.ts
+- apps/desktop/src/settings/DesktopAppSettings.test.ts
+- apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
+- apps/desktop/src/updates/DesktopUpdates.test.ts
+- apps/desktop/src/updates/forkFeedPolicy.test.ts
+- apps/desktop/src/updates/forkUpdateProvider.test.ts
+- apps/desktop/src/window/DesktopWindow.test.ts
+- apps/desktop/src/wsl/DesktopWslBackend.test.ts
+- Whole-stack focused validation on 965ddc1d6c: 1,321 passed and 2 baseline failures across 48 test files (every test file the stack touches plus CommandPalette.logic.test.ts and chatRouteCommands.browser.test.ts). Web: 679 / 32 files; desktop: 118 / 9; server: 432 passed and 2 baseline failures / 4; contracts: 36 / 1; scripts: 56 / 2.
+- vp run typecheck passed in apps/web, apps/desktop, apps/server, packages/contracts and scripts; vp lint and vp fmt --check passed on the 119 changed files.
+- Baseline: UsageService.test.ts on detached 965ddc1d6c fails the same 2 assertions (Pi /var versus /private/var path equality; Codex open-spy raw-path equality); no assertion was changed to hide them.
+- No installed-client or live remote/relay/tunnel pass: no development servers or installed app changes were authorized.
+
+Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
+---
+ apps/desktop/src/app/DesktopApp.ts            | 16 ++++
+ .../src/electron/ElectronProtocol.test.ts     | 87 ++++++++++++++++++-
+ apps/desktop/src/electron/ElectronProtocol.ts | 50 +++++++++--
+ .../src/settings/DesktopAppSettings.test.ts   | 15 ++++
+ .../src/settings/DesktopAppSettings.ts        | 28 ++++++
+ .../desktop/src/updates/updatesTestHarness.ts |  1 +
+ apps/desktop/src/window/DesktopWindow.test.ts |  1 +
+ 7 files changed, 187 insertions(+), 11 deletions(-)
+
+diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
+index e3b6c49e3ab8df1affb164adba7b86d50292bc70..fd9070178247ccda46b6e1610c3d931e29cb8a00 100644
+--- a/apps/desktop/src/app/DesktopApp.ts
++++ b/apps/desktop/src/app/DesktopApp.ts
+@@ -178,6 +178,22 @@ const bootstrap = Effect.gen(function* () {
+ 
+   const settings = yield* desktopSettings.get;
+   const electronProtocol = yield* ElectronProtocol.ElectronProtocol;
++  if (
++    !environment.isDevelopment &&
++    ElectronProtocol.shouldClearRendererCache(settings.rendererCacheVersion, environment.appVersion)
++  ) {
++    yield* electronProtocol.clearRendererCache.pipe(
++      Effect.andThen(desktopSettings.setRendererCacheVersion(environment.appVersion)),
++      Effect.catch((error) =>
++        Effect.logWarning(
++          "Could not refresh the renderer cache; keeping the previous cache version.",
++          {
++            error,
++          },
++        ),
++      ),
++    );
++  }
+   yield* electronProtocol.registerDesktopProtocol({
+     scheme: ElectronProtocol.getDesktopScheme(environment.isDevelopment),
+     ...(environment.isDevelopment
+diff --git a/apps/desktop/src/electron/ElectronProtocol.test.ts b/apps/desktop/src/electron/ElectronProtocol.test.ts
+index aec3a2d5b45c0045091b0c0d610c563bf9397446..1e7378c3c3642dfb07099cd5c943bcf508a88750 100644
+--- a/apps/desktop/src/electron/ElectronProtocol.test.ts
++++ b/apps/desktop/src/electron/ElectronProtocol.test.ts
+@@ -27,6 +27,60 @@ describe("ElectronProtocol", () => {
+     unhandleMock.mockReset();
+   });
+ 
++  it("purges renderer caches on first launch and every version change", () => {
++    assert.isTrue(ElectronProtocol.shouldClearRendererCache(null, "0.0.18"));
++    assert.isTrue(ElectronProtocol.shouldClearRendererCache("0.0.17", "0.0.18"));
++    assert.isTrue(ElectronProtocol.shouldClearRendererCache("0.0.18", "0.0.17"));
++    assert.isFalse(ElectronProtocol.shouldClearRendererCache("0.0.18", "0.0.18"));
++  });
++
++  it.effect("sets cache policies for bundled documents and assets", () =>
++    Effect.gen(function* () {
++      const fileSystem = yield* FileSystem.FileSystem;
++      const directory = yield* fileSystem.makeTempDirectoryScoped();
++      yield* fileSystem.makeDirectory(`${directory}/assets`);
++      for (const file of [
++        "index.html",
++        "help.html",
++        "assets/page-BKx6Wqpp.html",
++        "assets/atomRegistry-BKx6Wqpp.js",
++        "assets/style-D9_A-b12.css",
++        "assets/app.js",
++        "app-BKx6Wqpp.js",
++        "favicon.ico",
++      ]) {
++        yield* fileSystem.writeFileString(`${directory}/${file}`, "bundled content");
++      }
++      let handler: ((request: Request) => Promise<Response>) | undefined;
++      handleMock.mockImplementation((_scheme, nextHandler) => {
++        handler = nextHandler;
++      });
++      const protocol = yield* ElectronProtocol.ElectronProtocol;
++      yield* protocol.registerDesktopProtocol({
++        scheme: "t3code",
++        assetDirectory: directory,
++        clerkFrontendApiHostname: undefined,
++      });
++
++      for (const [pathname, cacheControl] of [
++        ["/", "no-store"],
++        ["/settings/connections", "no-store"],
++        ["/help.html", "no-store"],
++        ["/assets/page-BKx6Wqpp.html", "no-store"],
++        ["/assets/atomRegistry-BKx6Wqpp.js?v=1", "public, max-age=31536000, immutable"],
++        ["/assets/style-D9_A-b12.css", "public, max-age=31536000, immutable"],
++        ["/assets/app.js", "no-cache"],
++        ["/app-BKx6Wqpp.js", "no-cache"],
++        ["/favicon.ico", "no-cache"],
++      ]) {
++        const response = yield* Effect.promise(() =>
++          handler!(new Request(`t3code://app${pathname}`)),
++        );
++        assert.equal(response.headers.get("cache-control"), cacheControl, pathname);
++      }
++    }).pipe(Effect.provide(Layer.merge(layerProtocol, NodeServices.layer)), Effect.scoped),
++  );
++
+   it.effect("serves the bundled client from disk without a backend", () =>
+     Effect.gen(function* () {
+       const fileSystem = yield* FileSystem.FileSystem;
+@@ -58,10 +112,35 @@ describe("ElectronProtocol", () => {
+       assert.equal(yield* Effect.promise(() => script.text()), "export default 1;");
+       assert.include(script.headers.get("content-type") ?? "", "javascript");
+ 
+-      assert.equal((yield* request("/missing.js")).status, 404);
+-      assert.equal((yield* request("/%2e%2e%2fsecret.txt")).status, 404);
+-      assert.equal((yield* request("/%invalid")).status, 400);
+-      assert.equal((yield* request("/", { method: "POST" })).status, 405);
++      const head = yield* request("/app.js", { method: "HEAD" });
++      assert.equal(head.status, 200);
++      assert.equal(head.headers.get("cache-control"), "no-cache");
++      assert.equal(yield* Effect.promise(() => head.text()), "");
++
++      for (const [pathname, status, method] of [
++        ["/missing.js", 404, "GET"],
++        ["/assets/missing-BKx6Wqpp.js", 404, "GET"],
++        ["/assets/missing-BKx6Wqpp.js", 404, "HEAD"],
++        ["/%2e%2e%2fsecret.txt", 404, "GET"],
++        ["/%invalid", 400, "GET"],
++        ["/%00", 400, "GET"],
++        ["/", 405, "POST"],
++      ] as const) {
++        const response = yield* request(pathname, { method });
++        assert.equal(response.status, status, pathname);
++        assert.equal(response.headers.get("cache-control"), "no-store", pathname);
++        if (method === "HEAD") {
++          assert.equal(yield* Effect.promise(() => response.text()), "");
++        }
++      }
++      const otherHost = yield* Effect.promise(() => handler!(new Request("t3code://other/")));
++      assert.equal(otherHost.status, 404);
++      assert.equal(otherHost.headers.get("cache-control"), "no-store");
++
++      yield* fileSystem.remove(`${directory}/index.html`);
++      const missingIndex = yield* request("/");
++      assert.equal(missingIndex.status, 404);
++      assert.equal(missingIndex.headers.get("cache-control"), "no-store");
+       assert.equal(netFetchMock.mock.calls.length, 0);
+     }).pipe(Effect.provide(Layer.merge(layerProtocol, NodeServices.layer)), Effect.scoped),
+   );
+diff --git a/apps/desktop/src/electron/ElectronProtocol.ts b/apps/desktop/src/electron/ElectronProtocol.ts
+index 7563898f43efc48596c2e2513067149b6de5ec59..34c59a8a71a8a59f1a7030fbcd4c0ca823fad5e3 100644
+--- a/apps/desktop/src/electron/ElectronProtocol.ts
++++ b/apps/desktop/src/electron/ElectronProtocol.ts
+@@ -28,6 +28,10 @@ export function getDesktopUrl(isDevelopment: boolean): string {
+   return `${getDesktopOrigin(isDevelopment)}/`;
+ }
+ 
++export function shouldClearRendererCache(previousVersion: string | null, currentVersion: string) {
++  return previousVersion !== currentVersion;
++}
++
+ export class ElectronProtocolRegistrationError extends Schema.TaggedError<ElectronProtocolRegistrationError>()(
+   "ElectronProtocolRegistrationError",
+   {
+@@ -40,6 +44,17 @@ export class ElectronProtocolRegistrationError extends Schema.TaggedError<Electr
+   }
+ }
+ 
++export class ElectronProtocolCacheClearError extends Schema.TaggedError<ElectronProtocolCacheClearError>()(
++  "ElectronProtocolCacheClearError",
++  {
++    cause: Schema.Defect(),
++  },
++) {
++  override get message(): string {
++    return "Failed to clear the renderer cache.";
++  }
++}
++
+ export class ElectronProtocolUnregistrationError extends Schema.TaggedError<ElectronProtocolUnregistrationError>()(
+   "ElectronProtocolUnregistrationError",
+   {
+@@ -60,6 +75,7 @@ export type DesktopProtocolRegistrationInput = {
+ export class ElectronProtocol extends Context.Service<
+   ElectronProtocol,
+   {
++    readonly clearRendererCache: Effect.Effect<void, ElectronProtocolCacheClearError>;
+     readonly registerDesktopProtocol: (
+       input: DesktopProtocolRegistrationInput,
+     ) => Effect.Effect<void, ElectronProtocolRegistrationError, Scope.Scope>;
+@@ -212,31 +228,42 @@ const serveDesktopAsset = Effect.fn("desktop.protocol.serveAsset")(function* (
+   const fileSystem = yield* FileSystem.FileSystem;
+   const path = yield* Path.Path;
+   const url = new URL(request.url);
+-  if (url.host !== DESKTOP_HOST) return new Response(null, { status: 404 });
++  if (url.host !== DESKTOP_HOST)
++    return new Response(null, { status: 404, headers: { "cache-control": "no-store" } });
+   if (request.method !== "GET" && request.method !== "HEAD") {
+-    return new Response(null, { status: 405 });
++    return new Response(null, { status: 405, headers: { "cache-control": "no-store" } });
+   }
+   const pathname = Option.getOrNull(Option.liftThrowable(decodeURIComponent)(url.pathname));
+-  if (pathname === null || pathname.includes("\0")) return new Response(null, { status: 400 });
++  if (pathname === null || pathname.includes("\0"))
++    return new Response(null, { status: 400, headers: { "cache-control": "no-store" } });
+   const root = path.resolve(assetDirectory);
+   const assetPath = path.resolve(root, `.${pathname}`);
+   if (assetPath !== root && !assetPath.startsWith(root + path.sep)) {
+-    return new Response(null, { status: 404 });
++    return new Response(null, { status: 404, headers: { "cache-control": "no-store" } });
+   }
+   const stat = yield* fileSystem.stat(assetPath).pipe(Effect.orElseSucceed(() => null));
+   let filePath = assetPath;
+   if (stat?.type !== "File") {
+     const wantsHtml = request.headers.get("accept")?.includes("text/html") ?? false;
+     if (path.extname(assetPath) !== "" && !wantsHtml) {
+-      return new Response(null, { status: 404 });
++      return new Response(null, { status: 404, headers: { "cache-control": "no-store" } });
+     }
+     filePath = path.join(root, "index.html");
+   }
+   const contents = yield* fileSystem.readFile(filePath).pipe(Effect.orElseSucceed(() => null));
+-  if (contents === null) return new Response(null, { status: 404 });
++  if (contents === null)
++    return new Response(null, { status: 404, headers: { "cache-control": "no-store" } });
++  const relativePath = path.relative(root, filePath).split(path.sep).join("/");
++  const cacheControl =
++    path.extname(filePath).toLowerCase() === ".html"
++      ? "no-store"
++      : /^assets\/.*-[\w-]{8,}\.[^/.]+$/.test(relativePath)
++        ? "public, max-age=31536000, immutable"
++        : "no-cache";
+   return new Response(request.method === "HEAD" ? null : new Uint8Array(contents), {
+     headers: {
+       "content-type": Option.getOrElse(Mime.getType(filePath), () => "application/octet-stream"),
++      "cache-control": cacheControl,
+     },
+   });
+ });
+@@ -287,7 +314,16 @@ export const make = Effect.gen(function* () {
+     },
+   );
+ 
+-  return ElectronProtocol.of({ registerDesktopProtocol });
++  return ElectronProtocol.of({
++    clearRendererCache: Effect.tryPromise({
++      try: async () => {
++        await Electron.session.defaultSession.clearCache();
++        await Electron.session.defaultSession.clearCodeCaches({});
++      },
++      catch: (cause) => new ElectronProtocolCacheClearError({ cause }),
++    }).pipe(Effect.withSpan("desktop.electron.protocol.clearRendererCache")),
++    registerDesktopProtocol,
++  });
+ });
+ 
+ export const layer = Layer.effect(ElectronProtocol, make);
+diff --git a/apps/desktop/src/settings/DesktopAppSettings.test.ts b/apps/desktop/src/settings/DesktopAppSettings.test.ts
+index 868e1c139fbdd0f6f806e4284cfc72053a695923..f5e4d8719550c4653aa83cd354459f744c735ebf 100644
+--- a/apps/desktop/src/settings/DesktopAppSettings.test.ts
++++ b/apps/desktop/src/settings/DesktopAppSettings.test.ts
+@@ -127,6 +127,18 @@ describe("DesktopSettings", () => {
+     }),
+   );
+ 
++  it.effect("defaults the renderer cache version to null and persists the accepted version", () =>
++    withSettings(
++      Effect.gen(function* () {
++        const settings = yield* DesktopAppSettings.DesktopAppSettings;
++        assert.isNull((yield* settings.load).rendererCacheVersion);
++        assert.isTrue((yield* settings.setRendererCacheVersion("0.0.18")).changed);
++        assert.equal((yield* settings.load).rendererCacheVersion, "0.0.18");
++        assert.isFalse((yield* settings.setRendererCacheVersion("0.0.18")).changed);
++      }),
++    ),
++  );
++
+   it.effect(
+     "persists disabling and re-enabling local execution without clearing backend settings",
+     () =>
+@@ -179,6 +191,7 @@ describe("DesktopSettings", () => {
+         );
+ 
+         assert.deepEqual(yield* settings.load, {
++          rendererCacheVersion: null,
+           linuxPasswordStore: "auto",
+           localEnvironmentEnabled: true,
+           mainWindowBounds: { x: 120, y: 80, width: 1280, height: 900 },
+@@ -310,6 +323,7 @@ describe("DesktopSettings", () => {
+         });
+ 
+         assert.deepEqual(yield* settings.load, {
++          rendererCacheVersion: null,
+           linuxPasswordStore: "auto",
+           localEnvironmentEnabled: true,
+           mainWindowBounds: null,
+@@ -339,6 +353,7 @@ describe("DesktopSettings", () => {
+         });
+ 
+         assert.deepEqual(yield* settings.load, {
++          rendererCacheVersion: null,
+           linuxPasswordStore: "auto",
+           localEnvironmentEnabled: true,
+           mainWindowBounds: null,
+diff --git a/apps/desktop/src/settings/DesktopAppSettings.ts b/apps/desktop/src/settings/DesktopAppSettings.ts
+index 4c2ae8d1d1342ced219f17af1c97683574821ef8..08aad05f36c5a392381af4fa561b37184054c66c 100644
+--- a/apps/desktop/src/settings/DesktopAppSettings.ts
++++ b/apps/desktop/src/settings/DesktopAppSettings.ts
+@@ -26,6 +26,7 @@ import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
+ import { isValidDistroName } from "../wsl/wslPathParsing.ts";
+ 
+ export interface DesktopSettings {
++  readonly rendererCacheVersion: string | null;
+   readonly localEnvironmentEnabled: boolean;
+   readonly linuxPasswordStore: LinuxPasswordStorePreference;
+   readonly mainWindowBounds: DesktopWindowBounds | null;
+@@ -67,6 +68,7 @@ export const DEFAULT_MAIN_WINDOW_SIZE = {
+ } as const;
+ 
+ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
++  rendererCacheVersion: null,
+   localEnvironmentEnabled: true,
+   linuxPasswordStore: DEFAULT_LINUX_PASSWORD_STORE,
+   mainWindowBounds: null,
+@@ -89,6 +91,7 @@ const DesktopWindowBoundsDocument = Schema.Struct({
+ });
+ 
+ const DesktopSettingsDocument = Schema.Struct({
++  rendererCacheVersion: Schema.optionalKey(Schema.NullOr(Schema.String)),
+   localEnvironmentEnabled: Schema.optionalKey(Schema.Boolean),
+   linuxPasswordStore: Schema.optionalKey(Schema.Unknown),
+   mainWindowBounds: Schema.optionalKey(Schema.NullOr(DesktopWindowBoundsDocument)),
+@@ -146,6 +149,9 @@ export class DesktopAppSettings extends Context.Service<
+   {
+     readonly load: Effect.Effect<DesktopSettings>;
+     readonly get: Effect.Effect<DesktopSettings>;
++    readonly setRendererCacheVersion: (
++      version: string,
++    ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
+     readonly setLocalEnvironmentEnabled: (
+       enabled: boolean,
+     ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
+@@ -218,6 +224,7 @@ function normalizeDesktopSettingsDocument(
+     (parsed.wslBackendEnabled === undefined && parsed.wslMode === "wsl");
+ 
+   return {
++    rendererCacheVersion: parsed.rendererCacheVersion ?? null,
+     localEnvironmentEnabled: parsed.localEnvironmentEnabled !== false,
+     linuxPasswordStore: normalizeLinuxPasswordStorePreference(parsed.linuxPasswordStore),
+     mainWindowBounds,
+@@ -242,6 +249,10 @@ function toDesktopSettingsDocument(
+ ): DesktopSettingsDocument {
+   const document: Mutable<DesktopSettingsDocument> = {};
+ 
++  if (settings.rendererCacheVersion !== defaults.rendererCacheVersion) {
++    document.rendererCacheVersion = settings.rendererCacheVersion;
++  }
++
+   if (settings.localEnvironmentEnabled !== defaults.localEnvironmentEnabled) {
+     document.localEnvironmentEnabled = settings.localEnvironmentEnabled;
+   }
+@@ -283,6 +294,12 @@ function toDesktopSettingsDocument(
+   return document;
+ }
+ 
++function setRendererCacheVersion(settings: DesktopSettings, version: string): DesktopSettings {
++  return settings.rendererCacheVersion === version
++    ? settings
++    : { ...settings, rendererCacheVersion: version };
++}
++
+ function setServerExposureMode(
+   settings: DesktopSettings,
+   requestedMode: DesktopServerExposureMode,
+@@ -510,6 +527,12 @@ export const make = Effect.gen(function* () {
+ 
+   return DesktopAppSettings.of({
+     get: SynchronizedRef.get(settingsRef),
++    setRendererCacheVersion: Effect.fn("desktop.settings.setRendererCacheVersion")(
++      function* (version) {
++        yield* Effect.annotateCurrentSpan({ version });
++        return yield* persist((settings) => setRendererCacheVersion(settings, version));
++      },
++    ),
+     load: Effect.gen(function* () {
+       const settings = yield* readSettings(
+         fileSystem,
+@@ -599,6 +622,11 @@ export const layerTest = (initialSettings: DesktopSettings = DEFAULT_DESKTOP_SET
+       return DesktopAppSettings.of({
+         get: SynchronizedRef.get(settingsRef),
+         load: SynchronizedRef.get(settingsRef),
++        setRendererCacheVersion: Effect.fn("DesktopAppSettings.setRendererCacheVersion")(
++          function (version) {
++            return update((settings) => setRendererCacheVersion(settings, version));
++          },
++        ),
+         setMainWindowBounds: Effect.fn("DesktopAppSettings.setMainWindowBounds")(
+           function (bounds, isMaximized) {
+             return update((settings) => setMainWindowBounds(settings, bounds, isMaximized));
+diff --git a/apps/desktop/src/updates/updatesTestHarness.ts b/apps/desktop/src/updates/updatesTestHarness.ts
+index 02f0c94c0585fedbc7d131a26701a04b8a85a1ab..b80b56b29a853d6ccaf7c5ea6afd61d3aad7a539 100644
+--- a/apps/desktop/src/updates/updatesTestHarness.ts
++++ b/apps/desktop/src/updates/updatesTestHarness.ts
+@@ -220,6 +220,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+       ? Layer.succeed(DesktopAppSettings.DesktopAppSettings, {
+           get: Effect.sync(() => testSettings),
+           load: Effect.sync(() => testSettings),
++          setRendererCacheVersion: () => Effect.die("unexpected renderer cache version update"),
+           setMainWindowBounds: () => Effect.die("unexpected main window bounds update"),
+           setServerExposureMode: () => Effect.die("unexpected server exposure update"),
+           setTailscaleServe: () => Effect.die("unexpected Tailscale Serve update"),
+diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
+index 3e461303556ab72ae710c612735327c8562341f5..be5a26166cfc51ca69d186756b2c1e2a31b1dcee 100644
+--- a/apps/desktop/src/window/DesktopWindow.test.ts
++++ b/apps/desktop/src/window/DesktopWindow.test.ts
+@@ -243,6 +243,7 @@ function layerTest(input: {
+   const layerDesktopAppSettings = Layer.succeed(DesktopAppSettings.DesktopAppSettings, {
+     get: Effect.sync(() => desktopSettings),
+     load: Effect.sync(() => desktopSettings),
++    setRendererCacheVersion: () => Effect.die("unexpected renderer cache version update"),
+     setMainWindowBounds: (bounds, isMaximized) =>
+       Effect.gen(function* () {
+         if (input.beforeMainWindowBoundsUpdate) {
