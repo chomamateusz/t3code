@@ -608,12 +608,19 @@ jobs:
           security set-keychain-settings -lut 3600 "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
           security import "$identity" -k "$keychain" -f pkcs12 -P "$STACK_MACOS_CERT_PASSWORD" -T /usr/bin/codesign
-          rm -f "$identity"
           if ! security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null; then
             echo "::error title=macOS signing::The .p12 in STACK_MACOS_CERT_P12_BASE64 put no private key into the keychain. Certificates it did import:" >&2
             security find-certificate -a -Z "$keychain" | grep -E '^SHA-1 hash:|"labl"' >&2 || echo "none" >&2
+            echo "What the decoded secret is, $(wc -c < "$identity" | tr -d ' ') bytes:" >&2
+            if (( $(LC_ALL=C tr -d '[:print:][:space:]' < "$identity" | wc -c) == 0 )); then
+              echo "plain text, not a binary .p12 (encoded twice, a PEM file, or other clipboard content)" >&2
+            fi
+            { /usr/bin/openssl pkcs12 -in "$identity" -passin env:STACK_MACOS_CERT_PASSWORD -noout -info 2>&1 || true; } \
+              | grep -E '^(MAC|Mac verify error|PKCS7 |Certificate bag|Shrouded Keybag|Key bag|Safe Contents bag|Error outputting)' >&2 \
+              || echo "not a PKCS#12 file that openssl can read" >&2
             exit 1
           fi
+          rm -f "$identity"
           search_list=("$keychain")
           while IFS= read -r entry; do
             entry=${entry#"${entry%%[![:space:]]*}"}

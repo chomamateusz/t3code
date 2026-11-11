@@ -101,6 +101,10 @@ describe("the workflow's signing step", () => {
     expect(run.result.status).toBe(1);
     expect(run.result.stderr).toContain("put no private key into the keychain");
     expect(run.result.stderr).toContain(`SHA-1 hash: ${leaf.toUpperCase()}`);
+    expect(run.result.stderr).toContain(`What the decoded secret is, ${p12Bytes.length} bytes:`);
+    expect(run.result.stderr).toContain("plain text, not a binary .p12");
+    expect(run.result.stderr).toContain("not a PKCS#12 file that openssl can read");
+    expect(run.result.stderr).not.toContain("export-password");
     expect(run.calls.some((call) => call.startsWith("codesign"))).toBe(false);
     expect(run.calls.at(-1)).toStartWith("security delete-keychain");
     expect(existsSync(run.work)).toBe(false);
