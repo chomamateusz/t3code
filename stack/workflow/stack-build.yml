@@ -558,6 +558,7 @@ jobs:
     timeout-minutes: 20
     env:
       SIGNING_CONFIG: local-stack/stack/ci/macos-signing.json
+      SIGNING_CERT: local-stack/stack/ci/macos-signing-cert.pem
     steps:
       - name: Check out the stack branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -593,34 +594,36 @@ jobs:
           [[ "$leaf" =~ ^[0-9a-f]{40}$ ]]
           work="$RUNNER_TEMP/stack-signing"
           keychain="$work/signing.keychain-db"
+          secret="$work/secret.p12"
           identity="$work/identity.p12"
           umask 077
           mkdir "$work"
-          keychain_password=$(openssl rand -hex 24)
+          keychain_password=$(/usr/bin/openssl rand -hex 24)
           echo "::add-mask::$keychain_password"
           trap 'security delete-keychain "$keychain" 2>/dev/null || true; rm -rf "$work"' EXIT
-          printf '%s' "$STACK_MACOS_CERT_P12_BASE64" | tr -d '[:space:]' | base64 --decode > "$identity"
-          if (( $(wc -c < "$identity") < 1024 )); then
-            echo "::error title=macOS signing::STACK_MACOS_CERT_P12_BASE64 decodes to less than 1 kB, too small for a .p12 with a certificate and its key. Set it again from the base64 of the .p12, and check the two secrets are not swapped." >&2
+          printf '%s' "$STACK_MACOS_CERT_P12_BASE64" | tr -d '[:space:]' | base64 --decode > "$secret"
+          if (( $(wc -c < "$secret") < 1024 )); then
+            echo "::error title=macOS signing::STACK_MACOS_CERT_P12_BASE64 decodes to less than 1 kB, too small for a .p12 with a private key. Set it again from the base64 of the .p12, and check the two secrets are not swapped." >&2
             exit 1
           fi
+          # A Keychain Access export of the key alone carries no certificate, and security imports nothing from it.
+          # The system openssl writes the old .p12 ciphers that security reads.
+          if ! /usr/bin/openssl pkcs12 -in "$secret" -passin env:STACK_MACOS_CERT_PASSWORD -nocerts -nodes \
+            | P12_PASSWORD="$keychain_password" /usr/bin/openssl pkcs12 -export -inkey /dev/stdin -in "$SIGNING_CERT" -passout env:P12_PASSWORD -out "$identity"; then
+            echo "::error title=macOS signing::STACK_MACOS_CERT_P12_BASE64 is not a .p12 that STACK_MACOS_CERT_PASSWORD opens, or its private key does not belong to the signing certificate." >&2
+            exit 1
+          fi
+          rm -f "$secret"
           security create-keychain -p "$keychain_password" "$keychain"
           security set-keychain-settings -lut 3600 "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
-          security import "$identity" -k "$keychain" -f pkcs12 -P "$STACK_MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security import "$identity" -k "$keychain" -f pkcs12 -P "$keychain_password" -T /usr/bin/codesign
+          rm -f "$identity"
           if ! security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null; then
-            echo "::error title=macOS signing::The .p12 in STACK_MACOS_CERT_P12_BASE64 put no private key into the keychain. Certificates it did import:" >&2
+            echo "::error title=macOS signing::The signing identity put no private key into the keychain. Certificates it did import:" >&2
             security find-certificate -a -Z "$keychain" | grep -E '^SHA-1 hash:|"labl"' >&2 || echo "none" >&2
-            echo "What the decoded secret is, $(wc -c < "$identity" | tr -d ' ') bytes:" >&2
-            if (( $(LC_ALL=C tr -d '[:print:][:space:]' < "$identity" | wc -c) == 0 )); then
-              echo "plain text, not a binary .p12 (encoded twice, a PEM file, or other clipboard content)" >&2
-            fi
-            { /usr/bin/openssl pkcs12 -in "$identity" -passin env:STACK_MACOS_CERT_PASSWORD -noout -info 2>&1 || true; } \
-              | grep -E '^(MAC|Mac verify error|PKCS7 |Certificate bag|Shrouded Keybag|Key bag|Safe Contents bag|Error outputting)' >&2 \
-              || echo "not a PKCS#12 file that openssl can read" >&2
             exit 1
           fi
-          rm -f "$identity"
           search_list=("$keychain")
           while IFS= read -r entry; do
             entry=${entry#"${entry%%[![:space:]]*}"}
