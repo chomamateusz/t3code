@@ -7,7 +7,8 @@
     { "name": "retained transcript history", "pattern": "const hasRetainedHistory = fileCache\\s*\\.entries\\(\\)" },
     { "name": "deleted transcript aggregation", "pattern": "retainedFiles\\.push\\(\\{" },
     { "name": "usage cache import floor", "pattern": "SPEED_COMPATIBLE_SINCE_VERSION = 4;" },
-    { "name": "terminal origin environment", "pattern": "originEnvironmentId: [\\w$]+\\.originEnvironmentId \\?\\? null" }
+    { "name": "terminal origin environment", "pattern": "originEnvironmentId: [\\w$]+\\.originEnvironmentId \\?\\? null" },
+    { "name": "queued run merge command", "pattern": "queued-run\\.merge" }
   ],
   "serverAbsent": ["CACHE_RETENTION_DAYS"],
   "web": [
@@ -29,6 +30,7 @@
     { "name": "mark read from sidebar card", "pattern": "Mark read\\b" },
     { "name": "reorder within project group", "pattern": "projectFolder:[$\\w]+\\.group\\.projectKey" },
     { "name": "new terminal on another machine", "pattern": "New Terminal on…" },
-    { "name": "new terminal machine menu", "pattern": "New terminal on" }
+    { "name": "new terminal machine menu", "pattern": "New terminal on" },
+    { "name": "send all queued as one", "pattern": "Send all as one" }
   ]
 }

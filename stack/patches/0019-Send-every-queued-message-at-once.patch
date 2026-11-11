@@ -1,0 +1,2016 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mateusz Choma <chomamateusz@gmail.com>
+Date: Tue, 10 Nov 2026 15:32:41 +0100
+Subject: =?UTF-8?q?=F0=9F=93=A4=20Send=20every=20queued=20message=20at=20o?=
+ =?UTF-8?q?nce?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Upstream PR pingdotgg/t3code#34005 (branch feat/queue-send-all, 8a3911e583,
+600af973b8, 7e554681ce, 1cc1223dea), squashed.
+
+Behaviours:
+- With two or more queued messages the queue footer shows two actions next to
+  the "Show all N queued" toggle (the toggle still appears only when the list
+  is collapsible): "Send one by one" (ghost) and "Send all as one" (outline,
+  arrow-up icon). Each sits in a tooltip that says what it will do or why it
+  is disabled. A single queued message shows neither.
+- Send all as one dispatches a new server command, queued-run.merge, with the
+  queued run ids in delivery order (at least two). The server folds the queue
+  into its first message: texts joined by blank lines in order, attachments
+  and context records moved onto the first message, and the other queued runs
+  cancelled. On success the client sends the first run through the existing
+  send-now path: resume when the thread is stopped, promote-to-steer into the
+  running turn otherwise. A failed merge sends nothing.
+- Merging keeps an "Ultrathink:" prefix once at the top when any part has it,
+  drops attachment-only bootstrap prompts from the body and restores the
+  bootstrap prompt when the merged message has attachments but no text.
+- The server rejects a merge, leaving the queue as it was, with the reason as
+  the command's rejection cause when: a run id is not queued ("Run <id> is not
+  queued."), the ids are not a contiguous slice of the delivery queue in order
+  (a message queued, moved or removed since the client looked, or a queued
+  notification between them: "The queue changed. Review it and try again."),
+  a part is a guest's message, a message from an agent or automation
+  (non-user creator, scheduled task, sender thread, idle compaction, workflow
+  script, delegated completion, notification), a slash command, a
+  fresh-session message, a plan or continuation message, or uses another model
+  than the first; parts share an attachment; the attachments exceed the
+  provider limit; two parts carry different context records with the same id;
+  the combined context exceeds the record limit, or exceeds the serialized
+  context limit the event store enforces ("Queued messages carry too much
+  context to send as one.", instead of a generic failure at commit).
+  Delegated-completion runs are not part of the queue the command sees.
+- Send all as one is disabled with a reason while a queued message is edited
+  or saving, while another queue action runs, when the environment does not
+  advertise queuedRunMerge in its server config ("Update this environment to
+  send queued messages as one."), when a notification waits between the user's
+  queued messages ("A notification is waiting between these messages."), when
+  the messages cannot be combined (the server's reasons above), or when the
+  running turn cannot take a message ("The current turn can't take messages
+  right now."). On agents that steer by restarting the turn it stays enabled,
+  so the whole queue costs one restart. During a compaction it skips the
+  compaction.
+- Send one by one resumes the whole queue when the thread is stopped (one
+  resume command), or promotes each queued message into the running turn in
+  order and stops at the first failure. It is disabled with a reason when the
+  turn cannot take messages, during a compaction ("Send them as one to skip
+  the compaction."), on agents that restart their turn for every steer ("This
+  agent restarts its turn for every message. Send them as one instead."), and
+  when a queued message cannot join the running turn as it is (fresh session,
+  slash command, another model than the running turn, or attachments the
+  provider does not accept while steering).
+- Queue actions run one at a time: a single in-flight guard and busy run id
+  cover Send now, Send all as one and Send one by one.
+- A new keybinding command thread.sendQueuedMessagesAsOne ("Queue: Send All
+  Queued as One Message" in Keybindings settings, no default shortcut) sends
+  all as one from the chat view; the tooltip shows its shortcut when bound. It
+  does nothing on a draft route or when the action is disabled.
+- The server advertises queuedRunMerge: true in its config, counts the command
+  as the queue.merge feature in telemetry, and rejects a merge of a queued
+  guest message like an edit of one.
+- isSlashCommandText moves into @t3tools/shared/model and is reused by the
+  Claude ultrathink prefix and by the queue checks.
+- The composer and keybindings user guides describe both actions, when Send
+  all as one is unavailable, and the new keybinding.
+
+Files:
+apps/server:
+- apps/server/src/orchestration-v2/GuestShare.test.ts
+- apps/server/src/orchestration-v2/Orchestrator.ts
+- apps/server/src/orchestration-v2/runtimeLayer.test.ts
+- apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
+- apps/server/src/telemetry/FeatureUsage.ts
+- apps/server/src/ws.ts
+apps/web:
+- apps/web/src/components/ChatView.tsx
+- apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx
+- apps/web/src/components/chat/QueuedRunsControl.tsx
+- apps/web/src/components/settings/KeybindingsSettings.logic.ts
+packages/client-runtime:
+- packages/client-runtime/src/operations/commands.ts
+- packages/client-runtime/src/state/threadCommands.ts
+- packages/client-runtime/src/state/threadWorkflows.test.ts
+- packages/client-runtime/src/state/threadWorkflows.ts
+packages/contracts:
+- packages/contracts/src/keybindings.ts
+- packages/contracts/src/orchestrationV2.ts
+- packages/contracts/src/server.ts
+packages/shared:
+- packages/shared/package.json
+- packages/shared/src/model.ts
+- packages/shared/src/queuedMessageMerge.ts
+docs:
+- docs/user/composer.md
+- docs/user/keybindings.md
+
+Tests:
+- apps/server/src/orchestration-v2/runtimeLayer.test.ts: a merge case queues
+  three messages behind an active run (two sharing an image context record,
+  two images), rejects a reordered, skipping, unknown-run and active-run merge
+  with their causes, merges all three into "First\n\nSecond\n\nThird" with
+  both attachments and deduplicated context, cancels the other two, rejects a
+  second merge of a cancelled run, and delivers the merged message once the
+  active run completes. A second case refuses a merge across a queued
+  notification and leaves runs and messages unchanged. A table refuses an
+  agent's, an automation's and a notification message, conflicting context,
+  context over the serialized limit, a command, a fresh-session message and
+  another model, each with its cause and an unchanged queue.
+- apps/server/src/orchestration-v2/GuestShare.test.ts: the queued guest
+  message case also rejects merging it with the owner's queued message and
+  keeps the owner's run queued.
+- packages/client-runtime/src/state/threadWorkflows.test.ts: a table derives
+  the Send all as one and Send one by one reasons for a steerable turn, a
+  restart-steering agent, model and attachment mismatches, compaction,
+  notifications before, between and after the user's messages, a stopped
+  thread, a turn not yet steerable, guest, agent, command, fresh-session,
+  plan and other-model messages, and attachments the turn cannot take.
+- apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx: Send all as
+  one merges then steers into a running turn or resumes a stopped thread;
+  sends nothing when the merge fails; Send one by one steers in order and
+  stops at the first failure, or resumes the whole stopped queue with one
+  command; both actions are limited while editing, while saving and when the
+  server would refuse, and Send all as one when the environment does not
+  advertise or disables merging (with its tooltip); a single queued message
+  shows no actions.
+---
+ .../src/orchestration-v2/GuestShare.test.ts   |  33 +-
+ .../src/orchestration-v2/Orchestrator.ts      | 173 +++++++---
+ .../src/orchestration-v2/runtimeLayer.test.ts | 304 ++++++++++++++++++
+ .../testkit/OrchestratorScenario.ts           |   1 +
+ apps/server/src/telemetry/FeatureUsage.ts     |   1 +
+ apps/server/src/ws.ts                         |   1 +
+ apps/web/src/components/ChatView.tsx          |   7 +
+ .../chat/QueuedRunsControl.browser.test.tsx   | 189 ++++++++++-
+ .../src/components/chat/QueuedRunsControl.tsx | 163 ++++++++--
+ .../settings/KeybindingsSettings.logic.ts     |   1 +
+ docs/user/composer.md                         |   9 +
+ docs/user/keybindings.md                      |   3 +-
+ .../client-runtime/src/operations/commands.ts |  15 +
+ .../src/state/threadCommands.ts               |   7 +
+ .../src/state/threadWorkflows.test.ts         | 200 ++++++++++++
+ .../src/state/threadWorkflows.ts              | 115 +++++--
+ packages/contracts/src/keybindings.ts         |   1 +
+ packages/contracts/src/orchestrationV2.ts     |   7 +
+ packages/contracts/src/server.ts              |   1 +
+ packages/shared/package.json                  |   4 +
+ packages/shared/src/model.ts                  |   9 +-
+ packages/shared/src/queuedMessageMerge.ts     | 139 ++++++++
+ 22 files changed, 1287 insertions(+), 96 deletions(-)
+ create mode 100644 packages/shared/src/queuedMessageMerge.ts
+
+diff --git a/apps/server/src/orchestration-v2/GuestShare.test.ts b/apps/server/src/orchestration-v2/GuestShare.test.ts
+index d789b206016b69362be53c9b633683eeadc5f52b..6ed5f1cce494e8d106b1028befd8ce3519577b2a 100644
+--- a/apps/server/src/orchestration-v2/GuestShare.test.ts
++++ b/apps/server/src/orchestration-v2/GuestShare.test.ts
+@@ -186,7 +186,7 @@ it.effect("drops guest attribution that a client sends on its own message", () =
+   }).pipe(Effect.provide(layerTest)),
+ );
+ 
+-it.effect("keeps a queued guest message unchanged when the owner tries to edit it", () =>
++it.effect("keeps a queued guest message unchanged when the owner tries to edit or merge it", () =>
+   Effect.gen(function* () {
+     const orchestrator = yield* setup;
+     const projections = yield* ProjectionStore.ProjectionStoreV2;
+@@ -241,10 +241,39 @@ it.effect("keeps a queued guest message unchanged when the owner tries to edit i
+       text: "My own words",
+     });
+     assert.isTrue(Exit.isFailure(yield* Effect.exit(edit)));
+-    const message = (yield* projections.getThreadProjection(threadId)).messages.find(
++    yield* orchestrator.dispatch({
++      type: "message.dispatch",
++      commandId: CommandId.make("owner-queued"),
++      threadId,
++      messageId: MessageId.make("owner-queued"),
++      text: "And mine",
++      attachments: [],
++      dispatchMode: { type: "queue_after_active" },
++      createdBy: "user",
++      creationSource: "web",
++    });
++    const ownQueued = (yield* projections.getThreadProjection(threadId)).runs.find(
++      (run) => run.userMessageId === MessageId.make("owner-queued"),
++    );
++    assert.isDefined(ownQueued);
++    const mergeError = yield* Effect.flip(
++      orchestrator.dispatch({
++        type: "queued-run.merge",
++        commandId: CommandId.make("merge"),
++        threadId,
++        runIds: [queued.id, ownQueued.id],
++      }),
++    );
++    assert.deepInclude(mergeError, {
++      _tag: "OrchestratorCommandRejectedError",
++      cause: "A guest's message can't be combined with others.",
++    });
++    const after = yield* projections.getThreadProjection(threadId);
++    const message = after.messages.find(
+       (candidate) => candidate.id === MessageId.make("send-queued"),
+     );
+     assert.equal(message?.context?.guest?.text, "Why?");
++    assert.equal(after.runs.find((run) => run.id === ownQueued.id)?.status, "queued");
+   }).pipe(Effect.provide(layerTest)),
+ );
+ 
+diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
+index 7af71e48d67eae161ae9f6c8c905e466840b150d..171f6286405e75f40ab353e5f571ca71c1500bf9 100644
+--- a/apps/server/src/orchestration-v2/Orchestrator.ts
++++ b/apps/server/src/orchestration-v2/Orchestrator.ts
+@@ -28,6 +28,7 @@ import {
+   isOrchestrationV2WorkActive,
+   isProviderNativeSubagentThread,
+   MessageId,
++  OrchestrationMessageContext,
+   type NodeId,
+   type ModelSelection,
+   OrchestrationV2Command,
+@@ -80,6 +81,7 @@ import {
+ import { modelSelectionsEqual } from "@t3tools/shared/model";
+ import { modelSwitchSince } from "./modelSwitch.ts";
+ import { recordThreadOpen } from "@t3tools/shared/paletteSearch";
++import { mergeQueuedMessages } from "@t3tools/shared/queuedMessageMerge";
+ import {
+   backgroundWorkHoldsCompletion,
+   derivePendingBackgroundWork,
+@@ -195,6 +197,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
+ import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+ import * as ServerSettings from "../serverSettings.ts";
+ 
++const encodeMessageContext = Schema.encodeUnknownEffect(OrchestrationMessageContext);
+ const isMessageQuestionAnswer = Schema.is(
+   Schema.Union([TrimmedNonEmptyString, Schema.NonEmptyArray(TrimmedNonEmptyString)]),
+ );
+@@ -641,6 +644,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
+     case "queued-run.reorder":
+     case "queued-run.cancel":
+     case "queued-run.edit":
++    case "queued-run.merge":
+     case "runtime-request.respond":
+     case "runtime-request.delivery.fail":
+     case "thread.user-input.dismiss":
+@@ -10636,48 +10640,142 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+       { text: command.text, attachments: command.attachments ?? queuedMessage.attachments },
+       queuedRun.providerInstanceId,
+     );
+-    const queuedTurnItem = projection.turnItems.find(
+-      (candidate) => candidate.type === "user_message" && candidate.messageId === queuedMessage.id,
+-    );
+-
+-    const now = yield* DateTime.now;
+-    const emitEvent = emit(events, command);
+-    const editedAttachments =
+-      command.attachments === undefined ? {} : { attachments: command.attachments };
+-    yield* emitEvent({
+-      type: "message.updated",
+-      threadId: command.threadId,
+-      runId: queuedRun.id,
+-      ...(queuedRun.rootNodeId === null ? {} : { nodeId: queuedRun.rootNodeId }),
+-      providerInstanceId: queuedRun.providerInstanceId,
+-      occurredAt: now,
+-      payload: withoutGuestAttribution({
+-        ...queuedMessage,
++    yield* emitQueuedMessageRewrite({
++      command,
++      events,
++      projection,
++      run: queuedRun,
++      message: queuedMessage,
++      rewrite: {
+         text: command.text,
+-        ...editedAttachments,
++        ...(command.attachments === undefined ? {} : { attachments: command.attachments }),
+         ...(command.context ? { context: command.context } : {}),
+-        updatedAt: now,
+-      }),
++      },
+     });
+-    if (queuedTurnItem !== undefined && queuedTurnItem.type === "user_message") {
+-      yield* emitEvent({
+-        type: "turn-item.updated",
+-        threadId: command.threadId,
+-        runId: queuedRun.id,
+-        ...(queuedRun.rootNodeId === null ? {} : { nodeId: queuedRun.rootNodeId }),
+-        providerInstanceId: queuedRun.providerInstanceId,
+-        occurredAt: now,
+-        payload: withoutGuestAttribution({
+-          ...queuedTurnItem,
+-          text: command.text,
+-          ...editedAttachments,
+-          ...(command.context ? { context: command.context } : {}),
+-          updatedAt: now,
+-        }),
++  });
++
++  const dispatchQueuedRunMerge = Effect.fn("Orchestrator.dispatchQueuedRunMerge")(function* (
++    command: Extract<OrchestrationV2Command, { readonly type: "queued-run.merge" }>,
++    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
++  ) {
++    const projection = yield* loadProjectionForCommand(
++      command,
++      ["runs", "messages", "nodes", "attempts", "turnItems"],
++      { turnItemTypes: ["user_message"], messageRoles: ["user"] },
++    );
++    const queue = queuedRunsInDeliveryOrder(projection).filter(
++      (run) =>
++        !projection.messages.some(
++          (message) =>
++            message.id === run.userMessageId && message.delegatedCompletion !== undefined,
++        ),
++    );
++    const missingRunId = command.runIds.find((runId) => !queue.some((run) => run.id === runId));
++    if (missingRunId !== undefined) {
++      return yield* new OrchestratorDispatchError({
++        commandId: command.commandId,
++        commandType: command.type,
++        cause: `Run ${missingRunId} is not queued.`,
++      });
++    }
++    const start = queue.findIndex((run) => run.id === command.runIds[0]);
++    const runs = queue.slice(start, start + command.runIds.length);
++    // A message queued, moved, or removed since the client looked must not be folded in or skipped.
++    if (
++      runs.length !== command.runIds.length ||
++      runs.some((run, index) => run.id !== command.runIds[index])
++    ) {
++      return yield* new OrchestratorDispatchError({
++        commandId: command.commandId,
++        commandType: command.type,
++        cause: "The queue changed. Review it and try again.",
++      });
++    }
++    const parts = runs.map((run) => ({
++      run,
++      message: projection.messages.find((message) => message.id === run.userMessageId),
++    }));
++    const merged = mergeQueuedMessages(parts);
++    const [survivor, ...absorbed] = parts;
++    if (merged._tag === "Blocked" || survivor?.message === undefined) {
++      return yield* new OrchestratorDispatchError({
++        commandId: command.commandId,
++        commandType: command.type,
++        cause: merged._tag === "Blocked" ? merged.reason : "The queued message was not found.",
+       });
+     }
++    if (merged.context !== undefined) {
++      // Past its serialized limit the context fails the event store's encoding with no reason.
++      yield* encodeMessageContext(merged.context).pipe(
++        Effect.mapError(
++          () =>
++            new OrchestratorDispatchError({
++              commandId: command.commandId,
++              commandType: command.type,
++              cause: "Queued messages carry too much context to send as one.",
++            }),
++        ),
++      );
++    }
++    yield* emitQueuedMessageRewrite({
++      command,
++      events,
++      projection,
++      run: survivor.run,
++      message: survivor.message,
++      rewrite: {
++        text: merged.text,
++        attachments: merged.attachments,
++        ...(merged.context ? { context: merged.context } : {}),
++      },
++    });
++    const now = yield* DateTime.now;
++    yield* Effect.forEach(
++      absorbed,
++      ({ run }) => emitQueuedRunCancellation({ command, events, projection, run, now }),
++      { concurrency: 1, discard: true },
++    );
+   });
+ 
++  const emitQueuedMessageRewrite = Effect.fn("Orchestrator.emitQueuedMessageRewrite")(
++    function* (input: {
++      readonly command: OrchestrationV2ServerCommand;
++      readonly events: Ref.Ref<Array<OrchestrationV2DomainEvent>>;
++      readonly projection: Pick<OrchestrationV2ThreadProjection, "turnItems">;
++      readonly run: OrchestrationV2Run;
++      readonly message: OrchestrationV2ConversationMessage;
++      readonly rewrite: Pick<OrchestrationV2ConversationMessage, "text"> &
++        Partial<Pick<OrchestrationV2ConversationMessage, "attachments" | "context">>;
++    }) {
++      const { run, message, rewrite } = input;
++      const turnItem = input.projection.turnItems.find(
++        (candidate) => candidate.type === "user_message" && candidate.messageId === message.id,
++      );
++      const now = yield* DateTime.now;
++      const emitEvent = emit(input.events, input.command);
++      yield* emitEvent({
++        type: "message.updated",
++        threadId: run.threadId,
++        runId: run.id,
++        ...(run.rootNodeId === null ? {} : { nodeId: run.rootNodeId }),
++        providerInstanceId: run.providerInstanceId,
++        occurredAt: now,
++        payload: withoutGuestAttribution({ ...message, ...rewrite, updatedAt: now }),
++      });
++      if (turnItem !== undefined && turnItem.type === "user_message") {
++        yield* emitEvent({
++          type: "turn-item.updated",
++          threadId: run.threadId,
++          runId: run.id,
++          ...(run.rootNodeId === null ? {} : { nodeId: run.rootNodeId }),
++          providerInstanceId: run.providerInstanceId,
++          occurredAt: now,
++          payload: withoutGuestAttribution({ ...turnItem, ...rewrite, updatedAt: now }),
++        });
++      }
++    },
++  );
++
+   const subagentCount = (threadId: ThreadId) =>
+     projectionStore
+       .getSubagentCount(threadId)
+@@ -14067,6 +14165,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+       case "queued-run.edit":
+         yield* dispatchQueuedRunEdit(command, events);
+         break;
++      case "queued-run.merge":
++        yield* dispatchQueuedRunMerge(command, events);
++        break;
+       case "checkpoint.rollback":
+         yield* dispatchCheckpointRollback(command, events, effects);
+         break;
+@@ -14281,7 +14382,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+               ),
+             );
+           if (
+-            command.type === "queued-run.edit" &&
++            (command.type === "queued-run.edit" || command.type === "queued-run.merge") &&
+             receipt.status === "rejected" &&
+             cause._tag === "OrchestratorDispatchError"
+           ) {
+diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
+index 9cce2d21a85ffd8083f4180c4b845bb426c1da15..1250d22d12e65694b8f1dc269e73cb2a492e25d9 100644
+--- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
++++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
+@@ -10,6 +10,8 @@ import { assert, it } from "@effect/vitest";
+ import { vi } from "vite-plus/test";
+ import {
+   type ApplicationStoredEvent,
++  ChatAttachmentId,
++  ComposerContextId,
+   CheckpointId,
+   CheckpointRef,
+   CommandId,
+@@ -20,6 +22,7 @@ import {
+   RuntimeRequestId,
+   TurnItemId,
+   type ModelSelection,
++  type OrchestrationV2Command,
+   type OrchestrationV2Run,
+   type OrchestrationV2ShellSnapshot,
+   type OrchestrationV2RuntimeRequest,
+@@ -8223,6 +8226,307 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+       assert.equal(cancelAgainError._tag, "OrchestratorDispatchError");
+     }),
+   );
++
++  const queueBehindActiveRun = (
++    threadId: ThreadId,
++    queued: ReadonlyArray<
++      Partial<Extract<OrchestrationV2Command, { readonly type: "message.dispatch" }>>
++    >,
++  ) =>
++    Effect.gen(function* () {
++      const orchestrator = yield* Orchestrator.OrchestratorV2;
++      yield* orchestrator.dispatch({
++        type: "thread.create",
++        createdBy: "user",
++        creationSource: "web",
++        commandId: CommandId.make(`${threadId}:create`),
++        threadId,
++        projectId: ProjectId.make(`${threadId}:project`),
++        title: "Merge queued work",
++        modelSelection,
++        runtimeMode: "full-access",
++        interactionMode: "default",
++        branch: null,
++        worktreePath: process.cwd(),
++      });
++      for (const [index, fields] of [{ text: "Active" }, ...queued].entries()) {
++        yield* orchestrator.dispatch({
++          type: "message.dispatch",
++          createdBy: "user",
++          creationSource: "web",
++          commandId: CommandId.make(`${threadId}:message:${index}`),
++          threadId,
++          messageId: MessageId.make(`${threadId}:message:${index}`),
++          text: `Message ${index}`,
++          attachments: [],
++          modelSelection,
++          dispatchMode: { type: index === 0 ? "start_immediately" : "queue_after_active" },
++          ...fields,
++        });
++      }
++      const projection = yield* orchestrator.getThreadProjection(threadId);
++      const merge = (id: string, runIds: ReadonlyArray<RunId>) =>
++        orchestrator.dispatch({
++          type: "queued-run.merge",
++          commandId: CommandId.make(`${threadId}:merge:${id}`),
++          threadId,
++          runIds,
++        });
++      return {
++        orchestrator,
++        merge,
++        active: projection.runs[0]!,
++        queued: projection.runs.filter((run) => run.status === "queued"),
++      };
++    });
++
++  it.effect("merges queued runs into the first, moving their attachments and context", () =>
++    Effect.gen(function* () {
++      const threadId = ThreadId.make("runtime-layer-queued-merge");
++      const image = (id: string) => ({
++        attachments: [
++          {
++            type: "image" as const,
++            id: ChatAttachmentId.make(id),
++            name: `${id}.png`,
++            mimeType: "image/png",
++            sizeBytes: 64,
++          },
++        ],
++        context: {
++          version: 1 as const,
++          records: [
++            {
++              version: 1 as const,
++              kind: "image" as const,
++              contextId: ComposerContextId.make(`image_${id}`),
++              label: `${id}.png`,
++              attachmentId: id,
++              name: `${id}.png`,
++              mimeType: "image/png",
++              sizeBytes: 64,
++            },
++          ],
++        },
++      });
++      const { orchestrator, merge, active, queued } = yield* queueBehindActiveRun(threadId, [
++        { text: "First", ...image("merge-a") },
++        { text: "Second", context: image("merge-a").context },
++        { text: "Third", ...image("merge-b") },
++      ]);
++      const [first, second, third] = queued;
++      assert.isDefined(first);
++      assert.isDefined(second);
++      assert.isDefined(third);
++
++      for (const [id, runIds, cause] of [
++        ["reordered", [second.id, first.id], "The queue changed. Review it and try again."],
++        ["skipping", [first.id, third.id], "The queue changed. Review it and try again."],
++        ["unknown", [first.id, RunId.make("run:missing")], "Run run:missing is not queued."],
++        ["active", [active.id, first.id], `Run ${active.id} is not queued.`],
++      ] as const) {
++        assert.deepInclude(yield* Effect.flip(merge(id, runIds)), {
++          _tag: "OrchestratorCommandRejectedError",
++          cause,
++        });
++      }
++
++      yield* merge("all", [first.id, second.id, third.id]);
++      const merged = yield* orchestrator.getThreadProjection(threadId);
++      const message = merged.messages.find((candidate) => candidate.id === first.userMessageId);
++      assert.equal(message?.text, "First\n\nSecond\n\nThird");
++      assert.deepEqual(
++        message?.attachments.map((attachment) => attachment.id),
++        ["merge-a", "merge-b"],
++      );
++      assert.deepEqual(
++        message?.context?.records.map((record) => record.contextId),
++        ["image_merge-a", "image_merge-b"],
++      );
++      assert.deepEqual(
++        merged.runs.filter((run) => run.status === "queued").map((run) => run.id),
++        [first.id],
++      );
++      assert.deepEqual(
++        [second, third].map((run) => merged.runs.find((row) => row.id === run.id)?.status),
++        ["cancelled", "cancelled"],
++      );
++      assert.deepInclude(yield* Effect.flip(merge("again", [first.id, second.id])), {
++        _tag: "OrchestratorCommandRejectedError",
++        cause: `Run ${second.id} is not queued.`,
++      });
++
++      const now = yield* DateTime.now;
++      yield* (yield* EventSink.EventSinkV2).write({
++        events: [
++          {
++            id: EventId.make(`${threadId}:active-done`),
++            type: "run.updated",
++            threadId,
++            runId: active.id,
++            occurredAt: now,
++            payload: { ...active, status: "completed", completedAt: now },
++          },
++        ],
++      });
++      yield* orchestrator.resumeQueuedRuns;
++      const delivered = yield* orchestrator.getThreadProjection(threadId);
++      assert.equal(delivered.runs.find((run) => run.id === first.id)?.status, "starting");
++      assert.equal(
++        delivered.messages.find((candidate) => candidate.id === first.userMessageId)?.text,
++        "First\n\nSecond\n\nThird",
++      );
++    }),
++  );
++
++  it.effect("refuses to merge across a queued notification without changing the queue", () =>
++    Effect.gen(function* () {
++      const threadId = ThreadId.make("runtime-layer-queued-merge-notification-gap");
++      const { orchestrator, merge, queued } = yield* queueBehindActiveRun(threadId, [
++        { text: "First" },
++        {
++          createdBy: "agent",
++          creationSource: "provider",
++          notification: { source: { kind: "monitor" }, outcome: "updated", summary: "PR update" },
++        },
++        { text: "Third" },
++      ]);
++      const [first, , third] = queued;
++      assert.isDefined(first);
++      assert.isDefined(third);
++      const before = yield* orchestrator.getThreadProjection(threadId);
++      assert.deepInclude(yield* Effect.flip(merge("notification-gap", [first.id, third.id])), {
++        _tag: "OrchestratorCommandRejectedError",
++        cause: "The queue changed. Review it and try again.",
++      });
++      const after = yield* orchestrator.getThreadProjection(threadId);
++      assert.deepEqual(after.runs, before.runs);
++      assert.deepEqual(after.messages, before.messages);
++    }),
++  );
++
++  // Each fits one message; two together pass the serialized context limit.
++  const bulkyAnnotationContext = (prefix: string) => ({
++    version: 1 as const,
++    records: Array.from({ length: 3 }, (_, index) => ({
++      version: 1 as const,
++      kind: "preview-annotation" as const,
++      contextId: ComposerContextId.make(`${prefix}-${index}`),
++      label: "Annotation",
++      annotationId: `${prefix}-${index}`,
++      pageUrl: "http://localhost/",
++      pageTitle: null,
++      comment: "",
++      targetSummary: "body",
++      styleChanges: [],
++      styleChangeDetails: Array.from({ length: 200 }, () => ({
++        targetId: "body",
++        selector: null,
++        property: "background",
++        previousValue: "a".repeat(8_000),
++        value: "b".repeat(8_000),
++      })),
++    })),
++  });
++
++  it.effect.each([
++    [
++      "an agent's message",
++      {
++        createdBy: "agent",
++        creationSource: "provider",
++        senderThreadId: ThreadId.make("runtime-layer-queued-merge-sender"),
++      },
++      "Messages from agents and automations are sent on their own.",
++    ],
++    [
++      "an automation's message",
++      { scheduledTaskId: ScheduledTaskId.make("runtime-layer-queued-merge-task") },
++      "Messages from agents and automations are sent on their own.",
++    ],
++    [
++      "a notification",
++      {
++        createdBy: "agent",
++        creationSource: "provider",
++        notification: { source: { kind: "monitor" }, outcome: "updated", summary: "PR update" },
++      },
++      "Messages from agents and automations are sent on their own.",
++    ],
++    [
++      "conflicting context",
++      {
++        context: {
++          version: 1,
++          records: [
++            {
++              version: 1,
++              kind: "mention",
++              contextId: ComposerContextId.make("shared"),
++              label: "File",
++              path: "second.ts",
++            },
++          ],
++        },
++      },
++      "Queued messages have conflicting context.",
++      {
++        context: {
++          version: 1,
++          records: [
++            {
++              version: 1,
++              kind: "mention",
++              contextId: ComposerContextId.make("shared"),
++              label: "File",
++              path: "first.ts",
++            },
++          ],
++        },
++      },
++    ],
++    [
++      "more context than one message can carry",
++      { context: bulkyAnnotationContext("second") },
++      "Queued messages carry too much context to send as one.",
++      { context: bulkyAnnotationContext("first") },
++    ],
++    ["a command", { text: "/review" }, "Commands are sent on their own."],
++    [
++      "a fresh-session message",
++      { freshContext: true },
++      "A message that starts a fresh session is sent on its own.",
++    ],
++    [
++      "another model",
++      { modelSelection: { ...modelSelection, model: "gpt-5.5" } },
++      "Queued messages use different models.",
++    ],
++  ] as const)(
++    "refuses to merge %s and leaves the queue as it was",
++    ([name, fields, cause, firstFields]) =>
++      Effect.gen(function* () {
++        const threadId = ThreadId.make(
++          `runtime-layer-queued-merge-refused-${name.replace(/\W+/g, "-")}`,
++        );
++        const { orchestrator, merge, queued } = yield* queueBehindActiveRun(threadId, [
++          { text: "Mine", ...firstFields },
++          fields,
++        ]);
++        const [first, second] = queued;
++        assert.isDefined(first);
++        assert.isDefined(second);
++        const before = yield* orchestrator.getThreadProjection(threadId);
++
++        assert.deepInclude(yield* Effect.flip(merge("refused", [first.id, second.id])), {
++          _tag: "OrchestratorCommandRejectedError",
++          cause: cause ?? `Run ${second.id} is not queued.`,
++        });
++        const after = yield* orchestrator.getThreadProjection(threadId);
++        assert.deepEqual(after.runs, before.runs);
++        assert.deepEqual(after.messages, before.messages);
++      }),
++  );
+ });
+ 
+ it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (it) => {
+diff --git a/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts b/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
+index b413c0aefa2595d18e158385e26e8f95aa708f62..5221ad2e26488ad35f6eb869a75e32b9e77d75a3 100644
+--- a/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
++++ b/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
+@@ -179,6 +179,7 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
+     case "queued-run.reorder":
+     case "queued-run.cancel":
+     case "queued-run.edit":
++    case "queued-run.merge":
+     case "runtime-request.respond":
+     case "thread.user-input.dismiss":
+     case "checkpoint.rollback":
+diff --git a/apps/server/src/telemetry/FeatureUsage.ts b/apps/server/src/telemetry/FeatureUsage.ts
+index 61fb57ada454ed0b1a9a309eb066ff03db841f86..33aa46863d0b7f36613f6f8b959933e73fa467f9 100644
+--- a/apps/server/src/telemetry/FeatureUsage.ts
++++ b/apps/server/src/telemetry/FeatureUsage.ts
+@@ -44,6 +44,7 @@ const COMMAND_FEATURES: {
+   "run.interrupt": () => ({ feature: "run.interrupt" }),
+   "queued-message.promote-to-steer": () => ({ feature: "queue.steer" }),
+   "queued-run.edit": () => ({ feature: "queue.edit" }),
++  "queued-run.merge": () => ({ feature: "queue.merge" }),
+   "thread.guest-share.close": () => ({ feature: "guest_share.close" }),
+   "thread.guest-message.dismiss": () => ({ feature: "guest_message.dismiss" }),
+ };
+diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
+index f80a177e3191ec79d5dc62e43f1d584cce4cd61b..3d675e4f61ca6ace451da9746cc955425e37af78 100644
+--- a/apps/server/src/ws.ts
++++ b/apps/server/src/ws.ts
+@@ -1844,6 +1844,7 @@ export const layerWsRpc = (
+           threadSnapshotPagination: true,
+           threadFind: true,
+           threadFindProgressive: true,
++          queuedRunMerge: true,
+           secretProviderSettings: true,
+           secretReferences: true,
+           secretRequestReferences: true,
+diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
+index a14d24c947b35bc4aef7957c856d917eb7d49bff..758d5164f57dd64e3be3c376a40b830af97053b7 100644
+--- a/apps/web/src/components/ChatView.tsx
++++ b/apps/web/src/components/ChatView.tsx
+@@ -2734,6 +2734,8 @@ export default function ChatView(props: ChatViewProps) {
+         routeKind !== "draft" &&
+         composerRef.current?.isCaretAtStart() === true &&
+         queuedRunsControlRef.current?.editLatest(event.repeat) === true,
++      "thread.sendQueuedMessagesAsOne": ({ event }) =>
++        routeKind !== "draft" && queuedRunsControlRef.current?.sendAllAsOne(event.repeat) === true,
+       "thread.stop": ({ event }) => {
+         if (!canInterruptRunningThread) return false;
+         if (!event.repeat) void onInterruptStable();
+@@ -3009,6 +3011,11 @@ export default function ChatView(props: ChatViewProps) {
+           editShortcutLabel={shortcutLabelForCommand(keybindings, "thread.editQueuedMessage", {
+             context: { composerFocus: true },
+           })}
++          sendAllAsOneShortcutLabel={shortcutLabelForCommand(
++            keybindings,
++            "thread.sendQueuedMessagesAsOne",
++            { context: { terminalFocus: false } },
++          )}
+           environmentId={activeThread.environmentId}
+           threadId={activeThread.id}
+           optimisticMessages={optimisticUserMessages}
+diff --git a/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx b/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx
+index 7e25e84135ba5ad51bea8a65b745ab5729bf037a..2477ce4c04b92032a10276067feb9e61fd9cd3de 100644
+--- a/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx
++++ b/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx
+@@ -1,13 +1,16 @@
+ import { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
+ import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
+ import * as DateTime from "effect/DateTime";
+-import type { ComponentProps } from "react";
++import { createRef, type ComponentProps } from "react";
+ import { expect, it, vi } from "vite-plus/test";
+-import { page } from "vite-plus/test/browser";
++import { page, userEvent } from "vite-plus/test/browser";
+ 
+ const state = vi.hoisted(() => ({
+   projection: null as unknown,
+   workflow: null as unknown,
++  queuedRunMerge: true as boolean | undefined,
++  commands: [] as Array<readonly [string, unknown]>,
++  results: [] as Array<"Success" | "Failure">,
+ }));
+ 
+ vi.mock(import("@t3tools/client-runtime/state/thread-workflows"), async (importOriginal) => ({
+@@ -22,6 +25,11 @@ vi.mock(import("../../state/entities"), async (importOriginal) => ({
+     target === null ? null : { title: "Release lead" }) as never,
+ }));
+ 
++vi.mock(import("../../state/environments"), async (importOriginal) => ({
++  ...(await importOriginal()),
++  useEnvironment: (() => ({ serverConfig: { queuedRunMerge: state.queuedRunMerge } })) as never,
++}));
++
+ vi.mock(import("../../state/query"), async (importOriginal) => ({
+   ...(await importOriginal()),
+   useEnvironmentQuery: (() => ({
+@@ -31,7 +39,10 @@ vi.mock(import("../../state/query"), async (importOriginal) => ({
+ 
+ vi.mock(import("../../state/use-atom-command"), async (importOriginal) => ({
+   ...(await importOriginal()),
+-  useAtomCommand: (() => async () => undefined) as never,
++  useAtomCommand: ((command: { readonly label: string }) => async (value: unknown) => {
++    state.commands.push([command.label.split(":").at(-1) ?? command.label, value]);
++    return { _tag: state.results.shift() ?? "Success" };
++  }) as never,
+ }));
+ 
+ vi.mock(import("../../assets/assetUrls"), async (importOriginal) => ({
+@@ -42,11 +53,14 @@ vi.mock(import("../../assets/assetUrls"), async (importOriginal) => ({
+ 
+ import "~/index.css";
+ import { render as renderUi } from "../../../test/render";
+-import { QueuedRunsControl } from "./QueuedRunsControl";
++import { QueuedRunsControl, type QueuedRunsControlHandle } from "./QueuedRunsControl";
+ 
+ function setup() {
+   state.projection = null;
+   state.workflow = null;
++  state.queuedRunMerge = true;
++  state.commands = [];
++  state.results = [];
+ }
+ 
+ const baseProps = {
+@@ -203,3 +217,170 @@ it("stays inside the timeline scroller instead of growing the chat column", asyn
+   const column = screen.getByTestId("column").element();
+   expect(column.scrollHeight).toBe(column.clientHeight);
+ });
++
++function queueOfTwo(workflow: Record<string, unknown>) {
++  state.projection = { projection: { messages: [] } };
++  state.workflow = {
++    activeRun: { id: "run:active" },
++    canSendNow: false,
++    canPromoteToSteer: true,
++    sendAsOneBlockedReason: null,
++    sendEachBlockedReason: null,
++    queuedRuns: ["run:first", "run:second"].map((runId) => ({
++      run: { id: runId, userMessageId: `${runId}:message` },
++      text: runId,
++      attachments: [],
++    })),
++    ...workflow,
++  };
++}
++
++const sendAllAsOne = () => page.getByRole("button", { name: "Send all as one" });
++const sendOneByOne = () => page.getByRole("button", { name: "Send one by one" });
++
++it.each([
++  {
++    name: "steers the combined message into the running turn",
++    workflow: {},
++    send: ["promote-queued-run", { queuedRunId: "run:first", targetRunId: "run:active" }],
++  },
++  {
++    name: "starts a turn with the combined message when the thread is stopped",
++    workflow: { activeRun: null, canSendNow: true, canPromoteToSteer: false },
++    send: ["resume-queue", { runId: "run:first" }],
++  },
++] as const)("$name", async ({ workflow, send }) => {
++  setup();
++  queueOfTwo(workflow);
++  await using _screen = await renderQueue();
++
++  await sendAllAsOne().click();
++  await vi.waitFor(() => expect(state.commands).toHaveLength(2));
++  expect(state.commands).toEqual([
++    [
++      "merge-queued-runs",
++      expect.objectContaining({
++        input: expect.objectContaining({ runIds: ["run:first", "run:second"] }),
++      }),
++    ],
++    [send[0], expect.objectContaining({ input: expect.objectContaining(send[1]) })],
++  ]);
++});
++
++it("sends nothing when combining fails", async () => {
++  setup();
++  queueOfTwo({});
++  state.results = ["Failure"];
++  await using _screen = await renderQueue();
++
++  await sendAllAsOne().click();
++  await expect.element(sendAllAsOne()).toBeEnabled();
++  expect(state.commands.map(([command]) => command)).toEqual(["merge-queued-runs"]);
++});
++
++it("steers queued messages one by one and stops at the first failure", async () => {
++  setup();
++  queueOfTwo({});
++  state.results = ["Failure"];
++  await using _screen = await renderQueue();
++
++  await sendOneByOne().click();
++  await expect.element(sendOneByOne()).toBeEnabled();
++  expect(state.commands).toEqual([
++    [
++      "promote-queued-run",
++      expect.objectContaining({ input: expect.objectContaining({ queuedRunId: "run:first" }) }),
++    ],
++  ]);
++
++  state.commands = [];
++  await sendOneByOne().click();
++  await vi.waitFor(() => expect(state.commands).toHaveLength(2));
++  expect(
++    state.commands.map(
++      ([, value]) => (value as { input: { queuedRunId: string } }).input.queuedRunId,
++    ),
++  ).toEqual(["run:first", "run:second"]);
++});
++
++it("resumes the whole queue one by one when the thread is stopped", async () => {
++  setup();
++  queueOfTwo({ activeRun: null, canSendNow: true, canPromoteToSteer: false });
++  await using _screen = await renderQueue();
++
++  await sendOneByOne().click();
++  await vi.waitFor(() => expect(state.commands).toHaveLength(1));
++  expect(state.commands).toEqual([
++    ["resume-queue", { environmentId: "environment:test", input: { threadId: "thread:test" } }],
++  ]);
++});
++
++it.each<{
++  readonly name: string;
++  readonly props: Partial<ComponentProps<typeof QueuedRunsControl>>;
++  readonly workflow: Record<string, unknown>;
++  readonly queuedRunMerge?: false | "missing";
++}>([
++  {
++    name: "while a queued message is edited",
++    props: { editingRunId: "run:second" as never },
++    workflow: {},
++  },
++  {
++    name: "while a queued message is saving",
++    props: {
++      optimisticMessages: [
++        { id: "message:saving" as never, inputIntent: "queued_turn", text: "Saving" },
++      ],
++    },
++    workflow: {},
++  },
++  {
++    name: "when the server would refuse",
++    props: {},
++    workflow: { sendAsOneBlockedReason: "No", sendEachBlockedReason: "No" },
++  },
++  {
++    name: "when the environment does not advertise merging",
++    props: {},
++    workflow: {},
++    queuedRunMerge: "missing",
++  },
++  {
++    name: "when the environment disables merging",
++    props: {},
++    workflow: {},
++    queuedRunMerge: false,
++  },
++])("limits queue actions $name", async ({ props, workflow, queuedRunMerge }) => {
++  setup();
++  queueOfTwo(workflow);
++  if (queuedRunMerge !== undefined)
++    state.queuedRunMerge = queuedRunMerge === "missing" ? undefined : false;
++  const ref = createRef<QueuedRunsControlHandle>();
++  await using _screen = await renderQueue({ ...props, ref });
++
++  await expect.element(sendAllAsOne()).toBeDisabled();
++  expect(ref.current?.sendAllAsOne(false)).toBe(false);
++  expect(state.commands).toEqual([]);
++  if (queuedRunMerge === undefined) {
++    await expect.element(sendOneByOne()).toBeDisabled();
++  } else {
++    await expect.element(sendOneByOne()).toBeEnabled();
++    await userEvent.hover(sendAllAsOne().element().parentElement!);
++    await expect
++      .element(page.getByText("Update this environment to send queued messages as one."))
++      .toBeVisible();
++  }
++});
++
++it("shows no queue actions for a single queued message", async () => {
++  setup();
++  queueOfTwo({});
++  const workflow = state.workflow as { queuedRuns: ReadonlyArray<unknown> };
++  state.workflow = { ...workflow, queuedRuns: workflow.queuedRuns.slice(0, 1) };
++  await using _screen = await renderQueue();
++
++  await expect.element(page.getByText("run:first", { exact: true })).toBeVisible();
++  await expect.element(sendAllAsOne()).not.toBeInTheDocument();
++});
+diff --git a/apps/web/src/components/chat/QueuedRunsControl.tsx b/apps/web/src/components/chat/QueuedRunsControl.tsx
+index 2b2cfa78dce2bfffc68ee34c8ec74e12b08c2248..97042956f751c3b66b6b5290cc29d721694fc1b0 100644
+--- a/apps/web/src/components/chat/QueuedRunsControl.tsx
++++ b/apps/web/src/components/chat/QueuedRunsControl.tsx
+@@ -28,6 +28,7 @@ import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref
+ 
+ import { useAssetUrls } from "../../assets/assetUrls";
+ import { threadEnvironment } from "../../state/threads";
++import { useEnvironment } from "../../state/environments";
+ import { useQuietThreadShell, useThreadProjection } from "../../state/entities";
+ import { useAtomCommand } from "../../state/use-atom-command";
+ import { isImageAttachment, type ChatMessage } from "../../types";
+@@ -58,6 +59,7 @@ const QUEUE_VISIBLE_ROWS = 3;
+ export interface QueuedRunsControlHandle {
+   steerNext: (repeat: boolean) => boolean;
+   editLatest: (repeat: boolean) => boolean;
++  sendAllAsOne: (repeat: boolean) => boolean;
+ }
+ 
+ type ThreadQueueProjection = Parameters<typeof deriveThreadQueueWorkflowState>[0];
+@@ -80,6 +82,7 @@ export function QueuedRunsControl({
+   readonly ref?: Ref<QueuedRunsControlHandle>;
+   readonly steerShortcutLabel?: string | null;
+   readonly editShortcutLabel?: string | null;
++  readonly sendAllAsOneShortcutLabel?: string | null;
+   readonly environmentId: EnvironmentId;
+   readonly threadId: ThreadId;
+   readonly optimisticMessages: ReadonlyArray<
+@@ -96,9 +99,12 @@ export function QueuedRunsControl({
+   const projection = useThreadProjection(
+     scopeThreadRef(props.environmentId, props.threadId),
+   )?.projection;
++  const supportsQueuedRunMerge =
++    useEnvironment(props.environmentId)?.serverConfig?.queuedRunMerge === true;
+   const promote = useAtomCommand(threadEnvironment.promoteQueuedRun);
+   const resume = useAtomCommand(threadEnvironment.resumeThreadQueue);
+   const cancel = useAtomCommand(threadEnvironment.cancelQueuedRun);
++  const merge = useAtomCommand(threadEnvironment.mergeQueuedRuns);
+   const [showAll, setShowAll] = useState(false);
+   const queueListId = useId();
+   const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
+@@ -169,28 +175,85 @@ export function QueuedRunsControl({
+     })),
+   ];
+ 
+-  const sendQueuedMessage = async (queuedRunId: RunId) => {
+-    const freshContext = queued.some(
+-      ({ run }) => run.id === queuedRunId && run.freshContext === true,
+-    );
+-    if (!canSendRun(freshContext) || steerInFlightRef.current) return;
+-    steerInFlightRef.current = true;
+-    setBusyRunId(queuedRunId);
++  const sendNow = async (queuedRunId: RunId) => {
+     if (workflow?.canSendNow) {
+-      await resume({
++      return resume({
+         environmentId: props.environmentId,
+         input: { threadId: props.threadId, runId: queuedRunId },
+       });
+-    } else if (activeRun !== null) {
+-      await promote({
++    }
++    if (activeRun !== null) {
++      return promote({
+         environmentId: props.environmentId,
+         input: { threadId: props.threadId, queuedRunId, targetRunId: activeRun.id },
+       });
+     }
++    return null;
++  };
++
++  const runQueueAction = async (busyRun: RunId, action: () => Promise<void>) => {
++    steerInFlightRef.current = true;
++    setBusyRunId(busyRun);
++    await action();
+     steerInFlightRef.current = false;
+     setBusyRunId(null);
+   };
+ 
++  const sendQueuedMessage = async (queuedRunId: RunId) => {
++    const freshContext = queued.some(
++      ({ run }) => run.id === queuedRunId && run.freshContext === true,
++    );
++    if (!canSendRun(freshContext) || steerInFlightRef.current) return;
++    await runQueueAction(queuedRunId, async () => {
++      await sendNow(queuedRunId);
++    });
++  };
++
++  const queueActionBlockedReason =
++    props.editingRunId !== null
++      ? "Finish editing the queued message first."
++      : optimisticQueued.length > 0
++        ? "Wait for queued messages to save."
++        : busyRunId !== null
++          ? "Another queue action is still running."
++          : null;
++  const sendAllAsOneBlockedReason =
++    queueActionBlockedReason ??
++    (!supportsQueuedRunMerge ? "Update this environment to send queued messages as one." : null) ??
++    workflow?.sendAsOneBlockedReason ??
++    null;
++  const sendEachBlockedReason = queueActionBlockedReason ?? workflow?.sendEachBlockedReason ?? null;
++  const queuedRunIds = queued.map(({ run }) => run.id);
++
++  const sendAllAsOne = async () => {
++    const [survivor] = queuedRunIds;
++    if (survivor === undefined || sendAllAsOneBlockedReason !== null || steerInFlightRef.current) {
++      return;
++    }
++    await runQueueAction(survivor, async () => {
++      const merged = await merge({
++        environmentId: props.environmentId,
++        input: { threadId: props.threadId, runIds: queuedRunIds },
++      });
++      if (merged._tag === "Success") await sendNow(survivor);
++    });
++  };
++
++  const sendEach = async () => {
++    const [first] = queuedRunIds;
++    if (first === undefined || sendEachBlockedReason !== null || steerInFlightRef.current) return;
++    await runQueueAction(first, async () => {
++      if (workflow?.canSendNow) {
++        await resume({ environmentId: props.environmentId, input: { threadId: props.threadId } });
++        return;
++      }
++      for (const queuedRunId of queuedRunIds) {
++        const sent = await sendNow(queuedRunId);
++        if (sent?._tag !== "Success") return;
++      }
++    });
++  };
++
+   useImperativeHandle(ref, () => ({
+     steerNext(repeat) {
+       const next = queued[0];
+@@ -221,6 +284,11 @@ export function QueuedRunsControl({
+       }
+       return true;
+     },
++    sendAllAsOne(repeat) {
++      if (queued.length < 2 || sendAllAsOneBlockedReason !== null) return false;
++      if (!repeat) void sendAllAsOne();
++      return true;
++    },
+   }));
+ 
+   if (items.length === 0) return null;
+@@ -376,25 +444,62 @@ export function QueuedRunsControl({
+           );
+         })}
+       </ol>
+-      {collapsible ? (
+-        <div className="self-end pe-1 text-xs pointer-coarse:[&_[data-slot=inline-button]]:relative pointer-coarse:[&_[data-slot=inline-button]]:after:absolute pointer-coarse:[&_[data-slot=inline-button]]:after:-inset-x-1.5 pointer-coarse:[&_[data-slot=inline-button]]:after:-inset-y-3.5">
+-          <InlineButton
+-            tone="muted"
+-            aria-expanded={showAll}
+-            aria-controls={queueListId}
+-            // Keep the composer focused; keyboard activation still works.
+-            onPointerDown={(event) => event.preventDefault()}
+-            onClick={() => setShowAll((value) => !value)}
+-          >
+-            {showAll ? "Show fewer" : `Show all ${items.length} queued`}
+-            <ChevronDownIcon
+-              aria-hidden
+-              className={cn(
+-                "size-3.5 transition-transform duration-150 motion-reduce:transition-none",
+-                showAll && "rotate-180",
+-              )}
+-            />
+-          </InlineButton>
++      {items.length >= 2 ? (
++        <div className="flex items-center gap-1.5 self-end pe-1 text-xs pointer-coarse:[&_[data-slot=inline-button]]:relative pointer-coarse:[&_[data-slot=inline-button]]:after:absolute pointer-coarse:[&_[data-slot=inline-button]]:after:-inset-x-1.5 pointer-coarse:[&_[data-slot=inline-button]]:after:-inset-y-3.5">
++          {collapsible ? (
++            <InlineButton
++              tone="muted"
++              aria-expanded={showAll}
++              aria-controls={queueListId}
++              // Keep the composer focused; keyboard activation still works.
++              onPointerDown={(event) => event.preventDefault()}
++              onClick={() => setShowAll((value) => !value)}
++            >
++              {showAll ? "Show fewer" : `Show all ${items.length} queued`}
++              <ChevronDownIcon
++                aria-hidden
++                className={cn(
++                  "size-3.5 transition-transform duration-150 motion-reduce:transition-none",
++                  showAll && "rotate-180",
++                )}
++              />
++            </InlineButton>
++          ) : null}
++          <Tooltip>
++            <TooltipTrigger render={<span className="flex shrink-0" />}>
++              <Button
++                size="xs"
++                variant="ghost-muted"
++                disabled={sendEachBlockedReason !== null}
++                onClick={() => void sendEach()}
++              >
++                Send one by one
++              </Button>
++            </TooltipTrigger>
++            <TooltipPopup>
++              {sendEachBlockedReason ??
++                (workflow?.canSendNow
++                  ? "Start a turn for each message, in order"
++                  : "Send each message into the current turn, in order")}
++            </TooltipPopup>
++          </Tooltip>
++          <Tooltip>
++            <TooltipTrigger render={<span className="flex shrink-0" />}>
++              <Button
++                size="xs"
++                variant="outline"
++                disabled={sendAllAsOneBlockedReason !== null}
++                onClick={() => void sendAllAsOne()}
++              >
++                <ArrowUpIcon />
++                Send all as one
++              </Button>
++            </TooltipTrigger>
++            <TooltipPopup>
++              {sendAllAsOneBlockedReason ??
++                `${workflow?.canSendNow ? "Combine them into one message and start a turn" : workflow?.promoteSkipsCompaction ? "Combine them into one message and skip compaction" : "Combine them into one message and send it into the current turn"}${props.sendAllAsOneShortcutLabel ? ` (${props.sendAllAsOneShortcutLabel})` : ""}`}
++            </TooltipPopup>
++          </Tooltip>
+         </div>
+       ) : null}
+     </section>
+diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
+index 2db7f50b0b1289ff8a3859214782b614f3016129..21df321eaad7ebe1f5dc89da6f3a0316777c8aa5 100644
+--- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
++++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
+@@ -379,6 +379,7 @@ export function commandLabel(command: KeybindingCommand): string {
+   if (command === "composer.dictation") return "Composer: Start or Finish Dictation";
+   if (command === "thread.steerQueuedMessage") return "Queue: Send First Queued Message";
+   if (command === "thread.editQueuedMessage") return "Queue: Edit Last Queued Message";
++  if (command === "thread.sendQueuedMessagesAsOne") return "Queue: Send All Queued as One Message";
+   if (command === "thread.copyReference") return "Pull Request: Copy Link or Thread";
+   const usageMetric = METRIC_OPTIONS.find((option) => option.command === command);
+   if (usageMetric) return `Usage: ${usageMetric.label}`;
+diff --git a/docs/user/composer.md b/docs/user/composer.md
+index cc0f2a17f9367981ecefd4fb352ac1cd7bc473e2..db0e639fc8b025280a734b7205a35ce09846f4e9 100644
+--- a/docs/user/composer.md
++++ b/docs/user/composer.md
+@@ -87,6 +87,15 @@ Press `Option+Up` on macOS or `Alt+Up` on Windows and Linux with the cursor at t
+ start of the composer to edit the most recently queued message. Change
+ `thread.editQueuedMessage` to use another shortcut.
+ 
++With two or more queued messages, **Send all as one** below the queue combines them,
++in order, into one message and sends it now: into the running turn, or as a new turn
++when the thread is stopped. **Send all as one** is unavailable if the queue includes
++a guest's, an agent's, or an automation's message, a command such as `/compact`, or
++messages using different models. The tooltip explains why. **Send one by one** sends each
++queued message now, in order; it is not offered during a turn on an agent that
++restarts its turn for every steer. Bind `thread.sendQueuedMessagesAsOne` in
++**Settings → Keybindings** to send all as one from the keyboard.
++
+ Mobile has the same choice under **Settings → Chat**. While a turn is
+ running the send button shows which action it will take. Long-press it to use the
+ other action for a single message. From a hardware keyboard, `Cmd+Return`
+diff --git a/docs/user/keybindings.md b/docs/user/keybindings.md
+index 0449990ee0b2b1bd702422e11efcc6dbef20dbb7..1a72ea1f623d8ff73f3ac72eb8897eba8cab8b07 100644
+--- a/docs/user/keybindings.md
++++ b/docs/user/keybindings.md
+@@ -25,7 +25,8 @@ send shortcut. Click the send button to use the configured follow-up behavior.
+ 
+ When a thread has queued messages, `mod+Shift+Enter` sends the first one as a steer
+ while a turn is running, or as a new turn when the thread is stopped. Change it under
+-**Queue: Send First Queued Message** in Keybindings.
++**Queue: Send First Queued Message** in Keybindings. To send every queued message
++as one, bind **Queue: Send All Queued as One Message**. It has no default shortcut.
+ 
+ Use `mod+shift+m` to choose a model and `mod+shift+h` to choose a host.
+ To step a new thread to the next machine instead of opening the menu, bind
+diff --git a/packages/client-runtime/src/operations/commands.ts b/packages/client-runtime/src/operations/commands.ts
+index f4ece3888ec983b10d1482adecf167002064a6da..bdf970add37014779970d70cfc0015b2e58d7822 100644
+--- a/packages/client-runtime/src/operations/commands.ts
++++ b/packages/client-runtime/src/operations/commands.ts
+@@ -250,6 +250,10 @@ export interface CancelQueuedRunInput extends ThreadCommandInput {
+   readonly runId: RunId;
+ }
+ 
++export interface MergeQueuedRunsInput extends ThreadCommandInput {
++  readonly runIds: ReadonlyArray<RunId>;
++}
++
+ export interface RetryWorkspacePreparationInput extends ThreadCommandInput {
+   readonly runId: RunId;
+ }
+@@ -1066,6 +1070,17 @@ export const cancelQueuedRun = Effect.fn("EnvironmentCommands.cancelQueuedRun")(
+   });
+ });
+ 
++export const mergeQueuedRuns = Effect.fn("EnvironmentCommands.mergeQueuedRuns")(function* (
++  input: MergeQueuedRunsInput,
++) {
++  return yield* dispatch({
++    type: "queued-run.merge",
++    commandId: yield* allocateCommandId(input),
++    threadId: input.threadId,
++    runIds: input.runIds,
++  });
++});
++
+ export const retryWorkspacePreparation = Effect.fn("EnvironmentCommands.retryWorkspacePreparation")(
+   function* (input: RetryWorkspacePreparationInput) {
+     return yield* dispatch({
+diff --git a/packages/client-runtime/src/state/threadCommands.ts b/packages/client-runtime/src/state/threadCommands.ts
+index 3761d0fa6e715ba12235189d6f044e9e021223cf..9020b0920e3f6239a4c690632287b87d400235d5 100644
+--- a/packages/client-runtime/src/state/threadCommands.ts
++++ b/packages/client-runtime/src/state/threadCommands.ts
+@@ -31,6 +31,7 @@ import {
+   forkSideChat,
+   forkThreadFromRun,
+   markThreadUnread,
++  mergeQueuedRuns,
+   mergeThreadBack,
+   promoteQueuedRun,
+   resumeThreadQueue,
+@@ -353,6 +354,12 @@ export function createThreadEnvironmentAtoms<R, E>(
+       scheduler,
+       concurrency,
+     }),
++    mergeQueuedRuns: createEnvironmentCommand(runtime, {
++      label: "environment-data:commands:thread:merge-queued-runs",
++      execute: mergeQueuedRuns,
++      scheduler,
++      concurrency,
++    }),
+     retryWorkspacePreparation: createEnvironmentCommand(runtime, {
+       label: "environment-data:commands:thread:retry-workspace-preparation",
+       execute: retryWorkspacePreparation,
+diff --git a/packages/client-runtime/src/state/threadWorkflows.test.ts b/packages/client-runtime/src/state/threadWorkflows.test.ts
+index 51f4d5a9e46caf8adf24e3289eecda5c9fa4d06a..cb2fd1b4dcb16ed71b446f543e40cdf860a10ea1 100644
+--- a/packages/client-runtime/src/state/threadWorkflows.test.ts
++++ b/packages/client-runtime/src/state/threadWorkflows.test.ts
+@@ -12,6 +12,7 @@ const capabilities = (input?: {
+   readonly queued?: boolean;
+   readonly steer?: boolean;
+   readonly restartSteer?: boolean;
++  readonly steerAttachments?: boolean;
+   readonly nativeFork?: boolean;
+   readonly portableFork?: boolean;
+ }) =>
+@@ -20,6 +21,7 @@ const capabilities = (input?: {
+       supportsQueuedMessages: input?.queued ?? false,
+       supportsActiveSteering: input?.steer ?? false,
+       supportsSteeringByInterruptRestart: input?.restartSteer ?? false,
++      activeSteeringAcceptsAttachments: input?.steerAttachments ?? true,
+     },
+     threads: {
+       canForkThread: input?.nativeFork ?? false,
+@@ -347,6 +349,204 @@ describe("thread workflows", () => {
+     },
+   );
+ 
++  const selection = { instanceId: "codex", model: "gpt-5.4" };
++  const image = { type: "image", id: "image", name: "a.png", mimeType: "image/png", sizeBytes: 8 };
++  const cannotJoin = "Some queued messages can't join the current turn.";
++  it.each([
++    { name: "a steerable turn", asOne: null, each: null },
++    {
++      name: "an agent that restarts to steer",
++      provider: { restartSteer: true },
++      asOne: null,
++      each: "This agent restarts its turn for every message. Send them as one instead.",
++    },
++    {
++      name: "queued messages on a different model from the active turn without restart steering",
++      provider: { restartSupported: false },
++      activeModel: "another-model",
++      asOne: cannotJoin,
++      each: cannotJoin,
++    },
++    {
++      name: "attachments without restart steering",
++      provider: { restartSupported: false, steerAttachments: false },
++      second: { attachments: [image] },
++      asOne: cannotJoin,
++      each: cannotJoin,
++    },
++    {
++      name: "compaction without restart steering",
++      provider: { restartSupported: false, steerAttachments: false },
++      activeMessage: { text: "/compact" },
++      second: { attachments: [image] },
++      asOne: null,
++      each: "Send them as one to skip the compaction.",
++    },
++    {
++      name: "a notification between user messages",
++      notificationPosition: 3,
++      asOne: "A notification is waiting between these messages.",
++      each: null,
++    },
++    {
++      name: "a notification before user messages",
++      notificationPosition: 1,
++      asOne: null,
++      each: null,
++    },
++    {
++      name: "a notification after user messages",
++      notificationPosition: 5,
++      asOne: null,
++      each: null,
++    },
++    { name: "a stopped thread", activeStatus: "completed", asOne: null, each: null },
++    {
++      name: "a turn not yet steerable",
++      activeStatus: "starting",
++      asOne: "The current turn can't take messages right now.",
++      each: "The current turn can't take messages right now.",
++    },
++    {
++      name: "a guest's message",
++      second: { context: { version: 1, records: [], guest: { name: "Sam", text: "Hi" } } },
++      asOne: "A guest's message can't be combined with others.",
++      each: null,
++    },
++    {
++      name: "an agent's message",
++      second: { createdBy: "agent", senderThreadId: "thread:lead" },
++      asOne: "Messages from agents and automations are sent on their own.",
++      each: null,
++    },
++    {
++      name: "a command",
++      second: { text: "/compact" },
++      asOne: "Commands are sent on their own.",
++      each: cannotJoin,
++    },
++    {
++      name: "a fresh-session message",
++      secondRun: { freshContext: true },
++      asOne: "A message that starts a fresh session is sent on its own.",
++      each: cannotJoin,
++    },
++    {
++      name: "a plan implementation",
++      secondRun: { sourcePlanRef: { threadId: "thread", planId: "plan" } },
++      asOne: "Plan and continuation messages are sent on their own.",
++      each: null,
++    },
++    {
++      name: "another model",
++      secondRun: { modelSelection: { ...selection, model: "gpt-5.5" } },
++      asOne: "Queued messages use different models.",
++      each: cannotJoin,
++    },
++    {
++      name: "attachments the turn cannot take",
++      provider: { steerAttachments: false },
++      second: { attachments: [image] },
++      asOne: null,
++      each: cannotJoin,
++    },
++  ] as const)(
++    "offers sending the whole queue for $name",
++    (row: {
++      readonly provider?: {
++        readonly restartSteer?: boolean;
++        readonly restartSupported?: boolean;
++        readonly steerAttachments?: boolean;
++      };
++      readonly activeStatus?: string;
++      readonly activeModel?: string;
++      readonly activeMessage?: Record<string, unknown>;
++      readonly notificationPosition?: number;
++      readonly second?: Record<string, unknown>;
++      readonly secondRun?: Record<string, unknown>;
++      readonly asOne: string | null;
++      readonly each: string | null;
++    }) => {
++      const message = (id: string, fields?: Record<string, unknown>) => ({
++        id,
++        role: "user",
++        text: id,
++        attachments: [],
++        createdBy: "user",
++        creationSource: "web",
++        ...fields,
++      });
++      const queued = (id: string, ordinal: number, fields?: Record<string, unknown>) => ({
++        id,
++        status: "queued",
++        userMessageId: `message-${id}`,
++        modelSelection: selection,
++        ordinal,
++        ...fields,
++      });
++      const state = deriveThreadQueueWorkflowState({
++        thread: { id: "thread", activeProviderThreadId: "provider-thread" },
++        runs: [
++          {
++            id: "active",
++            status: row.activeStatus ?? "running",
++            userMessageId: "message-active",
++            providerThreadId: "provider-thread",
++            activeAttemptId: "attempt-active",
++            modelSelection: { ...selection, model: row.activeModel ?? selection.model },
++            ordinal: 1,
++          },
++          queued("first", 2),
++          queued("second", 4, row.secondRun),
++          ...(row.notificationPosition === undefined
++            ? []
++            : [queued("notification", 5, { queuePosition: row.notificationPosition })]),
++        ],
++        messages: [
++          message("message-active", row.activeMessage),
++          message("message-first"),
++          message("message-second", row.second),
++          ...(row.notificationPosition === undefined
++            ? []
++            : [
++                message("message-notification", {
++                  notification: {
++                    source: { kind: "monitor" },
++                    outcome: "updated",
++                    summary: "PR update",
++                  },
++                }),
++              ]),
++        ],
++        providerTurns: [
++          { id: "provider-turn-active", runAttemptId: "attempt-active", status: "running" },
++        ],
++        providerThreads: [
++          { id: "provider-thread", appThreadId: "thread", providerSessionId: "provider-session" },
++        ],
++        providerSessions: [
++          {
++            id: "provider-session",
++            status: "running",
++            capabilities: capabilities({
++              queued: true,
++              steer: row.provider?.restartSteer !== true,
++              restartSteer: row.provider?.restartSupported ?? true,
++              ...(row.provider?.steerAttachments === undefined
++                ? {}
++                : { steerAttachments: row.provider.steerAttachments }),
++            }),
++          },
++        ],
++      } as never);
++
++      expect([state.sendAsOneBlockedReason, state.sendEachBlockedReason]).toEqual([
++        row.asOne,
++        row.each,
++      ]);
++    },
++  );
++
+   it("allows native, portable, and capability-unknown exact-run forks", () => {
+     const projectedItem = {
+       item: { type: "assistant_message", runId: "run", status: "completed" },
+diff --git a/packages/client-runtime/src/state/threadWorkflows.ts b/packages/client-runtime/src/state/threadWorkflows.ts
+index 0aae5835eff03d78616e7916572d137841b5a27a..11ebd106093b3410b6bf8adea9fa0aa49f67aca9 100644
+--- a/packages/client-runtime/src/state/threadWorkflows.ts
++++ b/packages/client-runtime/src/state/threadWorkflows.ts
+@@ -5,6 +5,8 @@ import {
+   type OrchestrationV2ProviderCapabilities,
+ } from "@t3tools/contracts";
+ import { copySorted } from "@t3tools/shared/Array";
++import { isSlashCommandText, modelSelectionsEqual } from "@t3tools/shared/model";
++import { mergeQueuedMessages } from "@t3tools/shared/queuedMessageMerge";
+ 
+ import type { ThreadStructure } from "./models.ts";
+ 
+@@ -39,8 +41,12 @@ export interface ThreadQueueWorkflowState {
+   /** The active run is a compaction, so promoting a queued message stops it instead of steering. */
+   readonly promoteSkipsCompaction: boolean;
+   readonly canSendNow: boolean;
++  readonly sendAsOneBlockedReason: string | null;
++  readonly sendEachBlockedReason: string | null;
+ }
+ 
++const SEND_NOT_NOW_REASON = "The current turn can't take messages right now.";
++
+ export function resolveActiveThreadRun(projection: Pick<Projection, "runs">): Run | null {
+   return projection.runs.findLast((run) => ACTIVE_RUN_STATUSES.has(run.status)) ?? null;
+ }
+@@ -151,41 +157,106 @@ export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQu
+     projection.providerTurns.some(
+       (turn) => turn.runAttemptId === activeRun.activeAttemptId && turn.status === "running",
+     );
+-  const queuedRuns = copySorted(
+-    getUserQueuedThreadRuns(projection),
++  const deliveryQueue = copySorted(
++    projection.runs.filter(
++      (run) =>
++        run.status === "queued" &&
++        !projection.messages.some(
++          (message) =>
++            message.id === run.userMessageId && message.delegatedCompletion !== undefined,
++        ),
++    ),
+     (left, right) =>
+       (left.queuePosition ?? left.ordinal) - (right.queuePosition ?? right.ordinal) ||
+       left.ordinal - right.ordinal,
+-  ).map((run) => {
+-    const message = projection.messages.find((candidate) => candidate.id === run.userMessageId);
+-    return {
+-      run,
+-      // A queued guest message shows the guest's words; the agent still gets the attributed text.
+-      text: message?.context?.guest?.text ?? message?.text ?? "Queued message",
+-      attachments: message?.attachments ?? [],
+-      messageId: run.userMessageId,
+-      ...(message?.context ? { context: message.context } : {}),
+-      ...(message ? { message } : {}),
+-    };
++  );
++  const userQueuedRunIds = new Set(getUserQueuedThreadRuns(projection).map((run) => run.id));
++  const queuedRuns = deliveryQueue
++    .filter((run) => userQueuedRunIds.has(run.id))
++    .map((run) => {
++      const message = projection.messages.find((candidate) => candidate.id === run.userMessageId);
++      return {
++        run,
++        // A queued guest message shows the guest's words; the agent still gets the attributed text.
++        text: message?.context?.guest?.text ?? message?.text ?? "Queued message",
++        attachments: message?.attachments ?? [],
++        messageId: run.userMessageId,
++        ...(message?.context ? { context: message.context } : {}),
++        ...(message ? { message } : {}),
++      };
++    });
++
++  const canSendNow =
++    activeRun === null &&
++    projection.thread.archivedAt == null &&
++    projection.thread.deletedAt == null;
++  const canPromoteToSteer =
++    promoteSkipsCompaction ||
++    (hasSteerableProviderTurn &&
++      (capabilities?.supportsActiveSteering === true ||
++        capabilities?.supportsSteeringByInterruptRestart === true));
++  const merged = mergeQueuedMessages(queuedRuns);
++  const queueStart = deliveryQueue.findIndex((run) => run.id === queuedRuns[0]?.run.id);
++  const queueIsContiguous = queuedRuns.every(
++    ({ run }, index) => deliveryQueue[queueStart + index]?.id === run.id,
++  );
++  const steerEachBlockedReason = resolveSteerEachBlockedReason({
++    activeRun,
++    queuedRuns,
++    canPromoteToSteer,
++    promoteSkipsCompaction,
++    capabilities,
+   });
+ 
+   return {
+     activeRun,
+     queuedRuns,
+     isHeld: projection.runs.some((run) => run.status === "queued" && run.queueHeld === true),
+-    canSendNow:
+-      activeRun === null &&
+-      projection.thread.archivedAt == null &&
+-      projection.thread.deletedAt == null,
+-    canPromoteToSteer:
+-      promoteSkipsCompaction ||
+-      (hasSteerableProviderTurn &&
+-        (capabilities?.supportsActiveSteering === true ||
+-          capabilities?.supportsSteeringByInterruptRestart === true)),
++    canSendNow,
++    canPromoteToSteer,
+     promoteSkipsCompaction,
++    sendAsOneBlockedReason: !queueIsContiguous
++      ? "A notification is waiting between these messages."
++      : merged._tag === "Blocked"
++        ? merged.reason
++        : canSendNow || promoteSkipsCompaction
++          ? null
++          : !canPromoteToSteer
++            ? SEND_NOT_NOW_REASON
++            : capabilities?.supportsSteeringByInterruptRestart === true
++              ? null
++              : steerEachBlockedReason,
++    sendEachBlockedReason: canSendNow ? null : steerEachBlockedReason,
+   };
+ }
+ 
++/**
++ * The server rejects a steer into a run that a previous steer restarted, so steering a whole
++ * queue in a row only works when each message joins the running turn as it is.
++ */
++function resolveSteerEachBlockedReason(input: {
++  readonly activeRun: Run | null;
++  readonly queuedRuns: ReadonlyArray<QueuedThreadRun>;
++  readonly canPromoteToSteer: boolean;
++  readonly promoteSkipsCompaction: boolean;
++  readonly capabilities: ProviderSession["capabilities"]["turns"] | undefined;
++}): string | null {
++  const { activeRun, capabilities } = input;
++  if (!input.canPromoteToSteer || activeRun === null) return SEND_NOT_NOW_REASON;
++  if (input.promoteSkipsCompaction) return "Send them as one to skip the compaction.";
++  if (capabilities?.supportsActiveSteering !== true) {
++    return "This agent restarts its turn for every message. Send them as one instead.";
++  }
++  const joinsRunningTurn = ({ run, message, attachments }: QueuedThreadRun) =>
++    run.freshContext !== true &&
++    !isSlashCommandText(message?.text ?? "") &&
++    modelSelectionsEqual(run.modelSelection, activeRun.modelSelection) &&
++    (attachments.length === 0 || capabilities.activeSteeringAcceptsAttachments !== false);
++  return input.queuedRuns.every(joinsRunningTurn)
++    ? null
++    : "Some queued messages can't join the current turn.";
++}
++
+ export function canForkProjectedAssistantItem(input: {
+   readonly projectedItem: OrchestrationV2ProjectedTurnItem;
+   readonly capabilities?: OrchestrationV2ProviderCapabilities | undefined;
+diff --git a/packages/contracts/src/keybindings.ts b/packages/contracts/src/keybindings.ts
+index 3338c1a456002625e4bb44e635739e911c873d3e..1ba12aa71f77b27d6674096a39233c5d609b6d10 100644
+--- a/packages/contracts/src/keybindings.ts
++++ b/packages/contracts/src/keybindings.ts
+@@ -38,6 +38,7 @@ const THREAD_KEYBINDING_COMMANDS = [
+   "thread.stop",
+   "thread.steerQueuedMessage",
+   "thread.editQueuedMessage",
++  "thread.sendQueuedMessagesAsOne",
+   "thread.previous",
+   "thread.next",
+   "thread.copyReference",
+diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
+index 915bb37a001a97f0643afd06d6053b597fb7c489..d943e0330de8cf6edc72e57d4318e3d1d346954f 100644
+--- a/packages/contracts/src/orchestrationV2.ts
++++ b/packages/contracts/src/orchestrationV2.ts
+@@ -3333,6 +3333,13 @@ export const OrchestrationV2Command = Schema.Union([
+     // Replaces all attachments; absent preserves them for older clients editing text.
+     attachments: Schema.optional(Schema.Array(ChatAttachment)),
+   }),
++  Schema.Struct({
++    type: Schema.Literal("queued-run.merge"),
++    commandId: CommandId,
++    threadId: ThreadId,
++    // The queue as the client saw it, in delivery order; the first run keeps the combined message.
++    runIds: Schema.Array(RunId).check(Schema.isMinLength(2)),
++  }),
+   Schema.Struct({
+     type: Schema.Literal("runtime-request.respond"),
+     commandId: CommandId,
+diff --git a/packages/contracts/src/server.ts b/packages/contracts/src/server.ts
+index 40a1aa8b2ca86208821f1238ab56f98f96c6d7b8..d21b45ef74759b95dcfff0e2fe937ea523880193 100644
+--- a/packages/contracts/src/server.ts
++++ b/packages/contracts/src/server.ts
+@@ -642,6 +642,7 @@ export const ServerConfig = Schema.Struct({
+   threadSnapshotPagination: Schema.optionalKey(Schema.Boolean),
+   threadFind: Schema.optionalKey(Schema.Boolean),
+   threadFindProgressive: Schema.optionalKey(Schema.Boolean),
++  queuedRunMerge: Schema.optionalKey(Schema.Boolean),
+   /** Settings patches may carry `secretProviders`; older servers drop the key without an error. */
+   secretProviderSettings: Schema.optionalKey(Schema.Boolean),
+   /** Secret settings may point at a secret provider; older servers drop the reference. */
+diff --git a/packages/shared/package.json b/packages/shared/package.json
+index f5f769236f90603b11a33486d9125281e63c5aa4..9e0b1db392525fd59050cd495569ff5796c2407c 100644
+--- a/packages/shared/package.json
++++ b/packages/shared/package.json
+@@ -291,6 +291,10 @@
+       "types": "./src/composerContextReferences.ts",
+       "import": "./src/composerContextReferences.ts"
+     },
++    "./queuedMessageMerge": {
++      "types": "./src/queuedMessageMerge.ts",
++      "import": "./src/queuedMessageMerge.ts"
++    },
+     "./composerContextLegacy": {
+       "types": "./src/composerContextLegacy.ts",
+       "import": "./src/composerContextLegacy.ts"
+diff --git a/packages/shared/src/model.ts b/packages/shared/src/model.ts
+index 0fdb2bc71ec4f39024f05d713ba3ee05402879ed..2a81cf1cb9a2730093efcf2060b561dfda6dd9be 100644
+--- a/packages/shared/src/model.ts
++++ b/packages/shared/src/model.ts
+@@ -535,6 +535,11 @@ export function resolvePromptInjectedEffort(
+   return null;
+ }
+ 
++/** Command names allow any token without a second slash, so `/src/app.ts` is a path. */
++export function isSlashCommandText(text: string): boolean {
++  return /^\/[^\s/]+(?:\s|$)/u.test(text.trim());
++}
++
+ export function applyClaudePromptEffortPrefix(
+   text: string,
+   effort: string | null | undefined,
+@@ -543,8 +548,8 @@ export function applyClaudePromptEffortPrefix(
+   if (!trimmed) {
+     return trimmed;
+   }
+-  // Prefixing slash commands prevents Claude invocation; command names allow any token without a second slash.
+-  if (effort !== "ultrathink" || /^\/[^\s/]+(?:\s|$)/u.test(trimmed)) {
++  // Prefixing slash commands prevents Claude invocation.
++  if (effort !== "ultrathink" || isSlashCommandText(trimmed)) {
+     return trimmed;
+   }
+   if (trimmed.startsWith("Ultrathink:")) {
+diff --git a/packages/shared/src/queuedMessageMerge.ts b/packages/shared/src/queuedMessageMerge.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..177a32e59e6bc56945ff86b4fe9aff6883137326
+--- /dev/null
++++ b/packages/shared/src/queuedMessageMerge.ts
+@@ -0,0 +1,139 @@
++import {
++  type ChatAttachment,
++  COMPOSER_CONTEXT_MAX_RECORDS,
++  type ComposerContextRecord,
++  getProviderAttachmentLimitError,
++  type OrchestrationMessageContext,
++  type OrchestrationV2ConversationMessage,
++  type OrchestrationV2Run,
++} from "@t3tools/contracts";
++import * as Equal from "effect/Equal";
++
++import {
++  isAttachmentOnlyBootstrapPrompt,
++  restoreAttachmentOnlyBootstrapPrompt,
++} from "./composerContextReferences.ts";
++import { isSlashCommandText, modelSelectionsEqual } from "./model.ts";
++
++export interface QueuedMessageMergePart {
++  readonly run: Pick<
++    OrchestrationV2Run,
++    | "modelSelection"
++    | "freshContext"
++    | "sourcePlanRef"
++    | "restartContinuationOfRunId"
++    | "usageLimitContinuationOfRunId"
++  >;
++  readonly message?:
++    | Pick<
++        OrchestrationV2ConversationMessage,
++        | "text"
++        | "attachments"
++        | "context"
++        | "createdBy"
++        | "scheduledTaskId"
++        | "senderThreadId"
++        | "idleCompaction"
++        | "workflowScript"
++        | "delegatedCompletion"
++        | "notification"
++      >
++    | undefined;
++}
++
++export type QueuedMessageMerge =
++  | {
++      readonly _tag: "Merged";
++      readonly text: string;
++      readonly attachments: ReadonlyArray<ChatAttachment>;
++      readonly context: OrchestrationMessageContext | undefined;
++    }
++  | { readonly _tag: "Blocked"; readonly reason: string };
++
++const ULTRATHINK_PREFIX = /^Ultrathink:\s*/i;
++
++function partBlockedReason(
++  part: QueuedMessageMergePart,
++  first: QueuedMessageMergePart,
++): string | null {
++  const { run, message } = part;
++  if (message === undefined) return "Some queued messages are still loading.";
++  if (message.context?.guest !== undefined) {
++    return "A guest's message can't be combined with others.";
++  }
++  if (
++    message.createdBy !== "user" ||
++    message.scheduledTaskId !== undefined ||
++    message.senderThreadId !== undefined ||
++    message.idleCompaction !== undefined ||
++    message.workflowScript === true ||
++    message.delegatedCompletion !== undefined ||
++    message.notification !== undefined
++  ) {
++    return "Messages from agents and automations are sent on their own.";
++  }
++  if (isSlashCommandText(message.text)) return "Commands are sent on their own.";
++  if (run.freshContext === true) {
++    return "A message that starts a fresh session is sent on its own.";
++  }
++  if (
++    run.sourcePlanRef !== undefined ||
++    run.restartContinuationOfRunId !== undefined ||
++    run.usageLimitContinuationOfRunId !== undefined
++  ) {
++    return "Plan and continuation messages are sent on their own.";
++  }
++  if (!modelSelectionsEqual(run.modelSelection, first.run.modelSelection)) {
++    return "Queued messages use different models.";
++  }
++  return null;
++}
++
++export function mergeQueuedMessages(
++  parts: ReadonlyArray<QueuedMessageMergePart>,
++): QueuedMessageMerge {
++  const first = parts[0];
++  if (first === undefined || parts.length < 2) {
++    return { _tag: "Blocked", reason: "Queue two or more messages to send them as one." };
++  }
++  for (const part of parts) {
++    const reason = partBlockedReason(part, first);
++    if (reason !== null) return { _tag: "Blocked", reason };
++  }
++  const messages = parts.flatMap(({ message }) => (message === undefined ? [] : [message]));
++  const attachments = messages.flatMap((message) => message.attachments);
++  if (new Set(attachments.map((attachment) => attachment.id)).size !== attachments.length) {
++    return { _tag: "Blocked", reason: "Queued messages share an attachment." };
++  }
++  const attachmentLimitError = getProviderAttachmentLimitError(attachments);
++  if (attachmentLimitError !== undefined) return { _tag: "Blocked", reason: attachmentLimitError };
++  const recordsById = new Map<ComposerContextRecord["contextId"], ComposerContextRecord>();
++  for (const record of messages.flatMap((message) => message.context?.records ?? [])) {
++    const previous = recordsById.get(record.contextId);
++    if (previous !== undefined && !Equal.equals(previous, record)) {
++      return { _tag: "Blocked", reason: "Queued messages have conflicting context." };
++    }
++    recordsById.set(record.contextId, record);
++  }
++  const records = [...recordsById.values()];
++  if (records.length > COMPOSER_CONTEXT_MAX_RECORDS) {
++    return { _tag: "Blocked", reason: "Queued messages carry too much context to send as one." };
++  }
++  const ultrathink = messages.some((message) => ULTRATHINK_PREFIX.test(message.text));
++  const body = messages
++    .map((message) => message.text.replace(ULTRATHINK_PREFIX, ""))
++    .map((text) => (isAttachmentOnlyBootstrapPrompt(text) ? "" : text.trim()))
++    .filter((text) => text.length > 0)
++    .join("\n\n");
++  return {
++    _tag: "Merged",
++    text: restoreAttachmentOnlyBootstrapPrompt(
++      ultrathink ? `Ultrathink:\n${body}` : body,
++      attachments.length > 0,
++    ),
++    attachments,
++    context: messages.some((message) => message.context !== undefined)
++      ? { version: 1, records }
++      : undefined,
++  };
++}
