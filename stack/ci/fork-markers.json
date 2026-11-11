@@ -3,7 +3,7 @@
     { "name": "session TTL", "pattern": "DEFAULT_SESSION_TTL = (?:[\\w$]+\\.)?days\\(3650\\);" },
     { "name": "fleet reset endpoint", "pattern": "v1/fleet/limits" },
     { "name": "all-time scanner", "pattern": "retentionCutoffMs: 0" },
-    { "name": "persistent usage cache", "pattern": "SCAN_CACHE_FILE_NAME = \"usage-scan-cache-v11\\.json\"" },
+    { "name": "persistent usage cache", "pattern": "SCAN_CACHE_FILE_NAME = \"usage-scan-cache-v\\d+\\.json\"" },
     { "name": "retained transcript history", "pattern": "const hasRetainedHistory = fileCache\\s*\\.entries\\(\\)" },
     { "name": "deleted transcript aggregation", "pattern": "retainedFiles\\.push\\(\\{" }
   ],
