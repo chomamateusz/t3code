@@ -32,7 +32,7 @@ Port to 965ddc1d6c:
 
 Port to 691b9709b0:
 - Upstream c03f84bcde streams the scan cache to disk and removes superseded cache files after a save, and 729f6757d9 bumps the cache to v12 and merges repeated Claude keys in dedupeWithinFile. Kept both; removed only CACHE_RETENTION_DAYS, pruneScanCache and the retention cutoffs again, next to upstream's STALE_TEMP_DIRECTORY_MS (temp directories, not usage records). The streamed writer and decodeScanCache drop no entry by age.
-- An unreadable or oversized usage scan cache is never overwritten: a current file whose content cannot load (empty, invalid JSON, too long to read) is moved aside to usage-scan-cache-v12.unreadable-<time>-<nonce>.json with one warning and saving starts over; a read failure that says nothing about the content (permissions, I/O) of the current or an older-version file, or a failed move, leaves it in place and stops saving until restart; older-version cache files are kept after a save, as a fallback that may hold usage the saved cache lacks; the writer refuses a document longer than the loader's string limit, keeping the previous file.
+- An unreadable or oversized usage scan cache is never overwritten: a current file whose content cannot load (empty, invalid JSON, too long to read) is moved aside to usage-scan-cache-v12.unreadable-<time>-<nonce>.json with one warning and saving starts over; a read failure that says nothing about the content (permissions, I/O) of the current file, or a failed move, leaves it in place and stops saving until restart; older-version cache files are kept after a save, as a fallback that may hold usage the saved cache lacks, and one that cannot be loaded is skipped with a warning while saving continues; the writer refuses a document longer than the loader's string limit, keeping the previous file.
 
 Files:
 apps/server:
@@ -65,24 +65,24 @@ Tests:
 
 Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
 ---
- apps/server/src/usage/UsageService.test.ts    | 209 ++++++++++++++++--
- apps/server/src/usage/UsageService.ts         | 137 +++++++++---
- apps/server/src/usage/usageScanCache.test.ts  |  36 ++-
+ apps/server/src/usage/UsageService.test.ts    | 187 ++++++++++++++++--
+ apps/server/src/usage/UsageService.ts         | 141 +++++++++----
+ apps/server/src/usage/usageScanCache.test.ts  |  36 +++-
  apps/server/src/usage/usageScanCache.ts       |  53 +++--
  .../settings/KeybindingsSettings.logic.ts     |   4 +-
  apps/web/src/components/usage/UsagePage.tsx   |  51 +++--
  .../usage/usagePagePreferences.test.ts        |   6 +
  .../components/usage/usagePagePreferences.ts  |   2 +-
- .../src/components/usage/usageRange.test.ts   |  44 ++++
+ .../src/components/usage/usageRange.test.ts   |  44 +++++
  apps/web/src/components/usage/usageRange.ts   |  26 +++
  .../src/components/usage/usageShortcuts.ts    |   8 +-
  docs/user/usage.md                            |   7 +-
- 12 files changed, 482 insertions(+), 101 deletions(-)
+ 12 files changed, 464 insertions(+), 101 deletions(-)
  create mode 100644 apps/web/src/components/usage/usageRange.test.ts
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
 diff --git a/apps/server/src/usage/UsageService.test.ts b/apps/server/src/usage/UsageService.test.ts
-index 1c03c05e137276c2720fdaa334631f633c9c16a2..e1479530314e0d174da63420f7e1cc7a4e249d3c 100644
+index 1c03c05e137276c2720fdaa334631f633c9c16a2..4c7f34a57a2891833cc58a05a0ca95c88b62163d 100644
 --- a/apps/server/src/usage/UsageService.test.ts
 +++ b/apps/server/src/usage/UsageService.test.ts
 @@ -135,6 +135,11 @@ const WINDOW: UsageSummaryInput = {
@@ -149,7 +149,7 @@ index 1c03c05e137276c2720fdaa334631f633c9c16a2..e1479530314e0d174da63420f7e1cc7a
      (version) =>
        Effect.gen(function* () {
          const { home, settings } = yield* setup;
-@@ -2727,12 +2768,28 @@ describe("UsageService", () => {
+@@ -2727,12 +2768,27 @@ describe("UsageService", () => {
              stateDir,
              version === 4 ? "usage-scan-cache.json" : `usage-scan-cache-v${version}.json`,
            );
@@ -173,30 +173,24 @@ index 1c03c05e137276c2720fdaa334631f633c9c16a2..e1479530314e0d174da63420f7e1cc7a
 +              .toSorted(),
 +          );
 +          const livePath = yield* Effect.promise(() => NodeFSP.realpath(live));
-+          const deletedPath = yield* Effect.promise(() => NodeFSP.realpath(deleted));
            yield* Effect.promise(async () => {
 -            const livePath = await NodeFSP.realpath(live);
              const document = decodeUnknownJsonString(await NodeFSP.readFile(cachePath, "utf8")) as {
                files: Record<string, { r: unknown[][]; mr: number; cs: Record<string, unknown> }>;
              };
-@@ -2767,6 +2824,16 @@ describe("UsageService", () => {
+@@ -2767,6 +2823,11 @@ describe("UsageService", () => {
                    encodeUnknownJsonString({ ...document, version: olderVersion, files: {} }),
                  );
                }
 +              if (unreadableLegacyName !== undefined) {
 +                const unreadableLegacy = NodePath.join(stateDir, unreadableLegacyName);
-+                const newer = decodeUnknownJsonString(text) as typeof document;
-+                const deletedFile = newer.files[deletedPath];
-+                if (deletedFile !== undefined) {
-+                  deletedFile.r = deletedFile.r.map((row) => row.with(6, 21));
-+                }
-+                await NodeFSP.writeFile(unreadableLegacy, encodeUnknownJsonString(newer));
++                await NodeFSP.writeFile(unreadableLegacy, text);
 +                await NodeFSP.chmod(unreadableLegacy, 0);
 +              }
              }
              await NodeFSP.rm(deleted);
              await NodeFSP.mkdir(`${cachePath}.stale`);
-@@ -2783,12 +2850,40 @@ describe("UsageService", () => {
+@@ -2783,12 +2844,24 @@ describe("UsageService", () => {
            );
            yield* upgraded.awaitPersisted;
            assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v12.json");
@@ -206,22 +200,6 @@ index 1c03c05e137276c2720fdaa334631f633c9c16a2..e1479530314e0d174da63420f7e1cc7a
 -              .toSorted(),
 -            [SCAN_CACHE_FILE_NAME, `${SCAN_CACHE_FILE_NAME}.active`],
 -          );
-+          if (unreadableLegacyName !== undefined) {
-+            assert.deepStrictEqual(
-+              yield* cacheFileNames,
-+              [
-+                ...legacyNames,
-+                `${SCAN_CACHE_FILE_NAME}.active`,
-+                `${SCAN_CACHE_FILE_NAME}.stale`,
-+              ].toSorted(),
-+            );
-+            yield* Effect.promise(() =>
-+              NodeFSP.chmod(NodePath.join(stateDir, unreadableLegacyName), 0o600),
-+            );
-+            const restored = yield* UsageService.make;
-+            assert.strictEqual(totalOutputTokens(yield* restored.readSummary(WINDOW)), 31);
-+            yield* restored.awaitPersisted;
-+          }
 +          const savedFiles = [
 +            SCAN_CACHE_FILE_NAME,
 +            `${SCAN_CACHE_FILE_NAME}.active`,
@@ -243,7 +221,7 @@ index 1c03c05e137276c2720fdaa334631f633c9c16a2..e1479530314e0d174da63420f7e1cc7a
          }).pipe(
            Effect.provide(
              layerService({
-@@ -2911,7 +3006,7 @@ describe("UsageService", () => {
+@@ -2911,7 +2984,7 @@ describe("UsageService", () => {
      }).pipe(Effect.scoped),
    );
  
@@ -252,7 +230,7 @@ index 1c03c05e137276c2720fdaa334631f633c9c16a2..e1479530314e0d174da63420f7e1cc7a
      Effect.gen(function* () {
        const { transcript, settings, home } = yield* setup;
        const alias = NodePath.join(home, "claude-alias");
-@@ -2919,26 +3014,38 @@ describe("UsageService", () => {
+@@ -2919,26 +2992,38 @@ describe("UsageService", () => {
          NodeFSP.symlink(NodePath.join(home, "claude"), alias, "junction"),
        );
        const content = claudeLine(1, 5);
@@ -296,7 +274,7 @@ index 1c03c05e137276c2720fdaa334631f633c9c16a2..e1479530314e0d174da63420f7e1cc7a
          assert.deepStrictEqual(moved.buckets, first.buckets);
          assert.strictEqual(moved.sources[0]?.distinctSessions, 1);
          yield* restarted.awaitPersisted;
-@@ -2949,7 +3056,7 @@ describe("UsageService", () => {
+@@ -2949,7 +3034,7 @@ describe("UsageService", () => {
            NodeFSP.rm(NodePath.join(home, "claude", "projects"), { recursive: true }),
          );
          const afterRootCleanup = yield* UsageService.make;
@@ -305,7 +283,7 @@ index 1c03c05e137276c2720fdaa334631f633c9c16a2..e1479530314e0d174da63420f7e1cc7a
          assert.deepStrictEqual(missingRoot.buckets, first.buckets);
          assert.strictEqual(missingRoot.sources[0]?.distinctSessions, 1);
          assert.strictEqual(missingRoot.sources[0]?.status, "ok");
-@@ -2959,7 +3066,7 @@ describe("UsageService", () => {
+@@ -2959,7 +3044,7 @@ describe("UsageService", () => {
            await NodeFSP.rename(replacementProjects, projects);
            await NodeFSP.writeFile(NodePath.join(projects, "new.jsonl"), claudeLine(2, 7));
          });
@@ -314,7 +292,7 @@ index 1c03c05e137276c2720fdaa334631f633c9c16a2..e1479530314e0d174da63420f7e1cc7a
          assert.strictEqual(totalOutputTokens(recreated), 12);
          assert.deepStrictEqual(recreated.sources[0]?.fingerprint, first.sources[0]?.fingerprint);
  
-@@ -2983,11 +3090,74 @@ describe("UsageService", () => {
+@@ -2983,11 +3068,74 @@ describe("UsageService", () => {
          assert.strictEqual(merged.costUsd, recreated.buckets[0]?.costUsd);
  
          const outsideWindow = yield* restarted.readSummary({
@@ -390,7 +368,7 @@ index 1c03c05e137276c2720fdaa334631f633c9c16a2..e1479530314e0d174da63420f7e1cc7a
        }).pipe(
          Effect.scoped,
          Effect.provide(
-@@ -3123,11 +3293,9 @@ describe("UsageService", () => {
+@@ -3123,11 +3271,9 @@ describe("UsageService", () => {
      }).pipe(Effect.scoped),
    );
  
@@ -403,7 +381,7 @@ index 1c03c05e137276c2720fdaa334631f633c9c16a2..e1479530314e0d174da63420f7e1cc7a
        yield* TestClock.setTime(Date.parse("2026-08-15T00:00:00Z"));
        yield* Effect.promise(async () => {
          await NodeFSP.writeFile(transcript, claudeLine(1, 5));
-@@ -3154,6 +3322,7 @@ describe("UsageService", () => {
+@@ -3154,6 +3300,7 @@ describe("UsageService", () => {
        assert.deepStrictEqual(later.buckets, []);
        assert.strictEqual(later.sources[0]?.status, "missing");
        assert.strictEqual(later.sources[0]?.scannedFiles, 0);
@@ -412,7 +390,7 @@ index 1c03c05e137276c2720fdaa334631f633c9c16a2..e1479530314e0d174da63420f7e1cc7a
    );
  
 diff --git a/apps/server/src/usage/UsageService.ts b/apps/server/src/usage/UsageService.ts
-index 771393dac25798af0931b1217f2dd9f0987f25c7..303f58509cceb20e5f05bfd64ce74f2ff41bfeaf 100644
+index 771393dac25798af0931b1217f2dd9f0987f25c7..e8b4596c24bce1d9a649a103947d42e175eb8bc8 100644
 --- a/apps/server/src/usage/UsageService.ts
 +++ b/apps/server/src/usage/UsageService.ts
 @@ -23,6 +23,8 @@ import * as FileSystem from "effect/FileSystem";
@@ -463,9 +441,9 @@ index 771393dac25798af0931b1217f2dd9f0987f25c7..303f58509cceb20e5f05bfd64ce74f2f
      records.some((record) => resolvedRecords.has(record)) ? records.map(correctedRecord) : records;
    const sourceCache = new Map<string, typeof CachedSource.Type>();
    let cacheDirty = false;
-+  // These files may hold the only copy of deleted transcripts' usage, so a read failure that
-+  // says nothing about their content, or a save the loader could not read back, keeps them
-+  // as they are until restart.
++  // The saved cache may hold the only copy of deleted transcripts' usage, so a read failure
++  // that says nothing about its content, or a save the loader could not read back, keeps it
++  // as it is until restart.
 +  let scanCacheFrozen = false;
    const isWithinDirectory = (filePath: string, dir: string) => {
      const relative = path.relative(dir, filePath);
@@ -486,19 +464,18 @@ index 771393dac25798af0931b1217f2dd9f0987f25c7..303f58509cceb20e5f05bfd64ce74f2f
                (entry.records.length + entry.tailRecords.length > 0 || entry.malformedRecords > 0) &&
                isWithinDirectory(filePath, dir),
            );
-@@ -378,18 +390,67 @@ export const make = Effect.gen(function* () {
+@@ -378,18 +390,71 @@ export const make = Effect.gen(function* () {
      return dirs;
    });
  
 +  const stopSavingScanCache = Effect.fn("UsageService.stopSavingScanCache")(function* (
-+    filePath: string,
 +    error: PlatformError.PlatformError,
 +  ) {
 +    scanCacheFrozen = true;
 +    yield* Effect.logWarning(
 +      "Usage scan cache is left in place and will not be saved until restart",
 +      {
-+        path: filePath,
++        path: scanCachePath,
 +        method: error.reason.method,
 +        reason: error.reason._tag,
 +        code: errnoCode(error),
@@ -522,7 +499,7 @@ index 771393dac25798af0931b1217f2dd9f0987f25c7..303f58509cceb20e5f05bfd64ce74f2f
 +      );
 +      return null;
 +    },
-+    Effect.catchTags({ PlatformError: (error) => stopSavingScanCache(scanCachePath, error) }),
++    Effect.catchTags({ PlatformError: stopSavingScanCache }),
 +  );
 +
    // Share first loads so concurrent readers cannot scan against a still-empty cache.
@@ -532,6 +509,7 @@ index 771393dac25798af0931b1217f2dd9f0987f25c7..303f58509cceb20e5f05bfd64ce74f2f
 +      const readDocument = (
 +        filePath: string,
 +        unloadable: (reason: string) => Effect.Effect<null>,
++        unreadable: (error: PlatformError.PlatformError) => Effect.Effect<null>,
 +      ) =>
          fileSystem.readFileString(filePath).pipe(
            Effect.flatMap((raw) => decodeScanCacheFile(raw)),
@@ -541,24 +519,28 @@ index 771393dac25798af0931b1217f2dd9f0987f25c7..303f58509cceb20e5f05bfd64ce74f2f
 +            PlatformError: (error) => {
 +              if (error.reason._tag === "NotFound") return Effect.succeed(null);
 +              const code = errnoCode(error);
-+              return isTooLongToRead(code)
-+                ? unloadable(code)
-+                : stopSavingScanCache(filePath, error);
++              return isTooLongToRead(code) ? unloadable(code) : unreadable(error);
 +            },
 +          }),
          );
 -      let document = yield* readDocument(scanCachePath);
-+      let document = yield* readDocument(scanCachePath, setAsideScanCache);
++      let document = yield* readDocument(scanCachePath, setAsideScanCache, stopSavingScanCache);
        for (const fileName of LEGACY_SCAN_CACHE_FILE_NAMES) {
          if (document !== null) break;
 -        document = yield* readDocument(path.join(config.stateDir, fileName));
-+        document = yield* readDocument(path.join(config.stateDir, fileName), () =>
-+          Effect.succeed(null),
++        const legacyPath = path.join(config.stateDir, fileName);
++        const skip = (reason: string) =>
++          Effect.logWarning("Older usage scan cache could not be loaded; skipped it", {
++            path: legacyPath,
++            reason,
++          }).pipe(Effect.as(null));
++        document = yield* readDocument(legacyPath, skip, (error) =>
++          skip(errnoCode(error) ?? error.reason._tag),
 +        );
          cacheDirty = document !== null;
        }
        if (document === null) return;
-@@ -408,13 +469,10 @@ export const make = Effect.gen(function* () {
+@@ -408,13 +473,10 @@ export const make = Effect.gen(function* () {
    // Serialize writes so concurrently finished window scans cannot overwrite newer snapshots.
    const persistLock = yield* Semaphore.make(1);
  
@@ -573,7 +555,7 @@ index 771393dac25798af0931b1217f2dd9f0987f25c7..303f58509cceb20e5f05bfd64ce74f2f
      const tempPrefixes = [SCAN_CACHE_FILE_NAME, ...LEGACY_SCAN_CACHE_FILE_NAMES].map(
        (fileName) => `${fileName}.`,
      );
-@@ -436,7 +494,7 @@ export const make = Effect.gen(function* () {
+@@ -436,7 +498,7 @@ export const make = Effect.gen(function* () {
  
    // Clear dirty before encoding to retain concurrent changes; restore it on failure for retry.
    const persistCaches = Effect.gen(function* () {
@@ -582,7 +564,7 @@ index 771393dac25798af0931b1217f2dd9f0987f25c7..303f58509cceb20e5f05bfd64ce74f2f
        cacheDirty = false;
        yield* Effect.sync(() =>
          writeScanCache(fileCache, { sources: Object.fromEntries(sourceCache) }),
-@@ -449,9 +507,15 @@ export const make = Effect.gen(function* () {
+@@ -449,9 +511,15 @@ export const make = Effect.gen(function* () {
              return removeSupersededCacheFiles;
            }),
          ),
@@ -600,7 +582,7 @@ index 771393dac25798af0931b1217f2dd9f0987f25c7..303f58509cceb20e5f05bfd64ce74f2f
            }),
          ),
        );
-@@ -651,19 +715,16 @@ export const make = Effect.gen(function* () {
+@@ -651,19 +719,16 @@ export const make = Effect.gen(function* () {
    const collectDirs = Effect.fn("UsageService.collectDirs")(function* (
      windowStartMs: number,
      settings: ServerSettingsValue,
@@ -622,7 +604,7 @@ index 771393dac25798af0931b1217f2dd9f0987f25c7..303f58509cceb20e5f05bfd64ce74f2f
            ),
            Effect.flatMap((sources) =>
              Effect.forEach(sources, ({ volumeId, ...source }) =>
-@@ -742,13 +803,8 @@ export const make = Effect.gen(function* () {
+@@ -742,13 +807,8 @@ export const make = Effect.gen(function* () {
      const windowStartMs =
        (hourlyWindow?.sinceTimeMs ?? DateTime.toEpochMillis(windowStart.value)) - MTIME_SLACK_MS;
  
@@ -637,7 +619,7 @@ index 771393dac25798af0931b1217f2dd9f0987f25c7..303f58509cceb20e5f05bfd64ce74f2f
        { concurrency: 2 },
      );
  
-@@ -767,26 +823,35 @@ export const make = Effect.gen(function* () {
+@@ -767,26 +827,35 @@ export const make = Effect.gen(function* () {
      const sources: UsageSource[] = [];
  
      // Deleted transcripts' saved usage still aggregates and deduplicates normally.
@@ -679,7 +661,7 @@ index 771393dac25798af0931b1217f2dd9f0987f25c7..303f58509cceb20e5f05bfd64ce74f2f
      const windowEndMs =
        hourlyWindow?.untilTimeMs ??
        Date.parse(`${input.untilDay}T00:00:00Z`) + 86400000 + MTIME_SLACK_MS;
-@@ -852,6 +917,11 @@ export const make = Effect.gen(function* () {
+@@ -852,6 +921,11 @@ export const make = Effect.gen(function* () {
          scannedFiles += 1;
          const eventOccurrences = new Map<string, number>();
          for (const rawRecord of file.records) {
@@ -691,7 +673,7 @@ index 771393dac25798af0931b1217f2dd9f0987f25c7..303f58509cceb20e5f05bfd64ce74f2f
            const record = correctedRecord(rawRecord);
            let usageRecord = record;
            if (
-@@ -902,9 +972,6 @@ export const make = Effect.gen(function* () {
+@@ -902,9 +976,6 @@ export const make = Effect.gen(function* () {
        });
      }
  
