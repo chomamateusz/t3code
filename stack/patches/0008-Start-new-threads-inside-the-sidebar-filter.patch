@@ -489,10 +489,10 @@ index db7ea4895b7ce9d38948db4d5ec72a40aeb8f5d4..32f029097d5848e0cbea9f86276da0f8
        return openWithIntent({ kind: "change-theme" });
    }
 diff --git a/apps/web/src/components/CommandPalette.tsx b/apps/web/src/components/CommandPalette.tsx
-index a72974250d05131b836dc1d7526ee1c3ed6b37f5..516cdf9e0310f52247ddbf95e2726c3632e90053 100644
+index 15c00fcba186d736a53440baf2075a4a8b1531dd..a111eadbe3e0cd9e7309f2b62087a94630b3385a 100644
 --- a/apps/web/src/components/CommandPalette.tsx
 +++ b/apps/web/src/components/CommandPalette.tsx
-@@ -97,6 +97,9 @@ import { useAtomValue } from "@effect/atom-react";
+@@ -98,6 +98,9 @@ import { useAtomValue } from "@effect/atom-react";
  
  import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
  import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
@@ -502,7 +502,7 @@ index a72974250d05131b836dc1d7526ee1c3ed6b37f5..516cdf9e0310f52247ddbf95e2726c36
  import { useHandleNewThread } from "../hooks/useHandleNewThread";
  import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
  import { copyThreadReference } from "../lib/copyThreadReference";
-@@ -427,6 +430,11 @@ function OpenCommandPaletteDialog(props: {
+@@ -428,6 +431,11 @@ function OpenCommandPaletteDialog(props: {
    const linkedEnvironmentId = linkedThreadSearch?.linkedThreads?.environmentId ?? null;
    const hidingAnywhere = useAnyEnvironmentHiding();
    const linkedThreadRefs = useEnvironmentThreadRefs(linkedEnvironmentId);
@@ -514,7 +514,7 @@ index a72974250d05131b836dc1d7526ee1c3ed6b37f5..516cdf9e0310f52247ddbf95e2726c36
    const [searchState, dispatchSearch] = useReducer(reduceCommandPaletteSearchState, null, () => {
      const view = props.initialContext ? null : openIntentView(props.openIntent);
      return view
-@@ -517,6 +525,8 @@ function OpenCommandPaletteDialog(props: {
+@@ -518,6 +526,8 @@ function OpenCommandPaletteDialog(props: {
    const providersByEnvironment = useEnvironmentProviders();
    const { changeThemeItem, changeAppearanceItem, themeEditorItem } = useCommandPaletteThemeItems();
    const currentView = viewStack.at(-1)?.view ?? null;
@@ -523,7 +523,7 @@ index a72974250d05131b836dc1d7526ee1c3ed6b37f5..516cdf9e0310f52247ddbf95e2726c36
    const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
    const [browseGeneration, setBrowseGeneration] = useState(0);
    const [browseNavigation] = useState(createBrowseNavigationCoordinator);
-@@ -555,11 +565,12 @@ function OpenCommandPaletteDialog(props: {
+@@ -556,11 +566,12 @@ function OpenCommandPaletteDialog(props: {
      ...targetProject,
      displayName: group.displayName,
    }));
@@ -541,7 +541,7 @@ index a72974250d05131b836dc1d7526ee1c3ed6b37f5..516cdf9e0310f52247ddbf95e2726c36
    );
    const { canPinProjectGroup, toggleProjectGroupPin } = useProjectPin();
    // A row's target record can change when another machine's copy loads, so the kept
-@@ -662,7 +673,10 @@ function OpenCommandPaletteDialog(props: {
+@@ -663,7 +674,10 @@ function OpenCommandPaletteDialog(props: {
          )
        : "";
    const canBrowsePaths =
@@ -553,7 +553,7 @@ index a72974250d05131b836dc1d7526ee1c3ed6b37f5..516cdf9e0310f52247ddbf95e2726c36
    const browsePath = getFilesystemBrowsePath(query, browseEnvironmentPlatform, canBrowsePaths);
    const isBrowsing = browsePath.isBrowsing;
    const browseDirectoryPath = browsePath.directoryPath;
-@@ -841,6 +855,22 @@ function OpenCommandPaletteDialog(props: {
+@@ -842,6 +856,22 @@ function OpenCommandPaletteDialog(props: {
      true,
    );
  
@@ -576,7 +576,7 @@ index a72974250d05131b836dc1d7526ee1c3ed6b37f5..516cdf9e0310f52247ddbf95e2726c36
    const openingOrderThreadItems = useOrderWhileOpen(
      (() => {
        const isScratch = (project: CommandPaletteProject) =>
-@@ -874,7 +904,6 @@ function OpenCommandPaletteDialog(props: {
+@@ -875,7 +905,6 @@ function OpenCommandPaletteDialog(props: {
          },
        });
        if (scratchTargetEnvironmentId === null) return projectItems;
@@ -584,7 +584,7 @@ index a72974250d05131b836dc1d7526ee1c3ed6b37f5..516cdf9e0310f52247ddbf95e2726c36
        const noProjectIndex = newThreadNoProjectIndex(
          projectPickerEntries.map(({ group, targetProject, isPreferred }) => ({
            isScratch: isScratchProject(
-@@ -902,15 +931,63 @@ function OpenCommandPaletteDialog(props: {
+@@ -903,15 +932,63 @@ function OpenCommandPaletteDialog(props: {
      rowOrderKey("new-thread-in"),
      true,
    );
@@ -655,7 +655,7 @@ index a72974250d05131b836dc1d7526ee1c3ed6b37f5..516cdf9e0310f52247ddbf95e2726c36
  
    const {
      threadItems: allThreadItems,
-@@ -940,6 +1017,10 @@ function OpenCommandPaletteDialog(props: {
+@@ -941,6 +1018,10 @@ function OpenCommandPaletteDialog(props: {
    });
  
    function popView(): void {
@@ -666,7 +666,7 @@ index a72974250d05131b836dc1d7526ee1c3ed6b37f5..516cdf9e0310f52247ddbf95e2726c36
      browseNavigation.invalidate();
      setAddProjectCloneFlow(null);
      setNewProjectFlow(null);
-@@ -1315,7 +1396,7 @@ function OpenCommandPaletteDialog(props: {
+@@ -1316,7 +1397,7 @@ function OpenCommandPaletteDialog(props: {
        title: "New thread in...",
        icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
        addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
@@ -675,7 +675,7 @@ index a72974250d05131b836dc1d7526ee1c3ed6b37f5..516cdf9e0310f52247ddbf95e2726c36
      });
    }
  
-@@ -1792,19 +1873,20 @@ function OpenCommandPaletteDialog(props: {
+@@ -1793,19 +1874,20 @@ function OpenCommandPaletteDialog(props: {
        : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
          ? addProjectEntryGroups()
          : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
@@ -709,7 +709,7 @@ index a72974250d05131b836dc1d7526ee1c3ed6b37f5..516cdf9e0310f52247ddbf95e2726c36
  
    const isLinkedThreadSearch =
      linkedThreadSearch?.linkedThreads !== undefined && deferredQuery === linkedThreadSearch.query;
-@@ -1812,7 +1894,7 @@ function OpenCommandPaletteDialog(props: {
+@@ -1813,7 +1895,7 @@ function OpenCommandPaletteDialog(props: {
      activeGroups,
      query: deferredQuery,
      isInSubmenu: currentView !== null,
@@ -718,7 +718,7 @@ index a72974250d05131b836dc1d7526ee1c3ed6b37f5..516cdf9e0310f52247ddbf95e2726c36
        ? {
            allOptions: {
              rootGroups,
-@@ -2425,7 +2507,26 @@ function OpenCommandPaletteDialog(props: {
+@@ -2426,7 +2508,26 @@ function OpenCommandPaletteDialog(props: {
            },
          ];
  

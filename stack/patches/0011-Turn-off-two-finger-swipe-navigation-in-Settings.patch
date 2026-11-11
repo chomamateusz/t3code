@@ -220,10 +220,10 @@ index 2bf779d47c8266f0f1f25fd0dbe995e65f5f769a..f7ef5f3da183555865ef0168e5c29028
      }),
    );
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 73f5b41810dae4998b1dcee317131502f1fba928..5794fd1bfbaa9ec35aac40d41451635a219379b1 100644
+index 8c9e507ca4b905c72df2619dfbc989d4b7fbf985..c8160c9a446c29cfbd384111be1344b9e432ef21 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
-@@ -749,9 +749,27 @@ export const make = Effect.gen(function* () {
+@@ -752,9 +752,27 @@ export const make = Effect.gen(function* () {
      if (environment.platform === "darwin") {
        // Mouse drivers can deliver Back/Forward as macOS swipe gestures instead of buttons.
        window.on("swipe", (_event, direction) => {
@@ -329,7 +329,7 @@ index 0000000000000000000000000000000000000000..ba1582d51871f902117ff58c786b04c7
 +  );
 +});
 diff --git a/apps/web/src/components/AppSidebarLayout.tsx b/apps/web/src/components/AppSidebarLayout.tsx
-index f9cb8c5170cf90e922a4935f7ab7ad11ebd78114..094f72076dbf29f1d110fa2b6cfadfc72ff275ed 100644
+index e4f3d690113e5db8dd37354115f54f36ae987e1d..7dd572f5e9dec54d53306769437f178331f8356b 100644
 --- a/apps/web/src/components/AppSidebarLayout.tsx
 +++ b/apps/web/src/components/AppSidebarLayout.tsx
 @@ -31,7 +31,7 @@ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
@@ -341,7 +341,7 @@ index f9cb8c5170cf90e922a4935f7ab7ad11ebd78114..094f72076dbf29f1d110fa2b6cfadfc7
  import {
    PanelAnimationSuppressionProvider,
    usePanelAnimationSettings,
-@@ -412,6 +412,7 @@ export function AppSidebarLayout({
+@@ -414,6 +414,7 @@ export function AppSidebarLayout({
    children: ReactNode;
    showSidebar?: boolean;
  }) {
@@ -349,7 +349,7 @@ index f9cb8c5170cf90e922a4935f7ab7ad11ebd78114..094f72076dbf29f1d110fa2b6cfadfc7
    const sidebarArea = workspaceAreaProps("sidebar", 0, "Threads");
    const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
      observedKey: null,
-@@ -489,7 +490,7 @@ export function AppSidebarLayout({
+@@ -491,7 +492,7 @@ export function AppSidebarLayout({
          {children}
          <BackgroundThreadAnnouncer />
          <SidebarControl showSidebar={showSidebar} />
@@ -448,7 +448,7 @@ index 4985017d9a43bd409c9b8268673fa6338595d3c9..97bc65c7675461e537cb5cc79ab6c92e
      id: "text-generation-model",
      title: "Text generation model",
 diff --git a/packages/contracts/src/settings.test.ts b/packages/contracts/src/settings.test.ts
-index a5a27235bbe7cebbecf22a28feafadb0580d0927..43c14dce6224203a1a6399cdd8d4c9752b153418 100644
+index 4c194f473c7b05a7c8006bc6899b78a6793bb34a..35a04e51912c4c12ee1a9eb7063409495d79b270 100644
 --- a/packages/contracts/src/settings.test.ts
 +++ b/packages/contracts/src/settings.test.ts
 @@ -324,6 +324,19 @@ describe("ClientSettings quit confirmation", () => {

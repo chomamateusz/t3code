@@ -80,7 +80,7 @@ index 47190f60dcf516c86ab246ef8e1951ae6aae17f9..da62e3271e1939ecddc15bdc87273a3c
  );
  
 diff --git a/apps/server/src/vcs/GitVcsDriverCore.test.ts b/apps/server/src/vcs/GitVcsDriverCore.test.ts
-index 70b2d50eda88e7fc139b8d37f01f7e57470c01a9..20a59d0cb579a31d45431d9eeb7201b6ee5b97f5 100644
+index 6cdeec7ca4fe48649d3c94a6f7be790938cb880e..40d01aaa6cbdf81bd4c57c8ec3bf728d90bfbc7a 100644
 --- a/apps/server/src/vcs/GitVcsDriverCore.test.ts
 +++ b/apps/server/src/vcs/GitVcsDriverCore.test.ts
 @@ -8,6 +8,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -138,7 +138,7 @@ index 70b2d50eda88e7fc139b8d37f01f7e57470c01a9..20a59d0cb579a31d45431d9eeb7201b6
    Effect.gen(function* () {
      const checkoutStarted = yield* Deferred.make<void>();
 diff --git a/apps/server/src/vcs/GitVcsDriverCore.ts b/apps/server/src/vcs/GitVcsDriverCore.ts
-index 3d8122f197971472cca65b706b8e2545f3131ac4..e01d16dfb7456070e5d0711ab539d059d052becc 100644
+index 09afa88bc31514f76578985bf1f7a47ed2ac0dee..d94ff9e0f6381a3bf259bb0c45cae5920fa54dff 100644
 --- a/apps/server/src/vcs/GitVcsDriverCore.ts
 +++ b/apps/server/src/vcs/GitVcsDriverCore.ts
 @@ -42,6 +42,7 @@ import { resolveProjectFileBackedSetting } from "@t3tools/shared/projectSettings
@@ -149,7 +149,7 @@ index 3d8122f197971472cca65b706b8e2545f3131ac4..e01d16dfb7456070e5d0711ab539d059
  import { explicitBareRepositoryEnv, gitConfigEnv } from "./VcsProcess.ts";
  import { makeWorktreeCheckoutCache } from "./worktreeCheckoutCache.ts";
  import { removeLinkedWorktree } from "./worktreeRemoval.ts";
-@@ -952,6 +953,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function*
+@@ -951,6 +952,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function*
    const digest = yield* Digest.Digest;
    const hostPlatform = yield* HostProcess.Platform;
    const serviceScope = yield* Effect.scope;
@@ -157,7 +157,7 @@ index 3d8122f197971472cca65b706b8e2545f3131ac4..e01d16dfb7456070e5d0711ab539d059
    const statusFetches = new Map<string, Fiber.Fiber<void, GitCommandError>>();
    const statusFetchProcesses = yield* Semaphore.make(4);
  
-@@ -1668,6 +1670,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function*
+@@ -1664,6 +1666,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function*
    const refreshStatusUpstreamIfStale = Effect.fn("refreshStatusUpstreamIfStale")(function* (
      cwd: string,
    ) {
@@ -198,18 +198,18 @@ index 0000000000000000000000000000000000000000..0f2c900b3ba112f062d3df12809ebe3b
 +  }),
 +);
 diff --git a/apps/server/src/vcs/VcsStatusBroadcaster.test.ts b/apps/server/src/vcs/VcsStatusBroadcaster.test.ts
-index ec4d4942d84e475c82cb37df3e7f97f19b0685a8..61bd25785c025698bc4c3ed5fe86229bf2889dd7 100644
+index db8a80518d04ebf5090f40084de1e6bed34e5fdd..77cf80418a1f084a28e0119750c407924410d769 100644
 --- a/apps/server/src/vcs/VcsStatusBroadcaster.test.ts
 +++ b/apps/server/src/vcs/VcsStatusBroadcaster.test.ts
-@@ -25,6 +25,7 @@ import type {
- } from "@t3tools/contracts";
+@@ -27,6 +27,7 @@ import type {
  import { GitCommandError, GitManagerError } from "@t3tools/contracts";
+ import { applyGitStatusStreamEvent } from "@t3tools/shared/git";
  
 +import * as VcsAutomaticFetchInterval from "./VcsAutomaticFetchInterval.ts";
  import * as VcsStatusBroadcaster from "./VcsStatusBroadcaster.ts";
  import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
  import * as GitWorkflowService from "../git/GitWorkflowService.ts";
-@@ -93,7 +94,7 @@ function layerTestFor(state: {
+@@ -99,7 +100,7 @@ function layerTestFor(state: {
      Layer.provide(layerBackgroundPolicy(() => state.backgroundWorkEnabled !== false)),
      Layer.provide(
        Layer.succeed(
@@ -219,10 +219,10 @@ index ec4d4942d84e475c82cb37df3e7f97f19b0685a8..61bd25785c025698bc4c3ed5fe86229b
        ),
      ),
 diff --git a/apps/server/src/vcs/VcsStatusBroadcaster.ts b/apps/server/src/vcs/VcsStatusBroadcaster.ts
-index 1868d3418198dbd1a0154638e0b94dfe8cf01e3d..ff75c6a9c1f86d8e784b3a20ad7acf65663ff11a 100644
+index 18a75c434169c3e94486fa1659e4105e792bb4d7..b96ed2d0a19d0ee672d59109b602db2b24f495a6 100644
 --- a/apps/server/src/vcs/VcsStatusBroadcaster.ts
 +++ b/apps/server/src/vcs/VcsStatusBroadcaster.ts
-@@ -23,7 +23,6 @@ import type {
+@@ -25,7 +25,6 @@ import type {
    VcsStatusSubscriptionInput,
  } from "@t3tools/contracts";
  import { DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL } from "@t3tools/contracts";
@@ -230,7 +230,7 @@ index 1868d3418198dbd1a0154638e0b94dfe8cf01e3d..ff75c6a9c1f86d8e784b3a20ad7acf65
  import { mergeGitStatusParts } from "@t3tools/shared/git";
  import * as KeyedLock from "@t3tools/shared/KeyedLock";
  import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
-@@ -32,6 +31,7 @@ import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
+@@ -34,6 +33,7 @@ import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
  import * as GitWorkflowService from "../git/GitWorkflowService.ts";
  import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
  import * as ServerSettings from "../serverSettings.ts";
@@ -238,7 +238,7 @@ index 1868d3418198dbd1a0154638e0b94dfe8cf01e3d..ff75c6a9c1f86d8e784b3a20ad7acf65
  
  const VCS_STATUS_REFRESH_FAILURE_BASE_DELAY = Duration.seconds(30);
  const VCS_STATUS_REFRESH_FAILURE_MAX_DELAY = Duration.minutes(15);
-@@ -146,24 +146,6 @@ interface ActiveRemotePoller {
+@@ -160,24 +160,6 @@ interface ActiveRemotePoller {
    readonly demandCwds: Ref.Ref<ReadonlyMap<string, number>>;
  }
  

@@ -165,7 +165,7 @@ Tests:
  create mode 100644 apps/web/src/components/terminal/remoteTerminalClose.ts
 
 diff --git a/apps/server/src/terminal/Manager.test.ts b/apps/server/src/terminal/Manager.test.ts
-index ed4645b18becfa83b3fc0d3ae6cc43859b996feb..85b91442798b92af38f8c991a0ae293aebe844e1 100644
+index 2114e65d712eabd40dfdc49ead2c5e15950b831c..45390b3f18a7c32112e29700f8e760c74c8300d0 100644
 --- a/apps/server/src/terminal/Manager.test.ts
 +++ b/apps/server/src/terminal/Manager.test.ts
 @@ -3,6 +3,8 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -177,7 +177,7 @@ index ed4645b18becfa83b3fc0d3ae6cc43859b996feb..85b91442798b92af38f8c991a0ae293a
    type TerminalAttachStreamEvent,
    type TerminalEvent,
    type TerminalOpenInput,
-@@ -678,6 +680,33 @@ it.layer(
+@@ -679,6 +681,33 @@ it.layer(
      }),
    );
  
@@ -212,7 +212,7 @@ index ed4645b18becfa83b3fc0d3ae6cc43859b996feb..85b91442798b92af38f8c991a0ae293a
      Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) => fs.exists(filePath));
  
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index e2061df592d005cb6ee70293710f520e9441f19f..a8d857cc1a0a1e88869ea208c872183d5a3d4f04 100644
+index d1ba9908abafdd59275d685c9cc73d001a7036bc..ad39849f79f7485029c7bf5a31f8602da163fd62 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
 @@ -17,6 +17,7 @@ import {
@@ -223,7 +223,7 @@ index e2061df592d005cb6ee70293710f520e9441f19f..a8d857cc1a0a1e88869ea208c872183d
    type TerminalAttachInput,
    type TerminalAttachStreamEvent,
    type TerminalClearInput,
-@@ -307,6 +308,7 @@ interface TerminalSessionState {
+@@ -308,6 +309,7 @@ interface TerminalSessionState {
    childCommandLabel: string | null;
    runtimeEnv: Record<string, string> | null;
    stopOnSettle: boolean;
@@ -231,7 +231,7 @@ index e2061df592d005cb6ee70293710f520e9441f19f..a8d857cc1a0a1e88869ea208c872183d
  }
  
  interface TerminalGrid {
-@@ -418,6 +420,9 @@ function summary(session: TerminalSessionState): TerminalSummary {
+@@ -419,6 +421,9 @@ function summary(session: TerminalSessionState): TerminalSummary {
      hasRunningSubprocess: session.hasRunningSubprocess,
      label: terminalWireLabel(session),
      updatedAt: session.updatedAt,
@@ -241,7 +241,7 @@ index e2061df592d005cb6ee70293710f520e9441f19f..a8d857cc1a0a1e88869ea208c872183d
    };
  }
  
-@@ -2879,6 +2884,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+@@ -2888,6 +2893,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
          childCommandLabel: null,
          runtimeEnv: normalizedRuntimeEnv(input.env),
          stopOnSettle: input.stopOnSettle ?? false,
@@ -1011,7 +1011,7 @@ index 2f7aa1fd8bd0f84c7315cd3c80836db470970470..5526914e6a5e558358efa0dba6e6c9a8
    });
  
 diff --git a/apps/web/src/components/settings/ProjectSettingsPanel.tsx b/apps/web/src/components/settings/ProjectSettingsPanel.tsx
-index 379be839e2e286d8357d8c7ca1e25ba2020054dc..9ef0199aa82b9e7725d14bc3021cd5bae6cd1845 100644
+index fe0ac1e4e152f02a73931d48a7475afff21cf971..40302e1c8dfcd18ac2692b7b3032136d450a87c8 100644
 --- a/apps/web/src/components/settings/ProjectSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/ProjectSettingsPanel.tsx
 @@ -31,6 +31,7 @@ import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environmen
@@ -1022,7 +1022,7 @@ index 379be839e2e286d8357d8c7ca1e25ba2020054dc..9ef0199aa82b9e7725d14bc3021cd5ba
  import { Alert, AlertDescription } from "../ui/alert";
  import { Button } from "../ui/button";
  import { Input } from "../ui/input";
-@@ -385,6 +386,9 @@ function ProjectDetail({
+@@ -381,6 +382,9 @@ function ProjectDetail({
        }
        const projectRef = scopeProjectRef(member.environmentId, member.id);
        await waitForProjectRemoval(projectRef);
