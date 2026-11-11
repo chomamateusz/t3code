@@ -600,12 +600,20 @@ jobs:
           echo "::add-mask::$keychain_password"
           trap 'security delete-keychain "$keychain" 2>/dev/null || true; rm -rf "$work"' EXIT
           printf '%s' "$STACK_MACOS_CERT_P12_BASE64" | tr -d '[:space:]' | base64 --decode > "$identity"
+          if (( $(wc -c < "$identity") < 1024 )); then
+            echo "::error title=macOS signing::STACK_MACOS_CERT_P12_BASE64 decodes to less than 1 kB, too small for a .p12 with a certificate and its key. Set it again from the base64 of the .p12, and check the two secrets are not swapped." >&2
+            exit 1
+          fi
           security create-keychain -p "$keychain_password" "$keychain"
           security set-keychain-settings -lut 3600 "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
           security import "$identity" -k "$keychain" -f pkcs12 -P "$STACK_MACOS_CERT_PASSWORD" -T /usr/bin/codesign
           rm -f "$identity"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+          if ! security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null; then
+            echo "::error title=macOS signing::The .p12 in STACK_MACOS_CERT_P12_BASE64 put no private key into the keychain. Certificates it did import:" >&2
+            security find-certificate -a -Z "$keychain" | grep -E '^SHA-1 hash:|"labl"' >&2 || echo "none" >&2
+            exit 1
+          fi
           search_list=("$keychain")
           while IFS= read -r entry; do
             entry=${entry#"${entry%%[![:space:]]*}"}
