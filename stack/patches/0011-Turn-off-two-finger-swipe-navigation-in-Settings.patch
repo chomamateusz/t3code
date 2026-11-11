@@ -93,7 +93,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 apps/web/src/components/AppSidebarLayout.browser.test.tsx
 
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index be5a26166cfc51ca69d186756b2c1e2a31b1dcee..3b29d245d1c4b8ec1130166ab8dd146f52b56d85 100644
+index 2bf779d47c8266f0f1f25fd0dbe995e65f5f769a..f7ef5f3da183555865ef0168e5c2902842019a35 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
 @@ -1,7 +1,7 @@
@@ -133,7 +133,7 @@ index be5a26166cfc51ca69d186756b2c1e2a31b1dcee..3b29d245d1c4b8ec1130166ab8dd146f
          layerDesktopServerExposure,
          DesktopState.layer,
          layerElectronApp,
-@@ -1050,7 +1053,17 @@ describe("DesktopWindow", () => {
+@@ -1099,7 +1102,17 @@ describe("DesktopWindow", () => {
        const fakeWindow = makeFakeBrowserWindow();
        const createCount = yield* Ref.make(0);
        const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
@@ -152,7 +152,7 @@ index be5a26166cfc51ca69d186756b2c1e2a31b1dcee..3b29d245d1c4b8ec1130166ab8dd146f
  
        yield* Effect.gen(function* () {
          const desktopWindow = yield* DesktopWindow.DesktopWindow;
-@@ -1058,22 +1071,55 @@ describe("DesktopWindow", () => {
+@@ -1107,22 +1120,55 @@ describe("DesktopWindow", () => {
          const swipe = fakeWindow.windowListeners.get("swipe");
          assert.isDefined(swipe);
          if (!swipe) return;
@@ -217,10 +217,10 @@ index be5a26166cfc51ca69d186756b2c1e2a31b1dcee..3b29d245d1c4b8ec1130166ab8dd146f
      }),
    );
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index b8446f78740c42e6cdc49d2fdf3dc8a9965896b5..a736f20bfa6f3fb5b0717417bf3bac1c160a39b9 100644
+index 73f5b41810dae4998b1dcee317131502f1fba928..5794fd1bfbaa9ec35aac40d41451635a219379b1 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
-@@ -747,9 +747,27 @@ export const make = Effect.gen(function* () {
+@@ -749,9 +749,27 @@ export const make = Effect.gen(function* () {
      if (environment.platform === "darwin") {
        // Mouse drivers can deliver Back/Forward as macOS swipe gestures instead of buttons.
        window.on("swipe", (_event, direction) => {

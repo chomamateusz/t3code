@@ -695,7 +695,7 @@ index f8e66a8533637e88dc79c11ac41c21d5ecd0a92c..308d1572c109fe836486a405cc222881
  export function resolveUsageShortcut(
    event: ShortcutEventLike & { target: EventTarget | null },
 diff --git a/docs/user/usage.md b/docs/user/usage.md
-index d7e0dad901bef1c76d8e8dda119c6070cf557b78..6cb25ef495cc9d11921c6f8ae2240bd29908286f 100644
+index e6b3a46d5a14e5e9c1788192173f24c056de9e78..394ae8d2617c5005ccc920cffb70d0f0590cef6b 100644
 --- a/docs/user/usage.md
 +++ b/docs/user/usage.md
 @@ -54,6 +54,10 @@ environments are selected by default. The dropdown shows which environments are
@@ -709,7 +709,7 @@ index d7e0dad901bef1c76d8e8dda119c6070cf557b78..6cb25ef495cc9d11921c6f8ae2240bd2
  If recent work is missing or a new model shows no cost, refresh to rescan session history and
  update model pricing.
  
-@@ -192,6 +196,7 @@ Session, Weekly, or both for each provider. Reopen T3 to refresh expired reading
+@@ -196,6 +200,7 @@ Session, Weekly, or both for each provider. Reopen T3 to refresh expired reading
  On web and desktop, open Usage from the command palette. While on Usage,
  press `C`, `T`, or `L` for Cost, Tokens, or Limits while not typing in a field.
  Use `Ctrl+Shift+1/2/3/4` (`Cmd+Shift+1/2/3/4` on macOS) for the past

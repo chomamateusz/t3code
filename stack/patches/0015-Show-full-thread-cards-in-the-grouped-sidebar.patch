@@ -1189,7 +1189,7 @@ index bc26f4b47608cfa280ab0cf1285f5361fbc62e7f..ef3101e22787a6f84f3fae8f20b43fde
        )}
      >
 diff --git a/apps/web/src/index.css b/apps/web/src/index.css
-index b24265d02197ec7ba5b6ec670918a881188a3739..9d67401392b896b0483c2366e2b155a1fd9f13bc 100644
+index 40daa0da7dcc8df2927aa40a518512e7a8b4e87f..fb91bbd7bbd88721e9b2e81637286999c4c3b26f 100644
 --- a/apps/web/src/index.css
 +++ b/apps/web/src/index.css
 @@ -109,6 +109,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil

@@ -389,7 +389,7 @@ index 7b63b7efc0b65bac2927a26631e75231a01c977d..1dc7a1a75f6c575237eb711b9372134b
      const { instanceId, environment, enabled, config } = input;
      const fileSystem = yield* FileSystem.FileSystem;
 diff --git a/apps/server/src/provider/Drivers/ClaudeDriver.ts b/apps/server/src/provider/Drivers/ClaudeDriver.ts
-index c2d4b638610746125ad6e07264c9717e555d61ee..4f05c95f7ac23bf86006901e8d6bf705a43bd793 100644
+index 3ada12297649de46cd308111490d12ec27bba702..848073cc38dab5fdb5534c0b1eb61f5eee611379 100644
 --- a/apps/server/src/provider/Drivers/ClaudeDriver.ts
 +++ b/apps/server/src/provider/Drivers/ClaudeDriver.ts
 @@ -159,6 +159,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
