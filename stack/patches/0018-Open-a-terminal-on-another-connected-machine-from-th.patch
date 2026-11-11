@@ -87,6 +87,7 @@ apps/web:
 - apps/web/src/components/terminal/useThreadTerminalActions.ts
   (launchRemoteTerminal, remote cwd, per-terminal environment for write and
   close, failed remote open closes the session)
+- apps/web/src/hooks/useRightPanelSurfaceClose.browser.test.tsx
 - apps/web/src/hooks/useThreadActions.ts (closeThreadRemoteTerminals on
   archive, resolved delete and unresolved delete)
 - apps/web/src/hooks/useThreadActions.permissions.test.ts
@@ -122,6 +123,9 @@ Tests:
   member's thread gets its remote terminals closed.
 - apps/web/src/components/ThreadTerminalDrawer.browser.test.tsx mocks
   useEnvironmentsWithScope for the machine menu.
+- apps/web/src/hooks/useRightPanelSurfaceClose.browser.test.tsx mocks the
+  terminal actions' new imports (server environment, file metadata, and the
+  runtime's executeAtomQuery and runAtomCommand).
 - Focused run on 691b9709b0 + 0001-0017: apps/server Manager.test.ts 77
   tests passed; the six web unit files above 81 tests passed;
   ThreadTerminalDrawer.browser.test.tsx and
@@ -146,6 +150,7 @@ Tests:
  .../terminal/remoteTerminalClose.test.ts      | 108 +++++++++++
  .../terminal/remoteTerminalClose.ts           |  68 +++++++
  .../terminal/useThreadTerminalActions.ts      | 106 ++++++++++-
+ ...useRightPanelSurfaceClose.browser.test.tsx |   4 +
  .../useThreadActions.permissions.test.ts      |  18 +-
  apps/web/src/hooks/useThreadActions.ts        |   4 +
  .../src/hooks/useThreadActions.undo.test.ts   |   7 +-
@@ -156,7 +161,7 @@ Tests:
  apps/web/src/terminalUiStateStore.ts          | 167 +++++++++++++++---
  docs/user/terminal.md                         |  14 ++
  packages/contracts/src/terminal.ts            |   6 +-
- 25 files changed, 972 insertions(+), 88 deletions(-)
+ 26 files changed, 976 insertions(+), 88 deletions(-)
  create mode 100644 apps/web/src/components/PersistentThreadTerminals.logic.test.ts
  create mode 100644 apps/web/src/components/PersistentThreadTerminals.logic.ts
  create mode 100644 apps/web/src/components/terminal/NewTerminalMachineMenu.tsx
@@ -1526,6 +1531,23 @@ index 9112f41519754778f3211de4bbff7d2b5f0e80f1..103019ab8d7583a2a03af8e10a6b021c
      closeTerminalSession: useStableCallback(closeTerminalSession),
      writeToTerminal: useStableCallback(writeToTerminal),
    };
+diff --git a/apps/web/src/hooks/useRightPanelSurfaceClose.browser.test.tsx b/apps/web/src/hooks/useRightPanelSurfaceClose.browser.test.tsx
+index 9b1299aee1deae17bdeefc39a39ca9c7cd5643dd..ca3735a68e0a00a33d089148678a1ce9ffe323df 100644
+--- a/apps/web/src/hooks/useRightPanelSurfaceClose.browser.test.tsx
++++ b/apps/web/src/hooks/useRightPanelSurfaceClose.browser.test.tsx
+@@ -59,8 +59,12 @@ vi.mock("../state/terminal", () => ({ terminalEnvironment: { open: {}, close: {}
+ vi.mock("../state/preview", () => ({ previewEnvironment: { close: {} } }));
+ vi.mock("../state/threads", () => ({ threadEnvironment: { delete: {} } }));
+ vi.mock("../state/shell", () => ({ environmentShell: { stateValueAtom: () => null } }));
++vi.mock("../state/server", () => ({ serverEnvironment: {} }));
++vi.mock("./useFileMetadata", () => ({ getFileMetadataQueryAtom: () => null }));
+ vi.mock("@t3tools/client-runtime/state/runtime", () => ({
++  executeAtomQuery: () => Promise.resolve(null),
+   isAtomCommandInterrupted: () => false,
++  runAtomCommand: () => Promise.resolve(null),
+ }));
+ 
+ function setup() {
 diff --git a/apps/web/src/hooks/useThreadActions.permissions.test.ts b/apps/web/src/hooks/useThreadActions.permissions.test.ts
 index 58bc33cd0d645f09a91093ac99a0492365d2d187..d63b5186f321c72248e0131204261430a5a629d1 100644
 --- a/apps/web/src/hooks/useThreadActions.permissions.test.ts
