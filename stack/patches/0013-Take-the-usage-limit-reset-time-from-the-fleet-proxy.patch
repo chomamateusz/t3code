@@ -86,7 +86,7 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 apps/server/src/provider/fleetProxyLimits.ts
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index 1add2822a01e9fde10fe2046432dbee07c7fa052..7abab4ba0726f40c3d2d4771df7e86f7d3cdeedc 100644
+index 4550692f3e18ad754d4c6f6df0abb5da3d7ae2a6..1fc1fd70b39e50779ff56accf70daceb1d8f0255 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -75,6 +75,7 @@ import * as Scope from "effect/Scope";
@@ -105,7 +105,7 @@ index 1add2822a01e9fde10fe2046432dbee07c7fa052..7abab4ba0726f40c3d2d4771df7e86f7
  import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
  import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
-@@ -3166,6 +3168,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -3214,6 +3216,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      readonly forkSession?: ClaudeAdapterV2.ClaudeAgentSdkQueryRunnerShape["forkSession"];
      readonly allocateSessionId?: Effect.Effect<string>;
      readonly promptSuggestions?: boolean;
@@ -113,7 +113,7 @@ index 1add2822a01e9fde10fe2046432dbee07c7fa052..7abab4ba0726f40c3d2d4771df7e86f7
    }) =>
      Effect.gen(function* () {
        const fileSystem = yield* FileSystem.FileSystem;
-@@ -3229,6 +3232,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -3277,6 +3280,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
          path: yield* Path.Path,
          random: yield* SecureRandom.SecureRandom,
          idAllocator,
@@ -123,7 +123,7 @@ index 1add2822a01e9fde10fe2046432dbee07c7fa052..7abab4ba0726f40c3d2d4771df7e86f7
          continuationRequests: {
            offer: (request) =>
              Effect.sync(() => {
-@@ -7669,6 +7675,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -7761,6 +7767,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      ),
    );
  
@@ -297,7 +297,7 @@ index 1add2822a01e9fde10fe2046432dbee07c7fa052..7abab4ba0726f40c3d2d4771df7e86f7
      Effect.gen(function* () {
        const harness = yield* makeWakeHarness;
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index 7b63b7efc0b65bac2927a26631e75231a01c977d..1dc7a1a75f6c575237eb711b9372134bbd6e230b 100644
+index 4a252d6092edb55774f1c566e58a1ba8b6614cf9..538eb20d2de3637c88d58b61c659066bcbc89553 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -36,6 +36,7 @@ import {
@@ -308,7 +308,7 @@ index 7b63b7efc0b65bac2927a26631e75231a01c977d..1dc7a1a75f6c575237eb711b9372134b
  import {
    type CanUseTool,
    type ElicitationRequest,
-@@ -155,6 +156,7 @@ import * as Semaphore from "effect/Semaphore";
+@@ -156,6 +157,7 @@ import * as Semaphore from "effect/Semaphore";
  import * as Stream from "effect/Stream";
  import * as ChildProcess from "effect/process/ChildProcess";
  import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -316,7 +316,7 @@ index 7b63b7efc0b65bac2927a26631e75231a01c977d..1dc7a1a75f6c575237eb711b9372134b
  
  import { resolveAttachmentPath } from "../../attachmentStore.ts";
  import { snapshotMcpApp } from "../../mcpApps/McpAppSnapshot.ts";
-@@ -4859,6 +4861,7 @@ export interface ClaudeAdapterV2Options {
+@@ -4882,6 +4884,7 @@ export interface ClaudeAdapterV2Options {
    readonly queryRunner: ClaudeAgentSdkQueryRunnerShape;
    readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
    readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
@@ -324,7 +324,7 @@ index 7b63b7efc0b65bac2927a26631e75231a01c977d..1dc7a1a75f6c575237eb711b9372134b
    readonly continuationRequests?: {
      readonly offer: (
        request: ProviderContinuationRequests.ProviderContinuationRequest,
-@@ -10120,17 +10123,44 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -10171,17 +10174,44 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                      failureHint,
                      usageLimited,
                    );
@@ -376,7 +376,7 @@ index 7b63b7efc0b65bac2927a26631e75231a01c977d..1dc7a1a75f6c575237eb711b9372134b
                completedAt,
                result: message,
                ...(terminalFailure === null ? {} : { failure: terminalFailure }),
-@@ -12433,7 +12463,10 @@ export type ClaudeAdapterV2DriverEnv =
+@@ -12486,7 +12516,10 @@ export type ClaudeAdapterV2DriverEnv =
  export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
    function* (
      input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
@@ -401,7 +401,7 @@ index 3ada12297649de46cd308111490d12ec27bba702..848073cc38dab5fdb5534c0b1eb61f5e
      ).pipe(
        Effect.mapError(
 diff --git a/apps/server/src/provider/Drivers/ClaudeSkills.ts b/apps/server/src/provider/Drivers/ClaudeSkills.ts
-index 0d62109cce828ef8acb7b31a65f7b9dc2473406b..98ca41d510847ff831954055552cf51d92b1a98d 100644
+index ada8a39e1ed5bbdbb8e8dd0e7c1fe93a46e574d7..9b8042dc03327cac7831a8f1c158119cd74c5662 100644
 --- a/apps/server/src/provider/Drivers/ClaudeSkills.ts
 +++ b/apps/server/src/provider/Drivers/ClaudeSkills.ts
 @@ -441,20 +441,29 @@ const SettingsEnv = Schema.Struct({
@@ -455,9 +455,9 @@ index 0d62109cce828ef8acb7b31a65f7b9dc2473406b..98ca41d510847ff831954055552cf51d
 +  environment: NodeJS.ProcessEnv,
 +) => readClaudeApiSettings(config, cwd, environment).pipe(Effect.map((settings) => settings.env));
 +
- // Claude's --add-dir is repeatable and variadic; parseCliArgs keeps only one value.
- export function claudeLaunchArgDirectories(launchArgs?: string): ReadonlyArray<string> {
-   const directories: string[] = [];
+ /** The host of an `ANTHROPIC_BASE_URL` that is not Anthropic's own API. */
+ export function customClaudeApiEndpointHost(baseUrl: string | undefined): string | undefined {
+   const endpoint = URL.parse(baseUrl?.trim() ?? "");
 diff --git a/apps/server/src/provider/fleetProxyLimits.fixture.json b/apps/server/src/provider/fleetProxyLimits.fixture.json
 new file mode 100644
 index 0000000000000000000000000000000000000000..73b7c86f220fe088215a92a70a58f2a448fcef3d

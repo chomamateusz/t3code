@@ -295,10 +295,10 @@ index a504d429185af303565549a5d1230edec56f41ca..9e16d277cadc806af26d02b5caac654c
            void store.syncPersistedAttachments(target, [capture]);
          }
 diff --git a/apps/web/src/components/preview/PreviewView.tsx b/apps/web/src/components/preview/PreviewView.tsx
-index 253a4fc14e568fdcc0dfa772d07d9fead27f2700..abe81016b30a19115e88b77ff5f75fe25d65f7e6 100644
+index 33fd2fa8511b4f99276ae2add0c7dddcdf3f4bb6..7f2ea4ec95a4cd28a0d4a80418f9581d1a5e7afb 100644
 --- a/apps/web/src/components/preview/PreviewView.tsx
 +++ b/apps/web/src/components/preview/PreviewView.tsx
-@@ -793,7 +793,7 @@ export function PreviewView({
+@@ -828,7 +828,7 @@ export function PreviewView({
        const { annotation: picked, submission, screenshotFailed = false } = result;
        // Send annotations even if the optional crop fails or stalls; drop failed screenshots so prompts cannot
        // claim an attachment.

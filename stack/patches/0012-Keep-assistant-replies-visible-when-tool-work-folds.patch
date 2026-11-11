@@ -200,10 +200,10 @@ index 0ca1f46f5d7eacf5b47c47ac21789c33db1fb269..0afed295ebdad3344faa536cbe6e3c5d
      ];
      await using screen = await render(<MessagesTimeline {...props} timelineEntries={entries} />, {
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd91b9d8410 100644
+index 5d242f1efc20ebaa693147b9aff0cbb0c1b507fa..4b20f0afee6825aaacf1a51a789578d0dd2432fe 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-@@ -974,7 +974,106 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -1042,7 +1042,106 @@ describe("deriveMessagesTimelineRows", () => {
      expect(assistantRow?.assistantTurnDiffSummary).toBe(assistantTurnDiffSummary);
    });
  
@@ -311,7 +311,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
      const timelineEntries = [
        {
          id: "user-entry",
-@@ -1050,6 +1149,7 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -1118,6 +1217,7 @@ describe("deriveMessagesTimelineRows", () => {
      expect(collapsedRows.map((row) => row.id)).toEqual([
        "user-entry",
        "turn-fold:turn-1",
@@ -319,7 +319,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
        "assistant-final-entry",
      ]);
  
-@@ -2200,15 +2300,16 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -2367,15 +2467,16 @@ describe("deriveMessagesTimelineRows", () => {
          row.kind === "message" ? `${row.message.role}:${row.message.id}` : row.kind,
        );
  
@@ -338,7 +338,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
  
      const timelineEntries = [
        message("imported-prompt", "user", 0),
-@@ -2217,24 +2318,17 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -2384,24 +2485,17 @@ describe("deriveMessagesTimelineRows", () => {
      ];
      const foldInput = { timelineEntries, latestRun: null, isWorking: false };
      const foldRunIds = timelineTurnFoldRunIdsByEntryId(foldInput);
@@ -370,7 +370,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
    });
  
    it("does not treat runless entries as live work on a thread with runs", () => {
-@@ -2625,7 +2719,7 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -2792,7 +2886,7 @@ describe("deriveMessagesTimelineRows", () => {
  });
  
  describe("v2 run and attempt history", () => {
@@ -379,7 +379,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
      const timelineEntries = [
        {
          id: "user-entry",
-@@ -2724,6 +2818,7 @@ describe("v2 run and attempt history", () => {
+@@ -2891,6 +2985,7 @@ describe("v2 run and attempt history", () => {
      expect(collapsedRows.map((row) => row.id)).toEqual([
        "user-entry",
        "turn-fold:turn-1",
@@ -387,7 +387,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
        "thread-created-entry",
        "assistant-final-entry",
      ]);
-@@ -3098,6 +3193,8 @@ describe("v2 run and attempt history", () => {
+@@ -3265,6 +3360,8 @@ describe("v2 run and attempt history", () => {
        })),
      });
      expect(deferredTailRows.some((row) => row.kind === "attempt-fold")).toBe(true);
@@ -396,7 +396,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
    });
  
    describe("a steer that supersedes an attempt", () => {
-@@ -3148,6 +3245,7 @@ describe("v2 run and attempt history", () => {
+@@ -3315,6 +3412,7 @@ describe("v2 run and attempt history", () => {
      const rowsFor = (
        replyCompletedSecond: number,
        runStatus: "running" | "completed" = "completed",
@@ -404,7 +404,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
      ) =>
        deriveMessagesTimelineRows({
          timelineEntries: [
-@@ -3199,6 +3297,7 @@ describe("v2 run and attempt history", () => {
+@@ -3366,6 +3464,7 @@ describe("v2 run and attempt history", () => {
            startedAt: at(0),
            completedAt: runStatus === "completed" ? at(14) : null,
          },
@@ -412,7 +412,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
          isWorking: false,
          turnDiffSummaries: [],
          supportsConversationRollback: false,
-@@ -3210,6 +3309,113 @@ describe("v2 run and attempt history", () => {
+@@ -3377,6 +3476,113 @@ describe("v2 run and attempt history", () => {
          const rows = rowsFor(4, runStatus);
          expect(rows.some((row) => row.kind === "attempt-fold")).toBe(false);
          expect(rows.map((row) => row.id)).toContain("old-reply-entry");
@@ -526,7 +526,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
        },
      );
  
-@@ -3788,7 +3994,7 @@ describe("linked timeline resources", () => {
+@@ -3955,7 +4161,7 @@ describe("linked timeline resources", () => {
      },
    );
  
@@ -535,7 +535,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
      const timelineEntries = [
        {
          kind: "message" as const,
-@@ -3822,7 +4028,8 @@ describe("linked timeline resources", () => {
+@@ -3989,7 +4195,8 @@ describe("linked timeline resources", () => {
      ];
      const collapsed = deriveMessagesTimelineRows({ ...common, timelineEntries });
      expect(collapsed.map((row) => row.id)).toEqual([
@@ -545,7 +545,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
        "final",
        "summary:created",
        "assistant-meta:final",
-@@ -3836,7 +4043,6 @@ describe("linked timeline resources", () => {
+@@ -4003,7 +4210,6 @@ describe("linked timeline resources", () => {
        expandedRunIds: new Set([runId]),
      });
      expect(expanded.map((row) => row.id)).toEqual([
@@ -553,7 +553,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
        "intro",
        "created",
        "final",
-@@ -3861,9 +4067,24 @@ describe("linked timeline resources", () => {
+@@ -4028,9 +4234,24 @@ describe("linked timeline resources", () => {
          updatedAt: `2026-09-08T10:00:0${second}Z`,
        },
      });
@@ -578,7 +578,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
        event("created", "thread_created"),
        message("after-steer", "assistant", 3),
        message("final", "assistant", 4),
-@@ -3878,8 +4099,10 @@ describe("linked timeline resources", () => {
+@@ -4045,8 +4266,10 @@ describe("linked timeline resources", () => {
      expect(rowIds([runId])).not.toContain("created");
      expect(rowIds([segmentKey])).toEqual([
        `turn-fold:${runId}`,
@@ -589,7 +589,7 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
        "created",
        "after-steer",
        "final",
-@@ -4532,6 +4755,7 @@ describe("subagent continued by a later turn", () => {
+@@ -4699,6 +4922,7 @@ describe("subagent continued by a later turn", () => {
        "answer-1",
        "prompt-2",
        `turn-fold:${run2}`,
@@ -598,10 +598,10 @@ index ba0f508ebeecdfba8aacfcdaef49e8e8b8ff712e..c1c1bf3b223fdb1cee6bb09fd6255cd9
      ]);
    });
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index 4536e9a25038690a2626e8964e3d7b8cd9167cae..7a8b8e8eae5413fd0e6b88e2304cf36f5f7d595e 100644
+index 9e9d82a11fcbdaf79381f0776f9e38218eae7a65..d131923d54fc93e7b4b1d3a2386086a247e94e16 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-@@ -729,41 +729,17 @@ interface SupersededAttemptFold {
+@@ -743,41 +743,17 @@ interface SupersededAttemptFold {
    readonly hiddenEntryIds: ReadonlySet<string>;
  }
  
@@ -646,7 +646,7 @@ index 4536e9a25038690a2626e8964e3d7b8cd9167cae..7a8b8e8eae5413fd0e6b88e2304cf36f
        !entry.message.streaming &&
        item?.type === "assistant_message" &&
        item.status === "completed" &&
-@@ -783,9 +759,32 @@ function deriveSupersededAttemptFolds(
+@@ -797,9 +773,32 @@ function deriveSupersededAttemptFolds(
    liveSubagentEntryIds: ReadonlySet<string>,
    completeReplyEntryIds: ReadonlySet<string>,
  ): ReadonlyMap<string, SupersededAttemptFold> {
@@ -681,7 +681,7 @@ index 4536e9a25038690a2626e8964e3d7b8cd9167cae..7a8b8e8eae5413fd0e6b88e2304cf36f
      ),
    );
    const entriesByAttemptId = new Map<RunAttemptId, TimelineEntry[]>();
-@@ -793,6 +792,7 @@ function deriveSupersededAttemptFolds(
+@@ -807,6 +806,7 @@ function deriveSupersededAttemptFolds(
      if (
        entry.attempt?.status !== "superseded" ||
        completeAttemptIds.has(entry.attempt.id) ||
@@ -689,7 +689,7 @@ index 4536e9a25038690a2626e8964e3d7b8cd9167cae..7a8b8e8eae5413fd0e6b88e2304cf36f
        unfoldedRunIds.has(entry.attempt.runId) ||
        (entry.kind === "message" && entry.message.role === "user") ||
        (entry.kind === "event" && entry.projectedItem.item.type === "handoff") ||
-@@ -1124,7 +1124,7 @@ function deriveTurnFolds(input: {
+@@ -1138,7 +1138,7 @@ function deriveTurnFolds(input: {
        ? group.entries.findIndex((entry) => entry.id === group.terminalEntry?.id)
        : group.entries.length;
      for (const [index, entry] of group.entries.entries()) {

@@ -227,10 +227,10 @@ index 0e3f47b7f9ed81957f9db3f40c03fed0cb7f04c5..1364bb23f081bab643b13ba815627950
  });
  
 diff --git a/apps/web/src/components/Sidebar.logic.ts b/apps/web/src/components/Sidebar.logic.ts
-index ef229d1424c38a2b89b912a408e78823c68064b9..2b9c1febc643945202db5fe541d44e0a0930f97e 100644
+index 5ed1320b59e5521b853d3b12f2bf99b16557d662..e445190240076ab6c8cb37a767dbb5a84ff2344d 100644
 --- a/apps/web/src/components/Sidebar.logic.ts
 +++ b/apps/web/src/components/Sidebar.logic.ts
-@@ -599,6 +599,7 @@ export function filterSidebarV2VisibleThreads<
+@@ -609,6 +609,7 @@ export function filterSidebarV2VisibleThreads<
    threads: readonly T[],
    scopedProjectKeys: ReadonlySet<string> | null,
    delegatedUnderParent: ReadonlySet<string>,
@@ -238,7 +238,7 @@ index ef229d1424c38a2b89b912a408e78823c68064b9..2b9c1febc643945202db5fe541d44e0a
  ): T[] {
    return threads.filter(
      (thread) =>
-@@ -608,8 +609,18 @@ export function filterSidebarV2VisibleThreads<
+@@ -618,8 +619,18 @@ export function filterSidebarV2VisibleThreads<
          thread.lineage,
          delegatedUnderParent,
        ) &&
@@ -260,10 +260,10 @@ index ef229d1424c38a2b89b912a408e78823c68064b9..2b9c1febc643945202db5fe541d44e0a
  }
  
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 2b1a8403935c68093d303bc1c9f011707a805bea..2b83683aeecfdb8d1c52164436aeff908aae7142 100644
+index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..8f28d5ac997feb42e7a1d4896be96278a6fbecd5 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -116,6 +116,14 @@ import {
+@@ -111,6 +111,14 @@ import {
    getSidebarProjectSettingsKey,
    type SidebarProjectSnapshot,
  } from "../sidebarProjectGrouping";
@@ -278,7 +278,7 @@ index 2b1a8403935c68093d303bc1c9f011707a805bea..2b83683aeecfdb8d1c52164436aeff90
  import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
  import {
    getThreadKeysToDeselectAfterDelete,
-@@ -169,7 +177,6 @@ import {
+@@ -163,7 +171,6 @@ import {
    resolveThreadRouteTarget,
  } from "../threadRoutes";
  import type { SidebarThreadSummary } from "../types";
@@ -286,7 +286,7 @@ index 2b1a8403935c68093d303bc1c9f011707a805bea..2b83683aeecfdb8d1c52164436aeff90
  import { cn } from "~/lib/utils";
  import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
  import { ProjectRowActions } from "./ProjectComboboxRow";
-@@ -188,6 +195,7 @@ import {
+@@ -182,6 +189,7 @@ import {
    deleteSelectedThreadEntries,
    filterSidebarProjectScopeItems,
    firstValidTimestampMs,
@@ -459,7 +459,7 @@ index 2b1a8403935c68093d303bc1c9f011707a805bea..2b83683aeecfdb8d1c52164436aeff90
    const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
    const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
    // Safari may click after Ctrl+click opens settings; suppress that selection until the picker reopens.
-@@ -1078,18 +1114,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1076,18 +1112,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    };
    // A scope whose project is gone reads as all projects once every snapshot has
    // loaded. The stored keys are left alone, so the scope returns with its project.
@@ -493,7 +493,7 @@ index 2b1a8403935c68093d303bc1c9f011707a805bea..2b83683aeecfdb8d1c52164436aeff90
      chosenProjectScopeKeys.includes(project.projectKey),
    );
    const chosenScopeProjectKeys =
-@@ -1122,15 +1163,19 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1129,15 +1170,19 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    // scrolled away; a remount starts at the top, so each mount scrolls to the open
    // thread once. Render decides the widening, so the first frame of the new route
    // already lists the row; the active row's ref callback scrolls to it.
@@ -515,7 +515,7 @@ index 2b1a8403935c68093d303bc1c9f011707a805bea..2b83683aeecfdb8d1c52164436aeff90
    const projectScopeKey = projectScopeKeys.length === 0 ? null : projectScopeKeys.join("\n");
    const toggleProjectScopeKey = (key: string) =>
      setProjectScopeKeys(
-@@ -1138,31 +1183,53 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1145,31 +1190,53 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
          ? projectScopeKeys.filter((candidate) => candidate !== key)
          : [...projectScopeKeys, key],
      );
@@ -591,7 +591,7 @@ index 2b1a8403935c68093d303bc1c9f011707a805bea..2b83683aeecfdb8d1c52164436aeff90
    // Pinning from a row keeps rows in place while the menu is open.
    const projectScopeItems = useOrderWhileOpen(
      lookupProjectScopeItems,
-@@ -1177,14 +1244,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1184,14 +1251,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const filteredProjectScopeItems = filterSidebarProjectScopeItems({
      items: projectScopeItems,
      query: projectScopeMenuState.query,
@@ -612,7 +612,7 @@ index 2b1a8403935c68093d303bc1c9f011707a805bea..2b83683aeecfdb8d1c52164436aeff90
      threadSearchQuery,
      scopedProjectGroups.length === 0
        ? {}
-@@ -1200,10 +1268,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1207,10 +1275,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
        if (!composerDraftHasUserContent(store.draftsByThreadKey[draftKey])) {
          continue;
        }
@@ -624,7 +624,7 @@ index 2b1a8403935c68093d303bc1c9f011707a805bea..2b83683aeecfdb8d1c52164436aeff90
          continue;
        }
        count += 1;
-@@ -1331,6 +1396,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1338,6 +1403,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    } = useSidebarThreads({
      projectScopeKey,
      scopedProjectKeys,
@@ -632,7 +632,7 @@ index 2b1a8403935c68093d303bc1c9f011707a805bea..2b83683aeecfdb8d1c52164436aeff90
      serverConfigs,
      connectedEnvironmentIds,
      optimisticDrop,
-@@ -1338,9 +1404,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1345,9 +1411,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      delegatedUnderParent,
      routeRowThreadKey,
      folderGroups: boringSidebarEnabled
@@ -647,7 +647,7 @@ index 2b1a8403935c68093d303bc1c9f011707a805bea..2b83683aeecfdb8d1c52164436aeff90
          : scopedProjectGroups
        : null,
      keepEmptyFolders: (group) =>
-@@ -2999,6 +3067,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2974,6 +3042,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            <SidebarGroup className="z-[1]">
              <SidebarThreadHeader
                hasProjects={projectGroups.length > 0}
@@ -663,7 +663,7 @@ index 2b1a8403935c68093d303bc1c9f011707a805bea..2b83683aeecfdb8d1c52164436aeff90
                projectScope={
                  <Combobox
                    items={projectScopeItems}
-@@ -3423,7 +3500,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3398,7 +3475,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              environmentMachine={
                                environmentMachineById.get(thread.environmentId) ?? "server"
                              }
@@ -672,7 +672,7 @@ index 2b1a8403935c68093d303bc1c9f011707a805bea..2b83683aeecfdb8d1c52164436aeff90
                              project={
                                projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ??
                                null
-@@ -3465,6 +3542,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3440,6 +3517,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                            projectByKey={projectByKey}
                            projectDisplayNameByKey={projectDisplayNameByKey}
                            scopedProjectKeys={scopedProjectKeys}
@@ -680,7 +680,7 @@ index 2b1a8403935c68093d303bc1c9f011707a805bea..2b83683aeecfdb8d1c52164436aeff90
                            routeDraftId={routeDraftIdForRows}
                            onNavigateToDraft={navigateToDraft}
                            onDraftContextMenu={handleDraftContextMenu}
-@@ -3664,12 +3742,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3639,12 +3717,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                      Add project
                    </button>
                  </>
@@ -1191,10 +1191,10 @@ index 0000000000000000000000000000000000000000..2e24fb605211e3a627a8e484fadc0c46
 +  await expect.element(screen.getByText("main")).toBeVisible();
 +});
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 3a50e76d06bda9912e9594b032bbf44c7af94632..1ef5d438eacdb831441c24b09467f38069e963c3 100644
+index 05e898420047005fa5d384571a38459243e935db..98f08afd8677a4ff536b3274b0af1e6c51626394 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -561,7 +561,7 @@ type SidebarThreadRowProps = {
+@@ -569,7 +569,7 @@ type SidebarThreadRowProps = {
    currentEnvironmentId: string | null;
    environmentLabel: string | null;
    environmentMachine: EnvironmentMachineKind;
@@ -1203,7 +1203,7 @@ index 3a50e76d06bda9912e9594b032bbf44c7af94632..1ef5d438eacdb831441c24b09467f380
    project: EnvironmentProject | null;
    projectDisplayName: string | null;
    providerEntryByInstanceId: ReadonlyMap<string, SidebarProviderEntry>;
-@@ -811,7 +811,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -819,7 +819,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      : thread.modelSelection.model;
  
    const isRemote = thread.environmentId !== props.currentEnvironmentId;
@@ -1212,7 +1212,7 @@ index 3a50e76d06bda9912e9594b032bbf44c7af94632..1ef5d438eacdb831441c24b09467f380
  
    const detailsTooltip = (
      <SidebarThreadTooltip
-@@ -1136,7 +1136,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1144,7 +1144,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
    ) : null;
  
    const remoteMachineIcon =
@@ -1221,7 +1221,7 @@ index 3a50e76d06bda9912e9594b032bbf44c7af94632..1ef5d438eacdb831441c24b09467f380
        <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
          <EnvironmentMachineIcon aria-hidden kind={props.environmentMachine} className="size-3.5" />
        </span>
-@@ -1145,27 +1145,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1153,27 +1153,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
    // Only the trailing icons would remain, so the row moves them to the title line instead.
    const metaLineEmpty =
      !thread.branch &&

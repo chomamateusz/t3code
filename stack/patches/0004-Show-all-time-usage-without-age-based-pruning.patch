@@ -30,6 +30,9 @@ Integration details:
 Port to 965ddc1d6c:
 - Applied without conflicts. UsageService.ts and usageScanCache.ts did not change upstream; 965ddc1d6c still prunes at CACHE_RETENTION_DAYS = 92 (UsageService.ts:73) and has no all-time range.
 
+Port to 691b9709b0:
+- Upstream c03f84bcde streams the scan cache to disk and removes superseded cache files after a save, and 729f6757d9 bumps the cache to v12 and merges repeated Claude keys in dedupeWithinFile. Kept both; removed only CACHE_RETENTION_DAYS, pruneScanCache and the retention cutoffs again, next to upstream's STALE_TEMP_DIRECTORY_MS (temp directories, not usage records). The streamed writer and decodeScanCache drop no entry by age.
+
 Files:
 apps/server:
 - apps/server/src/usage/UsageService.test.ts
@@ -77,10 +80,10 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
 diff --git a/apps/server/src/usage/UsageService.test.ts b/apps/server/src/usage/UsageService.test.ts
-index a3775c6aebe17a4616df09349a336f51ddf73c1c..489524348502f43a8066b79c6ba8b2d021b08010 100644
+index 1c03c05e137276c2720fdaa334631f633c9c16a2..751e69dc00f0bc0074ab31739d0fdf1847588741 100644
 --- a/apps/server/src/usage/UsageService.test.ts
 +++ b/apps/server/src/usage/UsageService.test.ts
-@@ -99,6 +99,11 @@ const WINDOW: UsageSummaryInput = {
+@@ -135,6 +135,11 @@ const WINDOW: UsageSummaryInput = {
    untilDay: UsageDay.make("2026-08-02"),
  };
  
@@ -92,7 +95,7 @@ index a3775c6aebe17a4616df09349a336f51ddf73c1c..489524348502f43a8066b79c6ba8b2d0
  const setup = Effect.gen(function* () {
    const home = yield* Effect.promise(() =>
      NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "usage-service-test-")),
-@@ -1440,6 +1445,42 @@ describe("UsageService", () => {
+@@ -1476,6 +1481,42 @@ describe("UsageService", () => {
      }).pipe(Effect.scoped),
    );
  
@@ -135,7 +138,7 @@ index a3775c6aebe17a4616df09349a336f51ddf73c1c..489524348502f43a8066b79c6ba8b2d0
    it.live("restores the Cursor account cache after a restart", () =>
      Effect.gen(function* () {
        const { settings, home } = yield* setup;
-@@ -2812,7 +2853,7 @@ describe("UsageService", () => {
+@@ -2911,7 +2952,7 @@ describe("UsageService", () => {
      }).pipe(Effect.scoped),
    );
  
@@ -144,7 +147,7 @@ index a3775c6aebe17a4616df09349a336f51ddf73c1c..489524348502f43a8066b79c6ba8b2d0
      Effect.gen(function* () {
        const { transcript, settings, home } = yield* setup;
        const alias = NodePath.join(home, "claude-alias");
-@@ -2820,26 +2861,38 @@ describe("UsageService", () => {
+@@ -2919,26 +2960,38 @@ describe("UsageService", () => {
          NodeFSP.symlink(NodePath.join(home, "claude"), alias, "junction"),
        );
        const content = claudeLine(1, 5);
@@ -188,7 +191,7 @@ index a3775c6aebe17a4616df09349a336f51ddf73c1c..489524348502f43a8066b79c6ba8b2d0
          assert.deepStrictEqual(moved.buckets, first.buckets);
          assert.strictEqual(moved.sources[0]?.distinctSessions, 1);
          yield* restarted.awaitPersisted;
-@@ -2850,7 +2903,7 @@ describe("UsageService", () => {
+@@ -2949,7 +3002,7 @@ describe("UsageService", () => {
            NodeFSP.rm(NodePath.join(home, "claude", "projects"), { recursive: true }),
          );
          const afterRootCleanup = yield* UsageService.make;
@@ -197,7 +200,7 @@ index a3775c6aebe17a4616df09349a336f51ddf73c1c..489524348502f43a8066b79c6ba8b2d0
          assert.deepStrictEqual(missingRoot.buckets, first.buckets);
          assert.strictEqual(missingRoot.sources[0]?.distinctSessions, 1);
          assert.strictEqual(missingRoot.sources[0]?.status, "ok");
-@@ -2860,7 +2913,7 @@ describe("UsageService", () => {
+@@ -2959,7 +3012,7 @@ describe("UsageService", () => {
            await NodeFSP.rename(replacementProjects, projects);
            await NodeFSP.writeFile(NodePath.join(projects, "new.jsonl"), claudeLine(2, 7));
          });
@@ -206,7 +209,7 @@ index a3775c6aebe17a4616df09349a336f51ddf73c1c..489524348502f43a8066b79c6ba8b2d0
          assert.strictEqual(totalOutputTokens(recreated), 12);
          assert.deepStrictEqual(recreated.sources[0]?.fingerprint, first.sources[0]?.fingerprint);
  
-@@ -2884,7 +2937,7 @@ describe("UsageService", () => {
+@@ -2983,7 +3036,7 @@ describe("UsageService", () => {
          assert.strictEqual(merged.costUsd, recreated.buckets[0]?.costUsd);
  
          const outsideWindow = yield* restarted.readSummary({
@@ -215,7 +218,7 @@ index a3775c6aebe17a4616df09349a336f51ddf73c1c..489524348502f43a8066b79c6ba8b2d0
            sinceDay: UsageDay.make("2026-08-02"),
          });
          assert.deepStrictEqual(outsideWindow.buckets, []);
-@@ -3024,11 +3077,9 @@ describe("UsageService", () => {
+@@ -3123,11 +3176,9 @@ describe("UsageService", () => {
      }).pipe(Effect.scoped),
    );
  
@@ -228,7 +231,7 @@ index a3775c6aebe17a4616df09349a336f51ddf73c1c..489524348502f43a8066b79c6ba8b2d0
        yield* TestClock.setTime(Date.parse("2026-08-15T00:00:00Z"));
        yield* Effect.promise(async () => {
          await NodeFSP.writeFile(transcript, claudeLine(1, 5));
-@@ -3055,6 +3106,7 @@ describe("UsageService", () => {
+@@ -3154,6 +3205,7 @@ describe("UsageService", () => {
        assert.deepStrictEqual(later.buckets, []);
        assert.strictEqual(later.sources[0]?.status, "missing");
        assert.strictEqual(later.sources[0]?.scannedFiles, 0);
@@ -237,7 +240,7 @@ index a3775c6aebe17a4616df09349a336f51ddf73c1c..489524348502f43a8066b79c6ba8b2d0
    );
  
 diff --git a/apps/server/src/usage/UsageService.ts b/apps/server/src/usage/UsageService.ts
-index 6b6762c089ba62b52c7ea4aeafb1cb73b6117e61..aef9ad71f480777836edb56c735501579d5c7579 100644
+index 771393dac25798af0931b1217f2dd9f0987f25c7..51e81495d7a84f54f36ecad3232e3f2f492c3342 100644
 --- a/apps/server/src/usage/UsageService.ts
 +++ b/apps/server/src/usage/UsageService.ts
 @@ -51,7 +51,6 @@ import {
@@ -248,16 +251,17 @@ index 6b6762c089ba62b52c7ea4aeafb1cb73b6117e61..aef9ad71f480777836edb56c73550157
    SCAN_CACHE_FILE_NAME,
    type CachedFile,
    type ScanCache,
-@@ -70,7 +69,7 @@ const RATES_REFRESH_FLOOR_MS = 60 * 1000;
+@@ -70,8 +69,8 @@ const RATES_REFRESH_FLOOR_MS = 60 * 1000;
  const MTIME_SLACK_MS = 36 * 60 * 60 * 1000;
  const MAX_HOURLY_WINDOW_MS = 24 * 60 * 60 * 1000;
  
 -const CACHE_RETENTION_DAYS = 92;
+ const STALE_TEMP_DIRECTORY_MS = 60 * 60 * 1000;
 +const SCAN_YIELD_ITEMS = 1_000;
  
  const TRANSCRIPT_READ_CONCURRENCY = 4;
  
-@@ -328,7 +327,6 @@ export const make = Effect.gen(function* () {
+@@ -329,7 +328,6 @@ export const make = Effect.gen(function* () {
  
    const resolveTranscriptDirs = Effect.fn("UsageService.resolveTranscriptDirs")(function* (
      settings: ServerSettingsValue,
@@ -265,7 +269,7 @@ index 6b6762c089ba62b52c7ea4aeafb1cb73b6117e61..aef9ad71f480777836edb56c73550157
    ) {
      const dirs: Array<TranscriptSource> = [];
      const seen = new Set<string>();
-@@ -350,7 +348,6 @@ export const make = Effect.gen(function* () {
+@@ -351,7 +349,6 @@ export const make = Effect.gen(function* () {
            .some(
              ([filePath, entry]) =>
                entry.provider === provider &&
@@ -273,7 +277,7 @@ index 6b6762c089ba62b52c7ea4aeafb1cb73b6117e61..aef9ad71f480777836edb56c73550157
                (entry.records.length + entry.tailRecords.length > 0 || entry.malformedRecords > 0) &&
                isWithinDirectory(filePath, dir),
            );
-@@ -618,19 +615,16 @@ export const make = Effect.gen(function* () {
+@@ -651,19 +648,16 @@ export const make = Effect.gen(function* () {
    const collectDirs = Effect.fn("UsageService.collectDirs")(function* (
      windowStartMs: number,
      settings: ServerSettingsValue,
@@ -295,7 +299,7 @@ index 6b6762c089ba62b52c7ea4aeafb1cb73b6117e61..aef9ad71f480777836edb56c73550157
            ),
            Effect.flatMap((sources) =>
              Effect.forEach(sources, ({ volumeId, ...source }) =>
-@@ -709,13 +703,8 @@ export const make = Effect.gen(function* () {
+@@ -742,13 +736,8 @@ export const make = Effect.gen(function* () {
      const windowStartMs =
        (hourlyWindow?.sinceTimeMs ?? DateTime.toEpochMillis(windowStart.value)) - MTIME_SLACK_MS;
  
@@ -310,7 +314,7 @@ index 6b6762c089ba62b52c7ea4aeafb1cb73b6117e61..aef9ad71f480777836edb56c73550157
        { concurrency: 2 },
      );
  
-@@ -734,26 +723,35 @@ export const make = Effect.gen(function* () {
+@@ -767,26 +756,35 @@ export const make = Effect.gen(function* () {
      const sources: UsageSource[] = [];
  
      // Deleted transcripts' saved usage still aggregates and deduplicates normally.
@@ -352,7 +356,7 @@ index 6b6762c089ba62b52c7ea4aeafb1cb73b6117e61..aef9ad71f480777836edb56c73550157
      const windowEndMs =
        hourlyWindow?.untilTimeMs ??
        Date.parse(`${input.untilDay}T00:00:00Z`) + 86400000 + MTIME_SLACK_MS;
-@@ -819,6 +817,11 @@ export const make = Effect.gen(function* () {
+@@ -852,6 +850,11 @@ export const make = Effect.gen(function* () {
          scannedFiles += 1;
          const eventOccurrences = new Map<string, number>();
          for (const rawRecord of file.records) {
@@ -364,7 +368,7 @@ index 6b6762c089ba62b52c7ea4aeafb1cb73b6117e61..aef9ad71f480777836edb56c73550157
            const record = correctedRecord(rawRecord);
            let usageRecord = record;
            if (
-@@ -869,9 +872,6 @@ export const make = Effect.gen(function* () {
+@@ -902,9 +905,6 @@ export const make = Effect.gen(function* () {
        });
      }
  
@@ -375,10 +379,10 @@ index 6b6762c089ba62b52c7ea4aeafb1cb73b6117e61..aef9ad71f480777836edb56c73550157
      const readAt = yield* DateTime.now;
      const finishedAtMs = yield* Clock.currentTimeMillis;
 diff --git a/apps/server/src/usage/usageScanCache.ts b/apps/server/src/usage/usageScanCache.ts
-index c9032d64c05bdb0a1a90ed50281c8b54032abcfd..e02c500dc755330541af65c82eb66b4b2722f4e8 100644
+index 4cd959c75aa25faaa806402eec632eda67f66996..d1ff6f51c6df1bfa8e13dc506140328305afe39b 100644
 --- a/apps/server/src/usage/usageScanCache.ts
 +++ b/apps/server/src/usage/usageScanCache.ts
-@@ -346,17 +346,6 @@ function makeStateValidators(
+@@ -344,17 +344,6 @@ function makeStateValidators(
    );
  }
  
@@ -393,11 +397,11 @@ index c9032d64c05bdb0a1a90ed50281c8b54032abcfd..e02c500dc755330541af65c82eb66b4b
 -  return removed;
 -}
 -
- /** Mutates seen; share it across incremental line/tail batches to deduplicate the whole file. */
- export function dedupeWithinFile(
-   records: readonly UsageRecord[],
+ /** Pass only newline-terminated records: an unterminated tail can still change, so the aggregator merges it per scan. */
+ export function dedupeWithinFile(records: readonly UsageRecord[]): readonly UsageRecord[] {
+   const kept: UsageRecord[] = [];
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index d185901e845aa663195528d1d97ab17e6e98706f..d843121f77356f7c5a74abd418891b9bb2d0ea46 100644
+index 1946922f59dc4562620e2bc91acc7ea61466a7c0..2db7f50b0b1289ff8a3859214782b614f3016129 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 @@ -21,7 +21,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";

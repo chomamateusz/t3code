@@ -966,10 +966,10 @@ index 560e2e78d4bb166b134b4a40a4061259e2f9b299..248a49f27c329249b1f5264581f617c6
              yield* publishReport(state, { outcome: "up-to-date" }, request.requestId);
              return;
 diff --git a/apps/desktop/src/updates/DesktopUpdates.ts b/apps/desktop/src/updates/DesktopUpdates.ts
-index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1edebee1e911 100644
+index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d02393d96 100644
 --- a/apps/desktop/src/updates/DesktopUpdates.ts
 +++ b/apps/desktop/src/updates/DesktopUpdates.ts
-@@ -278,9 +278,21 @@ export function describeUpdateErrorCause(cause: unknown): string {
+@@ -282,9 +282,21 @@ export function describeUpdateErrorCause(cause: unknown): string {
    }
  }
  
@@ -992,7 +992,7 @@ index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1ede
      const match = line.match(/^(\w+):\s*(.+)$/);
      if (match?.[1] && match[2]) {
        entries[match[1]] = match[2].trim();
-@@ -375,6 +387,32 @@ export const make = Effect.gen(function* () {
+@@ -379,6 +391,32 @@ export const make = Effect.gen(function* () {
    // Any user can set the mock flag, so it never replaces an administrator's update source.
    const mockUpdates = config.mockUpdates && policy.message === null;
  
@@ -1025,7 +1025,7 @@ index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1ede
    const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
    const activeUpdateActionRef = yield* Ref.make<Option.Option<UpdateAction>>(Option.none());
    const installRunningBackendsRef = yield* Ref.make<
-@@ -436,7 +474,7 @@ export const make = Effect.gen(function* () {
+@@ -440,7 +478,7 @@ export const make = Effect.gen(function* () {
      Effect.flatMap(
        Option.match({
          onNone: () => Effect.succeed(Option.none<AppUpdateYmlConfig>()),
@@ -1034,7 +1034,7 @@ index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1ede
        }),
      ),
    );
-@@ -459,7 +497,32 @@ export const make = Effect.gen(function* () {
+@@ -463,7 +501,32 @@ export const make = Effect.gen(function* () {
      ),
    );
  
@@ -1067,7 +1067,7 @@ index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1ede
      const hasFeedConfig = yield* hasUpdateFeedConfig;
      return Option.fromNullishOr(
        getAutoUpdateDisabledReason({
-@@ -514,6 +577,7 @@ export const make = Effect.gen(function* () {
+@@ -518,6 +581,7 @@ export const make = Effect.gen(function* () {
      channel: DesktopUpdateChannel,
    ) {
      yield* Effect.annotateCurrentSpan({ channel });
@@ -1075,7 +1075,7 @@ index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1ede
      const allowsPrerelease = channel === "nightly";
      yield* electronUpdater.setChannel(channel);
      yield* electronUpdater.setAllowPrerelease(allowsPrerelease);
-@@ -536,6 +600,7 @@ export const make = Effect.gen(function* () {
+@@ -540,6 +604,7 @@ export const make = Effect.gen(function* () {
      yield* Effect.annotateCurrentSpan({ reason });
      if (yield* Ref.get(desktopState.quitting)) return false;
      if (!(yield* Ref.get(updaterConfiguredRef))) return false;
@@ -1083,7 +1083,7 @@ index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1ede
  
      const state = yield* Ref.get(updateStateRef);
      // A configured updater is disabled only by a channel the managed policy blocks.
-@@ -589,6 +654,7 @@ export const make = Effect.gen(function* () {
+@@ -593,6 +658,7 @@ export const make = Effect.gen(function* () {
    });
  
    const downloadAvailableUpdate = Effect.gen(function* () {
@@ -1091,7 +1091,7 @@ index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1ede
      const state = yield* Ref.get(updateStateRef);
      if (!(yield* Ref.get(updaterConfiguredRef)) || state.status !== "available") {
        return { accepted: false, completed: false };
-@@ -604,6 +670,7 @@ export const make = Effect.gen(function* () {
+@@ -608,6 +674,7 @@ export const make = Effect.gen(function* () {
          isArm64HostRunningIntelBuild(environment.runtimeInfo),
        );
        yield* logUpdaterInfo("downloading update");
@@ -1099,7 +1099,7 @@ index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1ede
        yield* electronUpdater.downloadUpdate;
        return { accepted: true, completed: true };
      }).pipe(
-@@ -759,6 +826,7 @@ export const make = Effect.gen(function* () {
+@@ -763,6 +830,7 @@ export const make = Effect.gen(function* () {
    const installDownloadedUpdate = (expectedVersion?: string) =>
      Effect.scoped(
        Effect.gen(function* () {
@@ -1107,7 +1107,7 @@ index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1ede
          const actionCompletions = yield* PubSub.subscribe(finishedUpdateActions);
          let admission: "admitted" | "refused" | "wait-for-check" = "wait-for-check";
          while (admission === "wait-for-check") {
-@@ -804,6 +872,10 @@ export const make = Effect.gen(function* () {
+@@ -808,6 +876,10 @@ export const make = Effect.gen(function* () {
            return { accepted: false, completed: false, failed: false };
          }
  
@@ -1118,7 +1118,7 @@ index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1ede
          yield* Ref.set(desktopState.quitting, true);
          yield* Ref.set(installRunningBackendsRef, []);
  
-@@ -824,6 +896,12 @@ export const make = Effect.gen(function* () {
+@@ -828,6 +900,12 @@ export const make = Effect.gen(function* () {
                instance.stop({ timeout: DesktopBackendManager.BACKEND_QUIT_STOP_TIMEOUT }),
              { concurrency: "unbounded" },
            );
@@ -1131,7 +1131,7 @@ index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1ede
            yield* electronUpdater.quitAndInstall({
              isSilent: true,
              isForceRunAfter: true,
-@@ -1131,7 +1209,7 @@ export const make = Effect.gen(function* () {
+@@ -1135,7 +1213,7 @@ export const make = Effect.gen(function* () {
          });
        }
  
@@ -1140,7 +1140,7 @@ index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1ede
          yield* electronUpdater.setFeedURL({
            provider: "generic",
            url: `http://localhost:${config.mockUpdateServerPort}`,
-@@ -1146,10 +1224,11 @@ export const make = Effect.gen(function* () {
+@@ -1150,10 +1228,11 @@ export const make = Effect.gen(function* () {
  
        const settings = yield* desktopSettings.get;
        const disabledReason = yield* resolveDisabledReason;
@@ -1154,7 +1154,7 @@ index 14688e52580672feb5853436e671c8dc3b39021b..08016c1b29488604ab40080cb37a1ede
          ),
        );
        if (Option.isSome(disabledReason)) {
-@@ -1199,6 +1278,9 @@ export const make = Effect.gen(function* () {
+@@ -1203,6 +1282,9 @@ export const make = Effect.gen(function* () {
        nextChannel: DesktopUpdateChannel,
        options?: { readonly minimumVersion?: string | undefined },
      ) {
@@ -1827,10 +1827,10 @@ index 51b2b92b0a8baf23e7d7f9fad47e69a8175a1d1a..623aba0ef20d0df701fa2890a2a3dd94
    const message = result.state.message.trim();
    return message.length > 0 ? message : null;
 diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
-index a37bf1581990ee387424ef4b50cf8806538a9336..bb0ca4baa48e7437040834774c20bd7818457d8f 100644
+index dcaca88e6c7f75fd1ec784aa6c18a3c26170edaa..584939f2b7b0a755798c2069f46a0d334fd3a140 100644
 --- a/apps/web/src/components/settings/SettingsPanels.tsx
 +++ b/apps/web/src/components/settings/SettingsPanels.tsx
-@@ -35,6 +35,7 @@ import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
+@@ -36,6 +36,7 @@ import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
  import { MobileAppSettingsRow } from "./MobileAppSettingsRow";
  import {
    canCheckForUpdate,
@@ -1838,7 +1838,7 @@ index a37bf1581990ee387424ef4b50cf8806538a9336..bb0ca4baa48e7437040834774c20bd78
    getDesktopUpdateButtonTooltip,
    getDesktopUpdateDisabledReason,
    getDesktopUpdateInstallConfirmationMessage,
-@@ -201,15 +202,28 @@ function AboutVersionSection() {
+@@ -202,15 +203,28 @@ function AboutVersionSection() {
      const action = updateState ? resolveDesktopUpdateButtonAction(updateState) : "none";
  
      if (action === "download") {
@@ -1876,7 +1876,7 @@ index a37bf1581990ee387424ef4b50cf8806538a9336..bb0ca4baa48e7437040834774c20bd78
        return;
      }
  
-@@ -240,6 +254,17 @@ function AboutVersionSection() {
+@@ -242,6 +256,17 @@ function AboutVersionSection() {
        }
        void bridge
          .installUpdate()
@@ -1965,7 +1965,7 @@ index 41d478e050dca1a184bc5b56adb28f7f27a684fb..78c7e0394aa3f113c289eba76f46b82c
    const found = local.downloadedVersion ?? local.availableVersion;
    if (
 diff --git a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
-index 3c18b2c7a927b5f5fd7d25f60b359b2c55f8d109..03d6398f7edf7adabb1655fcfe4d37ff4599e34f 100644
+index 5df8007ef46772d7efc2b8c3389bb945c74e3502..530c7cae454728c0691fa60b3691d05321521b96 100644
 --- a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
 +++ b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
 @@ -173,16 +173,16 @@ export async function installLocalUpdate(

@@ -50,6 +50,9 @@ Integration details:
 Port to 965ddc1d6c:
 - Upstream #33131 removed the legacy sidebar setting (legacySidebarEnabled) and the useBoringSidebarEnabled hook. The project row's Group threads by project item reads boringSidebarEnabled through useClientSettings and writes only boringSidebarEnabled, like upstream's Labs toggle; the project-row browser test mocks useClientSettings instead of the removed hook.
 
+Port to 691b9709b0:
+- Upstream facd190640 (#33129) turned the shortcut modifier hook into one shared external store so modifier changes stop re-rendering the sidebar. The left-Alt/AltGraph tracking for the mode switch now uses the same store factory (createHeldKeyStore) instead of a per-component effect, with the same blur, paste and editable-focus resets; Sidebar.logic.ts keeps upstream's jump-hint imports next to the project-row ones.
+
 Files:
 apps/web:
 - apps/web/src/components/ProjectComboboxRow.tsx
@@ -128,14 +131,14 @@ Model/harness: GPT-6 / Codex; badge legend follow-up: Claude Opus 5.5 / Claude C
  .../sidebar/SidebarThreadHeader.tsx           |  16 +-
  .../components/sidebar/SidebarThreadRow.tsx   |  78 +-
  .../web/src/hooks/useSidebarProjectRowData.ts | 156 ++++
- apps/web/src/shortcutModifierState.ts         |  67 +-
+ apps/web/src/shortcutModifierState.ts         |  66 +-
  apps/web/src/sidebarEnvironmentScope.ts       |   5 +-
  apps/web/src/sidebarProjectRow.test.ts        | 796 ++++++++++++++++++
  apps/web/src/sidebarProjectRow.ts             | 459 ++++++++++
  apps/web/src/uiStateStore.test.ts             | 260 +++++-
  apps/web/src/uiStateStore.ts                  | 223 ++++-
  docs/user/thread-sidebar.md                   |  54 ++
- 23 files changed, 4712 insertions(+), 531 deletions(-)
+ 23 files changed, 4712 insertions(+), 530 deletions(-)
  delete mode 100644 apps/web/src/components/ProjectComboboxRow.tsx
  create mode 100644 apps/web/src/components/settings/ProjectManualOrderList.browser.test.tsx
  create mode 100644 apps/web/src/components/settings/ProjectManualOrderList.tsx
@@ -602,10 +605,10 @@ index 1364bb23f081bab643b13ba815627950085707b7..15c8e0347658300584f295f4be68d509
 +  });
 +});
 diff --git a/apps/web/src/components/Sidebar.logic.ts b/apps/web/src/components/Sidebar.logic.ts
-index 2b9c1febc643945202db5fe541d44e0a0930f97e..3a0630ed64979ea81667689501b14318978c9f8f 100644
+index e445190240076ab6c8cb37a767dbb5a84ff2344d..79d701dd63af12c5eaba38c848dec7c6aa8acc40 100644
 --- a/apps/web/src/components/Sidebar.logic.ts
 +++ b/apps/web/src/components/Sidebar.logic.ts
-@@ -26,6 +26,7 @@ import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/c
+@@ -28,6 +28,7 @@ import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/c
  import type { AsyncResult } from "effect/reactivity";
  import {
    effectiveSnoozed,
@@ -613,16 +616,16 @@ index 2b9c1febc643945202db5fe541d44e0a0930f97e..3a0630ed64979ea81667689501b14318
    type ThreadSnoozeShell,
  } from "@t3tools/client-runtime/state/thread-settled";
  import {
-@@ -42,6 +43,8 @@ import { observeIntersection } from "../lib/observeIntersection";
- import { deadlineAfter, deadlineStore } from "@t3tools/client-runtime/clock";
- import { useDeadlinePassed } from "../hooks/useDeadline";
- import { legacyProjectCwdPreferenceKey } from "../uiStateStore";
+@@ -52,6 +53,8 @@ import { isModelPickerOpen, subscribeToModelPickerVisibility } from "../modelPic
+ import { shortcutModifierStore } from "../shortcutModifierState";
+ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
+ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 +import { isInSidebarProjectScope } from "../sidebarProjectRow";
 +import { parseTimestampDate } from "../timestampFormat";
  
  export function shouldNavigateAfterThreadPark(input: {
    readonly threadKey: string;
-@@ -618,10 +621,7 @@ export function isInSidebarScope(
+@@ -628,10 +631,7 @@ export function isInSidebarScope(
    scopedProjectKeys: ReadonlySet<string> | null,
    scopedEnvironmentIds: ReadonlySet<string> | null,
  ): boolean {
@@ -634,7 +637,7 @@ index 2b9c1febc643945202db5fe541d44e0a0930f97e..3a0630ed64979ea81667689501b14318
  }
  
  export function buildBulkTitleRegenerationContextMenuItem(input: {
-@@ -901,6 +901,250 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
+@@ -994,6 +994,250 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
    return "ready";
  }
  
@@ -885,7 +888,7 @@ index 2b9c1febc643945202db5fe541d44e0a0930f97e..3a0630ed64979ea81667689501b14318
  /**
   * The dot on a closed boring-sidebar folder: the most urgent state among its
   * hidden threads. Waiting threads stay quiet, like their rows.
-@@ -1059,40 +1303,6 @@ export function pullRequestMatchesSearchQuery(
+@@ -1152,40 +1396,6 @@ export function pullRequestMatchesSearchQuery(
    return normalizedQuery.split(" ").every((token) => haystack.includes(token));
  }
  
@@ -927,10 +930,10 @@ index 2b9c1febc643945202db5fe541d44e0a0930f97e..3a0630ed64979ea81667689501b14318
    thread: Pick<SidebarThreadSummary, "latestRun" | "runtime">,
  ): string | null {
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e3812599761c65 100644
+index 8f28d5ac997feb42e7a1d4896be96278a6fbecd5..8cec75acd57993e99e6709b2efb881e7afd6153b 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -60,18 +60,10 @@ import {
+@@ -61,18 +61,10 @@ import {
  } from "@t3tools/contracts";
  import type { OlderSettledScope } from "@t3tools/client-runtime/state/threads";
  
@@ -950,7 +953,7 @@ index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e38125
    useRef,
    useState,
    useSyncExternalStore,
-@@ -111,19 +103,27 @@ import {
+@@ -106,19 +98,27 @@ import {
    selectProjectGroupingSettings,
  } from "@t3tools/client-runtime/state/project-grouping";
  import {
@@ -981,15 +984,15 @@ index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e38125
  import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
  import {
    getThreadKeysToDeselectAfterDelete,
-@@ -135,7 +135,6 @@ import {
+@@ -130,7 +130,6 @@ import {
    useThreadActions,
  } from "../hooks/useThreadActions";
  import { useHandleNewThread } from "../hooks/useHandleNewThread";
 -import { useOrderWhileOpen } from "../hooks/useOrderWhileOpen";
  import { useProjectPin } from "../hooks/useProjectGroupUpdate";
  import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
- import { useTerminalFocus } from "../hooks/useTerminalFocus";
-@@ -178,8 +177,6 @@ import {
+ import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
+@@ -172,8 +171,6 @@ import {
  } from "../threadRoutes";
  import type { SidebarThreadSummary } from "../types";
  import { cn } from "~/lib/utils";
@@ -998,7 +1001,7 @@ index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e38125
  import {
    buildDraftActionMenuItems,
    buildThreadActionMenuItems,
-@@ -193,20 +190,19 @@ import {
+@@ -187,20 +184,19 @@ import {
    buildBulkTitleRegenerationContextMenuItem,
    buildBulkUnpinContextMenuItem,
    deleteSelectedThreadEntries,
@@ -1020,7 +1023,7 @@ index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e38125
    searchSidebarThreads,
    shouldCreateNewThreadInCurrentProject,
    shouldNavigateAfterThreadPark,
-@@ -235,7 +231,6 @@ import {
+@@ -230,7 +226,6 @@ import {
    snoozeWakeLabel,
    type SnoozePreset,
  } from "./Sidebar.snooze";
@@ -1028,7 +1031,7 @@ index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e38125
  import { deriveProviderEntriesByEnvironment } from "../providerInstances";
  import { useStableCallback } from "../hooks/useStableCallback";
  import {
-@@ -246,21 +241,10 @@ import {
+@@ -241,21 +236,10 @@ import {
  import { stackedThreadToast, toastManager } from "./ui/toast";
  import { copyThreadReference } from "../lib/copyThreadReference";
  import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
@@ -1050,8 +1053,8 @@ index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e38125
 +import { SidebarMachineRow } from "./sidebar/SidebarMachineRow";
 +import { SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
  import { TooltipProvider } from "./ui/tooltip";
- import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
- import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
+ import {
+   composerDraftHasUserContent,
 @@ -694,8 +678,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
        );
      } else {
@@ -1115,7 +1118,7 @@ index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e38125
    // Hold dropped rows until server placement is confirmed; block another pickup from replacing the hold.
    const [optimisticDrop, setOptimisticDrop] = useState<SidebarOptimisticDrop | null>(null);
    const threadSearchInputRef = useRef<HTMLInputElement>(null);
-@@ -1120,29 +1087,40 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1118,29 +1085,40 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      chosenEnvironmentIds,
      { projects, settings: projectGroupingSettings, primaryEnvironmentId },
    );
@@ -1175,9 +1178,9 @@ index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e38125
 -        );
 +  const chosenScopeProjectKeys = sidebarProjectMemberScope(projectGroups, chosenProjectSelection);
    const threads = useQuietThreadShells();
-   const routeRowThreadKey =
-     routeThreadRef === null
-@@ -1175,86 +1153,135 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+   const promotingDraftThreadKeys = usePromotingDraftThreadKeys();
+   const listedThreads =
+@@ -1182,86 +1160,135 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      delegatedUnderParent,
      findThread: (key) => threads.find((candidate) => threadShellKey(candidate) === key),
    });
@@ -1366,7 +1369,7 @@ index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e38125
        ? {}
        : { projectIds: scopedProjectRefs.map((projectRef) => projectRef.projectId) },
    );
-@@ -1299,15 +1326,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1306,15 +1333,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      setProjectGroupPinned,
      toggleProjectGroupPin,
    } = useProjectPin();
@@ -1387,7 +1390,7 @@ index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e38125
        openProjectSettings(projectGroup);
      },
    );
-@@ -1404,12 +1433,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1411,12 +1440,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      delegatedUnderParent,
      routeRowThreadKey,
      folderGroups: boringSidebarEnabled
@@ -1404,7 +1407,7 @@ index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e38125
        : null,
      keepEmptyFolders: (group) =>
        scopedProjectGroups.length > 0 || (group.pinned && !group.archived),
-@@ -2695,12 +2722,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2703,12 +2730,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                  AuthOrchestrationOperateScope,
                ),
                branch: thread.branch ?? null,
@@ -1420,7 +1423,7 @@ index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e38125
                      }
                    : null,
                isPinned,
-@@ -2745,9 +2773,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2753,9 +2781,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            case "filter-by-project":
              if (threadProjectGroup) {
                setProjectScopeKeys(
@@ -1436,7 +1439,7 @@ index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e38125
                );
              }
              return;
-@@ -3076,206 +3107,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3051,206 +3082,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    onChange={setEnvironmentScopeKeys}
                  />
                }
@@ -1658,7 +1661,7 @@ index 2b83683aeecfdb8d1c52164436aeff908aae7142..da7f22c245522abb25dfc5d7b8e38125
                }
                onNewProject={openAddProjectCommandPalette}
                onNewThread={handleNewThreadClick}
-@@ -3744,6 +3590,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3719,6 +3565,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                  </>
                ) : (
                  sidebarEmptyThreadsLabel({
@@ -1956,7 +1959,7 @@ index 0000000000000000000000000000000000000000..18c507c8a44e6a97312d6c0538a0161a
 +  );
 +}
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index f7492035874da0a0818343e556f24c4dc18a669c..ffd0822bbb149dcc5936de6627886094ccf04380 100644
+index 4f61ba41c0d8606dd866c61a68c7d608cb5cf075..4985017d9a43bd409c9b8268673fa6338595d3c9 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -475,6 +475,14 @@ export const SETTINGS_SEARCH_ITEMS = [
@@ -3699,10 +3702,10 @@ index 35dadba487ca83d15e2e79c1460e3454d7939d40..d2f305a246911422d17d47bb17b5621b
    tooltip = label,
    className,
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 1ef5d438eacdb831441c24b09467f38069e963c3..6390d8fc9c2cec33c35682844fa7f612048be7a6 100644
+index 98f08afd8677a4ff536b3274b0af1e6c51626394..ddf188862629f9c6fec1b13badb2e403a32ed784 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -73,7 +73,7 @@ import { useNowSecond } from "../../hooks/useNowSecond";
+@@ -74,7 +74,7 @@ import { useNowSecond } from "../../hooks/useNowSecond";
  import { vcsEnvironment, vcsBranchRevalidation } from "../../state/vcs";
  import { useEnvironmentQuery } from "../../state/query";
  import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
@@ -3711,7 +3714,7 @@ index 1ef5d438eacdb831441c24b09467f38069e963c3..6390d8fc9c2cec33c35682844fa7f612
  import type { SidebarThreadSummary } from "../../types";
  import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
  import { cn } from "~/lib/utils";
-@@ -81,10 +81,9 @@ import { textDirection } from "~/textDirection";
+@@ -82,10 +82,9 @@ import { textDirection } from "~/textDirection";
  import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
  import {
    animateSidebarLayoutChanges,
@@ -3723,7 +3726,7 @@ index 1ef5d438eacdb831441c24b09467f38069e963c3..6390d8fc9c2cec33c35682844fa7f612
    resolveThreadLastVisitedAt,
    shouldRecedeSidebarThread,
    resolveWorkingStartedAt,
-@@ -712,14 +711,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -720,14 +719,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      ? resolveThreadCurrentPullRequestLink(thread.pullRequests)
      : null;
  
@@ -3742,7 +3745,7 @@ index 1ef5d438eacdb831441c24b09467f38069e963c3..6390d8fc9c2cec33c35682844fa7f612
    const shouldRecede = shouldRecedeSidebarThread({
      status,
      isUnread,
-@@ -727,67 +722,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -735,67 +730,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      isActive: props.isActive,
      isSelected,
    });
@@ -3973,13 +3976,15 @@ index 0000000000000000000000000000000000000000..13217179a2ca9a318e941667565110b8
 +  return { projects, activity, badges };
 +}
 diff --git a/apps/web/src/shortcutModifierState.ts b/apps/web/src/shortcutModifierState.ts
-index 5a76d7f5087d1756b2b9dd65cf37925e66882a0e..abb8a0deb80a3d6010ee9a80eb6d4f8e7418ad30 100644
+index 8747d8b418d39e9f8308f65936de97bd1a110702..d76d5a78dfb461a4fd3114104ce18dfbe20c15f7 100644
 --- a/apps/web/src/shortcutModifierState.ts
 +++ b/apps/web/src/shortcutModifierState.ts
-@@ -27,27 +27,62 @@ function areShortcutModifierStatesEqual(
+@@ -27,26 +27,42 @@ function areShortcutModifierStatesEqual(
    );
  }
  
+-function createShortcutModifierStore(ignoreEditable: boolean) {
+-  let state = EMPTY_SHORTCUT_MODIFIER_STATE;
 +export interface AltKeySideState {
 +  leftAltKey: boolean;
 +  altGraphKey: boolean;
@@ -3991,72 +3996,81 @@ index 5a76d7f5087d1756b2b9dd65cf37925e66882a0e..abb8a0deb80a3d6010ee9a80eb6d4f8e
 +  return left.leftAltKey === right.leftAltKey && left.altGraphKey === right.altGraphKey;
 +}
 +
- export function useShortcutModifierState(ignoreEditable = false): ShortcutModifierState {
--  const [state, setState] = useState(EMPTY_SHORTCUT_MODIFIER_STATE);
--  const stateRef = useRef(EMPTY_SHORTCUT_MODIFIER_STATE);
-+  return useHeldKeyState(
++function createHeldKeyStore<TState>(
++  empty: TState,
++  stateAfterKeyboardEvent: (current: TState, event: KeyboardEvent) => TState,
++  areEqual: (left: TState, right: TState) => boolean,
++  ignoreEditable: boolean,
++) {
++  let state = empty;
+   const listeners = new Set<() => void>();
+   let stopTracking: (() => void) | null = null;
+ 
+-  const updateState = (next: ShortcutModifierState) => {
+-    if (areShortcutModifierStatesEqual(state, next)) return;
++  const updateState = (next: TState) => {
++    if (areEqual(state, next)) return;
+     state = next;
+     for (const listener of listeners) listener();
+   };
+   const onKeyboardEvent = (event: KeyboardEvent) => {
+     updateState(
+       ignoreEditable && isEditableFocused(event.target)
+-        ? EMPTY_SHORTCUT_MODIFIER_STATE
+-        : shortcutModifierStateAfterKeyboardEvent(state, event),
++        ? empty
++        : stateAfterKeyboardEvent(state, event),
+     );
+   };
+   // Dictation tools can omit Meta keyup after synthetic paste, leaving jump hints stuck.
+   const onResetEvent = () => {
+-    updateState(EMPTY_SHORTCUT_MODIFIER_STATE);
++    updateState(empty);
+   };
+   const onFocus = (event: FocusEvent) => {
+     if (ignoreEditable && isEditableFocused(event.target)) onResetEvent();
+@@ -63,7 +79,7 @@ function createShortcutModifierStore(ignoreEditable: boolean) {
+       window.removeEventListener("keyup", onKeyboardEvent, true);
+       window.removeEventListener("paste", onResetEvent, true);
+       window.removeEventListener("blur", onResetEvent);
+-      state = EMPTY_SHORTCUT_MODIFIER_STATE;
++      state = empty;
+     };
+   };
+ 
+@@ -82,15 +98,49 @@ function createShortcutModifierStore(ignoreEditable: boolean) {
+   };
+ }
+ 
++function createShortcutModifierStore(ignoreEditable: boolean) {
++  return createHeldKeyStore(
 +    EMPTY_SHORTCUT_MODIFIER_STATE,
 +    shortcutModifierStateAfterKeyboardEvent,
 +    areShortcutModifierStatesEqual,
 +    ignoreEditable,
 +  );
 +}
- 
--  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window key, focus, paste and blur listeners that track held shortcut modifiers
-+/** Option/Alt + letter types characters, so actions bound to Alt listen to the left key only. */
-+export function useAltKeySideState(): AltKeySideState {
-+  return useHeldKeyState(
-+    EMPTY_ALT_KEY_SIDE_STATE,
-+    altKeySideStateAfterKeyboardEvent,
-+    areAltKeySideStatesEqual,
-+    false,
-+  );
-+}
 +
-+function useHeldKeyState<TState>(
-+  empty: TState,
-+  stateAfterKeyboardEvent: (current: TState, event: KeyboardEvent) => TState,
-+  areEqual: (left: TState, right: TState) => boolean,
-+  ignoreEditable: boolean,
-+): TState {
-+  const [state, setState] = useState(empty);
-+  const stateRef = useRef(empty);
-+
-+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window key, focus, paste and blur listeners that track held keys
-   useEffect(() => {
--    const updateState = (next: ShortcutModifierState) => {
--      if (areShortcutModifierStatesEqual(stateRef.current, next)) return;
-+    const updateState = (next: TState) => {
-+      if (areEqual(stateRef.current, next)) return;
-       stateRef.current = next;
-       setState(next);
-     };
-     const onKeyboardEvent = (event: KeyboardEvent) => {
-       updateState(
-         ignoreEditable && isEditableFocused(event.target)
--          ? EMPTY_SHORTCUT_MODIFIER_STATE
--          : shortcutModifierStateAfterKeyboardEvent(stateRef.current, event),
-+          ? empty
-+          : stateAfterKeyboardEvent(stateRef.current, event),
-       );
-     };
-     // Dictation tools can omit Meta keyup after synthetic paste, leaving jump hints stuck.
-     const onResetEvent = () => {
--      updateState(EMPTY_SHORTCUT_MODIFIER_STATE);
-+      updateState(empty);
-     };
+ /** Shared by every subscriber; read it from a snapshot to re-render only when a derived value changes. */
+ export const shortcutModifierStore = createShortcutModifierStore(false);
+ const editableIgnoringShortcutModifierStore = createShortcutModifierStore(true);
++const altKeySideStore = createHeldKeyStore(
++  EMPTY_ALT_KEY_SIDE_STATE,
++  altKeySideStateAfterKeyboardEvent,
++  areAltKeySideStatesEqual,
++  false,
++);
  
-     const onFocus = (event: FocusEvent) => {
-@@ -65,11 +100,25 @@ export function useShortcutModifierState(ignoreEditable = false): ShortcutModifi
-       window.removeEventListener("paste", onResetEvent, true);
-       window.removeEventListener("blur", onResetEvent);
-     };
--  }, [ignoreEditable]);
-+  }, [empty, stateAfterKeyboardEvent, areEqual, ignoreEditable]);
- 
-   return state;
+ export function useShortcutModifierState(ignoreEditable = false): ShortcutModifierState {
+   const store = ignoreEditable ? editableIgnoringShortcutModifierStore : shortcutModifierStore;
+   return useSyncExternalStore(store.subscribe, store.getSnapshot);
  }
  
++/** Option/Alt + letter types characters, so actions bound to Alt listen to the left key only. */
++export function useAltKeySideState(): AltKeySideState {
++  return useSyncExternalStore(altKeySideStore.subscribe, altKeySideStore.getSnapshot);
++}
++
 +function altKeySideStateAfterKeyboardEvent(
 +  current: AltKeySideState,
 +  event: KeyboardEvent,
