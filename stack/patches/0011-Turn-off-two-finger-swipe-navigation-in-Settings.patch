@@ -25,6 +25,9 @@ Integration details:
 Port to 965ddc1d6c:
 - Applied without conflicts. 965ddc1d6c has no swipe preference: DesktopWindow.ts and AppSidebarLayout.tsx did not change upstream and still navigate unconditionally. Upstream #33131 and #33147 reshaped SettingsPanels.tsx, settingsSearch.ts and settings.ts; the Navigation section, restore entry, search item and schema field merged beside them.
 
+Port to 691b9709b0:
+- Upstream 4363d0bf65 (#32963) makes HistorySwipeNavigation listen on macOS only; the layout test reports a macOS platform so it runs on any host, as upstream 42185a6206 did for its own swipe test
+
 Files:
 apps/desktop:
 - apps/desktop/src/window/DesktopWindow.test.ts
@@ -82,14 +85,14 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
 ---
  apps/desktop/src/window/DesktopWindow.test.ts | 70 +++++++++++++++----
  apps/desktop/src/window/DesktopWindow.ts      | 24 ++++++-
- .../AppSidebarLayout.browser.test.tsx         | 67 ++++++++++++++++++
+ .../AppSidebarLayout.browser.test.tsx         | 68 ++++++++++++++++++
  apps/web/src/components/AppSidebarLayout.tsx  |  5 +-
  .../components/settings/SettingsPanels.tsx    | 33 +++++++++
  .../settings/settingsSearch.test.ts           |  2 +
  .../src/components/settings/settingsSearch.ts |  7 ++
  packages/contracts/src/settings.test.ts       | 13 ++++
  packages/contracts/src/settings.ts            |  2 +
- 9 files changed, 206 insertions(+), 17 deletions(-)
+ 9 files changed, 207 insertions(+), 17 deletions(-)
  create mode 100644 apps/web/src/components/AppSidebarLayout.browser.test.tsx
 
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
@@ -253,10 +256,10 @@ index 73f5b41810dae4998b1dcee317131502f1fba928..5794fd1bfbaa9ec35aac40d41451635a
          window.webContents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, true);
 diff --git a/apps/web/src/components/AppSidebarLayout.browser.test.tsx b/apps/web/src/components/AppSidebarLayout.browser.test.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..5bb716340d3b4f9c50c36650fe9b34e16bff0937
+index 0000000000000000000000000000000000000000..ba1582d51871f902117ff58c786b04c7203cbb1c
 --- /dev/null
 +++ b/apps/web/src/components/AppSidebarLayout.browser.test.tsx
-@@ -0,0 +1,67 @@
+@@ -0,0 +1,68 @@
 +import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 +import { describe, expect, it, vi } from "vite-plus/test";
 +
@@ -292,6 +295,7 @@ index 0000000000000000000000000000000000000000..5bb716340d3b4f9c50c36650fe9b34e1
 +    "disables %s swipes and can re-enable them without reloading",
 +    async (direction) => {
 +      setup(false);
++      using _platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
 +      using _available = vi
 +        .spyOn(window.navigation, direction === "back" ? "canGoBack" : "canGoForward", "get")
 +        .mockReturnValue(true);
