@@ -1,0 +1,2130 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: imqdee <qdqdqdqdqd@protonmail.com>
+Date: Tue, 10 Nov 2026 19:30:24 +0100
+Subject: =?UTF-8?q?=F0=9F=92=BB=20Open=20a=20terminal=20on=20another=20con?=
+ =?UTF-8?q?nected=20machine=20from=20the=20thread's=20terminal=20drawer?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Port of the prototype from discussion pingdotgg/t3code#31476
+(imqdee/t3code@46acd51f8e, branch feat/terminal-other-environment).
+
+Behaviours:
+- The drawer's New Terminal button gets a chevron menu "New terminal on" (the
+  chevron's accessible name is "New Terminal on…") when the client knows more
+  than one environment. The thread's machine is listed first ("This thread"),
+  then the others by label. Entries are disabled with a reason: "Not
+  connected", "Connecting" or "No terminal access" (no terminal:operate
+  grant). The plain "+" still opens on the thread's machine.
+- A terminal opened on another machine runs under the thread's id there. Its
+  tab shows that machine's label. Splits from it open on the same machine and
+  in the same folder. Writes, permissions and closes go to that machine. A
+  link printed in it opens in the browser, because the thread's preview runs
+  on the thread's machine.
+- The starting folder is the thread's folder when it exists on the target
+  (checked through file metadata, needs filesystem:read), else the target
+  server's own cwd.
+- Remote tabs persist in the client's terminal UI store and stay while the
+  machine is offline.
+- Closing a remote tab, or archiving or deleting the thread from this client,
+  closes the remote session. The close is queued in persisted state first and
+  RemoteTerminalCloseCoordinator retries it when the machine regains the
+  terminal grant; queued closes for machines removed from the client are
+  dropped.
+- Deleting a thread this client does not hold (an archived thread, the
+  unresolved delete branch) closes the thread's remote terminals after a
+  successful delete, as archive and the resolved delete branch do, before the
+  thread's terminal UI state is cleared. A failed delete leaves them alone.
+- Removing a project or checkout from project settings closes the remote
+  terminals of every loaded thread of each removed member, after that member's
+  delete succeeded and its removal landed.
+- A remote terminal open that fails queues a close for that exact session
+  (target environment, thread id, terminal id) before its tab is removed, so a
+  session the target created before failing is ended. Closing an unknown
+  session is a no-op success on the server, so the queued close drains.
+- terminal.open / terminal.attach accept an optional originEnvironmentId; the
+  server keeps it on the session and returns it in TerminalSummary. A thread's
+  known terminal sessions skip summaries whose origin is another environment.
+  Servers without this field ignore it.
+
+Integration details:
+- Upstream #31857 (stopOnSettle) touched the same contracts; both fields are
+  kept.
+- Upstream moved the root route's hosts into an appHosts block that also
+  mounts on /welcome; RemoteTerminalCloseCoordinator sits in that block next
+  to ProjectCloneToastCoordinator.
+- Upstream #29164 clears the terminal UI state after deleting a thread this
+  client does not hold; the remote terminals are closed just before that, as
+  in the resolved delete branch, because clearing the UI state drops the
+  remote tabs.
+
+Files:
+packages/contracts:
+- packages/contracts/src/terminal.ts (originEnvironmentId on
+  TerminalOpenInput, TerminalAttachInput, TerminalSummary)
+apps/server:
+- apps/server/src/terminal/Manager.ts (session originEnvironmentId, summary)
+- apps/server/src/terminal/Manager.test.ts
+apps/web:
+- apps/web/src/components/PersistentThreadTerminals.logic.ts (new; remote tab
+  presentation, drawer id reconciliation, splits follow the source machine)
+- apps/web/src/components/PersistentThreadTerminals.logic.test.ts (new)
+- apps/web/src/components/PersistentThreadTerminals.tsx
+- apps/web/src/components/ThreadTerminalDrawer.tsx (split button, machine
+  label on tabs, remote viewport environment)
+- apps/web/src/components/ThreadTerminalDrawer.browser.test.tsx
+- apps/web/src/components/chat/useChatTerminalActions.ts
+- apps/web/src/components/settings/ProjectSettingsPanel.tsx (closes member
+  threads' remote terminals after project removal)
+- apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx
+- apps/web/src/components/terminal/NewTerminalMachineMenu.tsx (new)
+- apps/web/src/components/terminal/RemoteTerminalCloseCoordinator.tsx (new)
+- apps/web/src/components/terminal/remoteTerminalClose.ts (new;
+  closeRemoteTerminalSession, closeRemoteTerminalTab,
+  closeThreadRemoteTerminals)
+- apps/web/src/components/terminal/remoteTerminalClose.test.ts (new)
+- apps/web/src/components/terminal/useThreadTerminalActions.ts
+  (launchRemoteTerminal, remote cwd, per-terminal environment for write and
+  close, failed remote open closes the session)
+- apps/web/src/hooks/useThreadActions.ts (closeThreadRemoteTerminals on
+  archive, resolved delete and unresolved delete)
+- apps/web/src/hooks/useThreadActions.permissions.test.ts
+- apps/web/src/hooks/useThreadActions.undo.test.ts
+- apps/web/src/routes/__root.tsx (mount the coordinator)
+- apps/web/src/state/terminalSessions.ts (origin filter)
+- apps/web/src/state/terminalSessions.test.ts
+- apps/web/src/terminalUiStateStore.ts (remoteTerminalsByThreadKey,
+  pendingRemoteCloses, persisted and migrated)
+- apps/web/src/terminalUiStateStore.test.ts
+docs:
+- docs/user/terminal.md ("Terminals on other machines")
+
+Tests:
+- apps/server/src/terminal/Manager.test.ts: origin environment kept from the
+  first open and returned in metadata.
+- apps/web/src/components/terminal/remoteTerminalClose.test.ts: a close is
+  queued until the machine takes it; closeThreadRemoteTerminals queues one
+  close per remote terminal of the thread only and drops those tabs;
+  closeRemoteTerminalTab queues the close and drops the tab.
+- apps/web/src/components/PersistentThreadTerminals.logic.test.ts,
+  apps/web/src/terminalUiStateStore.test.ts and
+  apps/web/src/state/terminalSessions.test.ts: remote tab presentation and
+  drawer reconciliation, the persisted remote terminals and pending closes,
+  and the origin filter.
+- apps/web/src/hooks/useThreadActions.permissions.test.ts: the archived-thread
+  delete case asserts no remote close on a rejected delete and one for the
+  thread on success; closeThreadRemoteTerminals is mocked at the module seam.
+  apps/web/src/hooks/useThreadActions.undo.test.ts mocks the terminal UI
+  store's remote terminals.
+- apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx: the
+  checkout removal case seeds a thread per member and asserts only the removed
+  member's thread gets its remote terminals closed.
+- apps/web/src/components/ThreadTerminalDrawer.browser.test.tsx mocks
+  useEnvironmentsWithScope for the machine menu.
+- Focused run on 691b9709b0 + 0001-0017: apps/server Manager.test.ts 77
+  tests passed; the six web unit files above 81 tests passed;
+  ThreadTerminalDrawer.browser.test.tsx and
+  ProjectSettingsPanel.browser.test.tsx 24 tests passed.
+- Changed-files gate (node scripts/check-changed.ts HEAD~1, 25 files):
+  format, lint, knip 1/2 and 2/2, graphql, typecheck of 37 packages, 194
+  tests in 14 files, the cross-file test run (13 tests) and the React
+  compiler check on 13 files all passed.
+---
+ apps/server/src/terminal/Manager.test.ts      |  29 +++
+ apps/server/src/terminal/Manager.ts           |   6 +
+ .../PersistentThreadTerminals.logic.test.ts   |  21 +++
+ .../PersistentThreadTerminals.logic.ts        |  20 +++
+ .../components/PersistentThreadTerminals.tsx  |  97 ++++++++--
+ .../ThreadTerminalDrawer.browser.test.tsx     |   1 +
+ .../src/components/ThreadTerminalDrawer.tsx   | 131 ++++++++++----
+ .../components/chat/useChatTerminalActions.ts |  51 ++++--
+ .../ProjectSettingsPanel.browser.test.tsx     |  23 ++-
+ .../settings/ProjectSettingsPanel.tsx         |   4 +
+ .../terminal/NewTerminalMachineMenu.tsx       | 104 +++++++++++
+ .../RemoteTerminalCloseCoordinator.tsx        |  28 +++
+ .../terminal/remoteTerminalClose.test.ts      | 108 +++++++++++
+ .../terminal/remoteTerminalClose.ts           |  68 +++++++
+ .../terminal/useThreadTerminalActions.ts      | 106 ++++++++++-
+ .../useThreadActions.permissions.test.ts      |  18 +-
+ apps/web/src/hooks/useThreadActions.ts        |   4 +
+ .../src/hooks/useThreadActions.undo.test.ts   |   7 +-
+ apps/web/src/routes/__root.tsx                |   2 +
+ apps/web/src/state/terminalSessions.test.ts   |   9 +
+ apps/web/src/state/terminalSessions.ts        |   6 +-
+ apps/web/src/terminalUiStateStore.test.ts     |  30 ++++
+ apps/web/src/terminalUiStateStore.ts          | 167 +++++++++++++++---
+ docs/user/terminal.md                         |  14 ++
+ packages/contracts/src/terminal.ts            |   6 +-
+ 25 files changed, 972 insertions(+), 88 deletions(-)
+ create mode 100644 apps/web/src/components/PersistentThreadTerminals.logic.test.ts
+ create mode 100644 apps/web/src/components/PersistentThreadTerminals.logic.ts
+ create mode 100644 apps/web/src/components/terminal/NewTerminalMachineMenu.tsx
+ create mode 100644 apps/web/src/components/terminal/RemoteTerminalCloseCoordinator.tsx
+ create mode 100644 apps/web/src/components/terminal/remoteTerminalClose.test.ts
+ create mode 100644 apps/web/src/components/terminal/remoteTerminalClose.ts
+
+diff --git a/apps/server/src/terminal/Manager.test.ts b/apps/server/src/terminal/Manager.test.ts
+index ed4645b18becfa83b3fc0d3ae6cc43859b996feb..85b91442798b92af38f8c991a0ae293aebe844e1 100644
+--- a/apps/server/src/terminal/Manager.test.ts
++++ b/apps/server/src/terminal/Manager.test.ts
+@@ -3,6 +3,8 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
+ import { assert, it } from "@effect/vitest";
+ import {
+   DEFAULT_TERMINAL_ID,
++  EnvironmentId,
++  type TerminalSummary,
+   type TerminalAttachStreamEvent,
+   type TerminalEvent,
+   type TerminalOpenInput,
+@@ -678,6 +680,33 @@ it.layer(
+     }),
+   );
+ 
++  it.effect("keeps the origin environment a terminal was first opened from", () =>
++    Effect.gen(function* () {
++      const { manager } = yield* createManager();
++      const originEnvironmentId = EnvironmentId.make("environment-origin");
++      const unsubscribe = yield* manager.attachStream(
++        { ...openInput(), originEnvironmentId, resume: true },
++        () => Effect.void,
++      );
++      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
++      yield* manager.open(
++        openInput({ originEnvironmentId: EnvironmentId.make("environment-other") }),
++      );
++      yield* manager.open(openInput({ terminalId: "term-2" }));
++
++      const metadata = yield* Deferred.make<ReadonlyArray<TerminalSummary>>();
++      yield* manager.subscribeMetadata((event) =>
++        event.type === "snapshot"
++          ? Deferred.succeed(metadata, event.terminals).pipe(Effect.asVoid)
++          : Effect.void,
++      );
++      const terminals = yield* Deferred.await(metadata);
++      const byId = new Map(terminals.map((terminal) => [terminal.terminalId, terminal]));
++      expect(byId.get(DEFAULT_TERMINAL_ID)?.originEnvironmentId).toBe(originEnvironmentId);
++      expect(byId.get("term-2")).not.toHaveProperty("originEnvironmentId");
++    }),
++  );
++
+   const pathExists = (filePath: string) =>
+     Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) => fs.exists(filePath));
+ 
+diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
+index e2061df592d005cb6ee70293710f520e9441f19f..a8d857cc1a0a1e88869ea208c872183d5a3d4f04 100644
+--- a/apps/server/src/terminal/Manager.ts
++++ b/apps/server/src/terminal/Manager.ts
+@@ -17,6 +17,7 @@ import {
+   TerminalResizeError,
+   TerminalSessionLookupError,
+   TerminalWriteError,
++  type EnvironmentId,
+   type TerminalAttachInput,
+   type TerminalAttachStreamEvent,
+   type TerminalClearInput,
+@@ -307,6 +308,7 @@ interface TerminalSessionState {
+   childCommandLabel: string | null;
+   runtimeEnv: Record<string, string> | null;
+   stopOnSettle: boolean;
++  originEnvironmentId: EnvironmentId | null;
+ }
+ 
+ interface TerminalGrid {
+@@ -418,6 +420,9 @@ function summary(session: TerminalSessionState): TerminalSummary {
+     hasRunningSubprocess: session.hasRunningSubprocess,
+     label: terminalWireLabel(session),
+     updatedAt: session.updatedAt,
++    ...(session.originEnvironmentId !== null
++      ? { originEnvironmentId: session.originEnvironmentId }
++      : {}),
+   };
+ }
+ 
+@@ -2879,6 +2884,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+         childCommandLabel: null,
+         runtimeEnv: normalizedRuntimeEnv(input.env),
+         stopOnSettle: input.stopOnSettle ?? false,
++        originEnvironmentId: input.originEnvironmentId ?? null,
+       };
+ 
+       const createdSession = session;
+diff --git a/apps/web/src/components/PersistentThreadTerminals.logic.test.ts b/apps/web/src/components/PersistentThreadTerminals.logic.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..96abdd46e931bd9ac35cced70ba66a89e526f62e
+--- /dev/null
++++ b/apps/web/src/components/PersistentThreadTerminals.logic.test.ts
+@@ -0,0 +1,21 @@
++import type { EnvironmentId } from "@t3tools/contracts";
++import { describe, expect, it } from "vite-plus/test";
++
++import { drawerServerTerminalIds } from "./PersistentThreadTerminals.logic";
++
++const LAPTOP = "environment-laptop" as EnvironmentId;
++
++describe("drawerServerTerminalIds", () => {
++  it("keeps remote tabs and the client's order, whatever the thread's server reports", () => {
++    expect(
++      drawerServerTerminalIds({
++        localIds: ["term-1", "term-a", "term-x"],
++        remoteTerminals: {
++          "term-a": { environmentId: LAPTOP, cwd: "/work" },
++          "term-gone": { environmentId: LAPTOP, cwd: "/work" },
++        },
++        clientIds: ["term-a", "term-1"],
++      }),
++    ).toEqual(["term-a", "term-1", "term-x"]);
++  });
++});
+diff --git a/apps/web/src/components/PersistentThreadTerminals.logic.ts b/apps/web/src/components/PersistentThreadTerminals.logic.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1fe5972e3397baadb87421a8e80077918ae0dbe2
+--- /dev/null
++++ b/apps/web/src/components/PersistentThreadTerminals.logic.ts
+@@ -0,0 +1,20 @@
++import type { ThreadRemoteTerminals } from "../terminalUiStateStore";
++
++/**
++ * The drawer's terminal list to reconcile against, in the client's order with new server
++ * terminals last. Remote tabs leave only through a close or their shell exiting: another
++ * machine's metadata can lag an open or vanish with its server, and a tab dropped here could
++ * never be found again.
++ */
++export function drawerServerTerminalIds(input: {
++  readonly localIds: readonly string[];
++  readonly remoteTerminals: ThreadRemoteTerminals;
++  readonly clientIds: readonly string[];
++}): string[] {
++  const local = input.localIds.filter((id) => input.remoteTerminals[id] === undefined);
++  const kept = new Set([...local, ...Object.keys(input.remoteTerminals)]);
++  return [
++    ...input.clientIds.filter((id) => kept.has(id)),
++    ...local.filter((id) => !input.clientIds.includes(id)),
++  ];
++}
+diff --git a/apps/web/src/components/PersistentThreadTerminals.tsx b/apps/web/src/components/PersistentThreadTerminals.tsx
+index a387349b4c038e12df15de15e2e25db37ae6f48f..52a7709104b6ed2f4a3ad387f4e2cbbc1297a7e3 100644
+--- a/apps/web/src/components/PersistentThreadTerminals.tsx
++++ b/apps/web/src/components/PersistentThreadTerminals.tsx
+@@ -21,10 +21,18 @@ import {
+ } from "../rightPanelStore";
+ import { useProject, useQuietThreadShell } from "../state/entities";
+ import { useEnvironmentScope } from "../state/session";
++import { useEnvironments } from "../state/environments";
+ import { useKnownTerminalSessions } from "../state/terminalSessions";
+-import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
++import {
++  selectThreadRemoteTerminals,
++  selectThreadTerminalUiState,
++  useTerminalUiStateStore,
++} from "../terminalUiStateStore";
++import { resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
++import { drawerServerTerminalIds } from "./PersistentThreadTerminals.logic";
++import { NewTerminalMachineMenu } from "./terminal/NewTerminalMachineMenu";
+ import { useThreadTerminalActions } from "./terminal/useThreadTerminalActions";
+-import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
++import ThreadTerminalDrawer, { type RemoteTerminalPresentation } from "./ThreadTerminalDrawer";
+ import { resolveTerminalWorktreePath } from "./ChatView.logic";
+ 
+ /** Where a drawer or panel opens new terminals when a script run overrides the thread's own. */
+@@ -70,7 +78,7 @@ function serverTerminalIdsStrictSubsetOfClient(
+ interface TerminalLaunchLocationWithEnv {
+   readonly cwd: string;
+   readonly worktreePath: string | null;
+-  readonly runtimeEnv: Record<string, string>;
++  readonly runtimeEnv?: Record<string, string>;
+ }
+ 
+ interface PersistentThreadTerminalDrawerProps {
+@@ -149,9 +157,33 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
+       }),
+     });
+   }
+-  const serverOrderedTerminalIds = drawerTerminalSessions.map(
+-    (session) => session.target.terminalId,
++  const remoteTerminals = useTerminalUiStateStore((state) =>
++    selectThreadRemoteTerminals(state.remoteTerminalsByThreadKey, threadRef),
+   );
++  const { environments } = useEnvironments();
++  const remoteTerminalsById = new Map<string, RemoteTerminalPresentation>();
++  for (const [terminalId, remote] of Object.entries(remoteTerminals)) {
++    const environment = environments.find(
++      (candidate) => candidate.environmentId === remote.environmentId,
++    );
++    remoteTerminalsById.set(terminalId, {
++      environmentId: remote.environmentId,
++      environmentLabel: environment
++        ? resolveEnvironmentOptionLabel({
++            isPrimary: environment.entry.target._tag === "PrimaryConnectionTarget",
++            environmentId: remote.environmentId,
++            runtimeLabel: environment.label,
++          })
++        : remote.environmentId,
++    });
++    // The open sent only a cwd. Attach sends the same, so a session it recreates matches.
++    terminalLaunchLocationsById.set(terminalId, { cwd: remote.cwd, worktreePath: null });
++  }
++  const serverOrderedTerminalIds = drawerServerTerminalIds({
++    localIds: drawerTerminalSessions.map((session) => session.target.terminalId),
++    remoteTerminals,
++    clientIds: terminalUiState.terminalIds,
++  });
+   const storeSetTerminalHeight = useTerminalUiStateStore((state) => state.setTerminalHeight);
+   const storeSplitTerminal = useTerminalUiStateStore((state) => state.splitTerminal);
+   const storeSplitTerminalVertical = useTerminalUiStateStore(
+@@ -205,11 +237,41 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
+     if (visible) focusTerminal(threadRef, launched.terminalId);
+     void launched.result;
+   };
+-  const splitTerminal = useStableCallback(() =>
+-    launchDrawerTerminal((terminalId) => storeSplitTerminal(threadRef, terminalId)),
+-  );
+-  const splitTerminalVertical = useStableCallback(() =>
+-    launchDrawerTerminal((terminalId) => storeSplitTerminalVertical(threadRef, terminalId)),
++  const launchRemoteDrawerTerminal = (
++    environmentId: EnvironmentId,
++    place: Parameters<typeof terminalActions.launchRemoteTerminal>[0]["place"],
++    cwdOverride?: string,
++  ) => {
++    void terminalActions
++      .launchRemoteTerminal({
++        environmentId,
++        place,
++        ...(cwdOverride !== undefined ? { cwd: cwdOverride } : {}),
++      })
++      .then((launched) => {
++        if (launched && visible) focusTerminal(threadRef, launched.terminalId);
++      });
++  };
++  // A split follows the active terminal's machine and directory.
++  const splitDrawerTerminal = (direction: "horizontal" | "vertical") => {
++    const split = direction === "vertical" ? storeSplitTerminalVertical : storeSplitTerminal;
++    const remote = remoteTerminals[terminalUiState.activeTerminalId];
++    if (remote) {
++      launchRemoteDrawerTerminal(
++        remote.environmentId,
++        (terminalId, placed) => split(threadRef, terminalId, placed),
++        remote.cwd,
++      );
++      return;
++    }
++    launchDrawerTerminal((terminalId) => split(threadRef, terminalId));
++  };
++  const splitTerminal = useStableCallback(() => splitDrawerTerminal("horizontal"));
++  const splitTerminalVertical = useStableCallback(() => splitDrawerTerminal("vertical"));
++  const createRemoteTerminal = useStableCallback((environmentId: EnvironmentId) =>
++    launchRemoteDrawerTerminal(environmentId, (terminalId, placed) =>
++      storeNewTerminal(threadRef, terminalId, placed),
++    ),
+   );
+   const createNewTerminal = useStableCallback(() =>
+     launchDrawerTerminal((terminalId) => storeNewTerminal(threadRef, terminalId)),
+@@ -221,7 +283,7 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
+   };
+ 
+   const closeTerminal = useStableCallback((terminalId: string) => {
+-    if (!terminalActions.canWrite()) return;
++    if (remoteTerminals[terminalId] === undefined && !terminalActions.canWrite()) return;
+     terminalActions.closeTerminalSession(terminalId);
+     storeCloseTerminal(threadRef, terminalId);
+     if (visible) focusActiveDrawerTerminal(threadRef);
+@@ -277,6 +339,19 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
+           onAddTerminalContext={handleAddTerminalContext}
+           terminalLabelsById={terminalLabelsById}
+           terminalLaunchLocationsById={terminalLaunchLocationsById}
++          remoteTerminalsById={remoteTerminalsById}
++          newTerminalMachineMenu={
++            environments.some(
++              (environment) => environment.environmentId !== threadRef.environmentId,
++            ) ? (
++              <NewTerminalMachineMenu
++                threadEnvironmentId={threadRef.environmentId}
++                canOpenOnThreadEnvironment={canOperateTerminal}
++                onNewTerminal={createNewTerminal}
++                onSelectEnvironment={createRemoteTerminal}
++              />
++            ) : undefined
++          }
+         />
+       </div>
+     </div>
+diff --git a/apps/web/src/components/ThreadTerminalDrawer.browser.test.tsx b/apps/web/src/components/ThreadTerminalDrawer.browser.test.tsx
+index 9fd27587475335987ac05a8b45e12557bbb700f4..97e5b8b3ad8282182c06a390ca8dbd66b5684cd0 100644
+--- a/apps/web/src/components/ThreadTerminalDrawer.browser.test.tsx
++++ b/apps/web/src/components/ThreadTerminalDrawer.browser.test.tsx
+@@ -58,6 +58,7 @@ vi.mock("../state/terminalSessions", async () => {
+ });
+ vi.mock("../state/session", () => ({
+   useEnvironmentScope: () => true,
++  useEnvironmentsWithScope: () => new Set(),
+   readEnvironmentScope: () => true,
+ }));
+ vi.mock("../state/use-atom-command", () => ({
+diff --git a/apps/web/src/components/ThreadTerminalDrawer.tsx b/apps/web/src/components/ThreadTerminalDrawer.tsx
+index 049589d0b671a43f79ef623c8732e31bf46d549c..6158d226504d6ca86267c343c7f739c3c799c61e 100644
+--- a/apps/web/src/components/ThreadTerminalDrawer.tsx
++++ b/apps/web/src/components/ThreadTerminalDrawer.tsx
+@@ -26,6 +26,7 @@ import {
+   AuthOrchestrationOperateScope,
+   AuthTerminalOperateScope,
+   type ContextMenuItem,
++  type EnvironmentId,
+   type ProviderInstanceId,
+   type ResolvedKeybindingsConfig,
+   type ScopedThreadRef,
+@@ -91,7 +92,7 @@ import { serverEnvironment } from "../state/server";
+ import { previewEnvironment } from "../state/preview";
+ import { readEnvironmentScope } from "../state/session";
+ import { terminalEnvironment } from "../state/terminal";
+-import { useEnvironmentScope } from "../state/session";
++import { useEnvironmentScope, useEnvironmentsWithScope } from "../state/session";
+ import { openTerminalLinkInPreview } from "./preview/openTerminalLinkInPreview";
+ import { useAtomCommand } from "../state/use-atom-command";
+ import { preventTerminalCloseShortcut } from "../lib/terminalCloseShortcut";
+@@ -472,6 +473,8 @@ export function shouldHandleTerminalExit(
+ interface TerminalViewportProps {
+   advancedTypography: boolean;
+   threadRef: ScopedThreadRef;
++  /** Set for a terminal that runs on another environment than the thread's. */
++  remoteEnvironmentId?: EnvironmentId;
+   threadId: ThreadId;
+   terminalId: string;
+   terminalLabel: string;
+@@ -495,7 +498,7 @@ interface TerminalLaunchLocation {
+ 
+ export function TerminalViewport(props: TerminalViewportProps) {
+   const sessionKey = JSON.stringify([
+-    props.threadRef.environmentId,
++    props.remoteEnvironmentId ?? props.threadRef.environmentId,
+     props.threadId,
+     props.terminalId,
+     props.cwd,
+@@ -508,6 +511,7 @@ export function TerminalViewport(props: TerminalViewportProps) {
+ function TerminalSessionViewport({
+   advancedTypography,
+   threadRef,
++  remoteEnvironmentId,
+   threadId,
+   terminalId,
+   terminalLabel,
+@@ -525,7 +529,7 @@ function TerminalSessionViewport({
+   const autoFocusedRef = useRef(false);
+   const terminalRef = useRef<GhosttyTerminalSurface | null>(null);
+   const visibleRef = useRef(visible);
+-  const environmentId = threadRef.environmentId;
++  const environmentId = remoteEnvironmentId ?? threadRef.environmentId;
+   const canOperateTerminal = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
+   const hasTerminalWriteAccess = useEffectEvent(() =>
+     readEnvironmentScope(environmentId, AuthTerminalOperateScope),
+@@ -620,6 +624,7 @@ function TerminalSessionViewport({
+     ...(worktreePath !== undefined ? { worktreePath } : {}),
+     ...(runtimeEnv ? { env: runtimeEnv } : {}),
+     ...(providerInstanceId ? { providerInstanceId } : {}),
++    ...(remoteEnvironmentId ? { originEnvironmentId: threadRef.environmentId } : {}),
+   });
+   // Attaching starts with the viewport, while the WASM surface is still loading;
+   // the surface reads the session itself, so output chunks never re-render here.
+@@ -667,7 +672,14 @@ function TerminalSessionViewport({
+   );
+   const openLinkInPreview = useEffectEvent(
+     (url: string, forceBrowser: boolean, fallbackToBrowser: () => void) =>
+-      openTerminalLinkInPreview({ url, threadRef, openPreview, fallbackToBrowser, forceBrowser }),
++      openTerminalLinkInPreview({
++        url,
++        threadRef,
++        openPreview,
++        fallbackToBrowser,
++        // The thread's preview runs on the thread's machine, not the one that printed the URL.
++        forceBrowser: forceBrowser || remoteEnvironmentId !== undefined,
++      }),
+   );
+ 
+   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- sets the terminal input's readOnly from the operate grant and consumes a pending focus request
+@@ -1251,8 +1263,19 @@ interface ThreadTerminalDrawerProps {
+   keybindings: ResolvedKeybindingsConfig;
+   terminalLabelsById?: ReadonlyMap<string, string>;
+   terminalLaunchLocationsById?: ReadonlyMap<string, TerminalLaunchLocation>;
++  /** Terminals of this thread that run on another environment. */
++  remoteTerminalsById?: ReadonlyMap<string, RemoteTerminalPresentation>;
++  /** The chevron half of the new terminal button, shown when another environment exists. */
++  newTerminalMachineMenu?: ReactNode;
+ }
+ 
++export interface RemoteTerminalPresentation {
++  readonly environmentId: EnvironmentId;
++  readonly environmentLabel: string;
++}
++
++const NO_REMOTE_TERMINALS: ReadonlyMap<string, RemoteTerminalPresentation> = new Map();
++
+ interface TerminalActionButtonProps {
+   label: string;
+   className: string;
+@@ -1308,6 +1331,7 @@ function TerminalSplitPanes({
+   advancedTypography,
+   threadRef,
+   threadId,
++  remoteTerminalsById,
+   onAddTerminalContext,
+   visible,
+   keybindings,
+@@ -1322,6 +1346,7 @@ function TerminalSplitPanes({
+   advancedTypography: boolean;
+   threadRef: ScopedThreadRef;
+   threadId: ThreadId;
++  remoteTerminalsById: ReadonlyMap<string, RemoteTerminalPresentation>;
+   onAddTerminalContext: (selection: TerminalContextSelection) => void;
+   visible: boolean;
+   keybindings: ResolvedKeybindingsConfig;
+@@ -1341,6 +1366,7 @@ function TerminalSplitPanes({
+     >
+       {terminalIds.map((terminalId) => {
+         const terminalLaunchLocation = resolveLaunchLocation(terminalId);
++        const remote = remoteTerminalsById.get(terminalId);
+         return (
+           <div
+             key={terminalId}
+@@ -1359,6 +1385,7 @@ function TerminalSplitPanes({
+               <TerminalViewport
+                 advancedTypography={advancedTypography}
+                 threadRef={threadRef}
++                {...(remote ? { remoteEnvironmentId: remote.environmentId } : {})}
+                 threadId={threadId}
+                 terminalId={terminalId}
+                 terminalLabel={terminalLabelById.get(terminalId) ?? "Terminal"}
+@@ -1388,7 +1415,8 @@ function TerminalSidebarGroup({
+   showHeader,
+   terminalLabelById,
+   closeShortcutLabel,
+-  canOperateTerminal,
++  canCloseTerminal,
++  remoteTerminalsById,
+   onActiveTerminalChange,
+   onCloseTerminal,
+ }: {
+@@ -1397,7 +1425,8 @@ function TerminalSidebarGroup({
+   showHeader: boolean;
+   terminalLabelById: ReadonlyMap<string, string>;
+   closeShortcutLabel: string | undefined;
+-  canOperateTerminal: boolean;
++  canCloseTerminal: (terminalId: string) => boolean;
++  remoteTerminalsById: ReadonlyMap<string, RemoteTerminalPresentation>;
+   onActiveTerminalChange: (terminalId: string) => void;
+   onCloseTerminal: (terminalId: string) => void;
+ }) {
+@@ -1443,6 +1472,7 @@ function TerminalSidebarGroup({
+           const closeTerminalLabel = `Close ${terminalLabel}${
+             isActive && closeShortcutLabel ? ` (${closeShortcutLabel})` : ""
+           }`;
++          const environmentLabel = remoteTerminalsById.get(terminalId)?.environmentLabel;
+           return (
+             <div
+               key={terminalId}
+@@ -1453,7 +1483,7 @@ function TerminalSidebarGroup({
+                   : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+               )}
+             >
+-              {canOperateTerminal ? (
++              {canCloseTerminal(terminalId) ? (
+                 <PanelTabCloseButton
+                   label={closeTerminalLabel}
+                   onClick={() => onCloseTerminal(terminalId)}
+@@ -1470,6 +1500,11 @@ function TerminalSidebarGroup({
+                 onClick={() => onActiveTerminalChange(terminalId)}
+               >
+                 <span className="truncate">{terminalLabel}</span>
++                {environmentLabel ? (
++                  <span className="ml-auto max-w-1/2 shrink-0 truncate text-muted-foreground/70 text-3xs">
++                    {environmentLabel}
++                  </span>
++                ) : null}
+               </button>
+             </div>
+           );
+@@ -1507,8 +1542,21 @@ export default function ThreadTerminalDrawer({
+   keybindings,
+   terminalLabelsById,
+   terminalLaunchLocationsById,
++  remoteTerminalsById = NO_REMOTE_TERMINALS,
++  newTerminalMachineMenu,
+ }: ThreadTerminalDrawerProps) {
+   const canOperateTerminal = useEnvironmentScope(threadRef.environmentId, AuthTerminalOperateScope);
++  const operableRemoteEnvironmentIds = useEnvironmentsWithScope(
++    [...remoteTerminalsById.values()],
++    AuthTerminalOperateScope,
++  );
++  const canOperate = (terminalId: string) => {
++    const remote = remoteTerminalsById.get(terminalId);
++    return remote ? operableRemoteEnvironmentIds.has(remote.environmentId) : canOperateTerminal;
++  };
++  // An unreachable machine must not leave a tab the user cannot remove.
++  const canCloseTerminal = (terminalId: string) =>
++    remoteTerminalsById.has(terminalId) || canOperateTerminal;
+   const terminalArea = workspaceAreaProps("terminal", 5, "Terminal");
+   const isPanel = mode === "panel";
+   const [advancedTypography] = useLocalStorage(
+@@ -1676,12 +1724,14 @@ export default function ThreadTerminalDrawer({
+   const closeTerminalActionLabel = closeShortcutLabel
+     ? `Close Terminal (${closeShortcutLabel})`
+     : "Close Terminal";
++  const canSplitActiveTerminal = canOperate(resolvedActiveTerminalId);
++  const canCloseActiveTerminal = canCloseTerminal(resolvedActiveTerminalId);
+   const onSplitTerminalAction = () => {
+-    if (!canOperateTerminal || hasReachedSplitLimit) return;
++    if (!canSplitActiveTerminal || hasReachedSplitLimit) return;
+     onSplitTerminal();
+   };
+   const onSplitTerminalVerticalAction = () => {
+-    if (!canOperateTerminal || hasReachedSplitLimit) return;
++    if (!canSplitActiveTerminal || hasReachedSplitLimit) return;
+     onSplitTerminalVertical();
+   };
+   const onNewTerminalAction = () => {
+@@ -1689,10 +1739,14 @@ export default function ThreadTerminalDrawer({
+     onNewTerminal();
+   };
+   const confirmCloseTerminal = (terminalId: string) => {
+-    if (!canOperateTerminal) return;
++    if (!canCloseTerminal(terminalId)) return;
++    const isRemote = remoteTerminalsById.has(terminalId);
+     const label = terminalLabelById.get(terminalId) ?? getTerminalLabel(terminalId);
+     void confirmTerminalClose([label]).then((confirmed) => {
+-      if (confirmed && readEnvironmentScope(threadRef.environmentId, AuthTerminalOperateScope)) {
++      if (
++        confirmed &&
++        (isRemote || readEnvironmentScope(threadRef.environmentId, AuthTerminalOperateScope))
++      ) {
+         onCloseTerminal(terminalId, threadRef);
+       }
+     });
+@@ -1817,14 +1871,17 @@ export default function ThreadTerminalDrawer({
+         {resizeHandle}
+         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-muted-foreground">
+           <p>No terminal sessions for this thread yet.</p>
+-          <Button
+-            size="xs"
+-            variant="outline"
+-            onClick={onNewTerminalAction}
+-            disabled={!canOperateTerminal}
+-          >
+-            {newTerminalActionLabel}
+-          </Button>
++          <div className="flex items-center gap-2">
++            <Button
++              size="xs"
++              variant="outline"
++              onClick={onNewTerminalAction}
++              disabled={!canOperateTerminal}
++            >
++              {newTerminalActionLabel}
++            </Button>
++            {newTerminalMachineMenu}
++          </div>
+         </div>
+       </aside>
+     );
+@@ -1848,7 +1905,7 @@ export default function ThreadTerminalDrawer({
+         <div className="pointer-events-none absolute right-2 top-2 z-20">
+           <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-md border border-border/80 bg-background shadow-xs">
+             <TerminalActionButton
+-              disabled={!canOperateTerminal}
++              disabled={!canSplitActiveTerminal}
+               className={`p-1 text-foreground/90 transition-colors ${
+                 hasReachedSplitLimit
+                   ? "cursor-not-allowed opacity-64 hover:bg-transparent"
+@@ -1861,7 +1918,7 @@ export default function ThreadTerminalDrawer({
+             </TerminalActionButton>
+             <div className="h-4 w-px bg-border/80" />
+             <TerminalActionButton
+-              disabled={!canOperateTerminal}
++              disabled={!canSplitActiveTerminal}
+               className={`p-1 text-foreground/90 transition-colors ${
+                 hasReachedSplitLimit
+                   ? "cursor-not-allowed opacity-64 hover:bg-transparent"
+@@ -1873,17 +1930,20 @@ export default function ThreadTerminalDrawer({
+               <SquareSplitVertical className="size-3.25" />
+             </TerminalActionButton>
+             <div className="h-4 w-px bg-border/80" />
+-            <TerminalActionButton
+-              disabled={!canOperateTerminal}
+-              className="p-1 text-foreground/90 transition-colors hover:bg-accent"
+-              onClick={onNewTerminalAction}
+-              label={newTerminalActionLabel}
+-            >
+-              <Plus className="size-3.25" />
+-            </TerminalActionButton>
++            <div className="inline-flex h-full items-center">
++              <TerminalActionButton
++                disabled={!canOperateTerminal}
++                className="p-1 text-foreground/90 transition-colors hover:bg-accent"
++                onClick={onNewTerminalAction}
++                label={newTerminalActionLabel}
++              >
++                <Plus className="size-3.25" />
++              </TerminalActionButton>
++              {newTerminalMachineMenu}
++            </div>
+             <div className="h-4 w-px bg-border/80" />
+             <TerminalActionButton
+-              disabled={!canOperateTerminal}
++              disabled={!canCloseActiveTerminal}
+               className="p-1 text-foreground/90 transition-colors hover:bg-accent"
+               onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
+               label={closeTerminalActionLabel}
+@@ -1913,6 +1973,7 @@ export default function ThreadTerminalDrawer({
+               advancedTypography={advancedTypography}
+               threadRef={threadRef}
+               threadId={threadId}
++              remoteTerminalsById={remoteTerminalsById}
+               onAddTerminalContext={onAddTerminalContext}
+               visible={visible}
+               keybindings={keybindings}
+@@ -1925,7 +1986,7 @@ export default function ThreadTerminalDrawer({
+                 {/* Sits above the taller touch resize handle so its buttons keep their taps. */}
+                 <div className="inline-flex h-full items-stretch any-pointer-coarse:relative any-pointer-coarse:z-30">
+                   <TerminalActionButton
+-                    disabled={!canOperateTerminal}
++                    disabled={!canSplitActiveTerminal}
+                     className={`inline-flex h-full items-center px-1 text-foreground/90 transition-colors ${
+                       hasReachedSplitLimit
+                         ? "cursor-not-allowed opacity-64 hover:bg-transparent"
+@@ -1937,7 +1998,7 @@ export default function ThreadTerminalDrawer({
+                     <SquareSplitHorizontal className="size-3.25" />
+                   </TerminalActionButton>
+                   <TerminalActionButton
+-                    disabled={!canOperateTerminal}
++                    disabled={!canSplitActiveTerminal}
+                     className={`inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors ${
+                       hasReachedSplitLimit
+                         ? "cursor-not-allowed opacity-64 hover:bg-transparent"
+@@ -1956,8 +2017,9 @@ export default function ThreadTerminalDrawer({
+                   >
+                     <Plus className="size-3.25" />
+                   </TerminalActionButton>
++                  {newTerminalMachineMenu}
+                   <TerminalActionButton
+-                    disabled={!canOperateTerminal}
++                    disabled={!canCloseActiveTerminal}
+                     className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
+                     onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
+                     label={closeTerminalActionLabel}
+@@ -1976,7 +2038,8 @@ export default function ThreadTerminalDrawer({
+                     showHeader={showGroupHeaders}
+                     terminalLabelById={terminalLabelById}
+                     closeShortcutLabel={closeShortcutLabel}
+-                    canOperateTerminal={canOperateTerminal}
++                    canCloseTerminal={canCloseTerminal}
++                    remoteTerminalsById={remoteTerminalsById}
+                     onActiveTerminalChange={onActiveTerminalChange}
+                     onCloseTerminal={confirmCloseTerminal}
+                   />
+diff --git a/apps/web/src/components/chat/useChatTerminalActions.ts b/apps/web/src/components/chat/useChatTerminalActions.ts
+index a64c748e814325895000a5544551766d0668b480..b5a8f1d1f2f620582f095c3eb003a5babc66a089 100644
+--- a/apps/web/src/components/chat/useChatTerminalActions.ts
++++ b/apps/web/src/components/chat/useChatTerminalActions.ts
+@@ -129,6 +129,14 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
+     null;
+   const hasReachedSplitLimit =
+     (activeTerminalGroup?.terminalIds.length ?? 0) >= MAX_TERMINALS_PER_GROUP;
++  // A remote tab answers to its own environment's grant. Closing one never needs it: an
++  // unreachable machine must not leave a tab the user cannot remove.
++  const canSplitDrawerTerminal = (terminalId: string) =>
++    terminalActions.remoteTerminalFor(terminalId)
++      ? terminalActions.canWriteTerminal(terminalId)
++      : hasTerminalWriteAccess();
++  const canCloseDrawerTerminal = (terminalId: string) =>
++    terminalActions.remoteTerminalFor(terminalId) !== null || hasTerminalWriteAccess();
+   /*__HOOK__*/
+   const addTerminalContextToDraft = (selection: TerminalContextSelection) => {
+     composerRef.current?.addTerminalContext(selection);
+@@ -171,6 +179,22 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
+   const toggleTerminalVisibilityStable = useStableCallback(toggleTerminalVisibility);
+   const splitTerminal = (direction: "horizontal" | "vertical" = "horizontal") => {
+     if (!activeThreadRef || hasReachedSplitLimit) return;
++    const remote = terminalActions.remoteTerminalFor(terminalUiState.activeTerminalId);
++    if (remote) {
++      void terminalActions
++        .launchRemoteTerminal({
++          environmentId: remote.environmentId,
++          cwd: remote.cwd,
++          place: (terminalId, placed) =>
++            direction === "vertical"
++              ? storeSplitTerminalVertical(activeThreadRef, terminalId, placed)
++              : storeSplitTerminal(activeThreadRef, terminalId, placed),
++        })
++        .then((launched) => {
++          if (launched) focusTerminal(activeThreadRef, launched.terminalId);
++        });
++      return;
++    }
+     const launched = terminalActions.launchTerminal({
+       place: (terminalId) =>
+         direction === "vertical"
+@@ -193,7 +217,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
+   };
+   const createNewTerminalStable = useStableCallback(createNewTerminal);
+   const closeTerminal = (terminalId: string) => {
+-    if (!hasTerminalWriteAccess() || !activeThreadRef) return;
++    if (!canCloseDrawerTerminal(terminalId) || !activeThreadRef) return;
+     terminalActions.closeTerminalSession(terminalId, activeThreadRef);
+     storeCloseTerminal(activeThreadRef, terminalId);
+     focusActiveDrawerTerminal(activeThreadRef);
+@@ -228,7 +252,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
+             // worktree setup shell; the helper drops the panel-owned ones.
+             drawerTerminalIds: [
+               ...new Set([...terminalUiState.terminalIds, ...activeServerOrderedTerminalIds]),
+-            ],
++            ].filter((terminalId) => terminalActions.remoteTerminalFor(terminalId) === null),
+             activeTerminalId: terminalUiState.activeTerminalId,
+             panelTerminalIds,
+             runningTerminalIds,
+@@ -384,12 +408,10 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
+   };
+   const closePanelTerminalStable = useStableCallback(closePanelTerminal);
+   const requestCloseTerminal = (terminalId: string) => {
+-    if (!hasTerminalWriteAccess()) return;
++    if (!canCloseDrawerTerminal(terminalId)) return;
+     const label = activeTerminalLabelsById.get(terminalId) ?? getTerminalLabel(terminalId);
+     void confirmTerminalClose([label]).then((confirmed) => {
+-      if (confirmed && readEnvironmentScope(environmentId, AuthTerminalOperateScope)) {
+-        closeTerminal(terminalId);
+-      }
++      if (confirmed) closeTerminal(terminalId);
+     });
+   };
+   const requestCloseTerminalStable = useStableCallback(requestCloseTerminal);
+@@ -418,23 +440,30 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
+       toggleTerminalVisibility();
+     },
+     "terminal.split": ({ terminalFocusOwner }) => {
+-      if (!hasTerminalWriteAccess()) return false;
+-      if (terminalFocusOwner === "right-panel") return void splitPanelTerminal();
++      if (terminalFocusOwner === "right-panel") {
++        if (!hasTerminalWriteAccess()) return false;
++        return void splitPanelTerminal();
++      }
++      if (!canSplitDrawerTerminal(terminalUiState.activeTerminalId)) return false;
+       openTerminalIfClosed();
+       splitTerminal();
+     },
+     "terminal.splitVertical": ({ terminalFocusOwner }) => {
+-      if (!hasTerminalWriteAccess()) return false;
+-      if (terminalFocusOwner === "right-panel") return void splitPanelTerminal("vertical");
++      if (terminalFocusOwner === "right-panel") {
++        if (!hasTerminalWriteAccess()) return false;
++        return void splitPanelTerminal("vertical");
++      }
++      if (!canSplitDrawerTerminal(terminalUiState.activeTerminalId)) return false;
+       openTerminalIfClosed();
+       splitTerminal("vertical");
+     },
+     "terminal.close": ({ terminalFocusOwner }) => {
+-      if (!hasTerminalWriteAccess()) return false;
+       if (terminalFocusOwner === "right-panel" && activeRightPanelSurface?.kind === "terminal") {
++        if (!hasTerminalWriteAccess()) return false;
+         requestClosePanelTerminal(activeRightPanelSurface.activeTerminalId);
+         return;
+       }
++      if (!canCloseDrawerTerminal(terminalUiState.activeTerminalId)) return false;
+       if (terminalUiState.terminalOpen) requestCloseTerminal(terminalUiState.activeTerminalId);
+     },
+     "terminal.new": ({ terminalFocusOwner }) => {
+diff --git a/apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx b/apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx
+index 2f7aa1fd8bd0f84c7315cd3c80836db470970470..5526914e6a5e558358efa0dba6e6c9a86b0fc5a9 100644
+--- a/apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx
++++ b/apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx
+@@ -1,4 +1,5 @@
+ import { RegistryContext } from "@effect/atom-react";
++import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+ import type {
+   DeleteProjectInput,
+   UpdateProjectInput,
+@@ -10,6 +11,7 @@ import {
+   EnvironmentId,
+   ProjectId,
+   ProviderInstanceId,
++  ThreadId,
+   type AuthEnvironmentScope,
+   type AuthSessionState,
+ } from "@t3tools/contracts";
+@@ -52,6 +54,8 @@ const state = vi.hoisted(() => ({
+   releaseUploads: vi.fn(),
+   clearDraft: vi.fn(),
+   toast: vi.fn(),
++  threads: [] as Pick<EnvironmentThreadShell, "environmentId" | "id" | "projectId" | "lineage">[],
++  closeRemoteTerminals: vi.fn(),
+ }));
+ 
+ // Session grants come from the server; each test drives them through these atoms.
+@@ -77,7 +81,7 @@ vi.mock(import("~/state/environments"), async (original) => ({
+ vi.mock(import("~/state/entities"), async (original) => ({
+   ...(await original()),
+   useProjects: (() => state.projects) as never,
+-  useThreadShells: () => [],
++  useThreadShells: (() => state.threads) as never,
+   useServerConfigs: (() =>
+     new Map(
+       environments.map((environment) => [environment.environmentId, environment.serverConfig]),
+@@ -108,6 +112,10 @@ vi.mock(import("~/localApi"), async (original) => ({
+   ...(await original()),
+   readLocalApi: (() => ({ dialogs: { confirm: state.confirm } })) as never,
+ }));
++vi.mock(import("../terminal/remoteTerminalClose"), async (original) => ({
++  ...(await original()),
++  closeThreadRemoteTerminals: state.closeRemoteTerminals,
++}));
+ vi.mock(import("~/lib/composerDraftUploads"), async (original) => ({
+   ...(await original()),
+   releaseProjectDraftUploads: state.releaseUploads,
+@@ -211,6 +219,7 @@ function setup() {
+     );
+     return AsyncResult.success(undefined);
+   });
++  state.threads = [];
+   state.delete.mockResolvedValue(AsyncResult.success(undefined));
+   state.confirm.mockResolvedValue(true);
+   useComposerDraftStore.setState({ clearProjectDraftThreadId: state.clearDraft });
+@@ -401,6 +410,15 @@ describe("project settings permissions", () => {
+ 
+   it("removes a writable checkout while removal of the mixed group stays denied", async () => {
+     setup();
++    state.threads = state.projects.map((project) => {
++      const id = ThreadId.make(`thread-${project.environmentId}`);
++      return {
++        environmentId: project.environmentId,
++        id,
++        projectId: project.id,
++        lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: id },
++      };
++    });
+     await grant(remoteId, AsyncResult.success(session([])));
+     await using screen = await mountPanel();
+     const initialHref = screen.router.state.location.href;
+@@ -414,6 +432,9 @@ describe("project settings permissions", () => {
+     });
+     await vi.waitFor(() => expect(state.releaseUploads).toHaveBeenCalledOnce());
+     expect(state.clearDraft).toHaveBeenCalledOnce();
++    expect(state.closeRemoteTerminals.mock.calls).toEqual([
++      [{ environmentId: primaryId, threadId: ThreadId.make("thread-primary") }],
++    ]);
+     expect(screen.router.state.location.href).toBe(initialHref);
+   });
+ 
+diff --git a/apps/web/src/components/settings/ProjectSettingsPanel.tsx b/apps/web/src/components/settings/ProjectSettingsPanel.tsx
+index 379be839e2e286d8357d8c7ca1e25ba2020054dc..9ef0199aa82b9e7725d14bc3021cd5bae6cd1845 100644
+--- a/apps/web/src/components/settings/ProjectSettingsPanel.tsx
++++ b/apps/web/src/components/settings/ProjectSettingsPanel.tsx
+@@ -31,6 +31,7 @@ import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environmen
+ import { useThreadShells, waitForProjectRemoval } from "../../state/entities";
+ import { projectEnvironment } from "../../state/projects";
+ import { ProjectFavicon } from "../ProjectFavicon";
++import { closeThreadRemoteTerminals } from "../terminal/remoteTerminalClose";
+ import { Alert, AlertDescription } from "../ui/alert";
+ import { Button } from "../ui/button";
+ import { Input } from "../ui/input";
+@@ -385,6 +386,9 @@ function ProjectDetail({
+       }
+       const projectRef = scopeProjectRef(member.environmentId, member.id);
+       await waitForProjectRemoval(projectRef);
++      for (const thread of memberThreads) {
++        closeThreadRemoteTerminals(scopeThreadRef(thread.environmentId, thread.id));
++      }
+       releaseProjectDraftUploads(
+         projectRef,
+         memberThreads.map((thread) => scopeThreadRef(thread.environmentId, thread.id)),
+diff --git a/apps/web/src/components/terminal/NewTerminalMachineMenu.tsx b/apps/web/src/components/terminal/NewTerminalMachineMenu.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..2b4dab6efd13f945674ef8026370180f14e77902
+--- /dev/null
++++ b/apps/web/src/components/terminal/NewTerminalMachineMenu.tsx
+@@ -0,0 +1,104 @@
++import { AuthTerminalOperateScope, type EnvironmentId } from "@t3tools/contracts";
++import { resolveEnvironmentMachineKind } from "@t3tools/contracts";
++import { ChevronDownIcon } from "lucide-react";
++
++import { resolveEnvironmentOptionLabel } from "../BranchToolbar.logic";
++import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
++import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
++import { useEnvironments } from "../../state/environments";
++import { useEnvironmentsWithScope } from "../../state/session";
++
++const LABEL = "New Terminal on…";
++
++/**
++ * The chevron half of the new terminal button. The thread's machine comes first, then every
++ * other environment. One that cannot take a terminal right now says why.
++ */
++export function NewTerminalMachineMenu({
++  threadEnvironmentId,
++  canOpenOnThreadEnvironment,
++  onNewTerminal,
++  onSelectEnvironment,
++}: {
++  threadEnvironmentId: EnvironmentId;
++  canOpenOnThreadEnvironment: boolean;
++  onNewTerminal: () => void;
++  onSelectEnvironment: (environmentId: EnvironmentId) => void;
++}) {
++  const { environments } = useEnvironments();
++  const operable = useEnvironmentsWithScope(environments, AuthTerminalOperateScope);
++
++  const options = environments
++    .map((environment) => {
++      const isThreadEnvironment = environment.environmentId === threadEnvironmentId;
++      const isPrimary = environment.entry.target._tag === "PrimaryConnectionTarget";
++      return {
++        environmentId: environment.environmentId,
++        isThreadEnvironment,
++        label: resolveEnvironmentOptionLabel({
++          isPrimary,
++          environmentId: environment.environmentId,
++          runtimeLabel: environment.label,
++        }),
++        machine: resolveEnvironmentMachineKind(environment.serverConfig),
++        unavailableReason: isThreadEnvironment
++          ? canOpenOnThreadEnvironment
++            ? null
++            : "No terminal access"
++          : environment.connection.phase !== "connected"
++            ? "Not connected"
++            : environment.serverConfig === null
++              ? "Connecting"
++              : !operable.has(environment.environmentId)
++                ? "No terminal access"
++                : null,
++      };
++    })
++    .toSorted(
++      (left, right) =>
++        Number(right.isThreadEnvironment) - Number(left.isThreadEnvironment) ||
++        left.label.localeCompare(right.label),
++    );
++
++  return (
++    <Menu>
++      <MenuTrigger
++        render={
++          <button
++            type="button"
++            className="inline-flex h-full min-w-4.5 items-center justify-center px-0.5 text-foreground/90 transition-colors hover:bg-accent/70"
++            aria-label={LABEL}
++          />
++        }
++      >
++        <ChevronDownIcon className="size-3" />
++      </MenuTrigger>
++      <MenuPopup align="end" side="bottom">
++        <MenuGroup>
++          <MenuGroupLabel>New terminal on</MenuGroupLabel>
++          {options.map((option) => (
++            <MenuItem
++              key={option.environmentId}
++              disabled={option.unavailableReason !== null}
++              onClick={() =>
++                option.isThreadEnvironment
++                  ? onNewTerminal()
++                  : onSelectEnvironment(option.environmentId)
++              }
++            >
++              <EnvironmentMachineIcon kind={option.machine} className="size-3" />
++              <span className="min-w-0 flex-1 truncate">{option.label}</span>
++              {option.unavailableReason ? (
++                <span className="shrink-0 text-muted-foreground text-xs">
++                  {option.unavailableReason}
++                </span>
++              ) : option.isThreadEnvironment ? (
++                <span className="shrink-0 text-muted-foreground text-xs">This thread</span>
++              ) : null}
++            </MenuItem>
++          ))}
++        </MenuGroup>
++      </MenuPopup>
++    </Menu>
++  );
++}
+diff --git a/apps/web/src/components/terminal/RemoteTerminalCloseCoordinator.tsx b/apps/web/src/components/terminal/RemoteTerminalCloseCoordinator.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..07854ebc726c9875f230d07435d1368222338015
+--- /dev/null
++++ b/apps/web/src/components/terminal/RemoteTerminalCloseCoordinator.tsx
+@@ -0,0 +1,28 @@
++import { AuthTerminalOperateScope, type EnvironmentId } from "@t3tools/contracts";
++import { useEffect } from "react";
++
++import { useEnvironments } from "../../state/environments";
++import { useEnvironmentsWithScope } from "../../state/session";
++import { useTerminalUiStateStore } from "../../terminalUiStateStore";
++import { closeRemoteTerminalSession } from "./remoteTerminalClose";
++
++/** Retries remote terminal closes once their environment can take them again. */
++export function RemoteTerminalCloseCoordinator() {
++  const pending = useTerminalUiStateStore((state) => state.pendingRemoteCloses);
++  const forgetRemoteClose = useTerminalUiStateStore((state) => state.forgetRemoteClose);
++  const { isReady, environments } = useEnvironments();
++  const pendingEnvironments = [...new Set(pending.map((target) => target.environmentId))]
++    .toSorted()
++    .map((environmentId: EnvironmentId) => ({ environmentId }));
++  const operable = useEnvironmentsWithScope(pendingEnvironments, AuthTerminalOperateScope);
++  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- sends queued closes to environments outside this client when they regain the terminal grant
++  useEffect(() => {
++    const known = new Set(environments.map((environment) => environment.environmentId));
++    for (const target of pending) {
++      // An environment removed from this client will never take the close.
++      if (isReady && !known.has(target.environmentId)) forgetRemoteClose(target);
++      else if (operable.has(target.environmentId)) void closeRemoteTerminalSession(target);
++    }
++  }, [environments, forgetRemoteClose, isReady, operable, pending]);
++  return null;
++}
+diff --git a/apps/web/src/components/terminal/remoteTerminalClose.test.ts b/apps/web/src/components/terminal/remoteTerminalClose.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..528fae14233ec58a9e92d0008b222588ff14e781
+--- /dev/null
++++ b/apps/web/src/components/terminal/remoteTerminalClose.test.ts
+@@ -0,0 +1,108 @@
++import { scopeThreadRef } from "@t3tools/client-runtime/environment";
++import { EnvironmentId, ThreadId } from "@t3tools/contracts";
++import * as Cause from "effect/Cause";
++import { AsyncResult } from "effect/reactivity";
++import { describe, expect, it, vi } from "vite-plus/test";
++
++import {
++  selectThreadRemoteTerminals,
++  selectThreadTerminalUiState,
++  useTerminalUiStateStore,
++} from "../../terminalUiStateStore";
++import {
++  closeRemoteTerminalSession,
++  closeRemoteTerminalTab,
++  closeThreadRemoteTerminals,
++} from "./remoteTerminalClose";
++
++const state = vi.hoisted(() => ({ canOperate: false, closeFails: false, closes: 0 }));
++
++vi.mock("../../rpc/atomRegistry", () => ({ appAtomRegistry: {} }));
++vi.mock("../../state/terminal", () => ({ terminalEnvironment: { close: {} } }));
++vi.mock("../../state/session", () => ({ readEnvironmentScope: () => state.canOperate }));
++vi.mock("@t3tools/client-runtime/state/runtime", () => ({
++  runAtomCommand: async () => {
++    state.closes += 1;
++    return state.closeFails
++      ? AsyncResult.failure(Cause.fail(new Error("unreachable")))
++      : AsyncResult.success(undefined);
++  },
++}));
++
++const target = {
++  environmentId: EnvironmentId.make("environment-laptop"),
++  threadId: "thread-1",
++  terminalId: "term-2-abc",
++};
++const pending = () => useTerminalUiStateStore.getState().pendingRemoteCloses;
++const thread = scopeThreadRef(EnvironmentId.make("environment-desktop"), ThreadId.make("thread-1"));
++const otherThread = scopeThreadRef(thread.environmentId, ThreadId.make("thread-2"));
++const remote = { environmentId: target.environmentId, cwd: "/home/remote" };
++const terminalIds = (ref: typeof thread) =>
++  selectThreadTerminalUiState(useTerminalUiStateStore.getState().terminalUiStateByThreadKey, ref)
++    .terminalIds;
++const remoteTerminals = (ref: typeof thread) =>
++  selectThreadRemoteTerminals(useTerminalUiStateStore.getState().remoteTerminalsByThreadKey, ref);
++
++function resetStore() {
++  useTerminalUiStateStore.setState(useTerminalUiStateStore.getInitialState(), true);
++  Object.assign(state, { canOperate: false, closeFails: false, closes: 0 });
++}
++
++describe("closeRemoteTerminalSession", () => {
++  it("keeps a close until its environment takes it", async () => {
++    useTerminalUiStateStore.setState({ pendingRemoteCloses: [] });
++    Object.assign(state, { canOperate: false, closeFails: false, closes: 0 });
++
++    await closeRemoteTerminalSession(target);
++    await closeRemoteTerminalSession(target);
++    expect(pending()).toEqual([target]);
++    expect(state.closes).toBe(0);
++
++    state.canOperate = true;
++    state.closeFails = true;
++    const sending = closeRemoteTerminalSession(target);
++    // Recorded before the request settles, so a reload mid-close still retries it.
++    expect(pending()).toEqual([target]);
++    await sending;
++
++    expect(pending()).toEqual([target]);
++
++    state.closeFails = false;
++    await closeRemoteTerminalSession(target);
++    expect(pending()).toEqual([]);
++    expect(state.closes).toBe(2);
++  });
++
++  it("closes every remote terminal of a thread and only that thread", () => {
++    resetStore();
++    const store = useTerminalUiStateStore.getState();
++    store.newTerminal(thread, "term-remote", remote);
++    store.newTerminal(thread, "term-local");
++    store.newTerminal(thread, "term-split", remote);
++    store.newTerminal(otherThread, "term-other", remote);
++
++    closeThreadRemoteTerminals(thread);
++
++    expect(pending()).toEqual([
++      { environmentId: remote.environmentId, threadId: thread.threadId, terminalId: "term-remote" },
++      { environmentId: remote.environmentId, threadId: thread.threadId, terminalId: "term-split" },
++    ]);
++    expect(terminalIds(thread)).not.toContain("term-remote");
++    expect(terminalIds(thread)).not.toContain("term-split");
++    expect(terminalIds(thread)).toContain("term-local");
++    expect(terminalIds(otherThread)).toContain("term-other");
++    expect(remoteTerminals(thread)).toEqual({});
++    expect(remoteTerminals(otherThread)).toEqual({ "term-other": remote });
++  });
++
++  it("closes the session of a tab whose open failed before dropping the tab", () => {
++    resetStore();
++    useTerminalUiStateStore.getState().newTerminal(thread, target.terminalId, remote);
++
++    closeRemoteTerminalTab(thread, target.environmentId, target.terminalId);
++
++    expect(pending()).toEqual([target]);
++    expect(terminalIds(thread)).not.toContain(target.terminalId);
++  });
++});
+diff --git a/apps/web/src/components/terminal/remoteTerminalClose.ts b/apps/web/src/components/terminal/remoteTerminalClose.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..a299d7c8f511d3c8864c8480bcc54ae7f77f8794
+--- /dev/null
++++ b/apps/web/src/components/terminal/remoteTerminalClose.ts
+@@ -0,0 +1,68 @@
++import {
++  AuthTerminalOperateScope,
++  type EnvironmentId,
++  type ScopedThreadRef,
++} from "@t3tools/contracts";
++import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
++
++import { appAtomRegistry } from "../../rpc/atomRegistry";
++import { readEnvironmentScope } from "../../state/session";
++import { terminalEnvironment } from "../../state/terminal";
++import {
++  type PendingRemoteClose,
++  selectThreadRemoteTerminals,
++  useTerminalUiStateStore,
++} from "../../terminalUiStateStore";
++
++const inFlight = new Set<string>();
++
++/**
++ * Closes a terminal this client opened on another environment. The close is recorded before it
++ * is sent and forgotten only once it lands, so a reload, an offline machine or a failed request
++ * leaves it queued for `RemoteTerminalCloseCoordinator`: nothing else would ever end that shell.
++ */
++export async function closeRemoteTerminalSession(target: PendingRemoteClose): Promise<void> {
++  const store = useTerminalUiStateStore.getState();
++  store.queueRemoteClose(target);
++  const key = JSON.stringify([target.environmentId, target.threadId, target.terminalId]);
++  if (inFlight.has(key) || !readEnvironmentScope(target.environmentId, AuthTerminalOperateScope)) {
++    return;
++  }
++  inFlight.add(key);
++  try {
++    const result = await runAtomCommand(
++      appAtomRegistry,
++      terminalEnvironment.close,
++      {
++        environmentId: target.environmentId,
++        input: { threadId: target.threadId, terminalId: target.terminalId, deleteHistory: true },
++      },
++      { label: "terminal close", reportFailure: false },
++    );
++    if (result._tag === "Success") store.forgetRemoteClose(target);
++  } finally {
++    inFlight.delete(key);
++  }
++}
++
++export function closeRemoteTerminalTab(
++  threadRef: ScopedThreadRef,
++  environmentId: EnvironmentId,
++  terminalId: string,
++): void {
++  void closeRemoteTerminalSession({ environmentId, threadId: threadRef.threadId, terminalId });
++  // A tab left behind would reopen the shell on that machine when the thread is viewed.
++  useTerminalUiStateStore.getState().closeTerminal(threadRef, terminalId);
++}
++
++// The thread's server closes its own terminals on archive and delete. Terminals this client
++// opened for the thread on other machines never hear of it, so close them here.
++export function closeThreadRemoteTerminals(threadRef: ScopedThreadRef): void {
++  const remoteTerminals = selectThreadRemoteTerminals(
++    useTerminalUiStateStore.getState().remoteTerminalsByThreadKey,
++    threadRef,
++  );
++  for (const [terminalId, remote] of Object.entries(remoteTerminals)) {
++    closeRemoteTerminalTab(threadRef, remote.environmentId, terminalId);
++  }
++}
+diff --git a/apps/web/src/components/terminal/useThreadTerminalActions.ts b/apps/web/src/components/terminal/useThreadTerminalActions.ts
+index 9112f41519754778f3211de4bbff7d2b5f0e80f1..103019ab8d7583a2a03af8e10a6b021cfc6e43e6 100644
+--- a/apps/web/src/components/terminal/useThreadTerminalActions.ts
++++ b/apps/web/src/components/terminal/useThreadTerminalActions.ts
+@@ -1,13 +1,19 @@
+ import {
++  AuthFilesystemReadScope,
+   AuthTerminalOperateScope,
+   AuthTerminalReadScope,
++  type EnvironmentId,
+   type ScopedThreadRef,
+ } from "@t3tools/contracts";
+ import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+-import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
++import { executeAtomQuery, isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
+ import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
+ import { nextTerminalId } from "@t3tools/shared/terminalLabels";
+ import { useComposerDraftStore } from "../../composerDraftStore";
++import { getFileMetadataQueryAtom } from "../../hooks/useFileMetadata";
++import { closeRemoteTerminalSession, closeRemoteTerminalTab } from "./remoteTerminalClose";
++import { appAtomRegistry } from "../../rpc/atomRegistry";
++import { serverEnvironment } from "../../state/server";
+ import { useStableCallback } from "../../hooks/useStableCallback";
+ import { randomUUID } from "~/lib/utils";
+ import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
+@@ -16,7 +22,12 @@ import { readEnvironmentScope } from "../../state/session";
+ import { terminalEnvironment } from "../../state/terminal";
+ import { useKnownTerminalSessions } from "../../state/terminalSessions";
+ import { useAtomCommand } from "../../state/use-atom-command";
+-import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../../terminalUiStateStore";
++import {
++  type RemoteTerminal,
++  selectThreadRemoteTerminals,
++  selectThreadTerminalUiState,
++  useTerminalUiStateStore,
++} from "../../terminalUiStateStore";
+ 
+ /** Where a new terminal starts. Omitted fields fall back to the thread's project and worktree. */
+ export interface TerminalLaunchLocation {
+@@ -54,6 +65,21 @@ export function useThreadTerminalActions(threadRef: ScopedThreadRef | null) {
+   const canWrite = () =>
+     threadRef !== null && readEnvironmentScope(threadRef.environmentId, AuthTerminalOperateScope);
+ 
++  const remoteTerminalFor = (terminalId: string, target = threadRef): RemoteTerminal | null =>
++    selectThreadRemoteTerminals(
++      useTerminalUiStateStore.getState().remoteTerminalsByThreadKey,
++      target,
++    )[terminalId] ?? null;
++
++  /** The environment a terminal of this thread runs on. */
++  const terminalEnvironmentId = (terminalId: string, target = threadRef): EnvironmentId | null =>
++    target ? (remoteTerminalFor(terminalId, target)?.environmentId ?? target.environmentId) : null;
++
++  const canWriteTerminal = (terminalId: string) => {
++    const environmentId = terminalEnvironmentId(terminalId);
++    return environmentId !== null && readEnvironmentScope(environmentId, AuthTerminalOperateScope);
++  };
++
+   // Server lists lag and colliding ids share a PTY; without read access, suffix ids to avoid unseen sessions.
+   const allocateTerminalId = () => {
+     const ids = new Set([
+@@ -114,8 +140,76 @@ export function useThreadTerminalActions(threadRef: ScopedThreadRef | null) {
+     return { terminalId, result };
+   };
+ 
++  const resolveRemoteCwd = async (environmentId: EnvironmentId): Promise<string | null> => {
++    const serverCwd = appAtomRegistry.get(serverEnvironment.configValueAtom(environmentId))?.cwd;
++    if (!serverCwd) return null;
++    const threadCwd = defaultLaunchLocation()?.cwd ?? null;
++    if (threadCwd === null || !readEnvironmentScope(environmentId, AuthFilesystemReadScope)) {
++      return serverCwd;
++    }
++    const query = getFileMetadataQueryAtom(environmentId, threadCwd);
++    if (!query) return serverCwd;
++    const result = await executeAtomQuery(appAtomRegistry, query, { reportFailure: false });
++    return result._tag === "Success" && result.value?.kind === "directory" ? threadCwd : serverCwd;
++  };
++
++  /**
++   * Opens a terminal for this thread on another environment, under the thread's own id.
++   * `cwd` skips the directory lookup, for a split that follows its source terminal.
++   */
++  const launchRemoteTerminal = async (input: {
++    readonly environmentId: EnvironmentId;
++    readonly place: (terminalId: string, remote: RemoteTerminal) => void;
++    readonly cwd?: string;
++  }) => {
++    if (!threadRef || !readEnvironmentScope(input.environmentId, AuthTerminalOperateScope)) {
++      return null;
++    }
++    const cwd = input.cwd ?? (await resolveRemoteCwd(input.environmentId));
++    if (cwd === null || !readEnvironmentScope(input.environmentId, AuthTerminalOperateScope)) {
++      return null;
++    }
++    // The suffix keeps the id unique against other browsers and sessions left on the target.
++    const terminalId = nextTerminalId(
++      selectThreadTerminalUiState(
++        useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
++        threadRef,
++      ).terminalIds,
++      randomUUID(),
++    );
++    const remote: RemoteTerminal = { environmentId: input.environmentId, cwd };
++    input.place(terminalId, remote);
++    const result = openTerminalCommand({
++      environmentId: input.environmentId,
++      input: {
++        threadId: threadRef.threadId,
++        terminalId,
++        cwd,
++        originEnvironmentId: threadRef.environmentId,
++      },
++    });
++    // A remote tab outlives its machine's metadata, so one whose open failed would linger empty.
++    const placedIn = threadRef;
++    void result.then((opened) => {
++      if (opened._tag === "Failure" && !isAtomCommandInterrupted(opened)) {
++        // The target may have created the session before the failure reached this client.
++        closeRemoteTerminalTab(placedIn, input.environmentId, terminalId);
++      }
++    });
++    return { terminalId, result };
++  };
++
+   /** Ends a session and deletes its history. A failed close falls back to typing `exit`. */
+   const closeTerminalSession = (terminalId: string, target = threadRef) => {
++    const remote = remoteTerminalFor(terminalId, target);
++    if (target && remote) {
++      void closeRemoteTerminalSession({
++        environmentId: remote.environmentId,
++        threadId: target.threadId,
++        terminalId,
++      });
++      return;
++    }
+     if (!target || !readEnvironmentScope(target.environmentId, AuthTerminalOperateScope)) return;
+     const environmentId = target.environmentId;
+     const threadId = target.threadId;
+@@ -135,17 +229,21 @@ export function useThreadTerminalActions(threadRef: ScopedThreadRef | null) {
+   };
+ 
+   const writeToTerminal = (terminalId: string, data: string) => {
+-    if (!threadRef || !canWrite()) return null;
++    const environmentId = terminalEnvironmentId(terminalId);
++    if (!threadRef || !environmentId || !canWriteTerminal(terminalId)) return null;
+     return writeTerminal({
+-      environmentId: threadRef.environmentId,
++      environmentId,
+       input: { threadId: threadRef.threadId, terminalId, data },
+     });
+   };
+ 
+   return {
+     canWrite: useStableCallback(canWrite),
++    canWriteTerminal: useStableCallback(canWriteTerminal),
++    remoteTerminalFor: useStableCallback(remoteTerminalFor),
+     allocateTerminalId: useStableCallback(allocateTerminalId),
+     launchTerminal: useStableCallback(launchTerminal),
++    launchRemoteTerminal: useStableCallback(launchRemoteTerminal),
+     closeTerminalSession: useStableCallback(closeTerminalSession),
+     writeToTerminal: useStableCallback(writeToTerminal),
+   };
+diff --git a/apps/web/src/hooks/useThreadActions.permissions.test.ts b/apps/web/src/hooks/useThreadActions.permissions.test.ts
+index 58bc33cd0d645f09a91093ac99a0492365d2d187..d63b5186f321c72248e0131204261430a5a629d1 100644
+--- a/apps/web/src/hooks/useThreadActions.permissions.test.ts
++++ b/apps/web/src/hooks/useThreadActions.permissions.test.ts
+@@ -47,6 +47,8 @@ const state = vi.hoisted(() => ({
+   toasts: [] as string[],
+   afterRequest: undefined as ((action: string) => void) | undefined,
+   sessionLookupFails: false,
++  remoteTerminalCloses: [] as ScopedThreadRef[],
++  rejectedActions: new Set<string>(),
+ }));
+ 
+ vi.mock("react", () => ({
+@@ -69,7 +71,10 @@ vi.mock("../state/use-atom-command", () => ({
+       state.requests.push({ action, ...request });
+       const scope =
+         action === "removeWorktree" ? AuthSourceControlWriteScope : AuthOrchestrationOperateScope;
+-      if (!state.scopes.get(request.environmentId)?.has(scope)) {
++      if (
++        !state.scopes.get(request.environmentId)?.has(scope) ||
++        state.rejectedActions.has(action)
++      ) {
+         return AsyncResult.failure(Cause.fail(new Error("Server denied the request")));
+       }
+       state.afterRequest?.(action);
+@@ -152,6 +157,9 @@ vi.mock("../terminalUiStateStore", () => ({
+       clearTerminalUiState: () => state.localEffects.push("clear-terminal-ui"),
+     }),
+ }));
++vi.mock("../components/terminal/remoteTerminalClose", () => ({
++  closeThreadRemoteTerminals: (ref: ScopedThreadRef) => state.remoteTerminalCloses.push(ref),
++}));
+ vi.mock("../uiStateStore", () => ({
+   useUiStateStore: (select: (store: unknown) => unknown) =>
+     select({
+@@ -276,6 +284,8 @@ beforeEach(() => {
+   state.toasts = [];
+   state.afterRequest = undefined;
+   state.sessionLookupFails = false;
++  state.remoteTerminalCloses = [];
++  state.rejectedActions.clear();
+   useRightPanelStore.setState(useRightPanelStore.getInitialState(), true);
+   useDiffPanelStore.setState(useDiffPanelStore.getInitialState(), true);
+   usePreviewMiniPlayerStore.setState(usePreviewMiniPlayerStore.getInitialState(), true);
+@@ -367,11 +377,17 @@ describe("thread action permissions", () => {
+     expect(state.requests).toEqual([]);
+     expect(threadPanelStatePresence(target)).toEqual(panelStateKept);
+     state.scopes.get(secondary)!.add(AuthOrchestrationOperateScope);
++    state.rejectedActions.add("delete");
++    expect((await actions.deleteThread(target))._tag).toBe("Failure");
++    expect(state.remoteTerminalCloses).toEqual([]);
++    state.rejectedActions.clear();
+     expect((await actions.deleteThread(target))._tag).toBe("Success");
+     expect(state.requests).toEqual([
+       expect.objectContaining({ action: "delete", environmentId: secondary }),
++      expect.objectContaining({ action: "delete", environmentId: secondary }),
+     ]);
+     expect(threadPanelStatePresence(target)).toEqual(panelStateCleared);
++    expect(state.remoteTerminalCloses).toEqual([target]);
+     expect(state.localEffects).toEqual([
+       "release-uploads:thread",
+       "clear-draft:thread",
+diff --git a/apps/web/src/hooks/useThreadActions.ts b/apps/web/src/hooks/useThreadActions.ts
+index 00a65387f086f2e83c75e39dee3dbee684f92b52..1262664bccdec39b64e6743e28d098c66caa04de 100644
+--- a/apps/web/src/hooks/useThreadActions.ts
++++ b/apps/web/src/hooks/useThreadActions.ts
+@@ -56,6 +56,7 @@ import { usePreviewMiniPlayerStore } from "../previewMiniPlayerStore";
+ import { clearThreadPreviewState } from "../previewStateStore";
+ import { useRightPanelStore } from "../rightPanelStore";
+ import { useTerminalUiStateStore } from "../terminalUiStateStore";
++import { closeThreadRemoteTerminals } from "../components/terminal/remoteTerminalClose";
+ import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
+ import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
+ import { stackedThreadToast, toastManager } from "../components/ui/toast";
+@@ -452,6 +453,7 @@ export function useThreadActions() {
+       return archiveResult;
+     }
+     expireThreadUndos(threadRef, LIST_PLACEMENT_UNDO_KINDS);
++    closeThreadRemoteTerminals(threadRef);
+     const wokeAt = threadWokeAt(thread, { now: new Date().toISOString() });
+     if (wokeAt !== null) {
+       markThreadVisited(scopedThreadKey(threadRef), wokeAt);
+@@ -519,6 +521,7 @@ export function useThreadActions() {
+         }
+         expireThreadUndos(target, [...LIST_PLACEMENT_UNDO_KINDS, "archive"]);
+         refreshArchivedThreadsForEnvironment(target.environmentId);
++        closeThreadRemoteTerminals(target);
+         clearTerminalUiState(target);
+         clearDeletedThreadPanelState(target);
+       }
+@@ -653,6 +656,7 @@ export function useThreadActions() {
+       scopeProjectRef(threadRef.environmentId, thread.projectId),
+       threadRef,
+     );
++    closeThreadRemoteTerminals(threadRef);
+     clearTerminalUiState(threadRef);
+     clearDeletedThreadPanelState(threadRef);
+ 
+diff --git a/apps/web/src/hooks/useThreadActions.undo.test.ts b/apps/web/src/hooks/useThreadActions.undo.test.ts
+index 5ec8f1fc64304560b7540a7b0fcc7b07012615be..e0e1381025892add2eed39922a29889d6d5e0800 100644
+--- a/apps/web/src/hooks/useThreadActions.undo.test.ts
++++ b/apps/web/src/hooks/useThreadActions.undo.test.ts
+@@ -42,7 +42,12 @@ vi.mock("./useHandleNewThread", () => ({
+ }));
+ vi.mock("../composerDraftStore", () => ({ useComposerDraftStore: () => vi.fn() }));
+ vi.mock("../lib/composerDraftUploads", () => ({ releaseComposerDraftUploads: vi.fn() }));
+-vi.mock("../terminalUiStateStore", () => ({ useTerminalUiStateStore: () => vi.fn() }));
++vi.mock("../terminalUiStateStore", () => ({
++  selectThreadRemoteTerminals: () => ({}),
++  useTerminalUiStateStore: Object.assign(() => vi.fn(), {
++    getState: () => ({ remoteTerminalsByThreadKey: {} }),
++  }),
++}));
+ vi.mock("../uiStateStore", () => ({ useUiStateStore: () => vi.fn() }));
+ vi.mock("../lib/archivedThreadsState", () => ({ refreshArchivedThreadsForEnvironment: vi.fn() }));
+ const threadShell = vi.hoisted(() => ({
+diff --git a/apps/web/src/routes/__root.tsx b/apps/web/src/routes/__root.tsx
+index c2e15c4abab376551d6133dd6e0272265d2cc0d5..fec582f523805db5704c2cd612692b8b05838ffd 100644
+--- a/apps/web/src/routes/__root.tsx
++++ b/apps/web/src/routes/__root.tsx
+@@ -32,6 +32,7 @@ import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkC
+ import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
+ import { ReopenClosedViewShortcut } from "../components/ReopenClosedViewShortcut";
+ import { ProjectCloneToastCoordinator } from "../components/ProjectCloneToastCoordinator";
++import { RemoteTerminalCloseCoordinator } from "../components/terminal/RemoteTerminalCloseCoordinator";
+ import { ChatGptWelcomeCoordinator } from "../components/settings/ChatGptWelcomeCoordinator";
+ import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
+ import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
+@@ -191,6 +192,7 @@ function RootRouteBranch() {
+       <CustomSnoozeDialogHost />
+       <GuestShareDialogHost />
+       <ProjectCloneToastCoordinator />
++      <RemoteTerminalCloseCoordinator />
+       <AddProjectToMachineDialogHost />
+       <UseInAnotherAppDialogHost />
+       {import.meta.env.DEV && primaryEnvironmentAuthenticated ? <DevReplayHost /> : null}
+diff --git a/apps/web/src/state/terminalSessions.test.ts b/apps/web/src/state/terminalSessions.test.ts
+index 2c39a36bec486ab1d5f09f8bedff8babca6c5c01..87f858f20a8d6cb97afceda73c7f016b7a20e99f 100644
+--- a/apps/web/src/state/terminalSessions.test.ts
++++ b/apps/web/src/state/terminalSessions.test.ts
+@@ -109,6 +109,15 @@ describe("selectKnownTerminalSessions", () => {
+     ).toBe("Renamed");
+     expect(selectKnownTerminalSessions([other], environmentA, threadA)).toEqual([]);
+     expect(selectKnownTerminalSessions([other], environmentA, threadB)).toBe(beforeB);
++
++    const openedElsewhere = summary(threadA, "terminal-3", {
++      originEnvironmentId: EnvironmentId.make("environment-b"),
++    });
++    expect(
++      selectKnownTerminalSessions([first, openedElsewhere], environmentA, threadA).map(
++        (session) => session.target.terminalId,
++      ),
++    ).toEqual(["terminal-1"]);
+   });
+ });
+ 
+diff --git a/apps/web/src/state/terminalSessions.ts b/apps/web/src/state/terminalSessions.ts
+index 56fa59b794daf14894a2d4ef338bd299fad2f8ad..df78fe44deca8ca983b460183546b55f3988ca6a 100644
+--- a/apps/web/src/state/terminalSessions.ts
++++ b/apps/web/src/state/terminalSessions.ts
+@@ -98,7 +98,11 @@ export function selectKnownTerminalSessions(
+   let views = index.views.get(environmentId);
+   const cached = views?.get(threadId);
+   if (cached) return cached;
+-  const summaries = threadId === null ? index.all : index.byThreadId.get(threadId);
++  // A terminal another environment opened under the same thread id belongs to that thread.
++  const summaries = (threadId === null ? index.all : index.byThreadId.get(threadId))?.filter(
++    (summary) =>
++      summary.originEnvironmentId === undefined || summary.originEnvironmentId === environmentId,
++  );
+   if (!summaries || summaries.length === 0) return EMPTY_KNOWN_TERMINAL_SESSIONS;
+ 
+   const anchor = summaries[0]!;
+diff --git a/apps/web/src/terminalUiStateStore.test.ts b/apps/web/src/terminalUiStateStore.test.ts
+index 1ad8ba86c06aef05769855139e9dba8f2e633ada..4e5aca282023c2e56736019b95ce650a31fe6dd6 100644
+--- a/apps/web/src/terminalUiStateStore.test.ts
++++ b/apps/web/src/terminalUiStateStore.test.ts
+@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
+ 
+ import {
+   migratePersistedTerminalUiStateStoreState,
++  selectThreadRemoteTerminals,
+   selectThreadTerminalUiState,
+   useTerminalUiStateStore,
+ } from "./terminalUiStateStore";
+@@ -19,6 +20,8 @@ describe("terminalUiStateStore actions", () => {
+     useTerminalUiStateStore.setState({
+       terminalUiStateByThreadKey: {},
+       suppressedTerminalIdsByThreadKey: {},
++      remoteTerminalsByThreadKey: {},
++      pendingRemoteCloses: [],
+     });
+   });
+ 
+@@ -103,9 +106,36 @@ describe("terminalUiStateStore actions", () => {
+           activeTerminalGroupId: "group-term-1",
+         },
+       },
++      remoteTerminalsByThreadKey: {},
++      pendingRemoteCloses: [],
+     });
+   });
+ 
++  it("tracks a remote terminal only while the thread shows it", () => {
++    const store = useTerminalUiStateStore.getState();
++    const remote = { environmentId: "environment-b" as never, cwd: "/home/remote" };
++    const remoteTerminals = () =>
++      selectThreadRemoteTerminals(
++        useTerminalUiStateStore.getState().remoteTerminalsByThreadKey,
++        THREAD_REF,
++      );
++    store.setTerminalOpen(THREAD_REF, true);
++    store.newTerminal(THREAD_REF, "term-remote", remote);
++    store.splitTerminal(THREAD_REF, "term-split", remote);
++    store.newTerminal(THREAD_REF, "term-2");
++    expect(remoteTerminals()).toEqual({ "term-remote": remote, "term-split": remote });
++
++    store.closeTerminal(THREAD_REF, "term-split");
++    expect(remoteTerminals()).toEqual({ "term-remote": remote });
++
++    store.reconcileTerminalIds(THREAD_REF, [DEFAULT_THREAD_TERMINAL_ID, "term-2"]);
++    expect(remoteTerminals()).toEqual({});
++
++    store.newTerminal(THREAD_REF, "term-remote", remote);
++    store.clearTerminalUiState(THREAD_REF);
++    expect(useTerminalUiStateStore.getState().remoteTerminalsByThreadKey).toEqual({});
++  });
++
+   it("resets to default and clears persisted entry when closing the last terminal", () => {
+     const store = useTerminalUiStateStore.getState();
+     store.newTerminal(THREAD_REF, "terminal-only");
+diff --git a/apps/web/src/terminalUiStateStore.ts b/apps/web/src/terminalUiStateStore.ts
+index b442e855ca12d2d9a189b4b7bf8bc4b15e2b34d7..61b41110d171543b571d9fc033d1e085f18a2645 100644
+--- a/apps/web/src/terminalUiStateStore.ts
++++ b/apps/web/src/terminalUiStateStore.ts
+@@ -1,5 +1,5 @@
+ import { parseScopedThreadKey, scopedThreadKey } from "@t3tools/client-runtime/environment";
+-import { type ScopedThreadRef } from "@t3tools/contracts";
++import { type EnvironmentId, type ScopedThreadRef } from "@t3tools/contracts";
+ import { create } from "zustand";
+ import { createJSONStorage, persist } from "zustand/middleware";
+ import { resolveStorage } from "./lib/storage";
+@@ -19,11 +19,35 @@ interface ThreadTerminalUiState {
+   activeTerminalGroupId: string;
+ }
+ 
++/** A terminal of this thread that runs on another environment than the thread's. */
++export interface RemoteTerminal {
++  readonly environmentId: EnvironmentId;
++  readonly cwd: string;
++}
++
++export type ThreadRemoteTerminals = Readonly<Record<string, RemoteTerminal>>;
++
++/** A remote session whose close has not reached its environment yet. */
++export interface PendingRemoteClose {
++  readonly environmentId: EnvironmentId;
++  readonly threadId: string;
++  readonly terminalId: string;
++}
++
++const isSameRemoteClose = (left: PendingRemoteClose, right: PendingRemoteClose) =>
++  left.environmentId === right.environmentId &&
++  left.threadId === right.threadId &&
++  left.terminalId === right.terminalId;
++
++const EMPTY_REMOTE_TERMINALS: ThreadRemoteTerminals = Object.freeze({});
++
+ const TERMINAL_UI_STATE_STORAGE_KEY = "t3code:terminal-state:v1";
+ 
+ interface PersistedTerminalUiStateStoreState {
+   terminalUiStateByThreadKey?: Record<string, ThreadTerminalUiState>;
+   terminalStateByThreadKey?: Record<string, ThreadTerminalUiState>;
++  remoteTerminalsByThreadKey?: Record<string, ThreadRemoteTerminals>;
++  pendingRemoteCloses?: PendingRemoteClose[];
+ }
+ 
+ export function migratePersistedTerminalUiStateStoreState(
+@@ -43,7 +67,17 @@ export function migratePersistedTerminalUiStateStoreState(
+     ),
+   );
+ 
+-  return { terminalUiStateByThreadKey };
++  const remoteTerminalsByThreadKey = Object.fromEntries(
++    Object.entries(candidate.remoteTerminalsByThreadKey ?? {}).filter(([threadKey]) =>
++      parseScopedThreadKey(threadKey),
++    ),
++  );
++
++  return {
++    terminalUiStateByThreadKey,
++    remoteTerminalsByThreadKey,
++    pendingRemoteCloses: candidate.pendingRemoteCloses ?? [],
++  };
+ }
+ 
+ function createTerminalUiStateStorage() {
+@@ -517,6 +551,35 @@ function updateTerminalUiStateByThreadKey(
+   };
+ }
+ 
++export function selectThreadRemoteTerminals(
++  remoteTerminalsByThreadKey: Record<string, ThreadRemoteTerminals>,
++  threadRef: ScopedThreadRef | null | undefined,
++): ThreadRemoteTerminals {
++  if (!threadRef || threadRef.threadId.length === 0) return EMPTY_REMOTE_TERMINALS;
++  return remoteTerminalsByThreadKey[terminalThreadKey(threadRef)] ?? EMPTY_REMOTE_TERMINALS;
++}
++
++/** Keeps only entries for terminals the thread still shows, plus the one being added. */
++function updateThreadRemoteTerminals(
++  remoteTerminalsByThreadKey: Record<string, ThreadRemoteTerminals>,
++  threadKey: string,
++  terminalIds: readonly string[],
++  added?: { readonly terminalId: string; readonly remote: RemoteTerminal },
++): Record<string, ThreadRemoteTerminals> {
++  const current = remoteTerminalsByThreadKey[threadKey] ?? EMPTY_REMOTE_TERMINALS;
++  const shown = new Set(terminalIds);
++  const entries = Object.entries(current).filter(([terminalId]) => shown.has(terminalId));
++  if (added && shown.has(added.terminalId)) {
++    const index = entries.findIndex(([terminalId]) => terminalId === added.terminalId);
++    if (index >= 0) entries.splice(index, 1);
++    entries.push([added.terminalId, added.remote]);
++  } else if (entries.length === Object.keys(current).length) {
++    return remoteTerminalsByThreadKey;
++  }
++  if (entries.length === 0) return removeRecordEntry(remoteTerminalsByThreadKey, threadKey);
++  return { ...remoteTerminalsByThreadKey, [threadKey]: Object.fromEntries(entries) };
++}
++
+ function updateSuppressedTerminalId(
+   suppressedTerminalIdsByThreadKey: Record<string, string[]>,
+   threadRef: ScopedThreadRef,
+@@ -561,11 +624,19 @@ function removeRecordEntry<T>(record: Record<string, T>, key: string): Record<st
+ interface TerminalUiStateStoreState {
+   terminalUiStateByThreadKey: Record<string, ThreadTerminalUiState>;
+   suppressedTerminalIdsByThreadKey: Record<string, string[]>;
++  remoteTerminalsByThreadKey: Record<string, ThreadRemoteTerminals>;
++  pendingRemoteCloses: PendingRemoteClose[];
++  queueRemoteClose: (target: PendingRemoteClose) => void;
++  forgetRemoteClose: (target: PendingRemoteClose) => void;
+   setTerminalOpen: (threadRef: ScopedThreadRef, open: boolean) => void;
+   setTerminalHeight: (threadRef: ScopedThreadRef, height: number) => void;
+-  splitTerminal: (threadRef: ScopedThreadRef, terminalId: string) => void;
+-  splitTerminalVertical: (threadRef: ScopedThreadRef, terminalId: string) => void;
+-  newTerminal: (threadRef: ScopedThreadRef, terminalId: string) => void;
++  splitTerminal: (threadRef: ScopedThreadRef, terminalId: string, remote?: RemoteTerminal) => void;
++  splitTerminalVertical: (
++    threadRef: ScopedThreadRef,
++    terminalId: string,
++    remote?: RemoteTerminal,
++  ) => void;
++  newTerminal: (threadRef: ScopedThreadRef, terminalId: string, remote?: RemoteTerminal) => void;
+   ensureTerminal: (
+     threadRef: ScopedThreadRef,
+     terminalId: string,
+@@ -589,6 +660,7 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+           suppressedTerminalIds: readonly string[],
+         ) => ThreadTerminalUiState,
+         suppression?: { terminalId: string; suppressed: boolean },
++        remote?: RemoteTerminal,
+       ) => {
+         set((state) => {
+           const threadKey = terminalThreadKey(threadRef);
+@@ -598,6 +670,12 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+             threadRef,
+             (terminalState) => updater(terminalState, suppressedTerminalIds),
+           );
++          const nextRemoteTerminalsByThreadKey = updateThreadRemoteTerminals(
++            state.remoteTerminalsByThreadKey,
++            threadKey,
++            selectThreadTerminalUiState(nextTerminalUiStateByThreadKey, threadRef).terminalIds,
++            remote && suppression ? { terminalId: suppression.terminalId, remote } : undefined,
++          );
+           const nextSuppressedTerminalIdsByThreadKey = suppression
+             ? updateSuppressedTerminalId(
+                 state.suppressedTerminalIdsByThreadKey,
+@@ -608,13 +686,15 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+             : state.suppressedTerminalIdsByThreadKey;
+           if (
+             nextTerminalUiStateByThreadKey === state.terminalUiStateByThreadKey &&
+-            nextSuppressedTerminalIdsByThreadKey === state.suppressedTerminalIdsByThreadKey
++            nextSuppressedTerminalIdsByThreadKey === state.suppressedTerminalIdsByThreadKey &&
++            nextRemoteTerminalsByThreadKey === state.remoteTerminalsByThreadKey
+           ) {
+             return state;
+           }
+           return {
+             terminalUiStateByThreadKey: nextTerminalUiStateByThreadKey,
+             suppressedTerminalIdsByThreadKey: nextSuppressedTerminalIdsByThreadKey,
++            remoteTerminalsByThreadKey: nextRemoteTerminalsByThreadKey,
+           };
+         });
+       };
+@@ -622,6 +702,24 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+       return {
+         terminalUiStateByThreadKey: {},
+         suppressedTerminalIdsByThreadKey: {},
++        remoteTerminalsByThreadKey: {},
++        pendingRemoteCloses: [],
++        queueRemoteClose: (target) =>
++          set((state) =>
++            state.pendingRemoteCloses.some((entry) => isSameRemoteClose(entry, target))
++              ? state
++              : { pendingRemoteCloses: [...state.pendingRemoteCloses, target] },
++          ),
++        forgetRemoteClose: (target) =>
++          set((state) =>
++            state.pendingRemoteCloses.some((entry) => isSameRemoteClose(entry, target))
++              ? {
++                  pendingRemoteCloses: state.pendingRemoteCloses.filter(
++                    (entry) => !isSameRemoteClose(entry, target),
++                  ),
++                }
++              : state,
++          ),
+         setTerminalOpen: (threadRef, open) => {
+           const terminalState = selectThreadTerminalUiState(
+             get().terminalUiStateByThreadKey,
+@@ -637,21 +735,27 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+         },
+         setTerminalHeight: (threadRef, height) =>
+           updateTerminal(threadRef, (state) => setThreadTerminalHeight(state, height)),
+-        splitTerminal: (threadRef, terminalId) =>
+-          updateTerminal(threadRef, (state) => splitThreadTerminal(state, terminalId), {
+-            terminalId,
+-            suppressed: false,
+-          }),
+-        splitTerminalVertical: (threadRef, terminalId) =>
+-          updateTerminal(threadRef, (state) => splitThreadTerminal(state, terminalId, "vertical"), {
+-            terminalId,
+-            suppressed: false,
+-          }),
+-        newTerminal: (threadRef, terminalId) =>
+-          updateTerminal(threadRef, (state) => newThreadTerminal(state, terminalId), {
+-            terminalId,
+-            suppressed: false,
+-          }),
++        splitTerminal: (threadRef, terminalId, remote) =>
++          updateTerminal(
++            threadRef,
++            (state) => splitThreadTerminal(state, terminalId),
++            { terminalId, suppressed: false },
++            remote,
++          ),
++        splitTerminalVertical: (threadRef, terminalId, remote) =>
++          updateTerminal(
++            threadRef,
++            (state) => splitThreadTerminal(state, terminalId, "vertical"),
++            { terminalId, suppressed: false },
++            remote,
++          ),
++        newTerminal: (threadRef, terminalId, remote) =>
++          updateTerminal(
++            threadRef,
++            (state) => newThreadTerminal(state, terminalId),
++            { terminalId, suppressed: false },
++            remote,
++          ),
+         ensureTerminal: (threadRef, terminalId, options) =>
+           updateTerminal(
+             threadRef,
+@@ -705,9 +809,11 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+             );
+             const hadSuppressedTerminalIds =
+               state.suppressedTerminalIdsByThreadKey[threadKey] !== undefined;
++            const hadRemoteTerminals = state.remoteTerminalsByThreadKey[threadKey] !== undefined;
+             if (
+               nextTerminalUiStateByThreadKey === state.terminalUiStateByThreadKey &&
+-              !hadSuppressedTerminalIds
++              !hadSuppressedTerminalIds &&
++              !hadRemoteTerminals
+             ) {
+               return state;
+             }
+@@ -717,6 +823,10 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+                 state.suppressedTerminalIdsByThreadKey,
+                 threadKey,
+               ),
++              remoteTerminalsByThreadKey: removeRecordEntry(
++                state.remoteTerminalsByThreadKey,
++                threadKey,
++              ),
+             };
+           }),
+         removeTerminalUiState: (threadRef) =>
+@@ -725,7 +835,8 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+             const hadTerminalUiState = state.terminalUiStateByThreadKey[threadKey] !== undefined;
+             const hadSuppressedTerminalIds =
+               state.suppressedTerminalIdsByThreadKey[threadKey] !== undefined;
+-            if (!hadTerminalUiState && !hadSuppressedTerminalIds) {
++            const hadRemoteTerminals = state.remoteTerminalsByThreadKey[threadKey] !== undefined;
++            if (!hadTerminalUiState && !hadSuppressedTerminalIds && !hadRemoteTerminals) {
+               return state;
+             }
+             return {
+@@ -737,6 +848,10 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+                 state.suppressedTerminalIdsByThreadKey,
+                 threadKey,
+               ),
++              remoteTerminalsByThreadKey: removeRecordEntry(
++                state.remoteTerminalsByThreadKey,
++                threadKey,
++              ),
+             };
+           }),
+         removeOrphanedTerminalUiStates: (activeThreadKeys) =>
+@@ -745,6 +860,7 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+               [
+                 ...Object.keys(state.terminalUiStateByThreadKey),
+                 ...Object.keys(state.suppressedTerminalIdsByThreadKey),
++                ...Object.keys(state.remoteTerminalsByThreadKey),
+               ].filter((key) => !activeThreadKeys.has(key)),
+             );
+             if (orphanedIds.size === 0) {
+@@ -754,13 +870,16 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+             const nextSuppressedTerminalIdsByThreadKey = {
+               ...state.suppressedTerminalIdsByThreadKey,
+             };
++            const nextRemoteTerminalsByThreadKey = { ...state.remoteTerminalsByThreadKey };
+             for (const id of orphanedIds) {
+               delete nextTerminalUiStateByThreadKey[id];
+               delete nextSuppressedTerminalIdsByThreadKey[id];
++              delete nextRemoteTerminalsByThreadKey[id];
+             }
+             return {
+               terminalUiStateByThreadKey: nextTerminalUiStateByThreadKey,
+               suppressedTerminalIdsByThreadKey: nextSuppressedTerminalIdsByThreadKey,
++              remoteTerminalsByThreadKey: nextRemoteTerminalsByThreadKey,
+             };
+           }),
+       };
+@@ -772,6 +891,8 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+       migrate: migratePersistedTerminalUiStateStoreState,
+       partialize: (state) => ({
+         terminalUiStateByThreadKey: state.terminalUiStateByThreadKey,
++        remoteTerminalsByThreadKey: state.remoteTerminalsByThreadKey,
++        pendingRemoteCloses: state.pendingRemoteCloses,
+       }),
+     },
+   ),
+diff --git a/docs/user/terminal.md b/docs/user/terminal.md
+index dd921eb9a96507bfd2b938f263db8e4316477c92..bbd31aa9296cd0a275dda0c02f0e826c387a02fd 100644
+--- a/docs/user/terminal.md
++++ b/docs/user/terminal.md
+@@ -20,6 +20,20 @@ Jump to latest in the context menu returns to the current output.
+ On iPhone and iPad, long-press the terminal to paste or to choose Select Text.
+ Select Text shows the visible output, where you can copy text or tap a link.
+ 
++## Terminals on other machines
++
++A thread's terminal drawer can also open terminals on your other connected
++environments. Click the arrow beside the drawer's New Terminal button and
++choose a machine. The button itself still opens a terminal on the thread's
++machine. The tab shows which machine it runs on, and a split from it opens
++on the same machine.
++
++The terminal starts in the thread's folder when that path exists on the other
++machine, and in that server's own folder otherwise. Its tab stays until you
++close it or its shell exits, even while that machine is offline. Closing the
++tab, or archiving or deleting the thread from this client, ends the terminal on
++the other machine, as soon as that machine is reachable again if it is offline.
++
+ ## fish
+ 
+ T3 Code starts fish with `no-query-term`, avoiding startup waits for terminal
+diff --git a/packages/contracts/src/terminal.ts b/packages/contracts/src/terminal.ts
+index 8731d6ec25c8f8423f0e525d9a8e86ccb068309a..e9d4faa4f5c6afdfb2bbd3ebf5f392647e542fc9 100644
+--- a/packages/contracts/src/terminal.ts
++++ b/packages/contracts/src/terminal.ts
+@@ -1,5 +1,5 @@
+ import * as Schema from "effect/Schema";
+-import { TrimmedNonEmptyString } from "./baseSchemas.ts";
++import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+ import { ProviderInstanceId } from "./providerInstance.ts";
+ 
+ export const DEFAULT_TERMINAL_ID = "term-1";
+@@ -42,6 +42,8 @@ export const TerminalOpenInput = Schema.Struct({
+   env: Schema.optional(TerminalEnvSchema),
+   providerInstanceId: Schema.optional(ProviderInstanceId),
+   stopOnSettle: Schema.optional(Schema.Boolean),
++  // Set when the opening thread lives on another environment.
++  originEnvironmentId: Schema.optional(EnvironmentId),
+ });
+ export type TerminalOpenInput = typeof TerminalOpenInput.Type;
+ 
+@@ -54,6 +56,7 @@ export const TerminalAttachInput = Schema.Struct({
+   env: Schema.optional(TerminalEnvSchema),
+   providerInstanceId: Schema.optional(ProviderInstanceId),
+   stopOnSettle: Schema.optional(Schema.Boolean),
++  originEnvironmentId: Schema.optional(EnvironmentId),
+   restartIfNotRunning: Schema.optional(Schema.Boolean),
+   // Resubscriptions preserve stopped terminals; unknown IDs recover after a server restart.
+   resume: Schema.optional(Schema.Boolean),
+@@ -120,6 +123,7 @@ export const TerminalSummary = Schema.Struct({
+   hasRunningSubprocess: Schema.Boolean,
+   label: Schema.String.check(Schema.isMaxLength(128)),
+   updatedAt: Schema.String,
++  originEnvironmentId: Schema.optional(EnvironmentId),
+ });
+ export type TerminalSummary = typeof TerminalSummary.Type;
+ 
