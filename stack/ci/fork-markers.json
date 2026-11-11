@@ -5,7 +5,8 @@
     { "name": "all-time scanner", "pattern": "retentionCutoffMs: 0" },
     { "name": "persistent usage cache", "pattern": "SCAN_CACHE_FILE_NAME = \"usage-scan-cache-v\\d+\\.json\"" },
     { "name": "retained transcript history", "pattern": "const hasRetainedHistory = fileCache\\s*\\.entries\\(\\)" },
-    { "name": "deleted transcript aggregation", "pattern": "retainedFiles\\.push\\(\\{" }
+    { "name": "deleted transcript aggregation", "pattern": "retainedFiles\\.push\\(\\{" },
+    { "name": "usage cache import floor", "pattern": "SPEED_COMPATIBLE_SINCE_VERSION = 4;" }
   ],
   "serverAbsent": ["CACHE_RETENTION_DAYS"],
   "web": [
