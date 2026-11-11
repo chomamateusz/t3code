@@ -65,24 +65,24 @@ Tests:
 
 Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
 ---
- apps/server/src/usage/UsageService.test.ts    | 187 ++++++++++++++++--
- apps/server/src/usage/UsageService.ts         | 141 +++++++++----
- apps/server/src/usage/usageScanCache.test.ts  |  36 +++-
+ apps/server/src/usage/UsageService.test.ts    | 222 ++++++++++++++++--
+ apps/server/src/usage/UsageService.ts         | 141 ++++++++---
+ apps/server/src/usage/usageScanCache.test.ts  |  36 ++-
  apps/server/src/usage/usageScanCache.ts       |  53 +++--
  .../settings/KeybindingsSettings.logic.ts     |   4 +-
- apps/web/src/components/usage/UsagePage.tsx   |  51 +++--
+ apps/web/src/components/usage/UsagePage.tsx   |  51 ++--
  .../usage/usagePagePreferences.test.ts        |   6 +
  .../components/usage/usagePagePreferences.ts  |   2 +-
- .../src/components/usage/usageRange.test.ts   |  44 +++++
- apps/web/src/components/usage/usageRange.ts   |  26 +++
+ .../src/components/usage/usageRange.test.ts   |  44 ++++
+ apps/web/src/components/usage/usageRange.ts   |  26 ++
  .../src/components/usage/usageShortcuts.ts    |   8 +-
  docs/user/usage.md                            |   7 +-
- 12 files changed, 464 insertions(+), 101 deletions(-)
+ 12 files changed, 499 insertions(+), 101 deletions(-)
  create mode 100644 apps/web/src/components/usage/usageRange.test.ts
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
 diff --git a/apps/server/src/usage/UsageService.test.ts b/apps/server/src/usage/UsageService.test.ts
-index 1c03c05e137276c2720fdaa334631f633c9c16a2..4c7f34a57a2891833cc58a05a0ca95c88b62163d 100644
+index 1c03c05e137276c2720fdaa334631f633c9c16a2..e6eea6a9e4fe8a45056b0256bcd7e22cf86b99cc 100644
 --- a/apps/server/src/usage/UsageService.test.ts
 +++ b/apps/server/src/usage/UsageService.test.ts
 @@ -135,6 +135,11 @@ const WINDOW: UsageSummaryInput = {
@@ -292,7 +292,7 @@ index 1c03c05e137276c2720fdaa334631f633c9c16a2..4c7f34a57a2891833cc58a05a0ca95c8
          assert.strictEqual(totalOutputTokens(recreated), 12);
          assert.deepStrictEqual(recreated.sources[0]?.fingerprint, first.sources[0]?.fingerprint);
  
-@@ -2983,11 +3068,74 @@ describe("UsageService", () => {
+@@ -2983,11 +3068,109 @@ describe("UsageService", () => {
          assert.strictEqual(merged.costUsd, recreated.buckets[0]?.costUsd);
  
          const outsideWindow = yield* restarted.readSummary({
@@ -365,10 +365,45 @@ index 1c03c05e137276c2720fdaa334631f633c9c16a2..4c7f34a57a2891833cc58a05a0ca95c8
 +        );
 +        const afterSetAside = yield* UsageService.make;
 +        assert.strictEqual(totalOutputTokens(yield* afterSetAside.readSummary(ALL_TIME_WINDOW)), 7);
++        yield* afterSetAside.awaitPersisted;
++        // chmod cannot deny reads to root or on Windows.
++        if ((process.getuid?.() ?? 0) !== 0) {
++          const listCaches = Effect.promise(async () =>
++            (await NodeFSP.readdir(stateDir))
++              .filter((name) => name.startsWith("usage-scan-cache"))
++              .toSorted(),
++          );
++          const saved = yield* Effect.promise(() => NodeFSP.readFile(cachePath, "utf8"));
++          const cachesBefore = yield* listCaches;
++          yield* Effect.promise(async () => {
++            await NodeFSP.writeFile(
++              NodePath.join(home, "claude", "projects", "later.jsonl"),
++              claudeLine(3, 9),
++            );
++            await NodeFSP.chmod(cachePath, 0);
++          });
++          const whileUnreadable = yield* UsageService.make;
++          assert.strictEqual(
++            totalOutputTokens(yield* whileUnreadable.readSummary(ALL_TIME_WINDOW)),
++            9,
++          );
++          yield* whileUnreadable.awaitPersisted;
++          yield* Effect.promise(() => NodeFSP.chmod(cachePath, 0o600));
++          assert.strictEqual(
++            yield* Effect.promise(() => NodeFSP.readFile(cachePath, "utf8")),
++            saved,
++          );
++          assert.deepStrictEqual(yield* listCaches, cachesBefore);
++          const readableAgain = yield* UsageService.make;
++          assert.strictEqual(
++            totalOutputTokens(yield* readableAgain.readSummary(ALL_TIME_WINDOW)),
++            16,
++          );
++        }
        }).pipe(
          Effect.scoped,
          Effect.provide(
-@@ -3123,11 +3271,9 @@ describe("UsageService", () => {
+@@ -3123,11 +3306,9 @@ describe("UsageService", () => {
      }).pipe(Effect.scoped),
    );
  
@@ -381,7 +416,7 @@ index 1c03c05e137276c2720fdaa334631f633c9c16a2..4c7f34a57a2891833cc58a05a0ca95c8
        yield* TestClock.setTime(Date.parse("2026-08-15T00:00:00Z"));
        yield* Effect.promise(async () => {
          await NodeFSP.writeFile(transcript, claudeLine(1, 5));
-@@ -3154,6 +3300,7 @@ describe("UsageService", () => {
+@@ -3154,6 +3335,7 @@ describe("UsageService", () => {
        assert.deepStrictEqual(later.buckets, []);
        assert.strictEqual(later.sources[0]?.status, "missing");
        assert.strictEqual(later.sources[0]?.scannedFiles, 0);
