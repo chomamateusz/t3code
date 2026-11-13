@@ -53,10 +53,10 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  3 files changed, 169 insertions(+), 4 deletions(-)
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index fd9070178247ccda46b6e1610c3d931e29cb8a00..b48303eaa53e3015f11b2da316cda0c5693a4c1a 100644
+index 94964ca398e14ee97808e9eaebc27491cb43fa8d..7ec15197e8e7528555f3f3fde7b61e21db8dff8b 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
-@@ -198,7 +198,11 @@ const bootstrap = Effect.gen(function* () {
+@@ -199,7 +199,11 @@ const bootstrap = Effect.gen(function* () {
      scheme: ElectronProtocol.getDesktopScheme(environment.isDevelopment),
      ...(environment.isDevelopment
        ? { targetOrigin: Option.getOrThrow(environment.devServerUrl) }
@@ -70,7 +70,7 @@ index fd9070178247ccda46b6e1610c3d931e29cb8a00..b48303eaa53e3015f11b2da316cda0c5
    });
    yield* installDesktopIpcHandlers();
 diff --git a/apps/desktop/src/electron/ElectronProtocol.test.ts b/apps/desktop/src/electron/ElectronProtocol.test.ts
-index 1e7378c3c3642dfb07099cd5c943bcf508a88750..3a308ebf9c4a4795b5858c73388b6a5fee52c04c 100644
+index b24c8b2a01486cb89f063c986747e63081bea15b..970dadfe4e7c3a21c399a125cc6a23e6bc72bafc 100644
 --- a/apps/desktop/src/electron/ElectronProtocol.test.ts
 +++ b/apps/desktop/src/electron/ElectronProtocol.test.ts
 @@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
@@ -100,7 +100,7 @@ index 1e7378c3c3642dfb07099cd5c943bcf508a88750..3a308ebf9c4a4795b5858c73388b6a5f
        });
        const request = (pathname: string, init?: RequestInit) =>
 @@ -145,6 +150,93 @@ describe("ElectronProtocol", () => {
-     }).pipe(Effect.provide(Layer.merge(layerProtocol, NodeServices.layer)), Effect.scoped),
+     }).pipe(Effect.provide(Layer.merge(layerProtocol, NodeServices.layer))),
    );
  
 +  it.effect("selects versioned overrides per request and confines their assets", () =>

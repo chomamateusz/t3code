@@ -295,10 +295,10 @@ index a504d429185af303565549a5d1230edec56f41ca..9e16d277cadc806af26d02b5caac654c
            void store.syncPersistedAttachments(target, [capture]);
          }
 diff --git a/apps/web/src/components/preview/PreviewView.tsx b/apps/web/src/components/preview/PreviewView.tsx
-index 33fd2fa8511b4f99276ae2add0c7dddcdf3f4bb6..7f2ea4ec95a4cd28a0d4a80418f9581d1a5e7afb 100644
+index f7cb3082491e9270e191b10b9ca197543c717742..98cc204454b9a9275e518bb5a7b6cd35e4d13c75 100644
 --- a/apps/web/src/components/preview/PreviewView.tsx
 +++ b/apps/web/src/components/preview/PreviewView.tsx
-@@ -828,7 +828,7 @@ export function PreviewView({
+@@ -852,7 +852,7 @@ export function PreviewView({
        const { annotation: picked, submission, screenshotFailed = false } = result;
        // Send annotations even if the optional crop fails or stalls; drop failed screenshots so prompts cannot
        // claim an attachment.
@@ -308,7 +308,7 @@ index 33fd2fa8511b4f99276ae2add0c7dddcdf3f4bb6..7f2ea4ec95a4cd28a0d4a80418f9581d
        const annotation = capture.status === "failed" ? { ...picked, screenshot: null } : picked;
        addPreviewAnnotation(threadRef, annotation);
 diff --git a/apps/web/src/lib/imageCompression.test.ts b/apps/web/src/lib/imageCompression.test.ts
-index a8d4cfcc1d549c13a445c1895c5935dbfea0cd0d..0140cfaec4698046be9f7653fe2de7df98c99188 100644
+index e40c3968bc850e77a2e0e96b762da9f75ffbdbb1..4ad10ae030dd06bce0bbdca541ebfbec1b7412a1 100644
 --- a/apps/web/src/lib/imageCompression.test.ts
 +++ b/apps/web/src/lib/imageCompression.test.ts
 @@ -235,6 +235,72 @@ describe("compressImageForStash", () => {
@@ -384,7 +384,7 @@ index a8d4cfcc1d549c13a445c1895c5935dbfea0cd0d..0140cfaec4698046be9f7653fe2de7df
    it("compressImageToByteLimit refuses sources above the decode-safety ceiling", async () => {
      const bitmapSpy = vi.fn();
      vi.stubGlobal("createImageBitmap", bitmapSpy);
-@@ -459,22 +525,69 @@ describe("attachment max edge", () => {
+@@ -461,22 +527,69 @@ describe("attachment max edge", () => {
      expect(result.ok && result.imageSize).toEqual({ width: 1500, height: 2000 });
    });
  
@@ -466,7 +466,7 @@ index a8d4cfcc1d549c13a445c1895c5935dbfea0cd0d..0140cfaec4698046be9f7653fe2de7df
  });
  
 diff --git a/apps/web/src/lib/imageCompression.ts b/apps/web/src/lib/imageCompression.ts
-index e174bebf4b9e496228044a27cb306747424bf18a..fe2a46c194f8ad76283b00fe90a745fec3e7c14f 100644
+index 53e948e535b752c5a25ecc91485ed2e7136696ba..a7e491155fc3437579107b8e2df5cbde534707e5 100644
 --- a/apps/web/src/lib/imageCompression.ts
 +++ b/apps/web/src/lib/imageCompression.ts
 @@ -3,10 +3,6 @@ import {
@@ -480,7 +480,7 @@ index e174bebf4b9e496228044a27cb306747424bf18a..fe2a46c194f8ad76283b00fe90a745fe
  
  const MAX_DIMENSION = IMAGE_ATTACHMENT_MAX_EDGE;
  export const MAX_STASH_IMAGE_DATA_URL_CHARS = 1_300_000;
-@@ -322,14 +318,16 @@ async function reencodeWithinBudget(
+@@ -324,14 +320,16 @@ async function reencodeWithinBudget(
    file: File,
    budgetChars: number,
    preferredMimeType?: "image/jpeg",
@@ -498,7 +498,7 @@ index e174bebf4b9e496228044a27cb306747424bf18a..fe2a46c194f8ad76283b00fe90a745fe
    } catch {
      return { ok: false, reason: "unreadable" };
    }
-@@ -398,16 +396,13 @@ export async function compressImageForStash(
+@@ -400,16 +398,13 @@ export async function compressImageForStash(
    }
  }
  
@@ -520,7 +520,7 @@ index e174bebf4b9e496228044a27cb306747424bf18a..fe2a46c194f8ad76283b00fe90a745fe
      const imageSize = fitImageAttachmentSize(bitmap);
      if (!imageSize) return null;
      const target = createCanvas(imageSize.width, imageSize.height);
-@@ -422,8 +417,6 @@ async function fitImageToMaxEdge(file: File): Promise<{ file: File; imageSize: I
+@@ -424,8 +419,6 @@ async function fitImageToMaxEdge(file: File): Promise<{ file: File; imageSize: I
      };
    } catch {
      return null;
@@ -529,7 +529,7 @@ index e174bebf4b9e496228044a27cb306747424bf18a..fe2a46c194f8ad76283b00fe90a745fe
    }
  }
  
-@@ -432,21 +425,30 @@ export async function compressImageToByteLimit(
+@@ -434,21 +427,30 @@ export async function compressImageToByteLimit(
    maxBytes: number,
    options?: { preferredMimeType?: "image/jpeg"; sourceSizeBytes?: number },
  ): Promise<CompressImageFileResult> {

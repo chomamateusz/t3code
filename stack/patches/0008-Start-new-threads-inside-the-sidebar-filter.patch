@@ -29,6 +29,9 @@ Port to 965ddc1d6c:
 - Upstream #33131 removed the legacy sidebar setting. Sidebar New thread, chat.new and startNewThreadInSidebarFilter no longer read legacySidebarEnabled: without a filter the current project opens only with exactly one open project group. The legacy-sidebar case is gone from useHandleNewThread.test.ts and the legacy sentence from docs/user/thread-sidebar.md.
 - Upstream #33109 labels the current project in New thread in. buildNewThreadInProjectItems takes both upstream's currentProjectKey and this commit's isOnline, so ProjectLocationDescription can show Current and (Offline); restricted pickers pass currentProjectKey null, and the full list keeps upstream's label and order.
 
+Port to e07585e5fb:
+- Test fixtures only. CommandPalette.browser.test.tsx: setup keeps upstream #35107's removal of a leaked last-used project before this commit's mocks. Sidebar.browser.test.tsx: the entities import adds readProjects next to upstream's new useServerConfigs, session and orchestration-command mocks.
+
 Files:
 apps/web:
 - apps/web/src/commandPaletteBus.ts
@@ -91,7 +94,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .../src/components/CommandPalette.logic.ts    |  17 +-
  apps/web/src/components/CommandPalette.tsx    | 161 ++++--
  .../components/CommandPaletteProjectItems.tsx |  17 +-
- .../src/components/Sidebar.browser.test.tsx   |  10 +-
+ .../src/components/Sidebar.browser.test.tsx   |  15 +-
  apps/web/src/components/Sidebar.tsx           |  33 +-
  .../SidebarThreadHeader.browser.test.tsx      |  87 +++
  .../sidebar/SidebarThreadHeader.tsx           |  30 +-
@@ -106,7 +109,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .../src/shortcuts/chatRouteCommands.test.ts   |   5 +-
  apps/web/src/shortcuts/chatRouteCommands.ts   |  32 +-
  docs/user/thread-sidebar.md                   |  31 +-
- 21 files changed, 1912 insertions(+), 132 deletions(-)
+ 21 files changed, 1917 insertions(+), 132 deletions(-)
  create mode 100644 apps/web/src/components/sidebar/SidebarThreadHeader.browser.test.tsx
  create mode 100644 apps/web/src/newThreadActions.ts
  create mode 100644 apps/web/src/newThreadTarget.test.ts
@@ -146,10 +149,10 @@ index 2766f6db6b391e14eb5988ca536156b5383ae736..c2fb1d186370659f7ece7467c07b8932
      dispatchCommandPalette({ _tag: "OpenAddProject" });
    } else if (detail.query !== undefined) {
 diff --git a/apps/web/src/components/CommandPalette.browser.test.tsx b/apps/web/src/components/CommandPalette.browser.test.tsx
-index c7106f0cff289c369146fd0547d4f563ff328e9f..58bee64c85a8eac5a7dbe27a66bd8f69c91bd92c 100644
+index 8292121ac2ceb3ebd9b501ea1458e2cbfd993c3c..3bf4c638fdae17fb06fee96f3cf2c2153fdcd14b 100644
 --- a/apps/web/src/components/CommandPalette.browser.test.tsx
 +++ b/apps/web/src/components/CommandPalette.browser.test.tsx
-@@ -2,27 +2,72 @@ import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+@@ -2,32 +2,77 @@ import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
  import { describe, expect, it, vi } from "vite-plus/test";
  import { page, userEvent } from "vite-plus/test/browser";
  
@@ -158,6 +161,8 @@ index c7106f0cff289c369146fd0547d4f563ff328e9f..58bee64c85a8eac5a7dbe27a66bd8f69
  import { act, render } from "../../test/render";
  import { openCommandPalette } from "../commandPaletteBus";
  import { useCommandPaletteStore } from "../commandPaletteStore";
+ import { LAST_USED_PROJECT_STORAGE_KEY } from "../hooks/useHandleNewThread";
+ import { removeLocalStorageItem } from "../hooks/useLocalStorage";
 -import { makeThreadFixture } from "../test-fixtures";
 -import type { Project, Thread } from "../types";
 +import { useUiStateStore } from "../uiStateStore";
@@ -184,6 +189,9 @@ index c7106f0cff289c369146fd0547d4f563ff328e9f..58bee64c85a8eac5a7dbe27a66bd8f69
 +vi.mock("./CommandPaletteLookups", { spy: true });
  
  function setup(state: { projects?: ReadonlyArray<Project>; threads?: ReadonlyArray<Thread> } = {}) {
+   // Earlier browser test files share this origin's localStorage; a remembered project
+   // that is not listed here hides the default "New thread in <project>" row.
+   removeLocalStorageItem(LAST_USED_PROJECT_STORAGE_KEY);
 +  vi.mocked(useProjects).mockReturnValue(state.projects ?? []);
 +  vi.mocked(useVisibleThreadShells).mockReturnValue(state.threads ?? []);
 +  vi.mocked(useSortedProjectGroups).mockReturnValue(
@@ -235,7 +243,7 @@ index c7106f0cff289c369146fd0547d4f563ff328e9f..58bee64c85a8eac5a7dbe27a66bd8f69
  }
  
  describe("CommandPalette open intents", () => {
-@@ -76,6 +121,129 @@ describe("CommandPalette open intents", () => {
+@@ -81,6 +126,129 @@ describe("CommandPalette open intents", () => {
      expect(screen.router?.state.location.pathname).toBe(pathname);
    });
  
@@ -365,7 +373,7 @@ index c7106f0cff289c369146fd0547d4f563ff328e9f..58bee64c85a8eac5a7dbe27a66bd8f69
    it("opens New thread in... with focus in the search input, not the Back button", async () => {
      setup();
      await using _screen = await render(<CommandPalette>{null}</CommandPalette>);
-@@ -174,4 +342,61 @@ describe("CommandPalette open intents", () => {
+@@ -179,4 +347,61 @@ describe("CommandPalette open intents", () => {
  
      await vi.waitFor(() => expect(screen.router?.state.location.pathname).toBe("/local/parent"));
    });
@@ -428,10 +436,10 @@ index c7106f0cff289c369146fd0547d4f563ff328e9f..58bee64c85a8eac5a7dbe27a66bd8f69
 +  });
  });
 diff --git a/apps/web/src/components/CommandPalette.composition.browser.test.tsx b/apps/web/src/components/CommandPalette.composition.browser.test.tsx
-index 5a2682df6f6565f980c4ec398333dcb6fe48bf03..6abb4a9e12b0b2a026016c743703fa3e0a13f05e 100644
+index e1f69d72e3b417c7c69509f40b8c9aeb855a9b46..01e8e204468ef051458e853d8280557741255870 100644
 --- a/apps/web/src/components/CommandPalette.composition.browser.test.tsx
 +++ b/apps/web/src/components/CommandPalette.composition.browser.test.tsx
-@@ -30,6 +30,7 @@ vi.mock("../hooks/useSettings", async (original) => ({
+@@ -53,6 +53,7 @@ vi.mock("../hooks/useSettings", async (original) => ({
    useUpdateEnvironmentSettings: () => () => undefined,
  }));
  vi.mock("../hooks/useScratchProject", () => ({
@@ -440,7 +448,7 @@ index 5a2682df6f6565f980c4ec398333dcb6fe48bf03..6abb4a9e12b0b2a026016c743703fa3e
  }));
  vi.mock("../hooks/useNewProject", () => ({ useNewProject: () => async () => undefined }));
 diff --git a/apps/web/src/components/CommandPalette.logic.ts b/apps/web/src/components/CommandPalette.logic.ts
-index db7ea4895b7ce9d38948db4d5ec72a40aeb8f5d4..32f029097d5848e0cbea9f86276da0f814e366dd 100644
+index 895995c03e4878abfb88161ff06a6302616e1b47..8b1e28b1705f635e4ed3d1530add814ec9bdd717 100644
 --- a/apps/web/src/components/CommandPalette.logic.ts
 +++ b/apps/web/src/components/CommandPalette.logic.ts
 @@ -11,6 +11,7 @@ import {
@@ -489,7 +497,7 @@ index db7ea4895b7ce9d38948db4d5ec72a40aeb8f5d4..32f029097d5848e0cbea9f86276da0f8
        return openWithIntent({ kind: "change-theme" });
    }
 diff --git a/apps/web/src/components/CommandPalette.tsx b/apps/web/src/components/CommandPalette.tsx
-index 15c00fcba186d736a53440baf2075a4a8b1531dd..a111eadbe3e0cd9e7309f2b62087a94630b3385a 100644
+index fe21bd2e3a6356ba1bd0aed89c7f80c6e701b266..2d743cebb32fe64ca46187540a61f7c231869868 100644
 --- a/apps/web/src/components/CommandPalette.tsx
 +++ b/apps/web/src/components/CommandPalette.tsx
 @@ -98,6 +98,9 @@ import { useAtomValue } from "@effect/atom-react";
@@ -666,7 +674,7 @@ index 15c00fcba186d736a53440baf2075a4a8b1531dd..a111eadbe3e0cd9e7309f2b62087a946
      browseNavigation.invalidate();
      setAddProjectCloneFlow(null);
      setNewProjectFlow(null);
-@@ -1316,7 +1397,7 @@ function OpenCommandPaletteDialog(props: {
+@@ -1320,7 +1401,7 @@ function OpenCommandPaletteDialog(props: {
        title: "New thread in...",
        icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
        addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
@@ -675,7 +683,7 @@ index 15c00fcba186d736a53440baf2075a4a8b1531dd..a111eadbe3e0cd9e7309f2b62087a946
      });
    }
  
-@@ -1793,19 +1874,20 @@ function OpenCommandPaletteDialog(props: {
+@@ -1797,19 +1878,20 @@ function OpenCommandPaletteDialog(props: {
        : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
          ? addProjectEntryGroups()
          : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
@@ -709,7 +717,7 @@ index 15c00fcba186d736a53440baf2075a4a8b1531dd..a111eadbe3e0cd9e7309f2b62087a946
  
    const isLinkedThreadSearch =
      linkedThreadSearch?.linkedThreads !== undefined && deferredQuery === linkedThreadSearch.query;
-@@ -1813,7 +1895,7 @@ function OpenCommandPaletteDialog(props: {
+@@ -1817,7 +1899,7 @@ function OpenCommandPaletteDialog(props: {
      activeGroups,
      query: deferredQuery,
      isInSubmenu: currentView !== null,
@@ -718,7 +726,7 @@ index 15c00fcba186d736a53440baf2075a4a8b1531dd..a111eadbe3e0cd9e7309f2b62087a946
        ? {
            allOptions: {
              rootGroups,
-@@ -2426,7 +2508,26 @@ function OpenCommandPaletteDialog(props: {
+@@ -2436,7 +2518,26 @@ function OpenCommandPaletteDialog(props: {
            },
          ];
  
@@ -800,22 +808,29 @@ index 3039ac9e6f2615771e116a577937e6a665e3c3df..1a52121bc571ce574d1ad54653456db1
        <CommandPaletteMetaDot />
        <span className="min-w-0 flex-1 truncate">{props.workspaceRoot}</span>
 diff --git a/apps/web/src/components/Sidebar.browser.test.tsx b/apps/web/src/components/Sidebar.browser.test.tsx
-index c1cae810001236d8b8e1d5b89d06f3fa86401142..e562e17baf58b65a30f3c5e289f27ab19f475e96 100644
+index f152cabf018511917b432cf722f53b247384ad7d..032dfc10a860b88da375a5211d9f80daf8556b19 100644
 --- a/apps/web/src/components/Sidebar.browser.test.tsx
 +++ b/apps/web/src/components/Sidebar.browser.test.tsx
-@@ -16,9 +16,10 @@ import { makeThreadFixture } from "../test-fixtures";
+@@ -20,11 +20,17 @@ import { makeThreadFixture } from "../test-fixtures";
  import { useHandleNewThread } from "../hooks/useHandleNewThread";
  import { __setClientSettingsForTests, getClientSettings } from "../hooks/useSettings";
  import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
--import { useProjects, useQuietThreadShells } from "../state/entities";
-+import { readProjects, useProjects, useQuietThreadShells } from "../state/entities";
+-import { useProjects, useServerConfigs, useQuietThreadShells } from "../state/entities";
++import {
++  readProjects,
++  useProjects,
++  useServerConfigs,
++  useQuietThreadShells,
++} from "../state/entities";
+ import { readEnvironmentScope, useEnvironmentScope } from "../state/session";
+ import { useOrchestrationCommand } from "../state/use-orchestration-command";
  import { useTerminalUiStateStore } from "../terminalUiStateStore";
  import type { Project } from "../types";
 +import { useUiStateStore } from "../uiStateStore";
  import Sidebar from "./Sidebar";
  import { THREAD_JUMP_HINT_SHOW_DELAY_MS } from "./Sidebar.logic";
  import { SortableThreadRow } from "./sidebar/SidebarThreadRow";
-@@ -69,6 +70,7 @@ describe("sidebar header new thread", () => {
+@@ -81,6 +87,7 @@ describe("sidebar header new thread", () => {
      { mode: "boring", count: 1, shift: false, picker: false },
    ] as const)("$mode sidebar, $count projects, shift=$shift: picker=$picker", async (scenario) => {
      using stack = new DisposableStack();
@@ -823,7 +838,7 @@ index c1cae810001236d8b8e1d5b89d06f3fa86401142..e562e17baf58b65a30f3c5e289f27ab1
      const previousSettings = getClientSettings();
      stack.defer(() => __setClientSettingsForTests(previousSettings));
      __setClientSettingsForTests({
-@@ -82,6 +84,7 @@ describe("sidebar header new thread", () => {
+@@ -94,6 +101,7 @@ describe("sidebar header new thread", () => {
      };
      const startThread = vi.fn().mockResolvedValue(null);
      vi.mocked(useProjects).mockReturnValue(projects);
@@ -831,7 +846,7 @@ index c1cae810001236d8b8e1d5b89d06f3fa86401142..e562e17baf58b65a30f3c5e289f27ab1
      vi.mocked(useHandleNewThread).mockReturnValue({
        activeDraftThread: null,
        activeThread: null,
-@@ -103,7 +106,10 @@ describe("sidebar header new thread", () => {
+@@ -115,7 +123,10 @@ describe("sidebar header new thread", () => {
      });
  
      if (scenario.picker) {
@@ -844,10 +859,10 @@ index c1cae810001236d8b8e1d5b89d06f3fa86401142..e562e17baf58b65a30f3c5e289f27ab1
      } else {
        expect(openCommandPalette).not.toHaveBeenCalled();
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 8cec75acd57993e99e6709b2efb881e7afd6153b..07857d8c080698cad7f3ab6189ca8836f6bcbcc4 100644
+index 1c246b8b8ed3ea4954363c3b05608f1b450c7768..821f625b80726f2eae743670411e0914b5ac5d83 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -119,6 +119,7 @@ import {
+@@ -120,6 +120,7 @@ import {
  } from "../sidebarProjectRow";
  import { ConnectedSidebarProjectRow } from "./sidebar/SidebarProjectRow";
  import { searchableSetting } from "./settings/settingsSearch";
@@ -855,7 +870,7 @@ index 8cec75acd57993e99e6709b2efb881e7afd6153b..07857d8c080698cad7f3ab6189ca8836
  import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
  import {
    getThreadKeysToDeselectAfterDelete,
-@@ -188,6 +189,7 @@ import {
+@@ -189,6 +190,7 @@ import {
    isInSidebarScope,
    isSidebarNestedLinkClick,
    isTrailingDoubleClick,
@@ -863,7 +878,7 @@ index 8cec75acd57993e99e6709b2efb881e7afd6153b..07857d8c080698cad7f3ab6189ca8836
    orderItemsByPreferredIds,
    planSidebarThreadDrop,
    resolveAdjacentThreadId,
-@@ -198,7 +200,6 @@ import {
+@@ -199,7 +201,6 @@ import {
    resolveSidebarReorderableThreadKeys,
    resolveSidebarThreadShelfState,
    searchSidebarThreads,
@@ -871,7 +886,7 @@ index 8cec75acd57993e99e6709b2efb881e7afd6153b..07857d8c080698cad7f3ab6189ca8836
    shouldNavigateAfterThreadPark,
    sidebarListItemId,
    sidebarThreadKeyAtY,
-@@ -3034,13 +3035,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3047,13 +3048,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const showJumpHints = useThreadJumpHintsVisible(keybindings, routeThreadRef);
  
    const handleNewThreadClick = (event?: ReactMouseEvent) => {
@@ -886,7 +901,7 @@ index 8cec75acd57993e99e6709b2efb881e7afd6153b..07857d8c080698cad7f3ab6189ca8836
        if (isMobile) setOpenMobile(false);
        // With no current or open project, such as when every project is archived, pick one.
        void startNewThreadFromContext({
-@@ -3054,7 +3049,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3067,7 +3062,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
        return;
      }
      if (isMobile) setOpenMobile(false);
@@ -902,7 +917,7 @@ index 8cec75acd57993e99e6709b2efb881e7afd6153b..07857d8c080698cad7f3ab6189ca8836
    };
  
    const newThreadShortcutLabel =
-@@ -3100,16 +3102,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3113,16 +3115,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                }
                onNewProject={openAddProjectCommandPalette}
                onNewThread={handleNewThreadClick}
@@ -1713,10 +1728,10 @@ index 3b596f838fa0db79eed8ae0f3e7c4f6a5413ce1b..3cec6dccb9d2378a5b7fee7715c5d15e
    it("runs the active environment's script shortcut instead of the primary environment's", () => {
      const primary = compile([{ shortcut: modShortcut("r"), command: "script.setup.run" }]);
 diff --git a/apps/web/src/keybindings.ts b/apps/web/src/keybindings.ts
-index fc96aa1f85896fc89f7ba08de185c3bcd14086a8..70146239bcea624113273490c48ed98915d695e4 100644
+index 849183b7a1a69f4a3e7bb6910d3dfd914046582a..91b73833dfc9507a4c235dec56b27ab6c1046f88 100644
 --- a/apps/web/src/keybindings.ts
 +++ b/apps/web/src/keybindings.ts
-@@ -175,7 +175,7 @@ function matchesCommandShortcut(
+@@ -176,7 +176,7 @@ function matchesCommandShortcut(
    return resolveShortcutCommand(event, keybindings, options) === command;
  }
  
@@ -1725,7 +1740,7 @@ index fc96aa1f85896fc89f7ba08de185c3bcd14086a8..70146239bcea624113273490c48ed989
    event: ShortcutEventLike,
    keybindings: ResolvedKeybindingsConfig,
    options?: ShortcutMatchOptions,
-@@ -196,6 +196,31 @@ export function resolveShortcutCommand(
+@@ -197,6 +197,31 @@ export function resolveShortcutCommand(
    return null;
  }
  
@@ -2797,7 +2812,7 @@ index a08e2fa5a46f4bfc2e1c7a97470526ab194e8bcd..5b8e496c39146c257799692c126fd930
        "preview.toggle": (event) => {
          claim(event);
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 62ef1667a120381276e8a42ec844e4161ae5b19e..73d94c6748633f0156654983908cffda13961022 100644
+index 889adbe5221c9b203424ae6a842016e02a87dbef..8d0e9c66a89f06b05910b21bc0faa5f040aa6ff2 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -5,12 +5,27 @@ need a separate branch and working directory.
@@ -2833,8 +2848,8 @@ index 62ef1667a120381276e8a42ec844e4161ae5b19e..73d94c6748633f0156654983908cffda
 +existing worktree, use **New thread in this worktree** from the branch toolbar.
  
  On mobile, **New thread** starts in the current thread's project, or else in the
- last project you opened or chose on that device. If neither is available, the
-@@ -26,8 +41,8 @@ if that project exists there. Otherwise it selects an environment that has it.
+ project the thread list is filtered to, or else in the last project you opened
+@@ -27,8 +42,8 @@ if that project exists there. Otherwise it selects an environment that has it.
  A thread does not need a project. To start one without a project, click **or
  start without a project** under a new thread's heading, pick **No project** from
  the project menu in that heading or from **New thread in...** in the command

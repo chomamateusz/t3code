@@ -28,6 +28,9 @@ Port to 965ddc1d6c:
 Port to 691b9709b0:
 - Upstream 4363d0bf65 (#32963) makes HistorySwipeNavigation listen on macOS only; the layout test reports a macOS platform so it runs on any host, as upstream 42185a6206 did for its own swipe test
 
+Port to e07585e5fb:
+- SettingsPanels.tsx: the Navigation section stays before Confirmations, whose title upstream #31313 now translates with gt(). The swipe row keeps its English copy and searchableSetting anchor; upstream translates only part of Settings and has no catalog entries for it.
+
 Files:
 apps/desktop:
 - apps/desktop/src/window/DesktopWindow.test.ts
@@ -96,7 +99,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 apps/web/src/components/AppSidebarLayout.browser.test.tsx
 
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index 2bf779d47c8266f0f1f25fd0dbe995e65f5f769a..f7ef5f3da183555865ef0168e5c2902842019a35 100644
+index 18d7b91d83958a682361561c636f9773a8feb5e8..af4181814d7b2ce1127c61171a4651728d4f17ec 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
 @@ -1,7 +1,7 @@
@@ -108,7 +111,7 @@ index 2bf779d47c8266f0f1f25fd0dbe995e65f5f769a..f7ef5f3da183555865ef0168e5c29028
  import * as Effect from "effect/Effect";
  import * as Exit from "effect/Exit";
  import * as Fiber from "effect/Fiber";
-@@ -64,7 +64,7 @@ const environmentInput = {
+@@ -69,7 +69,7 @@ const environmentInput = {
  } satisfies DesktopEnvironment.MakeDesktopEnvironmentInput;
  
  function makeFakeBrowserWindow() {
@@ -117,7 +120,7 @@ index 2bf779d47c8266f0f1f25fd0dbe995e65f5f769a..f7ef5f3da183555865ef0168e5c29028
    const webContentsListeners = new Map<string, (...args: readonly unknown[]) => void>();
    let zoomLevel = 0;
    const webContents = {
-@@ -224,6 +224,7 @@ function layerTest(input: {
+@@ -229,6 +229,7 @@ function layerTest(input: {
    readonly mainWindow: Ref.Ref<Option.Option<Electron.BrowserWindow>>;
    readonly createdWindowOptions?: Electron.BrowserWindowConstructorOptions[];
    readonly desktopSettings?: DesktopAppSettings.DesktopSettings;
@@ -125,7 +128,7 @@ index 2bf779d47c8266f0f1f25fd0dbe995e65f5f769a..f7ef5f3da183555865ef0168e5c29028
    readonly mainWindowBoundsUpdates?: DesktopAppSettings.DesktopWindowBounds[];
    readonly mainWindowMaximizedUpdates?: boolean[];
    readonly beforeMainWindowBoundsUpdate?: (
-@@ -310,7 +311,9 @@ function layerTest(input: {
+@@ -317,7 +318,9 @@ function layerTest(input: {
          }),
          layerDesktopEnvironment,
          layerDesktopAppSettings,
@@ -136,7 +139,7 @@ index 2bf779d47c8266f0f1f25fd0dbe995e65f5f769a..f7ef5f3da183555865ef0168e5c29028
          layerDesktopServerExposure,
          DesktopState.layer,
          layerElectronApp,
-@@ -1099,7 +1102,17 @@ describe("DesktopWindow", () => {
+@@ -1243,7 +1246,17 @@ describe("DesktopWindow", () => {
        const fakeWindow = makeFakeBrowserWindow();
        const createCount = yield* Ref.make(0);
        const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
@@ -155,7 +158,7 @@ index 2bf779d47c8266f0f1f25fd0dbe995e65f5f769a..f7ef5f3da183555865ef0168e5c29028
  
        yield* Effect.gen(function* () {
          const desktopWindow = yield* DesktopWindow.DesktopWindow;
-@@ -1107,22 +1120,55 @@ describe("DesktopWindow", () => {
+@@ -1251,22 +1264,55 @@ describe("DesktopWindow", () => {
          const swipe = fakeWindow.windowListeners.get("swipe");
          assert.isDefined(swipe);
          if (!swipe) return;
@@ -220,10 +223,10 @@ index 2bf779d47c8266f0f1f25fd0dbe995e65f5f769a..f7ef5f3da183555865ef0168e5c29028
      }),
    );
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 8c9e507ca4b905c72df2619dfbc989d4b7fbf985..c8160c9a446c29cfbd384111be1344b9e432ef21 100644
+index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..91316755e379ce8024ccdc9998e548713067db19 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
-@@ -752,9 +752,27 @@ export const make = Effect.gen(function* () {
+@@ -833,9 +833,27 @@ export const make = Effect.gen(function* () {
      if (environment.platform === "darwin") {
        // Mouse drivers can deliver Back/Forward as macOS swipe gestures instead of buttons.
        window.on("swipe", (_event, direction) => {
@@ -359,10 +362,10 @@ index e4f3d690113e5db8dd37354115f54f36ae987e1d..7dd572f5e9dec54d53306769437f1783
      </PanelAnimationSuppressionProvider>
    );
 diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
-index 584939f2b7b0a755798c2069f46a0d334fd3a140..a5f504bfb233437967b60c8cd642d5c6216d8e7a 100644
+index 0e57559a3870b79b5e1b6290c8214e3f649cfb7d..2e7c8144fe9a4c23bfa4b02dfcde0296ea02f741 100644
 --- a/apps/web/src/components/settings/SettingsPanels.tsx
 +++ b/apps/web/src/components/settings/SettingsPanels.tsx
-@@ -603,6 +603,9 @@ export function useSettingsRestore(onRestored?: () => void) {
+@@ -599,6 +599,9 @@ export function useSettingsRestore(onRestored?: () => void) {
        ? ["Delete confirmation"]
        : []),
      ...(settings.confirmQuit !== DEFAULT_UNIFIED_SETTINGS.confirmQuit ? ["Quit shortcut"] : []),
@@ -372,7 +375,7 @@ index 584939f2b7b0a755798c2069f46a0d334fd3a140..a5f504bfb233437967b60c8cd642d5c6
      ...(isTextGenerationModelDirty ? ["Text generation model"] : []),
      ...(settings.threadTitleInstructions !== DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions
        ? ["Thread title instructions"]
-@@ -712,6 +715,7 @@ export function useSettingsRestore(onRestored?: () => void) {
+@@ -711,6 +714,7 @@ export function useSettingsRestore(onRestored?: () => void) {
        confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
        confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
        confirmQuit: DEFAULT_UNIFIED_SETTINGS.confirmQuit,
@@ -380,7 +383,7 @@ index 584939f2b7b0a755798c2069f46a0d334fd3a140..a5f504bfb233437967b60c8cd642d5c6
        textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
        threadTitleInstructions: DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions,
        fontFamilySans: DEFAULT_UNIFIED_SETTINGS.fontFamilySans,
-@@ -913,6 +917,35 @@ export function GeneralSettingsPanel() {
+@@ -944,6 +948,35 @@ export function GeneralSettingsPanel() {
          />
        </SettingsSection>
  
@@ -413,14 +416,14 @@ index 584939f2b7b0a755798c2069f46a0d334fd3a140..a5f504bfb233437967b60c8cd642d5c6
 +        </SettingsSection>
 +      ) : null}
 +
-       <SettingsSection id="confirmations" title="Confirmations">
+       <SettingsSection id="confirmations" title={gt("Confirmations")}>
          <SettingsRow
-           {...searchableSetting("unpin-confirmation")}
+           {...setting("unpin-confirmation")}
 diff --git a/apps/web/src/components/settings/settingsSearch.test.ts b/apps/web/src/components/settings/settingsSearch.test.ts
-index c360265f81e310e38e01310e99fd738d41aa6275..408b371aa24fb8150ae93f003799719e29f25dea 100644
+index bac40332a27702521a6c08c40aa13b6dc86ced91..769c406f1534c8fdaaebaefa03e19e53d3ae5f6e 100644
 --- a/apps/web/src/components/settings/settingsSearch.test.ts
 +++ b/apps/web/src/components/settings/settingsSearch.test.ts
-@@ -106,6 +106,8 @@ describe("searchSettings", () => {
+@@ -115,6 +115,8 @@ describe("searchSettings", () => {
  
    it("hides desktop-only settings from browser search", () => {
      expect(SETTINGS_SEARCH_ITEMS.some((item) => item.id === "quit-confirmation")).toBe(true);
@@ -430,10 +433,10 @@ index c360265f81e310e38e01310e99fd738d41aa6275..408b371aa24fb8150ae93f003799719e
      expect(searchSettings("wsl")).toEqual([]);
      expect(searchSettings("update track")).toEqual([]);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 4985017d9a43bd409c9b8268673fa6338595d3c9..97bc65c7675461e537cb5cc79ab6c92e7b1e0659 100644
+index 545fddc218de698bbaf83af6d458e2f04b3159c7..97a385c7b4032b9765d50ba76cfb8dbf5c555287 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -834,6 +834,13 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -861,6 +861,13 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: ["confirmation desktop app exit direct hold double click press twice"],
      desktopOnly: true,
    },
@@ -472,10 +475,10 @@ index 4c194f473c7b05a7c8006bc6899b78a6793bb34a..35a04e51912c4c12ee1a9eb706340949
    it("resolves instance enabled state with explicit false winning", () => {
      const grok = ProviderDriverKind.make("grok");
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 346213992e4b2cbb531f2a02bb68c49855bc0369..8c56f463242c0e5816acc6c0f5fb39daaece6a0c 100644
+index 49470541d90be695ad24df030ca6522682a82611..aae0be9422569a00048fdf39ec1c12c637a32d93 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -456,6 +456,7 @@ export const ClientSettingsSchema = Schema.Struct({
+@@ -462,6 +462,7 @@ export const ClientSettingsSchema = Schema.Struct({
    confirmQuit: QuitConfirmationModeSetting.pipe(
      Schema.withDecodingDefault(Effect.succeed(DEFAULT_QUIT_CONFIRMATION_MODE)),
    ),
@@ -483,7 +486,7 @@ index 346213992e4b2cbb531f2a02bb68c49855bc0369..8c56f463242c0e5816acc6c0f5fb39da
    confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
    confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
    confirmThreadUnpin: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-@@ -2003,6 +2004,7 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2024,6 +2025,7 @@ export const ClientSettingsPatch = Schema.Struct({
    browserProfiles: Schema.optionalKey(Schema.Array(BrowserProfile)),
    browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),
    confirmQuit: Schema.optionalKey(QuitConfirmationMode),

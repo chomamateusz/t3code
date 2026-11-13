@@ -32,6 +32,12 @@ Integration details:
 Port to 965ddc1d6c:
 - Applied without conflicts. Upstream #33142 added a Linux packaging-tool cache step to release-desktop.yml; the fork repository env lines are unchanged beside it. Upstream #33150 and #33153 install the t3 command from npx t3 and the desktop app; they add no desktop or web update feed or release endpoint, and CLI updates stay upstream.
 
+Port to e07585e5fb:
+- Upstream added its own apps/desktop/src/electron/ElectronUpdater.test.ts (#29672, AppImage relaunch without inherited descriptors). The feed-snapshot case moved into that file and spies on the real autoUpdater.setFeedURL instead of mocking electron-updater, so the upstream AppImage case keeps the real updater.
+- DesktopUpdates.ts: the configured-fork "latest" channel pin now sits after #30804's canInstallUpdates flag; the install-time feed recheck follows #35018's parallel backend stop and SSH tunnel close. Upstream's 4-hour polling (#28481), stalled-download timeout (#26244), track-save fallback (#34917), AppImage cleanup (#29672, #36306) and T3 home lock fix (#26191) are kept unchanged around the guards.
+- SettingsPanels.tsx: the About download button uses upstream's downloadLocalUpdate, which already reports getDesktopUpdateActionError, so a refused fork feed still shows "Could not download update".
+- forkFeedPolicy.test.ts: a refused install now runs after upstream #35018 closed the SSH port forwards next to stopping the backends, so the recorded install steps are closeSshTunnels then startBackend, the same recovery upstream's failed install records.
+
 Files:
 .github:
 - .github/workflows/release-desktop.yml
@@ -101,7 +107,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .github/workflows/release-fork.yml            | 442 ++++++++++++++++++
  .../src/app/DesktopStartupRecovery.test.ts    |  17 +-
  .../desktop/src/app/DesktopStartupRecovery.ts |  15 +-
- .../src/electron/ElectronUpdater.test.ts      |  47 ++
+ .../src/electron/ElectronUpdater.test.ts      |  22 +
  apps/desktop/src/electron/ElectronUpdater.ts  |   7 +-
  .../src/updates/DesktopRemoteUpdates.test.ts  | 135 +++++-
  .../src/updates/DesktopRemoteUpdates.ts       |  11 +
@@ -115,7 +121,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  apps/web/src/bundledDev.test.ts               |   8 +-
  .../components/desktopUpdate.logic.test.ts    |  52 ++-
  .../web/src/components/desktopUpdate.logic.ts |  30 +-
- .../components/settings/SettingsPanels.tsx    |  43 +-
+ .../components/settings/SettingsPanels.tsx    |  12 +
  .../settings/UpdateTrackSwitchDialog.tsx      |   5 +-
  .../settings/updateTrackSwitch.logic.test.ts  |   8 +-
  .../settings/updateTrackSwitch.logic.ts       |   3 +
@@ -129,9 +135,8 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  scripts/build-desktop-artifact.ts             |  15 +-
  scripts/verify-fork-update-feed.test.ts       |  37 ++
  scripts/verify-fork-update-feed.ts            |  36 ++
- 32 files changed, 1585 insertions(+), 50 deletions(-)
+ 32 files changed, 1538 insertions(+), 41 deletions(-)
  create mode 100644 .github/workflows/release-fork.yml
- create mode 100644 apps/desktop/src/electron/ElectronUpdater.test.ts
  create mode 100644 apps/desktop/src/updates/forkFeedPolicy.test.ts
  create mode 100644 apps/desktop/src/updates/forkUpdateProvider.test.ts
  create mode 100644 apps/desktop/vite.config.test.ts
@@ -139,7 +144,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 scripts/verify-fork-update-feed.ts
 
 diff --git a/.github/workflows/release-desktop.yml b/.github/workflows/release-desktop.yml
-index b227a2b8b12fe26756374b64a84f1e2f25931ca0..526054912f80012205e7e9a77233300d84e61f4c 100644
+index 48f410f0c920a08b938ee7917d12d26eb25d58b5..14e6421dc6093f036d48bc720d2c33860386fa17 100644
 --- a/.github/workflows/release-desktop.yml
 +++ b/.github/workflows/release-desktop.yml
 @@ -133,6 +133,9 @@ jobs:
@@ -678,42 +683,21 @@ index c8228183aad91a82ae376f2c31cac2469ee0c6c9..1f7ba4fbff158b1cc5496ef02a981f65
        case "copy": {
          const failure = yield* Ref.get(failureRef);
 diff --git a/apps/desktop/src/electron/ElectronUpdater.test.ts b/apps/desktop/src/electron/ElectronUpdater.test.ts
-new file mode 100644
-index 0000000000000000000000000000000000000000..58cc58e0c69f80add9a82818d210d1f8eb9d08c4
---- /dev/null
+index e47c741bf3bd8a660cf418d06f9c2551feece16f..ed6a2e0102b819d40834216cd2342b5ea28df1af 100644
+--- a/apps/desktop/src/electron/ElectronUpdater.test.ts
 +++ b/apps/desktop/src/electron/ElectronUpdater.test.ts
-@@ -0,0 +1,47 @@
-+import { assert, describe, it } from "@effect/vitest";
-+import * as Effect from "effect/Effect";
-+import { vi } from "vite-plus/test";
+@@ -116,3 +116,25 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")(
+     );
+   },
+ );
 +
-+const { autoUpdaterMock } = vi.hoisted(() => ({
-+  autoUpdaterMock: {
-+    allowDowngrade: false,
-+    allowPrerelease: false,
-+    autoDownload: true,
-+    autoInstallOnAppQuit: true,
-+    channel: "latest",
-+    disableDifferentialDownload: false,
-+    fullChangelog: false,
-+    checkForUpdates: vi.fn(() => Promise.resolve(null)),
-+    downloadUpdate: vi.fn(() => Promise.resolve([])),
-+    on: vi.fn(),
-+    quitAndInstall: vi.fn(),
-+    removeListener: vi.fn(),
-+    setFeedURL: vi.fn(),
-+  },
-+}));
-+
-+vi.mock("electron-updater", () => ({
-+  autoUpdater: autoUpdaterMock,
-+}));
-+
-+import * as ElectronUpdater from "./ElectronUpdater.ts";
-+
-+describe("ElectronUpdater", () => {
++describe("ElectronUpdater feed", () => {
 +  it.effect("tracks an immutable snapshot of the feed passed to electron-updater", () =>
 +    Effect.gen(function* () {
++      const setFeedURL = yield* Effect.acquireRelease(
++        Effect.sync(() => vi.spyOn(autoUpdater, "setFeedURL").mockImplementation(() => undefined)),
++        (spy) => Effect.sync(() => spy.mockRestore()),
++      );
 +      const updater = yield* ElectronUpdater.ElectronUpdater;
 +      const options = {
 +        provider: "github" as const,
@@ -724,17 +708,15 @@ index 0000000000000000000000000000000000000000..58cc58e0c69f80add9a82818d210d1f8
 +      yield* updater.setFeedURL(options);
 +      options.host = "updates.example.com";
 +      assert.deepEqual(yield* updater.feedURL, { ...options, host: "github.com" });
-+      assert.deepEqual(autoUpdaterMock.setFeedURL.mock.calls, [
-+        [{ ...options, host: "github.com" }],
-+      ]);
++      assert.deepEqual(setFeedURL.mock.calls, [[{ ...options, host: "github.com" }]]);
 +    }).pipe(Effect.provide(ElectronUpdater.layer)),
 +  );
 +});
 diff --git a/apps/desktop/src/electron/ElectronUpdater.ts b/apps/desktop/src/electron/ElectronUpdater.ts
-index c71b42040db292bf81b9c35b8d4ae779a5170e59..29d1d35748e05aab5f8ba6d4ddda7500757cdb50 100644
+index 0cc22bb4b16337b0241909e2193a4d8e59cb9577..a6afd196178896fe26ae614a4263887d4a958035 100644
 --- a/apps/desktop/src/electron/ElectronUpdater.ts
 +++ b/apps/desktop/src/electron/ElectronUpdater.ts
-@@ -58,6 +58,7 @@ export type ElectronUpdaterError = typeof ElectronUpdaterError.Type;
+@@ -78,6 +78,7 @@ export type ElectronUpdaterError = typeof ElectronUpdaterError.Type;
  export class ElectronUpdater extends Context.Service<
    ElectronUpdater,
    {
@@ -742,7 +724,7 @@ index c71b42040db292bf81b9c35b8d4ae779a5170e59..29d1d35748e05aab5f8ba6d4ddda7500
      readonly setFeedURL: (options: ElectronUpdaterFeedUrl) => Effect.Effect<void>;
      readonly setAutoDownload: (value: boolean) => Effect.Effect<void>;
      readonly setAutoInstallOnAppQuit: (value: boolean) => Effect.Effect<void>;
-@@ -80,11 +81,15 @@ export class ElectronUpdater extends Context.Service<
+@@ -100,11 +101,15 @@ export class ElectronUpdater extends Context.Service<
    }
  >()("@t3tools/desktop/electron/ElectronUpdater") {}
  
@@ -966,10 +948,10 @@ index 560e2e78d4bb166b134b4a40a4061259e2f9b299..248a49f27c329249b1f5264581f617c6
              yield* publishReport(state, { outcome: "up-to-date" }, request.requestId);
              return;
 diff --git a/apps/desktop/src/updates/DesktopUpdates.ts b/apps/desktop/src/updates/DesktopUpdates.ts
-index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d02393d96 100644
+index db31e0bc112ba96241eff539cadd382754f196b6..27d12c9aaacbd84d68fc9515f6eb69e336b9d765 100644
 --- a/apps/desktop/src/updates/DesktopUpdates.ts
 +++ b/apps/desktop/src/updates/DesktopUpdates.ts
-@@ -282,9 +282,21 @@ export function describeUpdateErrorCause(cause: unknown): string {
+@@ -285,9 +285,21 @@ export function describeUpdateErrorCause(cause: unknown): string {
    }
  }
  
@@ -992,7 +974,7 @@ index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d
      const match = line.match(/^(\w+):\s*(.+)$/);
      if (match?.[1] && match[2]) {
        entries[match[1]] = match[2].trim();
-@@ -379,6 +391,32 @@ export const make = Effect.gen(function* () {
+@@ -383,6 +395,32 @@ export const make = Effect.gen(function* () {
    // Any user can set the mock flag, so it never replaces an administrator's update source.
    const mockUpdates = config.mockUpdates && policy.message === null;
  
@@ -1025,7 +1007,7 @@ index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d
    const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
    const activeUpdateActionRef = yield* Ref.make<Option.Option<UpdateAction>>(Option.none());
    const installRunningBackendsRef = yield* Ref.make<
-@@ -440,7 +478,7 @@ export const make = Effect.gen(function* () {
+@@ -444,7 +482,7 @@ export const make = Effect.gen(function* () {
      Effect.flatMap(
        Option.match({
          onNone: () => Effect.succeed(Option.none<AppUpdateYmlConfig>()),
@@ -1034,7 +1016,7 @@ index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d
        }),
      ),
    );
-@@ -463,7 +501,32 @@ export const make = Effect.gen(function* () {
+@@ -467,7 +505,32 @@ export const make = Effect.gen(function* () {
      ),
    );
  
@@ -1067,7 +1049,7 @@ index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d
      const hasFeedConfig = yield* hasUpdateFeedConfig;
      return Option.fromNullishOr(
        getAutoUpdateDisabledReason({
-@@ -518,6 +581,7 @@ export const make = Effect.gen(function* () {
+@@ -522,6 +585,7 @@ export const make = Effect.gen(function* () {
      channel: DesktopUpdateChannel,
    ) {
      yield* Effect.annotateCurrentSpan({ channel });
@@ -1075,7 +1057,7 @@ index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d
      const allowsPrerelease = channel === "nightly";
      yield* electronUpdater.setChannel(channel);
      yield* electronUpdater.setAllowPrerelease(allowsPrerelease);
-@@ -540,6 +604,7 @@ export const make = Effect.gen(function* () {
+@@ -544,6 +608,7 @@ export const make = Effect.gen(function* () {
      yield* Effect.annotateCurrentSpan({ reason });
      if (yield* Ref.get(desktopState.quitting)) return false;
      if (!(yield* Ref.get(updaterConfiguredRef))) return false;
@@ -1083,7 +1065,7 @@ index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d
  
      const state = yield* Ref.get(updateStateRef);
      // A configured updater is disabled only by a channel the managed policy blocks.
-@@ -593,6 +658,7 @@ export const make = Effect.gen(function* () {
+@@ -597,6 +662,7 @@ export const make = Effect.gen(function* () {
    });
  
    const downloadAvailableUpdate = Effect.gen(function* () {
@@ -1091,7 +1073,7 @@ index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d
      const state = yield* Ref.get(updateStateRef);
      if (!(yield* Ref.get(updaterConfiguredRef)) || state.status !== "available") {
        return { accepted: false, completed: false };
-@@ -608,6 +674,7 @@ export const make = Effect.gen(function* () {
+@@ -612,6 +678,7 @@ export const make = Effect.gen(function* () {
          isArm64HostRunningIntelBuild(environment.runtimeInfo),
        );
        yield* logUpdaterInfo("downloading update");
@@ -1099,7 +1081,7 @@ index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d
        yield* electronUpdater.downloadUpdate;
        return { accepted: true, completed: true };
      }).pipe(
-@@ -763,6 +830,7 @@ export const make = Effect.gen(function* () {
+@@ -798,6 +865,7 @@ export const make = Effect.gen(function* () {
    const installDownloadedUpdate = (expectedVersion?: string) =>
      Effect.scoped(
        Effect.gen(function* () {
@@ -1107,7 +1089,7 @@ index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d
          const actionCompletions = yield* PubSub.subscribe(finishedUpdateActions);
          let admission: "admitted" | "refused" | "wait-for-check" = "wait-for-check";
          while (admission === "wait-for-check") {
-@@ -808,6 +876,10 @@ export const make = Effect.gen(function* () {
+@@ -843,6 +911,10 @@ export const make = Effect.gen(function* () {
            return { accepted: false, completed: false, failed: false };
          }
  
@@ -1118,8 +1100,8 @@ index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d
          yield* Ref.set(desktopState.quitting, true);
          yield* Ref.set(installRunningBackendsRef, []);
  
-@@ -828,6 +900,12 @@ export const make = Effect.gen(function* () {
-               instance.stop({ timeout: DesktopBackendManager.BACKEND_QUIT_STOP_TIMEOUT }),
+@@ -870,6 +942,12 @@ export const make = Effect.gen(function* () {
+             ],
              { concurrency: "unbounded" },
            );
 +          const refusal = yield* feedRefusalReason;
@@ -1131,7 +1113,7 @@ index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d
            yield* electronUpdater.quitAndInstall({
              isSilent: true,
              isForceRunAfter: true,
-@@ -1135,7 +1213,7 @@ export const make = Effect.gen(function* () {
+@@ -1177,7 +1255,7 @@ export const make = Effect.gen(function* () {
          });
        }
  
@@ -1140,10 +1122,10 @@ index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d
          yield* electronUpdater.setFeedURL({
            provider: "generic",
            url: `http://localhost:${config.mockUpdateServerPort}`,
-@@ -1150,10 +1228,11 @@ export const make = Effect.gen(function* () {
- 
-       const settings = yield* desktopSettings.get;
+@@ -1194,10 +1272,11 @@ export const make = Effect.gen(function* () {
        const disabledReason = yield* resolveDisabledReason;
+       // A blocked nightly channel still lets the user switch back to stable, so it stays updatable.
+       yield* Ref.set(desktopState.canInstallUpdates, Option.isNone(disabledReason));
 +      const channel = allowedUpdateRepository ? "latest" : settings.updateChannel;
        yield* setState(
          yield* baseUpdateState(
@@ -1154,7 +1136,7 @@ index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d
          ),
        );
        if (Option.isSome(disabledReason)) {
-@@ -1203,6 +1282,9 @@ export const make = Effect.gen(function* () {
+@@ -1247,6 +1326,9 @@ export const make = Effect.gen(function* () {
        nextChannel: DesktopUpdateChannel,
        options?: { readonly minimumVersion?: string | undefined },
      ) {
@@ -1166,7 +1148,7 @@ index 36492ca7b9063037b43f155ed445ce46d0238075..d15f00cdf3200cdca1607f1fdbd43d3d
          return yield* new DesktopUpdateChannelManagedError({
 diff --git a/apps/desktop/src/updates/forkFeedPolicy.test.ts b/apps/desktop/src/updates/forkFeedPolicy.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..59fff8b025be66b1a7cdc41bf93110bf49128339
+index 0000000000000000000000000000000000000000..4d8b390c1e35711cb223b69dff925dcc66486041
 --- /dev/null
 +++ b/apps/desktop/src/updates/forkFeedPolicy.test.ts
 @@ -0,0 +1,206 @@
@@ -1336,7 +1318,7 @@ index 0000000000000000000000000000000000000000..59fff8b025be66b1a7cdc41bf93110bf
 +        assert.equal(result.state.status, "disabled");
 +        assert.equal(result.state.message, refusal);
 +        assert.equal(harness.quitAndInstalls(), 0);
-+        assert.deepEqual(harness.installSteps, ["startBackend"]);
++        assert.deepEqual(harness.installSteps, ["closeSshTunnels", "startBackend"]);
 +        assert.equal(harness.updateRestartMarkers.size, 0);
 +      }),
 +    ).pipe(Effect.provide(harness.layer));
@@ -1524,10 +1506,10 @@ index 1d9588315559c3bc4e649c934ab9fb1c7e025f7e..6ff186138b736486e3dbda3fe5f57932
    }
    // Reinstalling a failed version disrupts threads without updating; retries require the local user.
 diff --git a/apps/desktop/src/updates/updatesTestHarness.ts b/apps/desktop/src/updates/updatesTestHarness.ts
-index 226f00f8cba89651547a97055cddd1abebb95755..02f0c94c0585fedbc7d131a26701a04b8a85a1ab 100644
+index b118d15ced674981744cdfade5d62f97bd784e3c..bb704b949ee81d95945e50adbd2878398076b08a 100644
 --- a/apps/desktop/src/updates/updatesTestHarness.ts
 +++ b/apps/desktop/src/updates/updatesTestHarness.ts
-@@ -20,6 +20,8 @@ import * as DesktopUpdates from "./DesktopUpdates.ts";
+@@ -21,6 +21,8 @@ import * as DesktopUpdates from "./DesktopUpdates.ts";
  export const flushCallbacks = Effect.yieldNow;
  
  export interface UpdatesHarnessOptions {
@@ -1536,7 +1518,7 @@ index 226f00f8cba89651547a97055cddd1abebb95755..02f0c94c0585fedbc7d131a26701a04b
    readonly checkForUpdates?: Effect.Effect<
      void,
      ElectronUpdater.ElectronUpdaterCheckForUpdatesError
-@@ -52,6 +54,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+@@ -53,6 +55,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
    let allowDowngrade = false;
    const checkAllowedDowngrade: boolean[] = [];
    let fullChangelog = false;
@@ -1545,7 +1527,7 @@ index 226f00f8cba89651547a97055cddd1abebb95755..02f0c94c0585fedbc7d131a26701a04b
    const feedUrls: ElectronUpdater.ElectronUpdaterFeedUrl[] = [];
    const listeners = new Map<string, Set<(...args: readonly unknown[]) => void>>();
    const sentStates: DesktopUpdateState[] = [];
-@@ -75,14 +79,22 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+@@ -76,14 +80,22 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
    };
  
    const layerUpdater = Layer.succeed(ElectronUpdater.ElectronUpdater, {
@@ -1570,7 +1552,7 @@ index 226f00f8cba89651547a97055cddd1abebb95755..02f0c94c0585fedbc7d131a26701a04b
      allowDowngrade: Effect.sync(() => allowDowngrade),
      setAllowDowngrade: (value) =>
        Effect.sync(() => {
-@@ -243,6 +255,12 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+@@ -251,6 +263,12 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
      path.endsWith(DesktopUpdates.DESKTOP_UPDATE_INSTALL_RECORD_FILE);
    const layerFileSystem = FileSystem.layerNoop({
      readFileString: (path) => {
@@ -1583,7 +1565,7 @@ index 226f00f8cba89651547a97055cddd1abebb95755..02f0c94c0585fedbc7d131a26701a04b
        const installRecord = isInstallRecord(path)
          ? (installRecords.get(path) ?? previousInstallRecord)
          : undefined;
-@@ -305,6 +323,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+@@ -326,6 +344,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
      fullChangelog: () => fullChangelog,
      /** Whether each feed check could offer an older release, and the flag now. */
      checkAllowedDowngrade,
@@ -1629,12 +1611,12 @@ index 0000000000000000000000000000000000000000..a487da04636c707c54cf9c41f54f698b
 +  },
 +);
 diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
-index 4bb1e4541dd94b0b1622820001c5504fb78aae9f..f391a6081d040bf45ef925369f7084ee353646de 100644
+index 455901299edc31b4c958e7c523eb3faf31563f44..b32218d70459de3938220d7492579ceec7e642e9 100644
 --- a/apps/desktop/vite.config.ts
 +++ b/apps/desktop/vite.config.ts
-@@ -12,6 +12,11 @@ const isMainProcessExternal = (id: string) =>
-   id === "electron" || id.startsWith("electron/") || isDesktopRuntimeExternalDependency(id);
- const shouldLaunchElectronAfterPack = process.env.T3CODE_DESKTOP_DEV === "1";
+@@ -21,6 +21,11 @@ const devElectronCommand =
+     ? "node scripts/dev-electron.mjs"
+     : "exec node scripts/dev-electron.mjs";
  const publicConfigDefine = {
 +  __T3CODE_BUILD_RELEASE_REPOSITORY__: JSON.stringify(
 +    repoEnv.T3CODE_RELEASE_REPOSITORY?.trim().toLowerCase() ||
@@ -1827,10 +1809,10 @@ index 51b2b92b0a8baf23e7d7f9fad47e69a8175a1d1a..623aba0ef20d0df701fa2890a2a3dd94
    const message = result.state.message.trim();
    return message.length > 0 ? message : null;
 diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
-index dcaca88e6c7f75fd1ec784aa6c18a3c26170edaa..584939f2b7b0a755798c2069f46a0d334fd3a140 100644
+index ea874c2b18c30e191573d7feaace89cbe2d1fded..0e57559a3870b79b5e1b6290c8214e3f649cfb7d 100644
 --- a/apps/web/src/components/settings/SettingsPanels.tsx
 +++ b/apps/web/src/components/settings/SettingsPanels.tsx
-@@ -36,6 +36,7 @@ import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
+@@ -37,6 +37,7 @@ import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
  import { MobileAppSettingsRow } from "./MobileAppSettingsRow";
  import {
    canCheckForUpdate,
@@ -1838,45 +1820,7 @@ index dcaca88e6c7f75fd1ec784aa6c18a3c26170edaa..584939f2b7b0a755798c2069f46a0d33
    getDesktopUpdateButtonTooltip,
    getDesktopUpdateDisabledReason,
    getDesktopUpdateInstallConfirmationMessage,
-@@ -202,15 +203,28 @@ function AboutVersionSection() {
-     const action = updateState ? resolveDesktopUpdateButtonAction(updateState) : "none";
- 
-     if (action === "download") {
--      void bridge.downloadUpdate().catch((error: unknown) => {
--        toastManager.add(
--          stackedThreadToast({
--            type: "error",
--            title: "Could not download update",
--            description: error instanceof Error ? error.message : "Download failed.",
--          }),
--        );
--      });
-+      void bridge
-+        .downloadUpdate()
-+        .then((result) => {
-+          const message = getDesktopUpdateActionError(result);
-+          if (message)
-+            toastManager.add(
-+              stackedThreadToast({
-+                type: "error",
-+                title: "Could not download update",
-+                description: message,
-+              }),
-+            );
-+        })
-+        .catch((error: unknown) => {
-+          toastManager.add(
-+            stackedThreadToast({
-+              type: "error",
-+              title: "Could not download update",
-+              description: error instanceof Error ? error.message : "Download failed.",
-+            }),
-+          );
-+        });
-       return;
-     }
- 
-@@ -242,6 +256,17 @@ function AboutVersionSection() {
+@@ -244,6 +245,17 @@ function AboutVersionSection() {
        }
        void bridge
          .installUpdate()
@@ -2230,10 +2174,10 @@ index 63f7cca9cbfc679ee82dee992176e51d0cbac8c8..ec4f10e8e9fd893062ae53c347efdbed
    readonly APP_VERSION: string;
  }
 diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
-index 89c54e307d963d8f38f1057ad52ab0eb1f0a136a..a8fcc1d9d8e38468a3886d30964667b71b62d765 100644
+index 63f1f1f737ebeac2adf0119005742bd3c69464ca..b3dccea84a00cf0a3359b66ac71fc917d448ef82 100644
 --- a/apps/web/vite.config.ts
 +++ b/apps/web/vite.config.ts
-@@ -322,6 +322,11 @@ export default defineConfig(() => {
+@@ -342,6 +342,11 @@ export default defineConfig(() => {
        ],
      },
      define: {
@@ -2246,10 +2190,10 @@ index 89c54e307d963d8f38f1057ad52ab0eb1f0a136a..a8fcc1d9d8e38468a3886d30964667b7
        // Override .env URLs with empty values in single-origin dev so clients use window.location.origin.
        "import.meta.env.VITE_HTTP_URL": JSON.stringify(configuredHttpUrl ?? ""),
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index c1c92449fdc3cce0516ff959f0d68dfa280e5987..fba7635c8123042af6a30be8d4a8fc8eaa5977fa 100644
+index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..1b97e0993657e71f2d3efa637be10e8a60590d0f 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
-@@ -1871,3 +1871,67 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+@@ -1922,3 +1922,67 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
      assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
@@ -2318,7 +2262,7 @@ index c1c92449fdc3cce0516ff959f0d68dfa280e5987..fba7635c8123042af6a30be8d4a8fc8e
 +  }).pipe(Effect.provide(NodeServices.layer)),
 +);
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 92c0974b546da1018262308d8a608c0f82163873..f9a0b42c6c96c31ca6684c4e7e8e90dacb45daa0 100644
+index bf7add37828adad593b77de8f062963b479f6fc7..99cedca78a8251ba7cbaae322f29f7bb603caba9 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -2688,6 +2688,13 @@ export function resolveDesktopRuntimeDependencies(

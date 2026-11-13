@@ -20,6 +20,9 @@ Integration details:
 Port to 965ddc1d6c:
 - Applied without conflicts. ElectronProtocol.ts did not change upstream. DesktopApp.ts gained the fresh-install t3 command setup (#33153) later in bootstrap; the renderer cache refresh still runs before registerDesktopProtocol.
 
+Port to e07585e5fb:
+- DesktopAppSettings.ts: upstream #36168 decodes each settings key with optionalReadableKey, so an unreadable value drops only that key. rendererCacheVersion uses the same wrapper; an unreadable value reads as null and the next launch purges and writes it again.
+
 Files:
 apps/desktop:
 - apps/desktop/src/app/DesktopApp.ts
@@ -63,10 +66,10 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  7 files changed, 187 insertions(+), 11 deletions(-)
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index e3b6c49e3ab8df1affb164adba7b86d50292bc70..fd9070178247ccda46b6e1610c3d931e29cb8a00 100644
+index 7ebeaa74a021dc9bae97178cefb8f2e64e9918ae..94964ca398e14ee97808e9eaebc27491cb43fa8d 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
-@@ -178,6 +178,22 @@ const bootstrap = Effect.gen(function* () {
+@@ -179,6 +179,22 @@ const bootstrap = Effect.gen(function* () {
  
    const settings = yield* desktopSettings.get;
    const electronProtocol = yield* ElectronProtocol.ElectronProtocol;
@@ -90,7 +93,7 @@ index e3b6c49e3ab8df1affb164adba7b86d50292bc70..fd9070178247ccda46b6e1610c3d931e
      scheme: ElectronProtocol.getDesktopScheme(environment.isDevelopment),
      ...(environment.isDevelopment
 diff --git a/apps/desktop/src/electron/ElectronProtocol.test.ts b/apps/desktop/src/electron/ElectronProtocol.test.ts
-index aec3a2d5b45c0045091b0c0d610c563bf9397446..1e7378c3c3642dfb07099cd5c943bcf508a88750 100644
+index b0cf4823126e24156b7220d79efc36004afea913..b24c8b2a01486cb89f063c986747e63081bea15b 100644
 --- a/apps/desktop/src/electron/ElectronProtocol.test.ts
 +++ b/apps/desktop/src/electron/ElectronProtocol.test.ts
 @@ -27,6 +27,60 @@ describe("ElectronProtocol", () => {
@@ -192,7 +195,7 @@ index aec3a2d5b45c0045091b0c0d610c563bf9397446..1e7378c3c3642dfb07099cd5c943bcf5
 +      assert.equal(missingIndex.status, 404);
 +      assert.equal(missingIndex.headers.get("cache-control"), "no-store");
        assert.equal(netFetchMock.mock.calls.length, 0);
-     }).pipe(Effect.provide(Layer.merge(layerProtocol, NodeServices.layer)), Effect.scoped),
+     }).pipe(Effect.provide(Layer.merge(layerProtocol, NodeServices.layer))),
    );
 diff --git a/apps/desktop/src/electron/ElectronProtocol.ts b/apps/desktop/src/electron/ElectronProtocol.ts
 index 7563898f43efc48596c2e2513067149b6de5ec59..34c59a8a71a8a59f1a7030fbcd4c0ca823fad5e3 100644
@@ -303,10 +306,10 @@ index 7563898f43efc48596c2e2513067149b6de5ec59..34c59a8a71a8a59f1a7030fbcd4c0ca8
  
  export const layer = Layer.effect(ElectronProtocol, make);
 diff --git a/apps/desktop/src/settings/DesktopAppSettings.test.ts b/apps/desktop/src/settings/DesktopAppSettings.test.ts
-index 868e1c139fbdd0f6f806e4284cfc72053a695923..f5e4d8719550c4653aa83cd354459f744c735ebf 100644
+index 04406f63c6b3d5cd36e1e1723a6f439e8714ee03..93943e85a4e3bcd90abdc73ff51912d0d7826d87 100644
 --- a/apps/desktop/src/settings/DesktopAppSettings.test.ts
 +++ b/apps/desktop/src/settings/DesktopAppSettings.test.ts
-@@ -127,6 +127,18 @@ describe("DesktopSettings", () => {
+@@ -128,6 +128,18 @@ describe("DesktopSettings", () => {
      }),
    );
  
@@ -325,7 +328,7 @@ index 868e1c139fbdd0f6f806e4284cfc72053a695923..f5e4d8719550c4653aa83cd354459f74
    it.effect(
      "persists disabling and re-enabling local execution without clearing backend settings",
      () =>
-@@ -179,6 +191,7 @@ describe("DesktopSettings", () => {
+@@ -223,6 +235,7 @@ describe("DesktopSettings", () => {
          );
  
          assert.deepEqual(yield* settings.load, {
@@ -333,7 +336,7 @@ index 868e1c139fbdd0f6f806e4284cfc72053a695923..f5e4d8719550c4653aa83cd354459f74
            linuxPasswordStore: "auto",
            localEnvironmentEnabled: true,
            mainWindowBounds: { x: 120, y: 80, width: 1280, height: 900 },
-@@ -310,6 +323,7 @@ describe("DesktopSettings", () => {
+@@ -376,6 +389,7 @@ describe("DesktopSettings", () => {
          });
  
          assert.deepEqual(yield* settings.load, {
@@ -341,7 +344,7 @@ index 868e1c139fbdd0f6f806e4284cfc72053a695923..f5e4d8719550c4653aa83cd354459f74
            linuxPasswordStore: "auto",
            localEnvironmentEnabled: true,
            mainWindowBounds: null,
-@@ -339,6 +353,7 @@ describe("DesktopSettings", () => {
+@@ -405,6 +419,7 @@ describe("DesktopSettings", () => {
          });
  
          assert.deepEqual(yield* settings.load, {
@@ -350,10 +353,10 @@ index 868e1c139fbdd0f6f806e4284cfc72053a695923..f5e4d8719550c4653aa83cd354459f74
            localEnvironmentEnabled: true,
            mainWindowBounds: null,
 diff --git a/apps/desktop/src/settings/DesktopAppSettings.ts b/apps/desktop/src/settings/DesktopAppSettings.ts
-index 4c2ae8d1d1342ced219f17af1c97683574821ef8..08aad05f36c5a392381af4fa561b37184054c66c 100644
+index e81da706606481dc9e86b924a81d247ac9cb9763..01fc5dff50fcf6f8d5bca2b5a59dc1a21f650cec 100644
 --- a/apps/desktop/src/settings/DesktopAppSettings.ts
 +++ b/apps/desktop/src/settings/DesktopAppSettings.ts
-@@ -26,6 +26,7 @@ import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
+@@ -28,6 +28,7 @@ import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
  import { isValidDistroName } from "../wsl/wslPathParsing.ts";
  
  export interface DesktopSettings {
@@ -361,7 +364,7 @@ index 4c2ae8d1d1342ced219f17af1c97683574821ef8..08aad05f36c5a392381af4fa561b3718
    readonly localEnvironmentEnabled: boolean;
    readonly linuxPasswordStore: LinuxPasswordStorePreference;
    readonly mainWindowBounds: DesktopWindowBounds | null;
-@@ -67,6 +68,7 @@ export const DEFAULT_MAIN_WINDOW_SIZE = {
+@@ -69,6 +70,7 @@ export const DEFAULT_MAIN_WINDOW_SIZE = {
  } as const;
  
  export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
@@ -369,15 +372,15 @@ index 4c2ae8d1d1342ced219f17af1c97683574821ef8..08aad05f36c5a392381af4fa561b3718
    localEnvironmentEnabled: true,
    linuxPasswordStore: DEFAULT_LINUX_PASSWORD_STORE,
    mainWindowBounds: null,
-@@ -89,6 +91,7 @@ const DesktopWindowBoundsDocument = Schema.Struct({
- });
+@@ -96,6 +98,7 @@ const optionalReadableKey = <S extends Schema.Top>(schema: S) =>
+   Schema.optionalKey(schema.pipe(Schema.catchDecoding(() => Effect.succeedNone)));
  
  const DesktopSettingsDocument = Schema.Struct({
-+  rendererCacheVersion: Schema.optionalKey(Schema.NullOr(Schema.String)),
-   localEnvironmentEnabled: Schema.optionalKey(Schema.Boolean),
-   linuxPasswordStore: Schema.optionalKey(Schema.Unknown),
-   mainWindowBounds: Schema.optionalKey(Schema.NullOr(DesktopWindowBoundsDocument)),
-@@ -146,6 +149,9 @@ export class DesktopAppSettings extends Context.Service<
++  rendererCacheVersion: optionalReadableKey(Schema.NullOr(Schema.String)),
+   localEnvironmentEnabled: optionalReadableKey(Schema.Boolean),
+   linuxPasswordStore: optionalReadableKey(Schema.Unknown),
+   mainWindowBounds: optionalReadableKey(Schema.NullOr(DesktopWindowBoundsDocument)),
+@@ -153,6 +156,9 @@ export class DesktopAppSettings extends Context.Service<
    {
      readonly load: Effect.Effect<DesktopSettings>;
      readonly get: Effect.Effect<DesktopSettings>;
@@ -387,7 +390,7 @@ index 4c2ae8d1d1342ced219f17af1c97683574821ef8..08aad05f36c5a392381af4fa561b3718
      readonly setLocalEnvironmentEnabled: (
        enabled: boolean,
      ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
-@@ -218,6 +224,7 @@ function normalizeDesktopSettingsDocument(
+@@ -225,6 +231,7 @@ function normalizeDesktopSettingsDocument(
      (parsed.wslBackendEnabled === undefined && parsed.wslMode === "wsl");
  
    return {
@@ -395,7 +398,7 @@ index 4c2ae8d1d1342ced219f17af1c97683574821ef8..08aad05f36c5a392381af4fa561b3718
      localEnvironmentEnabled: parsed.localEnvironmentEnabled !== false,
      linuxPasswordStore: normalizeLinuxPasswordStorePreference(parsed.linuxPasswordStore),
      mainWindowBounds,
-@@ -242,6 +249,10 @@ function toDesktopSettingsDocument(
+@@ -249,6 +256,10 @@ function toDesktopSettingsDocument(
  ): DesktopSettingsDocument {
    const document: Mutable<DesktopSettingsDocument> = {};
  
@@ -406,7 +409,7 @@ index 4c2ae8d1d1342ced219f17af1c97683574821ef8..08aad05f36c5a392381af4fa561b3718
    if (settings.localEnvironmentEnabled !== defaults.localEnvironmentEnabled) {
      document.localEnvironmentEnabled = settings.localEnvironmentEnabled;
    }
-@@ -283,6 +294,12 @@ function toDesktopSettingsDocument(
+@@ -290,6 +301,12 @@ function toDesktopSettingsDocument(
    return document;
  }
  
@@ -419,7 +422,7 @@ index 4c2ae8d1d1342ced219f17af1c97683574821ef8..08aad05f36c5a392381af4fa561b3718
  function setServerExposureMode(
    settings: DesktopSettings,
    requestedMode: DesktopServerExposureMode,
-@@ -510,6 +527,12 @@ export const make = Effect.gen(function* () {
+@@ -530,6 +547,12 @@ export const make = Effect.gen(function* () {
  
    return DesktopAppSettings.of({
      get: SynchronizedRef.get(settingsRef),
@@ -432,7 +435,7 @@ index 4c2ae8d1d1342ced219f17af1c97683574821ef8..08aad05f36c5a392381af4fa561b3718
      load: Effect.gen(function* () {
        const settings = yield* readSettings(
          fileSystem,
-@@ -599,6 +622,11 @@ export const layerTest = (initialSettings: DesktopSettings = DEFAULT_DESKTOP_SET
+@@ -630,6 +653,11 @@ export const layerTest = (initialSettings: DesktopSettings = DEFAULT_DESKTOP_SET
        return DesktopAppSettings.of({
          get: SynchronizedRef.get(settingsRef),
          load: SynchronizedRef.get(settingsRef),
@@ -445,10 +448,10 @@ index 4c2ae8d1d1342ced219f17af1c97683574821ef8..08aad05f36c5a392381af4fa561b3718
            function (bounds, isMaximized) {
              return update((settings) => setMainWindowBounds(settings, bounds, isMaximized));
 diff --git a/apps/desktop/src/updates/updatesTestHarness.ts b/apps/desktop/src/updates/updatesTestHarness.ts
-index 02f0c94c0585fedbc7d131a26701a04b8a85a1ab..b80b56b29a853d6ccaf7c5ea6afd61d3aad7a539 100644
+index bb704b949ee81d95945e50adbd2878398076b08a..9cbd73efc3291d1419ded15f845af019a6a51de5 100644
 --- a/apps/desktop/src/updates/updatesTestHarness.ts
 +++ b/apps/desktop/src/updates/updatesTestHarness.ts
-@@ -220,6 +220,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+@@ -227,6 +227,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
        ? Layer.succeed(DesktopAppSettings.DesktopAppSettings, {
            get: Effect.sync(() => testSettings),
            load: Effect.sync(() => testSettings),
@@ -457,10 +460,10 @@ index 02f0c94c0585fedbc7d131a26701a04b8a85a1ab..b80b56b29a853d6ccaf7c5ea6afd61d3
            setServerExposureMode: () => Effect.die("unexpected server exposure update"),
            setTailscaleServe: () => Effect.die("unexpected Tailscale Serve update"),
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index 91d034cbd772ba8ff336fbaa0f10d1c62093072b..2bf779d47c8266f0f1f25fd0dbe995e65f5f769a 100644
+index 497b315ef5225b7e3c0cdad7a5ea9ca7ddd02034..18d7b91d83958a682361561c636f9773a8feb5e8 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
-@@ -243,6 +243,7 @@ function layerTest(input: {
+@@ -250,6 +250,7 @@ function layerTest(input: {
    const layerDesktopAppSettings = Layer.succeed(DesktopAppSettings.DesktopAppSettings, {
      get: Effect.sync(() => desktopSettings),
      load: Effect.sync(() => desktopSettings),
