@@ -46,6 +46,9 @@ Integration details:
 Port to 965ddc1d6c:
 - Upstream #28047 added a promptSuggestions harness option to ClaudeAdapterV2.test.ts beside this commit's fleetProxyHttpClient; both stay. Upstream #33291 and #27753 changed compaction and delegated-task reporting in ClaudeAdapterV2.ts without touching usage-limit reset handling; 965ddc1d6c still has no reset-time fallback for undated usage_limit failures.
 
+Port to ee4ef06469:
+- ClaudeAdapterV2.ts: upstream #36642 adds the result's 429 cooldown time to the reported reset times and keeps the reset time null when any of them is unknown. The fleet proxy lookup now runs when that combined reset time is null, so every time upstream recovers still wins. Upstream's routeModelCatalog (#24695) and fleetProxyHttpClient sit side by side in the adapter options, createClaudeAdapterV2's hooks, ClaudeDriver and the test harness.
+
 Files:
 apps/server:
 - apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
@@ -80,16 +83,16 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .../provider/fleetProxyLimits.fixture.json    | 207 ++++++++++++
  .../src/provider/fleetProxyLimits.test.ts     | 306 ++++++++++++++++++
  apps/server/src/provider/fleetProxyLimits.ts  | 238 ++++++++++++++
- 7 files changed, 987 insertions(+), 13 deletions(-)
+ 7 files changed, 986 insertions(+), 14 deletions(-)
  create mode 100644 apps/server/src/provider/fleetProxyLimits.fixture.json
  create mode 100644 apps/server/src/provider/fleetProxyLimits.test.ts
  create mode 100644 apps/server/src/provider/fleetProxyLimits.ts
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index 155370da1757d92a238c41d947a6ef592ca8cf0a..9d2ddb75373212a8a726e720ae19d54342883429 100644
+index b232252ee7fbe03e0561b65509aa5885c405fb2c..c8be47bcebd1883a224ffee3c9a055e0b52cc52e 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-@@ -75,6 +75,7 @@ import * as Scope from "effect/Scope";
+@@ -76,6 +76,7 @@ import * as Scope from "effect/Scope";
  import * as Stream from "effect/Stream";
  import * as TestClock from "effect/testing/TestClock";
  import { Tool } from "effect/ai";
@@ -97,33 +100,33 @@ index 155370da1757d92a238c41d947a6ef592ca8cf0a..9d2ddb75373212a8a726e720ae19d543
  import { formatClaudeResumeCompactionQuestion } from "@t3tools/shared/claudeCompaction";
  import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
  import * as HostProcess from "@t3tools/shared/HostProcess";
-@@ -101,6 +102,7 @@ import {
-   type ClaudeModelCatalog,
-   scopeClaudeModelCatalog,
- } from "../../provider/ClaudeModelCatalog.ts";
+@@ -111,6 +112,7 @@ import {
+   resolveClaudeModelSettingsKey,
+ } from "../../provider/ClaudeCodeModelRoutes.ts";
+ import { resolveProviderCatalog } from "../../provider/ModelManifest.ts";
 +import fleetLimitsSample from "../../provider/fleetProxyLimits.fixture.json" with { type: "json" };
  import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
  import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
-@@ -3388,6 +3390,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
-     readonly allocateSessionId?: Effect.Effect<string>;
+@@ -3467,6 +3469,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      readonly offer?: (message: SDKUserMessage) => Effect.Effect<void>;
      readonly promptSuggestions?: boolean;
+     readonly routeModelCatalog?: ClaudeAdapterV2.ClaudeAdapterV2Options["routeModelCatalog"];
 +    readonly fleetProxyHttpClient?: HttpClient.HttpClient;
    }) =>
      Effect.gen(function* () {
        const fileSystem = yield* FileSystem.FileSystem;
-@@ -3451,6 +3454,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
-         path: yield* Path.Path,
+@@ -3531,6 +3534,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
          random: yield* SecureRandom.SecureRandom,
          idAllocator,
+         ...(options?.routeModelCatalog ? { routeModelCatalog: options.routeModelCatalog } : {}),
 +        ...(options?.fleetProxyHttpClient === undefined
 +          ? {}
 +          : { fleetProxyHttpClient: options.fleetProxyHttpClient }),
          continuationRequests: {
            offer: (request) =>
              Effect.sync(() => {
-@@ -8592,6 +8598,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -9074,6 +9080,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      ),
    );
  
@@ -297,7 +300,7 @@ index 155370da1757d92a238c41d947a6ef592ca8cf0a..9d2ddb75373212a8a726e720ae19d543
      Effect.gen(function* () {
        const harness = yield* makeWakeHarness;
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index b3c1fd1c1fed41ab9a35fa4857efa23618029c83..c9714a5d4a10e3401c75ef003e20db9433959204 100644
+index 6c30816d1ff0d6169b0a3711a9a647764d8efe63..b74d79bb1dae4424d88339691b1df46aebf06026 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -36,6 +36,7 @@ import {
@@ -316,24 +319,22 @@ index b3c1fd1c1fed41ab9a35fa4857efa23618029c83..c9714a5d4a10e3401c75ef003e20db94
  
  import { resolveAttachmentPath } from "../../attachmentStore.ts";
  import { snapshotMcpApp } from "../../mcpApps/McpAppSnapshot.ts";
-@@ -5256,6 +5258,7 @@ export interface ClaudeAdapterV2Options {
-   readonly queryRunner: ClaudeAgentSdkQueryRunnerShape;
-   readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
-   readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
+@@ -5390,6 +5392,7 @@ export interface ClaudeAdapterV2Options {
+     cwd: string | null,
+     launchSettings?: ClaudeSdkSettings,
+   ) => Effect.Effect<ClaudeModelCatalog>;
 +  readonly fleetProxyHttpClient?: HttpClient.HttpClient;
    readonly continuationRequests?: {
      readonly offer: (
        request: ProviderContinuationRequests.ProviderContinuationRequest,
-@@ -11257,17 +11260,44 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
-                     failureHint,
-                     usageLimited,
-                   );
+@@ -11565,17 +11568,41 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+               resetTimes.length > 0 && resetTimes.every((time) => time !== null)
+                 ? resetTimes.reduce((latest, time) => (time! > latest ? time! : latest), "")
+                 : null;
 -            const terminalFailure =
-+            const knownResetAt =
-               resultFailure?.class === "usage_limit"
--                ? { ...resultFailure, resetAt: resetAt ?? resultFailure.resetAt ?? null }
-+                ? (resetAt ?? resultFailure.resetAt ?? null)
-+                : null;
+-              resultFailure?.class === "usage_limit"
+-                ? { ...resultFailure, resetAt }
++            const knownResetAt = resultFailure?.class === "usage_limit" ? resetAt : null;
 +            const fleetProxyHttpClient = adapterOptions.fleetProxyHttpClient;
 +            const lookUpFleetProxy =
 +              resultFailure?.class === "usage_limit" &&
@@ -376,35 +377,36 @@ index b3c1fd1c1fed41ab9a35fa4857efa23618029c83..c9714a5d4a10e3401c75ef003e20db94
                completedAt,
                result: message,
                ...(terminalFailure === null ? {} : { failure: terminalFailure }),
-@@ -13732,7 +13762,10 @@ export type ClaudeAdapterV2DriverEnv =
- export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
-   function* (
+@@ -14126,7 +14153,11 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
      input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
--    hooks: Pick<ClaudeAdapterV2Options, "scopedLimitNames" | "onUsageLimits" | "modelCatalog"> = {},
-+    hooks: Pick<
-+      ClaudeAdapterV2Options,
-+      "scopedLimitNames" | "onUsageLimits" | "modelCatalog" | "fleetProxyHttpClient"
-+    > = {},
+     hooks: Pick<
+       ClaudeAdapterV2Options,
+-      "scopedLimitNames" | "onUsageLimits" | "modelCatalog" | "routeModelCatalog"
++      | "scopedLimitNames"
++      | "onUsageLimits"
++      | "modelCatalog"
++      | "routeModelCatalog"
++      | "fleetProxyHttpClient"
+     > = {},
    ) {
      const { instanceId, environment, enabled, config } = input;
-     const fileSystem = yield* FileSystem.FileSystem;
 diff --git a/apps/server/src/provider/Drivers/ClaudeDriver.ts b/apps/server/src/provider/Drivers/ClaudeDriver.ts
-index af20b76754943ff781ab718bb83833b08f03984d..2c4cc60343ea9e8bd0f02e8211a6b66fabec0ef8 100644
+index d75b1cad86402ca7bc990694d92989800f62a7f5..af314a476b126dd8724244a9b2538771cbf5b004 100644
 --- a/apps/server/src/provider/Drivers/ClaudeDriver.ts
 +++ b/apps/server/src/provider/Drivers/ClaudeDriver.ts
-@@ -159,6 +159,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
-         scopedLimitNames,
+@@ -181,6 +181,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
          onUsageLimits: (update) => snapshot.applyUsageLimits(update),
          modelCatalog,
+         routeModelCatalog: modelRoutes.route,
 +        fleetProxyHttpClient: httpClient,
        },
      ).pipe(
        Effect.mapError(
 diff --git a/apps/server/src/provider/Drivers/ClaudeSkills.ts b/apps/server/src/provider/Drivers/ClaudeSkills.ts
-index c24c4afca9e7d6369eaccce499e68c9ee3cc0b55..0cf0b0b5949110348117424c1adc68d176ba8474 100644
+index a5df2671540f8b216bfd40eebb349bb527231066..89cb71d78279bb75b1008f952e6d11b12e752f5e 100644
 --- a/apps/server/src/provider/Drivers/ClaudeSkills.ts
 +++ b/apps/server/src/provider/Drivers/ClaudeSkills.ts
-@@ -565,20 +565,29 @@ const SettingsEnv = Schema.Struct({
+@@ -576,20 +576,29 @@ const SettingsEnv = Schema.Struct({
    CLAUDE_CODE_GATEWAY_MODEL_DISCOVERY_TIMEOUT_MS: Schema.optional(Schema.Unknown),
  });
  const decodeSettingsEnv = Schema.decodeUnknownEffect(
@@ -438,7 +440,7 @@ index c24c4afca9e7d6369eaccce499e68c9ee3cc0b55..0cf0b0b5949110348117424c1adc68d1
    for (const settingsPath of claudeSettingsPaths(
      path,
      configDirPath,
-@@ -592,10 +601,18 @@ export const readClaudeSettingsEnv = Effect.fn("readClaudeSettingsEnv")(function
+@@ -603,10 +612,18 @@ export const readClaudeSettingsEnv = Effect.fn("readClaudeSettingsEnv")(function
      if (contents === undefined) continue;
      const parsed = yield* decodeSettingsEnv(contents).pipe(Effect.orElseSucceed(() => undefined));
      Object.assign(settingsEnv, parsed?.env);

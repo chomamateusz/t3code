@@ -144,10 +144,10 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 scripts/verify-fork-update-feed.ts
 
 diff --git a/.github/workflows/release-desktop.yml b/.github/workflows/release-desktop.yml
-index 48f410f0c920a08b938ee7917d12d26eb25d58b5..14e6421dc6093f036d48bc720d2c33860386fa17 100644
+index 4252cb46e7a057883d28728f79fc2b9ccc17b076..843488c48580d76ebd3a21565ba8d76fb66545ab 100644
 --- a/.github/workflows/release-desktop.yml
 +++ b/.github/workflows/release-desktop.yml
-@@ -133,6 +133,9 @@ jobs:
+@@ -139,6 +139,9 @@ jobs:
        T3CODE_CLERK_JWT_TEMPLATE: ${{ inputs.clerk_jwt_template }}
        T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: ${{ inputs.clerk_cli_oauth_client_id }}
        T3CODE_RELAY_URL: ${{ inputs.relay_url }}
@@ -155,8 +155,8 @@ index 48f410f0c920a08b938ee7917d12d26eb25d58b5..14e6421dc6093f036d48bc720d2c3386
 +      T3CODE_ALLOWED_UPDATE_REPOSITORY: ${{ github.repository == 'chomamateusz/t3code' && github.repository || '' }}
 +      T3CODE_RELEASE_REPOSITORY: ${{ github.repository == 'chomamateusz/t3code' && github.repository || '' }}
      steps:
-       # This repository is public, so Git needs no credentials. checkout's
-       # credential cleanup runs submodule foreach even with submodules disabled,
+       # The launch check and the CLI archive smoke test both run the bundle.
+       - name: Reject running an untrusted bundle
 diff --git a/.github/workflows/release-fork.yml b/.github/workflows/release-fork.yml
 new file mode 100644
 index 0000000000000000000000000000000000000000..65b33f5ed17a389b082c908de46c4f0e5a3324e9
@@ -1611,7 +1611,7 @@ index 0000000000000000000000000000000000000000..a487da04636c707c54cf9c41f54f698b
 +  },
 +);
 diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
-index 455901299edc31b4c958e7c523eb3faf31563f44..b32218d70459de3938220d7492579ceec7e642e9 100644
+index 3e6fd9531106bdfca01438e0cd2f7178bfd82bd5..8216a8fb620706237406df5b0c53f2eb3e528dce 100644
 --- a/apps/desktop/vite.config.ts
 +++ b/apps/desktop/vite.config.ts
 @@ -21,6 +21,11 @@ const devElectronCommand =
@@ -1809,7 +1809,7 @@ index 51b2b92b0a8baf23e7d7f9fad47e69a8175a1d1a..623aba0ef20d0df701fa2890a2a3dd94
    const message = result.state.message.trim();
    return message.length > 0 ? message : null;
 diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
-index ea874c2b18c30e191573d7feaace89cbe2d1fded..0e57559a3870b79b5e1b6290c8214e3f649cfb7d 100644
+index 633e18a567b2faca7362837856164a108444ad28..c2d462c88dc7cb45797ac14da766f0cd6e9aab3c 100644
 --- a/apps/web/src/components/settings/SettingsPanels.tsx
 +++ b/apps/web/src/components/settings/SettingsPanels.tsx
 @@ -37,6 +37,7 @@ import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
@@ -2174,10 +2174,10 @@ index 63f7cca9cbfc679ee82dee992176e51d0cbac8c8..ec4f10e8e9fd893062ae53c347efdbed
    readonly APP_VERSION: string;
  }
 diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
-index 63f1f1f737ebeac2adf0119005742bd3c69464ca..b3dccea84a00cf0a3359b66ac71fc917d448ef82 100644
+index 83847db8c00a0ddf19cf4b47bddddd440fd0568d..7a5929fc0682c06e5331c2ae920ca1a53f4bac01 100644
 --- a/apps/web/vite.config.ts
 +++ b/apps/web/vite.config.ts
-@@ -342,6 +342,11 @@ export default defineConfig(() => {
+@@ -350,6 +350,11 @@ export default defineConfig(({ command }) => {
        ],
      },
      define: {
@@ -2190,10 +2190,10 @@ index 63f1f1f737ebeac2adf0119005742bd3c69464ca..b3dccea84a00cf0a3359b66ac71fc917
        // Override .env URLs with empty values in single-origin dev so clients use window.location.origin.
        "import.meta.env.VITE_HTTP_URL": JSON.stringify(configuredHttpUrl ?? ""),
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..1b97e0993657e71f2d3efa637be10e8a60590d0f 100644
+index c9180ec3d3ae63cc35e80c368765424a5f23b5c1..04c9caf5832ade144cbe8301df45dfb70a6fabf1 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
-@@ -1922,3 +1922,67 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+@@ -1974,3 +1974,67 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
      assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
@@ -2262,10 +2262,10 @@ index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..1b97e0993657e71f2d3efa637be10e8a
 +  }).pipe(Effect.provide(NodeServices.layer)),
 +);
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index bf7add37828adad593b77de8f062963b479f6fc7..99cedca78a8251ba7cbaae322f29f7bb603caba9 100644
+index 9d34e2412b327f03f20f88385ee835209ffa3b6b..4835e6a578f86fbde8df8a5ba0f504e339ac84b5 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
-@@ -2688,6 +2688,13 @@ export function resolveDesktopRuntimeDependencies(
+@@ -2696,6 +2696,13 @@ export function resolveDesktopRuntimeDependencies(
    );
  }
  
@@ -2279,7 +2279,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..99cedca78a8251ba7cbaae322f29f7bb
  export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig")(function* (
    updateChannel: "latest" | "nightly",
  ) {
-@@ -2699,7 +2706,9 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
+@@ -2707,7 +2714,9 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
      Option.getOrUndefined(env.updateRepository)?.trim() ||
      Option.getOrUndefined(env.githubRepository)?.trim() ||
      ""
@@ -2290,7 +2290,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..99cedca78a8251ba7cbaae322f29f7bb
    if (!rawRepo) return undefined;
  
    const [owner, repo, ...rest] = rawRepo.split("/");
-@@ -2808,6 +2817,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2816,6 +2825,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
        ...(platform === "win" && wslRuntimeBundled ? WSL_RUNTIME_EXTRA_RESOURCES : []),
      ],
    };

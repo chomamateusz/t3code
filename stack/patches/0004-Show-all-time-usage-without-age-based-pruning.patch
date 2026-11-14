@@ -39,6 +39,9 @@ Port to e07585e5fb:
 - The 1,000-item cooperative yield now wraps upstream's per-folder withinDir check and runs before upstream's saved-file reordering; the unreadable-cache set-aside and freeze keep their place in ensureScanCacheLoaded next to upstream's `current` flag.
 - UsageService.test.ts: upstream moved these cases from it.live with TestClock.layer() to it.effect (#35868, #35993). The all-time Cursor, cache-upgrade (now v4 to v14, expecting usage-scan-cache-v15.json), saved-usage and saved-window cases follow that form; the upgrade case still expects the older cache files to stay.
 
+Port to ee4ef06469:
+- UsageService.test.ts: upstream #36367 bumps the scan cache to v16. The cache-upgrade case keeps this commit's resave and kept-older-files assertions and now expects usage-scan-cache-v16.json.
+
 Files:
 apps/server:
 - apps/server/src/usage/UsageService.test.ts
@@ -87,10 +90,10 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
 diff --git a/apps/server/src/usage/UsageService.test.ts b/apps/server/src/usage/UsageService.test.ts
-index 81f3d1ec289aa156e0aed3bc079936a9148b3347..89f7414afbf08c66f436ecdf62f1708a5d7706b7 100644
+index ed71046036c6d72d0d5f36a03ad5612edc674688..0c5f320c422b227961e733be6e0eb845f93ff8ac 100644
 --- a/apps/server/src/usage/UsageService.test.ts
 +++ b/apps/server/src/usage/UsageService.test.ts
-@@ -136,6 +136,11 @@ const WINDOW: UsageSummaryInput = {
+@@ -137,6 +137,11 @@ const WINDOW: UsageSummaryInput = {
    untilDay: UsageDay.make("2026-08-02"),
  };
  
@@ -102,7 +105,7 @@ index 81f3d1ec289aa156e0aed3bc079936a9148b3347..89f7414afbf08c66f436ecdf62f1708a
  const setup = Effect.gen(function* () {
    const home = yield* Effect.promise(() =>
      NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "usage-service-test-")),
-@@ -1692,6 +1697,42 @@ describe("UsageService", () => {
+@@ -1793,6 +1798,42 @@ describe("UsageService", () => {
      }),
    );
  
@@ -145,7 +148,7 @@ index 81f3d1ec289aa156e0aed3bc079936a9148b3347..89f7414afbf08c66f436ecdf62f1708a
    it.effect("restores the Cursor account cache after a restart", () =>
      Effect.gen(function* () {
        const { settings, home } = yield* setup;
-@@ -3005,7 +3046,7 @@ describe("UsageService", () => {
+@@ -3106,7 +3147,7 @@ describe("UsageService", () => {
    );
  
    it.effect.each([4, 5, 6, 7, 8, 10, 11, 12, 13, 14])(
@@ -154,7 +157,7 @@ index 81f3d1ec289aa156e0aed3bc079936a9148b3347..89f7414afbf08c66f436ecdf62f1708a
      (version) =>
        Effect.gen(function* () {
          yield* TestClock.setTime(Date.parse("2026-08-02T12:00:00Z"));
-@@ -3051,12 +3092,27 @@ describe("UsageService", () => {
+@@ -3152,12 +3193,27 @@ describe("UsageService", () => {
              stateDir,
              version === 4 ? "usage-scan-cache.json" : `usage-scan-cache-v${version}.json`,
            );
@@ -183,7 +186,7 @@ index 81f3d1ec289aa156e0aed3bc079936a9148b3347..89f7414afbf08c66f436ecdf62f1708a
              const document = decodeUnknownJsonString(await NodeFSP.readFile(cachePath, "utf8")) as {
                files: Record<string, { r: unknown[][]; mr: number; cs: Record<string, unknown> }>;
              };
-@@ -3091,6 +3147,11 @@ describe("UsageService", () => {
+@@ -3192,6 +3248,11 @@ describe("UsageService", () => {
                    encodeUnknownJsonString({ ...document, version: olderVersion, files: {} }),
                  );
                }
@@ -195,10 +198,10 @@ index 81f3d1ec289aa156e0aed3bc079936a9148b3347..89f7414afbf08c66f436ecdf62f1708a
              }
              await NodeFSP.rm(deleted);
              await NodeFSP.mkdir(`${cachePath}.stale`);
-@@ -3107,12 +3168,24 @@ describe("UsageService", () => {
+@@ -3208,12 +3269,24 @@ describe("UsageService", () => {
            );
            yield* upgraded.awaitPersisted;
-           assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v15.json");
+           assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v16.json");
 -          assert.deepStrictEqual(
 -            (yield* Effect.promise(() => NodeFSP.readdir(stateDir)))
 -              .filter((name) => name.startsWith("usage-scan-cache"))
@@ -226,7 +229,7 @@ index 81f3d1ec289aa156e0aed3bc079936a9148b3347..89f7414afbf08c66f436ecdf62f1708a
          }).pipe(
            Effect.provide(
              layerService({
-@@ -3235,7 +3308,7 @@ describe("UsageService", () => {
+@@ -3336,7 +3409,7 @@ describe("UsageService", () => {
      }),
    );
  
@@ -235,7 +238,7 @@ index 81f3d1ec289aa156e0aed3bc079936a9148b3347..89f7414afbf08c66f436ecdf62f1708a
      Effect.gen(function* () {
        const { transcript, settings, home } = yield* setup;
        const alias = NodePath.join(home, "claude-alias");
-@@ -3243,26 +3316,38 @@ describe("UsageService", () => {
+@@ -3344,26 +3417,38 @@ describe("UsageService", () => {
          NodeFSP.symlink(NodePath.join(home, "claude"), alias, "junction"),
        );
        const content = claudeLine(1, 5);
@@ -279,7 +282,7 @@ index 81f3d1ec289aa156e0aed3bc079936a9148b3347..89f7414afbf08c66f436ecdf62f1708a
          assert.deepStrictEqual(moved.buckets, first.buckets);
          assert.strictEqual(moved.sources[0]?.distinctSessions, 1);
          yield* restarted.awaitPersisted;
-@@ -3273,7 +3358,7 @@ describe("UsageService", () => {
+@@ -3374,7 +3459,7 @@ describe("UsageService", () => {
            NodeFSP.rm(NodePath.join(home, "claude", "projects"), { recursive: true }),
          );
          const afterRootCleanup = yield* UsageService.make;
@@ -288,7 +291,7 @@ index 81f3d1ec289aa156e0aed3bc079936a9148b3347..89f7414afbf08c66f436ecdf62f1708a
          assert.deepStrictEqual(missingRoot.buckets, first.buckets);
          assert.strictEqual(missingRoot.sources[0]?.distinctSessions, 1);
          assert.strictEqual(missingRoot.sources[0]?.status, "ok");
-@@ -3283,7 +3368,7 @@ describe("UsageService", () => {
+@@ -3384,7 +3469,7 @@ describe("UsageService", () => {
            await NodeFSP.rename(replacementProjects, projects);
            await NodeFSP.writeFile(NodePath.join(projects, "new.jsonl"), claudeLine(2, 7));
          });
@@ -297,7 +300,7 @@ index 81f3d1ec289aa156e0aed3bc079936a9148b3347..89f7414afbf08c66f436ecdf62f1708a
          assert.strictEqual(totalOutputTokens(recreated), 12);
          assert.deepStrictEqual(recreated.sources[0]?.fingerprint, first.sources[0]?.fingerprint);
  
-@@ -3307,11 +3392,109 @@ describe("UsageService", () => {
+@@ -3408,11 +3493,109 @@ describe("UsageService", () => {
          assert.strictEqual(merged.costUsd, recreated.buckets[0]?.costUsd);
  
          const outsideWindow = yield* restarted.readSummary({
@@ -408,7 +411,7 @@ index 81f3d1ec289aa156e0aed3bc079936a9148b3347..89f7414afbf08c66f436ecdf62f1708a
        }).pipe(
          Effect.scoped,
          Effect.provide(
-@@ -3508,38 +3691,41 @@ describe("UsageService", () => {
+@@ -3609,38 +3792,41 @@ describe("UsageService", () => {
        }),
    );
  
@@ -481,7 +484,7 @@ index 81f3d1ec289aa156e0aed3bc079936a9148b3347..89f7414afbf08c66f436ecdf62f1708a
  
    it.effect("does not share an in-flight scan after custom prices change", () =>
 diff --git a/apps/server/src/usage/UsageService.ts b/apps/server/src/usage/UsageService.ts
-index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246a43ccb82 100644
+index 638d2fe2d2d975d8b0954643ec942cd755395011..03b4c9c30e4af5194724d8dca76166fe29734600 100644
 --- a/apps/server/src/usage/UsageService.ts
 +++ b/apps/server/src/usage/UsageService.ts
 @@ -23,6 +23,8 @@ import * as FileSystem from "effect/FileSystem";
@@ -493,7 +496,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
  import * as Schema from "effect/Schema";
  import * as Semaphore from "effect/Semaphore";
  import { HttpClient, HttpClientResponse } from "effect/http";
-@@ -51,8 +53,8 @@ import {
+@@ -53,8 +55,8 @@ import {
    dedupeWithinFile,
    LEGACY_SCAN_CACHE_FILE_NAMES,
    makeScanCacheWriter,
@@ -503,7 +506,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
    type CachedFile,
    type ScanCache,
  } from "./usageScanCache.ts";
-@@ -70,8 +72,8 @@ const RATES_REFRESH_FLOOR_MS = 60 * 1000;
+@@ -72,8 +74,8 @@ const RATES_REFRESH_FLOOR_MS = 60 * 1000;
  const MTIME_SLACK_MS = 36 * 60 * 60 * 1000;
  const MAX_HOURLY_WINDOW_MS = 24 * 60 * 60 * 1000;
  
@@ -513,7 +516,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
  
  const TRANSCRIPT_READ_CONCURRENCY = 4;
  
-@@ -102,6 +104,14 @@ const RatesCacheFile = Schema.Struct({
+@@ -105,6 +107,14 @@ const RatesCacheFile = Schema.Struct({
  const decodeRatesCache = Schema.decodeUnknownEffect(Schema.fromJsonString(RatesCacheFile));
  const encodeRatesCache = Schema.encodeEffect(Schema.fromJsonString(RatesCacheFile));
  
@@ -528,7 +531,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
  const ScanCacheJson = Schema.fromJsonString(Schema.Unknown);
  const decodeScanCacheFile = Schema.decodeUnknownEffect(ScanCacheJson);
  const encodeUsageRecordKey = Schema.encodeSync(ScanCacheJson);
-@@ -177,6 +187,10 @@ export const make = Effect.gen(function* () {
+@@ -198,6 +208,10 @@ export const make = Effect.gen(function* () {
      coveredSince.set(coverageKey(source), windowStartMs);
      cacheDirty = true;
    };
@@ -539,7 +542,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
    const isWithinDirectory = (filePath: string, dir: string) => {
      const relative = path.relative(dir, filePath);
      return relative !== ".." && !relative.startsWith(".." + path.sep) && !path.isAbsolute(relative);
-@@ -339,7 +353,6 @@ export const make = Effect.gen(function* () {
+@@ -360,7 +374,6 @@ export const make = Effect.gen(function* () {
  
    const resolveTranscriptDirs = Effect.fn("UsageService.resolveTranscriptDirs")(function* (
      settings: ServerSettingsValue,
@@ -547,7 +550,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
      awaitRefresh: boolean,
    ) {
      const dirs: Array<TranscriptSource> = [];
-@@ -370,7 +383,6 @@ export const make = Effect.gen(function* () {
+@@ -391,7 +404,6 @@ export const make = Effect.gen(function* () {
            .some(
              ([filePath, entry]) =>
                entry.provider === provider &&
@@ -555,7 +558,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
                (entry.records.length + entry.tailRecords.length > 0 || entry.malformedRecords > 0) &&
                isWithinDirectory(filePath, dir),
            );
-@@ -397,19 +409,72 @@ export const make = Effect.gen(function* () {
+@@ -420,19 +432,72 @@ export const make = Effect.gen(function* () {
      return { dirs, pending };
    });
  
@@ -632,7 +635,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
          cacheDirty = document !== null;
        }
        if (document === null) return;
-@@ -435,13 +500,10 @@ export const make = Effect.gen(function* () {
+@@ -458,13 +523,10 @@ export const make = Effect.gen(function* () {
    // Serialize writes so concurrently finished window scans cannot overwrite newer snapshots.
    const persistLock = yield* Semaphore.make(1);
  
@@ -647,7 +650,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
      const tempPrefixes = [SCAN_CACHE_FILE_NAME, ...LEGACY_SCAN_CACHE_FILE_NAMES].map(
        (fileName) => `${fileName}.`,
      );
-@@ -463,7 +525,7 @@ export const make = Effect.gen(function* () {
+@@ -486,7 +548,7 @@ export const make = Effect.gen(function* () {
  
    // Clear dirty before encoding to retain concurrent changes; restore it on failure for retry.
    const persistCaches = Effect.gen(function* () {
@@ -656,7 +659,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
        cacheDirty = false;
        yield* Effect.sync(() =>
          writeScanCache(fileCache, {
-@@ -479,9 +541,15 @@ export const make = Effect.gen(function* () {
+@@ -502,9 +564,15 @@ export const make = Effect.gen(function* () {
              return removeSupersededCacheFiles;
            }),
          ),
@@ -674,7 +677,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
            }),
          ),
        );
-@@ -722,7 +790,6 @@ export const make = Effect.gen(function* () {
+@@ -750,7 +818,6 @@ export const make = Effect.gen(function* () {
      { dirs, pending }: Effect.Success<ReturnType<typeof resolveTranscriptDirs>>,
      windowStartMs: number,
      settings: ServerSettingsValue,
@@ -682,7 +685,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
      awaitRefresh: boolean,
      fromMemory: boolean,
    ) {
-@@ -731,7 +798,7 @@ export const make = Effect.gen(function* () {
+@@ -759,7 +826,7 @@ export const make = Effect.gen(function* () {
        ({ driver, reader }) =>
          usageInstances(driver, settings).pipe(
            Effect.flatMap((instances) =>
@@ -691,7 +694,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
            ),
            Effect.flatMap((sources) =>
              Effect.forEach(sources, ({ volumeId, ...source }) =>
-@@ -811,11 +878,9 @@ export const make = Effect.gen(function* () {
+@@ -844,11 +911,9 @@ export const make = Effect.gen(function* () {
      const windowStartMs =
        (hourlyWindow?.sinceTimeMs ?? DateTime.toEpochMillis(windowStart.value)) - MTIME_SLACK_MS;
  
@@ -704,7 +707,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
          Effect.provideContext(readerContext),
        );
        // A window no complete scan has read would show partial totals, so every directory must cover it.
-@@ -830,14 +895,7 @@ export const make = Effect.gen(function* () {
+@@ -863,14 +928,7 @@ export const make = Effect.gen(function* () {
        const [, scanned] = yield* Effect.all(
          [
            fromMemory ? loadSavedRates : provisional ? ensureRates(false) : Effect.void,
@@ -720,7 +723,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
          ],
          { concurrency: 2 },
        );
-@@ -863,7 +921,6 @@ export const make = Effect.gen(function* () {
+@@ -897,7 +955,6 @@ export const make = Effect.gen(function* () {
      const sources: UsageSource[] = [];
  
      // Deleted transcripts' saved usage still aggregates and deduplicates normally.
@@ -728,7 +731,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
      // Saved paths are files below a scanned root, so their folder decides; folders repeat thousands of times.
      const withinDir = (dir: string) => {
        const foldersWithin = new Map<string, boolean>();
-@@ -877,14 +934,21 @@ export const make = Effect.gen(function* () {
+@@ -911,14 +968,21 @@ export const make = Effect.gen(function* () {
          return within;
        };
      };
@@ -752,7 +755,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
            livePaths.has(filePath) ||
            !isRetained(filePath)
          )
-@@ -898,8 +962,8 @@ export const make = Effect.gen(function* () {
+@@ -932,8 +996,8 @@ export const make = Effect.gen(function* () {
            malformedRecords: entry.malformedRecords,
          });
        }
@@ -763,7 +766,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
      // Usage two transcripts share counts in the first one, so saved files take the order an exact
      // scan reads them in: walked files in walk order, then the directory's deleted files.
      for (const { provider, dir, walked } of fromMemory ? [] : scannedDirs) {
-@@ -991,6 +1055,11 @@ export const make = Effect.gen(function* () {
+@@ -1035,6 +1099,11 @@ export const make = Effect.gen(function* () {
          scannedFiles += 1;
          const eventOccurrences = new Map<string, number>();
          for (const rawRecord of file.records) {
@@ -775,7 +778,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
            const record = correctedRecord(rawRecord);
            let usageRecord = record;
            if (
-@@ -1046,15 +1115,6 @@ export const make = Effect.gen(function* () {
+@@ -1096,15 +1165,6 @@ export const make = Effect.gen(function* () {
        });
      }
  
@@ -792,7 +795,7 @@ index a55532913c3c614039105937b56e05d68c6ca90b..e15224bed3b1e2916c12123db8e22246
      const readAt = yield* DateTime.now;
      const finishedAtMs = yield* Clock.currentTimeMillis;
 diff --git a/apps/server/src/usage/usageScanCache.test.ts b/apps/server/src/usage/usageScanCache.test.ts
-index 84291da51a18931424980ef66ab88a099cec0028..d9217cdc839b0b110c30ce62711e6a31dd050aad 100644
+index 09348d5818a2e54decf303ec24d0757c7008b771..0e3ea99b163a05febcca8aa251e1618ed7f34d40 100644
 --- a/apps/server/src/usage/usageScanCache.test.ts
 +++ b/apps/server/src/usage/usageScanCache.test.ts
 @@ -1,7 +1,15 @@
@@ -812,7 +815,7 @@ index 84291da51a18931424980ef66ab88a099cec0028..d9217cdc839b0b110c30ce62711e6a31
    makeScanCacheWriter,
    type CachedFile,
    type ScanCache,
-@@ -320,6 +328,32 @@ describe("scan cache round trip", () => {
+@@ -360,6 +368,32 @@ describe("scan cache round trip", () => {
      expect(document.sources).toEqual(sources);
    });
  
@@ -846,7 +849,7 @@ index 84291da51a18931424980ef66ab88a099cec0028..d9217cdc839b0b110c30ce62711e6a31
      expect(decodeScanCache(null, TEST_FORMAT_MAP).size).toBe(0);
      expect(decodeScanCache("nonsense", TEST_FORMAT_MAP).size).toBe(0);
 diff --git a/apps/server/src/usage/usageScanCache.ts b/apps/server/src/usage/usageScanCache.ts
-index b571dd3708f6310e686fa07242bca1918957d380..467aaa5b24a9dbcf539981336111c8dda52d396a 100644
+index e75691d2b8465ebae88cb0f76f7e0329daed7059..f1962e0af5cc9b231ff2d3a00b267a7da17c3b49 100644
 --- a/apps/server/src/usage/usageScanCache.ts
 +++ b/apps/server/src/usage/usageScanCache.ts
 @@ -1,3 +1,5 @@
@@ -862,9 +865,9 @@ index b571dd3708f6310e686fa07242bca1918957d380..467aaa5b24a9dbcf539981336111c8dd
 - * the newer one; older files are removed once it is saved.
 + * the newer one; older files are kept, since they may hold usage it never loaded.
   */
- export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v15.json";
+ export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v16.json";
  export const LEGACY_SCAN_CACHE_FILE_NAMES = [
-@@ -142,16 +144,38 @@ function serializeFile(entry: CachedFile, tables: InternTables): SerializedFile
+@@ -143,16 +145,38 @@ function serializeFile(entry: CachedFile, tables: InternTables): SerializedFile
    };
  }
  
@@ -910,7 +913,7 @@ index b571dd3708f6310e686fa07242bca1918957d380..467aaa5b24a9dbcf539981336111c8dd
      }
      // Encoded after the files, which may have added to the intern tables.
      const tail = JSON.stringify({
-@@ -160,7 +184,7 @@ export function makeScanCacheWriter(): (
+@@ -161,7 +185,7 @@ export function makeScanCacheWriter(): (
        models: tables.models,
        sessions: tables.sessions,
      });
@@ -919,7 +922,7 @@ index b571dd3708f6310e686fa07242bca1918957d380..467aaa5b24a9dbcf539981336111c8dd
    }
    // Snapshot now: the encoding runs later, while the file is written.
    return (cache, extra) => encode([...cache], extra);
-@@ -352,17 +376,6 @@ function makeStateValidators(
+@@ -354,17 +378,6 @@ function makeStateValidators(
    );
  }
  

@@ -18,6 +18,9 @@ Integration details:
 Port to 965ddc1d6c:
 - Applied without conflicts. On 965ddc1d6c folder and folder-multiline rows still offer only Settle (SidebarThreadRow.tsx did not change upstream), so grouped Snooze still needs this commit.
 
+Port to ee4ef06469:
+- The hover test finds the title as the innermost span holding its text: upstream #25269 removed aria-hidden from the title span and its screen-reader copy, so the old span[aria-hidden] lookup found nothing.
+
 Files:
 apps/web:
 - apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
@@ -38,7 +41,7 @@ Model/harness: GPT-6 / Codex; hover layout follow-up: Claude Opus 5.5 / Claude C
  2 files changed, 94 insertions(+), 25 deletions(-)
 
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
-index 2e24fb605211e3a627a8e484fadc0c46a2f700c4..757779cc9c28c131f7112793588c7b4ed774db33 100644
+index 2e24fb605211e3a627a8e484fadc0c46a2f700c4..d64f3db6c5250b0740a02678dd4a0e903d42787e 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
 @@ -2,6 +2,7 @@ import "~/index.css";
@@ -59,8 +62,8 @@ index 2e24fb605211e3a627a8e484fadc0c46a2f700c4..757779cc9c28c131f7112793588c7b4e
 +  await using screen = await render(<Row title={title} />);
 +  const row = screen.getByTestId("sidebar-row-folder");
 +  await expect.element(row).toBeVisible();
-+  const titleElement = [...row.element().querySelectorAll<HTMLElement>("span[aria-hidden]")].find(
-+    (element) => element.textContent === title,
++  const titleElement = [...row.element().querySelectorAll<HTMLElement>("span")].find(
++    (element) => element.textContent === title && element.childElementCount === 0,
 +  )!;
 +  const restWidth = titleElement.getBoundingClientRect().width;
 +  expect(restWidth).toBeGreaterThan(0);
@@ -81,10 +84,10 @@ index 2e24fb605211e3a627a8e484fadc0c46a2f700c4..757779cc9c28c131f7112793588c7b4e
    vi.mocked(useEnvironmentScope).mockReturnValue(true);
    await using screen = await render(
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 4b98aa7b7cacc05771827ac0fdf80d89b911470b..8699d9d5af1385f59384fa07ef7190802390dea4 100644
+index cff07acdaf1d7deab29faccdc1c86a64dc32ab81..b57b58dcb3ce0ffe00dc5ff1b21a598ff5b17a1a 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -888,7 +888,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -891,7 +891,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      setSnoozeGateClock({ thread, now: new Date(snoozeGateOpensAt).toISOString() });
    }
    const showSnoozeButton =
@@ -96,7 +99,7 @@ index 4b98aa7b7cacc05771827ac0fdf80d89b911470b..8699d9d5af1385f59384fa07ef719080
    // Closing here, not just masking, keeps the menu from reopening when the button returns.
    if (snoozeMenuOpenRaw && !showSnoozeButton) setSnoozeMenuOpen(false);
    const snoozeMenuOpen = snoozeMenuOpenRaw && showSnoozeButton;
-@@ -1163,7 +1166,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1164,7 +1167,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
            sortable?.isDragging && "relative z-20",
          )}
        >

@@ -55,10 +55,10 @@ index b224112168bb96ebf0236f9b4e5a5c8fe08d675f..c23485e86b0143f3dc32d15e9575aff9
          true,
        );
 diff --git a/apps/server/src/auth/SessionStore.ts b/apps/server/src/auth/SessionStore.ts
-index 5a25d152c5174ff0b016faec866ff4a5099da2a2..10ed9d54b62748308130f9a7f83a9a619e91fb4e 100644
+index 5717479a47ba92b702dda00f05023c74fca13466..f26378066a927ca18961a6ac54aa43779d7a77d2 100644
 --- a/apps/server/src/auth/SessionStore.ts
 +++ b/apps/server/src/auth/SessionStore.ts
-@@ -425,7 +425,7 @@ export class SessionStore extends Context.Service<
+@@ -445,7 +445,7 @@ export class SessionStore extends Context.Service<
  >()("t3/auth/SessionStore") {}
  
  const SIGNING_SECRET_NAME = "server-signing-key";
