@@ -38,7 +38,7 @@ Tests: `bun test stack/ci`.
 
 ## Install the workflow
 
-The workflow file lives on `main` because GitHub only runs scheduled workflows from the default branch. The agent never pushes workflow files; the owner installs or updates it:
+The workflow file lives on `main` because GitHub runs workflows only from a branch that holds the file. It has no schedule of its own: the orchestrator's nightly run starts it with `workflow_dispatch`, because GitHub starts scheduled runs hours late. To install or update it:
 
 ```sh
 git switch main

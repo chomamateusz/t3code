@@ -1,8 +1,6 @@
 name: Stack build
 
 on:
-  schedule:
-    - cron: "30 3 * * *"
   workflow_dispatch:
     inputs:
       force:
