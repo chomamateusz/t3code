@@ -249,7 +249,7 @@ index 20ac809c130bb08beba90479e4d97d0bd735f05d..d07a999df8093e0bdd58e8722953d426
        <li>Outside</li>
      </ul>
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index ab98b24a113f8b06a9a73ed8af3c5dab5b846fdf..91070e32cc77d2fcbffe36187896a4f4bffc6fbb 100644
+index de10872805beb70a592dc644670955102bdae7f7..3030e7d6d380c455aad1907ec6d184aa4938a277 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -46,6 +46,8 @@ import {

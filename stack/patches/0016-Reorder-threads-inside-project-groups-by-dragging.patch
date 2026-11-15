@@ -794,7 +794,7 @@ index cae2b6a222b8c25658b39d7e3ee0e2824f4c0163..211a63557625b5644e2e97186e0dcffc
                          <SidebarDraftBlock
                            key="draft-sessions"
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 91070e32cc77d2fcbffe36187896a4f4bffc6fbb..2dbed7c2481cfc4898e16b95a7b536b2eb1731ef 100644
+index 3030e7d6d380c455aad1907ec6d184aa4938a277..14acd5dd48327a21f3d0ea647262d2e01aae5a21 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -398,6 +398,7 @@ function SnoozeMenuButton(props: {

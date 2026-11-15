@@ -1202,7 +1202,7 @@ index 0000000000000000000000000000000000000000..e6d3a345f5f3681309e5160fbd518f25
 +  await expect.element(screen.getByText("main")).toBeVisible();
 +});
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 3956ab622c46bab93078e93b95d4cad32ee223b8..c4434f62d88533179ca603eb9b33d0466790bd26 100644
+index 2a3893737c0b0bdaf60829867dab5deb03c86d9a..dd58160dd8507e336e65f39ac0078e44c08527a7 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -574,7 +574,7 @@ type SidebarThreadRowProps = {

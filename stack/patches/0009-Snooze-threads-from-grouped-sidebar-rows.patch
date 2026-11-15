@@ -21,6 +21,8 @@ Port to 965ddc1d6c:
 Port to ee4ef06469:
 - The hover test finds the title as the innermost span holding its text: upstream #25269 removed aria-hidden from the title span and its screen-reader copy, so the old span[aria-hidden] lookup found nothing.
 
+Port to fe59fa44d0: the folder row details tooltip now reads disabled={isRenaming || snoozeMenuOpen || sortable?.isDragging}, keeping the rename suppression upstream #31009 added next to the open-menu suppression, in the order upstream uses on the other row variant.
+
 Files:
 apps/web:
 - apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
@@ -84,7 +86,7 @@ index e6d3a345f5f3681309e5160fbd518f252c28282d..20ac809c130bb08beba90479e4d97d0b
    vi.mocked(useEnvironmentScope).mockReturnValue(true);
    await using screen = await render(
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 0a36c6a32e070f2acd113c9a88c08167f6102bdf..a9c0e428ba0c931c1f9aa3f07ec242764a31f82f 100644
+index 94c2872b549d842fb71c85dfbb5688a9ca211942..c20ae690b25d054c85f99a3e671e0e0330a6e97a 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -892,7 +892,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
@@ -103,8 +105,8 @@ index 0a36c6a32e070f2acd113c9a88c08167f6102bdf..a9c0e428ba0c931c1f9aa3f07ec24276
            sortable?.isDragging && "relative z-20",
          )}
        >
--        <Tooltip disabled={sortable?.isDragging}>
-+        <Tooltip disabled={snoozeMenuOpen || sortable?.isDragging}>
+-        <Tooltip disabled={isRenaming || sortable?.isDragging}>
++        <Tooltip disabled={isRenaming || snoozeMenuOpen || sortable?.isDragging}>
            <TooltipTrigger
              render={
                <div

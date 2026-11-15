@@ -3730,7 +3730,7 @@ index 35dadba487ca83d15e2e79c1460e3454d7939d40..d2f305a246911422d17d47bb17b5621b
    tooltip = label,
    className,
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index c4434f62d88533179ca603eb9b33d0466790bd26..0a36c6a32e070f2acd113c9a88c08167f6102bdf 100644
+index dd58160dd8507e336e65f39ac0078e44c08527a7..94c2872b549d842fb71c85dfbb5688a9ca211942 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -75,7 +75,7 @@ import { useNowSecond } from "../../hooks/useNowSecond";

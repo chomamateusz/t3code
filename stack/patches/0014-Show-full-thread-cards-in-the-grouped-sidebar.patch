@@ -1182,7 +1182,7 @@ index 0000000000000000000000000000000000000000..db439e67964e4dea091c47376eead71c
 +    previous.badge?.description === next.badge?.description,
 +);
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index a9c0e428ba0c931c1f9aa3f07ec242764a31f82f..ab98b24a113f8b06a9a73ed8af3c5dab5b846fdf 100644
+index c20ae690b25d054c85f99a3e671e0e0330a6e97a..de10872805beb70a592dc644670955102bdae7f7 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -550,6 +550,7 @@ type SidebarThreadRowProps = {
