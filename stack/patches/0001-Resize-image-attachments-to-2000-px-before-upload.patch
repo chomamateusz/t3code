@@ -70,10 +70,10 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  9 files changed, 292 insertions(+), 58 deletions(-)
 
 diff --git a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
-index a050b0f51edf0951c558e8f4cafdfe9d51d8030a..6c603314b319e3b2d2b3eab0b616a67d2040e15f 100644
+index e2bf9676b8b6d22fc44b66e976b69eaa1c7cb205..4df03dea3f04b55b21c4e703e459963e791b3cd6 100644
 --- a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
 +++ b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
-@@ -42,6 +42,10 @@ function deferred<T>() {
+@@ -48,6 +48,10 @@ function deferred<T>() {
  it.each([
    { kind: "file", edit: "delete" },
    { kind: "image", edit: "delete" },
@@ -84,7 +84,7 @@ index a050b0f51edf0951c558e8f4cafdfe9d51d8030a..6c603314b319e3b2d2b3eab0b616a67d
    { kind: "file", edit: "undo" },
    { kind: "file", edit: "retain" },
    { kind: "file", edit: "switch" },
-@@ -55,11 +59,22 @@ it.each([
+@@ -61,11 +65,22 @@ it.each([
    const store = useComposerDraftStore.getState();
    using _draft = { [Symbol.dispose]: () => store.clearComposerContent(target) };
    const sourceEnvironmentId = EnvironmentId.make("clipboard-source");
@@ -110,7 +110,7 @@ index a050b0f51edf0951c558e8f4cafdfe9d51d8030a..6c603314b319e3b2d2b3eab0b616a67d
    );
    using _copy = {
      [Symbol.dispose]: () => rememberCopiedComposerAttachments(sourceEnvironmentId, new Map()),
-@@ -68,6 +83,8 @@ it.each([
+@@ -74,6 +89,8 @@ it.each([
    const downloaded = deferred<Response>();
    const requested = deferred<void>();
    const settled = deferred<void>();
@@ -119,7 +119,7 @@ index a050b0f51edf0951c558e8f4cafdfe9d51d8030a..6c603314b319e3b2d2b3eab0b616a67d
    const input = {
      environmentId: EnvironmentId.make("clipboard-target"),
      linkedEnvironments: new Map(),
-@@ -105,6 +122,18 @@ it.each([
+@@ -111,6 +128,18 @@ it.each([
      requested.resolve();
      return downloaded.promise;
    });
@@ -138,7 +138,7 @@ index a050b0f51edf0951c558e8f4cafdfe9d51d8030a..6c603314b319e3b2d2b3eab0b616a67d
    const contextId = ComposerContextId.make(`${kind}_source`);
    const attachmentFields = {
      version: 1 as const,
-@@ -112,8 +141,8 @@ it.each([
+@@ -118,8 +147,8 @@ it.each([
      label: "notes.txt",
      attachmentId: "source-attachment",
      name: "notes.txt",
@@ -149,7 +149,7 @@ index a050b0f51edf0951c558e8f4cafdfe9d51d8030a..6c603314b319e3b2d2b3eab0b616a67d
    };
    const attachment = (
      kind === "file"
-@@ -148,9 +177,15 @@ it.each([
+@@ -154,9 +183,15 @@ it.each([
      if (edit === "question") pastedPrompt = "Question answer";
      promptRef.current = pastedPrompt;
      store.setPrompt(target, pastedPrompt);
@@ -167,7 +167,7 @@ index a050b0f51edf0951c558e8f4cafdfe9d51d8030a..6c603314b319e3b2d2b3eab0b616a67d
    await act(() => {
      if (
        edit !== "annotation" &&
-@@ -169,7 +204,8 @@ it.each([
+@@ -175,7 +210,8 @@ it.each([
      if (edit === "switch") input.attachmentTargetKeyRef.current = DraftId.make("other-draft");
    });
    await act(async () => {
@@ -178,7 +178,7 @@ index a050b0f51edf0951c558e8f4cafdfe9d51d8030a..6c603314b319e3b2d2b3eab0b616a67d
    });
    expect(pendingDraftWork.has(target)).toBe(false);
 diff --git a/apps/web/src/components/chat/useComposerContextImport.ts b/apps/web/src/components/chat/useComposerContextImport.ts
-index 74e97a5076d7df11c9b15d58b7587708e55b90c3..832c6b469711e5d69afb01088849984d1912e41e 100644
+index bf23b05d3ab84bd3c2558c773cd0aef379d7f706..8c615a45a62050416ecbc61bb6cda1a1d5c6137e 100644
 --- a/apps/web/src/components/chat/useComposerContextImport.ts
 +++ b/apps/web/src/components/chat/useComposerContextImport.ts
 @@ -12,6 +12,7 @@ import {
@@ -295,10 +295,10 @@ index a504d429185af303565549a5d1230edec56f41ca..9e16d277cadc806af26d02b5caac654c
            void store.syncPersistedAttachments(target, [capture]);
          }
 diff --git a/apps/web/src/components/preview/PreviewView.tsx b/apps/web/src/components/preview/PreviewView.tsx
-index f7cb3082491e9270e191b10b9ca197543c717742..98cc204454b9a9275e518bb5a7b6cd35e4d13c75 100644
+index 02d856d78ca61a3f7d97e03a4cdcde5090b4faf3..7e8950be6824dcfffdc438cb66bf2af701b11e0c 100644
 --- a/apps/web/src/components/preview/PreviewView.tsx
 +++ b/apps/web/src/components/preview/PreviewView.tsx
-@@ -852,7 +852,7 @@ export function PreviewView({
+@@ -856,7 +856,7 @@ export function PreviewView({
        const { annotation: picked, submission, screenshotFailed = false } = result;
        // Send annotations even if the optional crop fails or stalls; drop failed screenshots so prompts cannot
        // claim an attachment.

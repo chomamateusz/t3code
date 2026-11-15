@@ -38,6 +38,8 @@ Port to e07585e5fb:
 - SettingsPanels.tsx: the About download button uses upstream's downloadLocalUpdate, which already reports getDesktopUpdateActionError, so a refused fork feed still shows "Could not download update".
 - forkFeedPolicy.test.ts: a refused install now runs after upstream #35018 closed the SSH port forwards next to stopping the backends, so the recorded install steps are closeSshTunnels then startBackend, the same recovery upstream's failed install records.
 
+Port to f7b0b3c4d7: DesktopRemoteUpdates.test.ts: upstream #33605 (a retried remote request recovers the already prepared update's token) added its lease test where the fork track-switch refusal test sits; both are kept. The recovery reports only an update prepared through the guarded request path, and its commit still installs through installPrepared, which rechecks the fork feed.
+
 Files:
 .github:
 - .github/workflows/release-desktop.yml
@@ -742,7 +744,7 @@ index 0cc22bb4b16337b0241909e2193a4d8e59cb9577..a6afd196178896fe26ae614a4263887d
      });
    }),
 diff --git a/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts b/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
-index 1f5321148b77bcc418fca4569ce75f33e1fca920..ccd2b5821276a1ffa6585cb5a37b1d208ae9e522 100644
+index a489a64b4fcb8c1c68acaec19f594fabb9e26146..375ba7ad27f1ea19f4b40f90b0bc7694cb8b9ce2 100644
 --- a/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
 +++ b/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
 @@ -40,10 +40,15 @@ function runRemoteUpdatesTest(
@@ -885,7 +887,7 @@ index 1f5321148b77bcc418fca4569ce75f33e1fca920..ccd2b5821276a1ffa6585cb5a37b1d20
    it.effect("drives check, download, and install with no local confirmation", () => {
      const harness = makeHarness();
  
-@@ -119,6 +215,39 @@ describe("DesktopRemoteUpdates", () => {
+@@ -185,6 +281,39 @@ describe("DesktopRemoteUpdates", () => {
      );
    });
  
@@ -926,10 +928,10 @@ index 1f5321148b77bcc418fca4569ce75f33e1fca920..ccd2b5821276a1ffa6585cb5a37b1d20
      // In-memory settings keep the channel write off real disk I/O.
      const harness = makeHarness({ beforeSetUpdateChannel: Effect.void });
 diff --git a/apps/desktop/src/updates/DesktopRemoteUpdates.ts b/apps/desktop/src/updates/DesktopRemoteUpdates.ts
-index 560e2e78d4bb166b134b4a40a4061259e2f9b299..248a49f27c329249b1f5264581f617c63ad6a6cf 100644
+index ce2f23ab3e781e724be26ae1f9fec05770d72e94..b1d31456e37d20885db7f9f005f6ef1382b6515b 100644
 --- a/apps/desktop/src/updates/DesktopRemoteUpdates.ts
 +++ b/apps/desktop/src/updates/DesktopRemoteUpdates.ts
-@@ -226,6 +226,17 @@ export const listen: Effect.Effect<
+@@ -249,6 +249,17 @@ export const listen: Effect.Effect<
            // A host already running the target only needed its track saved; installing a newer
            // build here would restart it without the dialog having said so.
            const state = yield* updates.getState;

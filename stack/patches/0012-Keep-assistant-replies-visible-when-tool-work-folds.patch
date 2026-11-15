@@ -56,7 +56,7 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  3 files changed, 405 insertions(+), 36 deletions(-)
 
 diff --git a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
-index 8ac12b54a4e505eff38f1ac9fd2593946adaca81..098c39a3a98131be1589a14526481457b8bf8055 100644
+index 448e6f90a8ed09bfc14b8b6578b757bf6bd658e1..1fd85f8f22a996a0b4e8a80d722763774cec49d2 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
 +++ b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
 @@ -299,9 +299,79 @@ describe("MessagesTimeline work rows", () => {

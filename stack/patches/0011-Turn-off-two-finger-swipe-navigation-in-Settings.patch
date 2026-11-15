@@ -468,7 +468,7 @@ index 5043be9efdfd6e0b1beb592e3a72f29509f7c6ea..65ffd0b1194c84770bdec6e6a5a2aae7
      id: "text-generation-model",
      title: "Text generation model",
 diff --git a/packages/contracts/src/settings.test.ts b/packages/contracts/src/settings.test.ts
-index 8ef1340b53e293ebba7f8942ac6f4159925d211c..76a3c0ae5d830c678a7ba8440b687c73a5130053 100644
+index 1db913e38ba3b7ec94ff8a74f784aebb1436722d..b6878ca353d09a59628db1e94d0a9007b40562e9 100644
 --- a/packages/contracts/src/settings.test.ts
 +++ b/packages/contracts/src/settings.test.ts
 @@ -338,6 +338,19 @@ describe("ClientSettings quit confirmation", () => {

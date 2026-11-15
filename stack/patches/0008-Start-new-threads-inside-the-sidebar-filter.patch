@@ -32,6 +32,8 @@ Port to 965ddc1d6c:
 Port to e07585e5fb:
 - Test fixtures only. CommandPalette.browser.test.tsx: setup keeps upstream #35107's removal of a leaked last-used project before this commit's mocks. Sidebar.browser.test.tsx: the entities import adds readProjects next to upstream's new useServerConfigs, session and orchestration-command mocks.
 
+Port to f7b0b3c4d7: CommandPalette.browser.test.tsx: upstream #30428 (opening a project skips delegated tasks) mocks useDelegatedUnderParent; setup now stubs it through this commit's spy mocks and takes the delegatedUnderParent set upstream's case passes.
+
 Files:
 apps/web:
 - apps/web/src/commandPaletteBus.ts
@@ -89,7 +91,7 @@ Tests:
 Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
 ---
  apps/web/src/commandPaletteBus.ts             |   7 +-
- .../CommandPalette.browser.test.tsx           | 251 ++++++++-
+ .../CommandPalette.browser.test.tsx           | 265 +++++++++-
  ...ommandPalette.composition.browser.test.tsx |   1 +
  .../src/components/CommandPalette.logic.ts    |  17 +-
  apps/web/src/components/CommandPalette.tsx    | 161 ++++--
@@ -109,7 +111,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .../src/shortcuts/chatRouteCommands.test.ts   |   5 +-
  apps/web/src/shortcuts/chatRouteCommands.ts   |  32 +-
  docs/user/thread-sidebar.md                   |  31 +-
- 21 files changed, 1917 insertions(+), 132 deletions(-)
+ 21 files changed, 1926 insertions(+), 137 deletions(-)
  create mode 100644 apps/web/src/components/sidebar/SidebarThreadHeader.browser.test.tsx
  create mode 100644 apps/web/src/newThreadActions.ts
  create mode 100644 apps/web/src/newThreadTarget.test.ts
@@ -149,10 +151,10 @@ index 2766f6db6b391e14eb5988ca536156b5383ae736..c2fb1d186370659f7ece7467c07b8932
      dispatchCommandPalette({ _tag: "OpenAddProject" });
    } else if (detail.query !== undefined) {
 diff --git a/apps/web/src/components/CommandPalette.browser.test.tsx b/apps/web/src/components/CommandPalette.browser.test.tsx
-index 8292121ac2ceb3ebd9b501ea1458e2cbfd993c3c..3bf4c638fdae17fb06fee96f3cf2c2153fdcd14b 100644
+index 7a9de4ca746cfe66ba1830362b8e5e6e1d47fe32..a2882fa8294f358393a04937fb4814c85dd5d220 100644
 --- a/apps/web/src/components/CommandPalette.browser.test.tsx
 +++ b/apps/web/src/components/CommandPalette.browser.test.tsx
-@@ -2,32 +2,77 @@ import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+@@ -3,35 +3,84 @@ import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
  import { describe, expect, it, vi } from "vite-plus/test";
  import { page, userEvent } from "vite-plus/test/browser";
  
@@ -168,7 +170,7 @@ index 8292121ac2ceb3ebd9b501ea1458e2cbfd993c3c..3bf4c638fdae17fb06fee96f3cf2c215
 +import { useUiStateStore } from "../uiStateStore";
 +import type { NewThreadTarget } from "../newThreadTarget";
 +import { buildSidebarProjectSnapshots } from "../sidebarProjectGrouping";
-+import { useProjects, useVisibleThreadShells } from "../state/entities";
++import { useDelegatedUnderParent, useProjects, useVisibleThreadShells } from "../state/entities";
 +import { useNewThreadTargetInput } from "../newThreadTargetState";
 +import { useScratchProject } from "../hooks/useScratchProject";
 +import { useSortedProjectGroups } from "./CommandPaletteLookups";
@@ -177,23 +179,34 @@ index 8292121ac2ceb3ebd9b501ea1458e2cbfd993c3c..3bf4c638fdae17fb06fee96f3cf2c215
 -const entities = vi.hoisted(() => ({
 -  projects: [] as ReadonlyArray<Project>,
 -  threads: [] as ReadonlyArray<Thread>,
+-  delegatedUnderParent: new Set<string>() as ReadonlySet<string>,
 -}));
 -vi.mock("../state/entities", async (original) => ({
 -  ...(await original<typeof import("../state/entities")>()),
 -  useProjects: () => entities.projects,
 -  useVisibleThreadShells: () => entities.threads,
+-  useDelegatedUnderParent: () => entities.delegatedUnderParent,
 -}));
+-
+-function setup(state: Partial<typeof entities> = {}) {
 +vi.mock("../state/entities", { spy: true });
 +vi.mock("../newThreadTargetState", { spy: true });
 +vi.mock("../hooks/useScratchProject", { spy: true });
 +vi.mock("./CommandPaletteLookups", { spy: true });
- 
- function setup(state: { projects?: ReadonlyArray<Project>; threads?: ReadonlyArray<Thread> } = {}) {
++
++function setup(
++  state: {
++    projects?: ReadonlyArray<Project>;
++    threads?: ReadonlyArray<Thread>;
++    delegatedUnderParent?: ReadonlySet<string>;
++  } = {},
++) {
    // Earlier browser test files share this origin's localStorage; a remembered project
    // that is not listed here hides the default "New thread in <project>" row.
    removeLocalStorageItem(LAST_USED_PROJECT_STORAGE_KEY);
 +  vi.mocked(useProjects).mockReturnValue(state.projects ?? []);
 +  vi.mocked(useVisibleThreadShells).mockReturnValue(state.threads ?? []);
++  vi.mocked(useDelegatedUnderParent).mockReturnValue(state.delegatedUnderParent ?? new Set());
 +  vi.mocked(useSortedProjectGroups).mockReturnValue(
 +    buildSidebarProjectSnapshots({
 +      projects: state.projects ?? [],
@@ -218,6 +231,7 @@ index 8292121ac2ceb3ebd9b501ea1458e2cbfd993c3c..3bf4c638fdae17fb06fee96f3cf2c215
    useCommandPaletteStore.setState(useCommandPaletteStore.getInitialState(), true);
 -  entities.projects = state.projects ?? [];
 -  entities.threads = state.threads ?? [];
+-  entities.delegatedUnderParent = state.delegatedUnderParent ?? new Set();
 +  useUiStateStore.setState(useUiStateStore.getInitialState(), true);
 +}
 +
@@ -243,7 +257,7 @@ index 8292121ac2ceb3ebd9b501ea1458e2cbfd993c3c..3bf4c638fdae17fb06fee96f3cf2c215
  }
  
  describe("CommandPalette open intents", () => {
-@@ -81,6 +126,129 @@ describe("CommandPalette open intents", () => {
+@@ -85,6 +134,129 @@ describe("CommandPalette open intents", () => {
      expect(screen.router?.state.location.pathname).toBe(pathname);
    });
  
@@ -373,7 +387,7 @@ index 8292121ac2ceb3ebd9b501ea1458e2cbfd993c3c..3bf4c638fdae17fb06fee96f3cf2c215
    it("opens New thread in... with focus in the search input, not the Back button", async () => {
      setup();
      await using _screen = await render(<CommandPalette>{null}</CommandPalette>);
-@@ -179,4 +347,61 @@ describe("CommandPalette open intents", () => {
+@@ -191,4 +363,61 @@ describe("CommandPalette open intents", () => {
  
      await vi.waitFor(() => expect(screen.router?.state.location.pathname).toBe("/local/parent"));
    });
@@ -497,7 +511,7 @@ index 407e9a5e3598159d81be42f62c76c8592d415be0..351b6b14e6b6d160581ae901f5327db6
        return openWithIntent({ kind: "change-theme" });
    }
 diff --git a/apps/web/src/components/CommandPalette.tsx b/apps/web/src/components/CommandPalette.tsx
-index b0b8e510de5bb461a6e71150aff14766581c6699..cc8026a6e5e0490660ee3b89b87d6cb9f3f7f3f0 100644
+index 0ea2cd7a2015d3f647588bfadd268fd2375d18db..112aec697639d870d18115e910add7a1441a4a75 100644
 --- a/apps/web/src/components/CommandPalette.tsx
 +++ b/apps/web/src/components/CommandPalette.tsx
 @@ -98,6 +98,9 @@ import { useAtomValue } from "@effect/atom-react";
@@ -522,7 +536,7 @@ index b0b8e510de5bb461a6e71150aff14766581c6699..cc8026a6e5e0490660ee3b89b87d6cb9
    const [searchState, dispatchSearch] = useReducer(reduceCommandPaletteSearchState, null, () => {
      const view = props.initialContext ? null : openIntentView(props.openIntent);
      return view
-@@ -522,6 +530,8 @@ function OpenCommandPaletteDialog(props: {
+@@ -530,6 +538,8 @@ function OpenCommandPaletteDialog(props: {
    const providersByEnvironment = useEnvironmentProviders();
    const { changeThemeItem, changeAppearanceItem, themeEditorItem } = useCommandPaletteThemeItems();
    const currentView = viewStack.at(-1)?.view ?? null;
@@ -531,7 +545,7 @@ index b0b8e510de5bb461a6e71150aff14766581c6699..cc8026a6e5e0490660ee3b89b87d6cb9
    const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
    const [browseGeneration, setBrowseGeneration] = useState(0);
    const [browseNavigation] = useState(createBrowseNavigationCoordinator);
-@@ -560,11 +570,12 @@ function OpenCommandPaletteDialog(props: {
+@@ -568,11 +578,12 @@ function OpenCommandPaletteDialog(props: {
      ...targetProject,
      displayName: group.displayName,
    }));
@@ -549,7 +563,7 @@ index b0b8e510de5bb461a6e71150aff14766581c6699..cc8026a6e5e0490660ee3b89b87d6cb9
    );
    const { canPinProjectGroup, toggleProjectGroupPin } = useProjectPin();
    // A row's target record can change when another machine's copy loads, so the kept
-@@ -667,7 +678,10 @@ function OpenCommandPaletteDialog(props: {
+@@ -675,7 +686,10 @@ function OpenCommandPaletteDialog(props: {
          )
        : "";
    const canBrowsePaths =
@@ -561,7 +575,7 @@ index b0b8e510de5bb461a6e71150aff14766581c6699..cc8026a6e5e0490660ee3b89b87d6cb9
    const browsePath = getFilesystemBrowsePath(query, browseEnvironmentPlatform, canBrowsePaths);
    const isBrowsing = browsePath.isBrowsing;
    const browseDirectoryPath = browsePath.directoryPath;
-@@ -846,6 +860,22 @@ function OpenCommandPaletteDialog(props: {
+@@ -854,6 +868,22 @@ function OpenCommandPaletteDialog(props: {
      true,
    );
  
@@ -584,7 +598,7 @@ index b0b8e510de5bb461a6e71150aff14766581c6699..cc8026a6e5e0490660ee3b89b87d6cb9
    const openingOrderThreadItems = useOrderWhileOpen(
      (() => {
        const isScratch = (project: CommandPaletteProject) =>
-@@ -879,7 +909,6 @@ function OpenCommandPaletteDialog(props: {
+@@ -887,7 +917,6 @@ function OpenCommandPaletteDialog(props: {
          },
        });
        if (scratchTargetEnvironmentId === null) return projectItems;
@@ -592,7 +606,7 @@ index b0b8e510de5bb461a6e71150aff14766581c6699..cc8026a6e5e0490660ee3b89b87d6cb9
        const noProjectIndex = newThreadNoProjectIndex(
          projectPickerEntries.map(({ group, targetProject, isPreferred }) => ({
            isScratch: isScratchProject(
-@@ -907,15 +936,63 @@ function OpenCommandPaletteDialog(props: {
+@@ -915,15 +944,63 @@ function OpenCommandPaletteDialog(props: {
      rowOrderKey("new-thread-in"),
      true,
    );
@@ -663,7 +677,7 @@ index b0b8e510de5bb461a6e71150aff14766581c6699..cc8026a6e5e0490660ee3b89b87d6cb9
  
    const {
      threadItems: allThreadItems,
-@@ -945,6 +1022,10 @@ function OpenCommandPaletteDialog(props: {
+@@ -953,6 +1030,10 @@ function OpenCommandPaletteDialog(props: {
    });
  
    function popView(): void {
@@ -674,7 +688,7 @@ index b0b8e510de5bb461a6e71150aff14766581c6699..cc8026a6e5e0490660ee3b89b87d6cb9
      browseNavigation.invalidate();
      setAddProjectCloneFlow(null);
      setNewProjectFlow(null);
-@@ -1324,7 +1405,7 @@ function OpenCommandPaletteDialog(props: {
+@@ -1332,7 +1413,7 @@ function OpenCommandPaletteDialog(props: {
        title: "New thread in...",
        icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
        addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
@@ -683,7 +697,7 @@ index b0b8e510de5bb461a6e71150aff14766581c6699..cc8026a6e5e0490660ee3b89b87d6cb9
      });
    }
  
-@@ -1802,19 +1883,20 @@ function OpenCommandPaletteDialog(props: {
+@@ -1810,19 +1891,20 @@ function OpenCommandPaletteDialog(props: {
        : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
          ? addProjectEntryGroups()
          : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
@@ -717,7 +731,7 @@ index b0b8e510de5bb461a6e71150aff14766581c6699..cc8026a6e5e0490660ee3b89b87d6cb9
  
    const isLinkedThreadSearch =
      linkedThreadSearch?.linkedThreads !== undefined && deferredQuery === linkedThreadSearch.query;
-@@ -1822,7 +1904,7 @@ function OpenCommandPaletteDialog(props: {
+@@ -1830,7 +1912,7 @@ function OpenCommandPaletteDialog(props: {
      activeGroups,
      query: deferredQuery,
      isInSubmenu: currentView !== null,
@@ -726,7 +740,7 @@ index b0b8e510de5bb461a6e71150aff14766581c6699..cc8026a6e5e0490660ee3b89b87d6cb9
        ? {
            allOptions: {
              rootGroups,
-@@ -2441,7 +2523,26 @@ function OpenCommandPaletteDialog(props: {
+@@ -2449,7 +2531,26 @@ function OpenCommandPaletteDialog(props: {
            },
          ];
  
@@ -808,11 +822,11 @@ index 3039ac9e6f2615771e116a577937e6a665e3c3df..1a52121bc571ce574d1ad54653456db1
        <CommandPaletteMetaDot />
        <span className="min-w-0 flex-1 truncate">{props.workspaceRoot}</span>
 diff --git a/apps/web/src/components/Sidebar.browser.test.tsx b/apps/web/src/components/Sidebar.browser.test.tsx
-index f152cabf018511917b432cf722f53b247384ad7d..032dfc10a860b88da375a5211d9f80daf8556b19 100644
+index be674b66520d232b4bc394914c9e400f9fc2855d..55231a16cba1255af3c8589681992e35d957559e 100644
 --- a/apps/web/src/components/Sidebar.browser.test.tsx
 +++ b/apps/web/src/components/Sidebar.browser.test.tsx
-@@ -20,11 +20,17 @@ import { makeThreadFixture } from "../test-fixtures";
- import { useHandleNewThread } from "../hooks/useHandleNewThread";
+@@ -21,11 +21,17 @@ import { useHandleNewThread } from "../hooks/useHandleNewThread";
+ import { useNowMinute } from "../hooks/useNowMinute";
  import { __setClientSettingsForTests, getClientSettings } from "../hooks/useSettings";
  import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 -import { useProjects, useServerConfigs, useQuietThreadShells } from "../state/entities";
@@ -830,7 +844,7 @@ index f152cabf018511917b432cf722f53b247384ad7d..032dfc10a860b88da375a5211d9f80da
  import Sidebar from "./Sidebar";
  import { THREAD_JUMP_HINT_SHOW_DELAY_MS } from "./Sidebar.logic";
  import { SortableThreadRow } from "./sidebar/SidebarThreadRow";
-@@ -81,6 +87,7 @@ describe("sidebar header new thread", () => {
+@@ -83,6 +89,7 @@ describe("sidebar header new thread", () => {
      { mode: "boring", count: 1, shift: false, picker: false },
    ] as const)("$mode sidebar, $count projects, shift=$shift: picker=$picker", async (scenario) => {
      using stack = new DisposableStack();
@@ -838,7 +852,7 @@ index f152cabf018511917b432cf722f53b247384ad7d..032dfc10a860b88da375a5211d9f80da
      const previousSettings = getClientSettings();
      stack.defer(() => __setClientSettingsForTests(previousSettings));
      __setClientSettingsForTests({
-@@ -94,6 +101,7 @@ describe("sidebar header new thread", () => {
+@@ -96,6 +103,7 @@ describe("sidebar header new thread", () => {
      };
      const startThread = vi.fn().mockResolvedValue(null);
      vi.mocked(useProjects).mockReturnValue(projects);
@@ -846,7 +860,7 @@ index f152cabf018511917b432cf722f53b247384ad7d..032dfc10a860b88da375a5211d9f80da
      vi.mocked(useHandleNewThread).mockReturnValue({
        activeDraftThread: null,
        activeThread: null,
-@@ -115,7 +123,10 @@ describe("sidebar header new thread", () => {
+@@ -117,7 +125,10 @@ describe("sidebar header new thread", () => {
      });
  
      if (scenario.picker) {
@@ -859,7 +873,7 @@ index f152cabf018511917b432cf722f53b247384ad7d..032dfc10a860b88da375a5211d9f80da
      } else {
        expect(openCommandPalette).not.toHaveBeenCalled();
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index fb635313fa866455efe6bd0680e31b86d19d5669..de38467f9c3a077d58bfe64f9d908514be035cf9 100644
+index 178fa8b89b12cc719b12e01faa11b41e8301d52c..a33e9cdcb86830189f13597309d6e70b6fa2907c 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -120,6 +120,7 @@ import {
@@ -886,7 +900,7 @@ index fb635313fa866455efe6bd0680e31b86d19d5669..de38467f9c3a077d58bfe64f9d908514
    shouldNavigateAfterThreadPark,
    sidebarListItemId,
    sidebarThreadKeyAtY,
-@@ -3026,13 +3027,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3028,13 +3029,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const showJumpHints = useThreadJumpHintsVisible(keybindings, routeThreadRef);
  
    const handleNewThreadClick = (event?: ReactMouseEvent) => {
@@ -901,7 +915,7 @@ index fb635313fa866455efe6bd0680e31b86d19d5669..de38467f9c3a077d58bfe64f9d908514
        if (isMobile) setOpenMobile(false);
        // With no current or open project, such as when every project is archived, pick one.
        void startNewThreadFromContext({
-@@ -3046,7 +3041,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3048,7 +3043,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
        return;
      }
      if (isMobile) setOpenMobile(false);
@@ -917,7 +931,7 @@ index fb635313fa866455efe6bd0680e31b86d19d5669..de38467f9c3a077d58bfe64f9d908514
    };
  
    const newThreadShortcutLabel =
-@@ -3092,16 +3094,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3094,16 +3096,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                }
                onNewProject={openAddProjectCommandPalette}
                onNewThread={handleNewThreadClick}

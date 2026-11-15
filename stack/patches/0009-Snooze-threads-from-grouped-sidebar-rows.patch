@@ -41,7 +41,7 @@ Model/harness: GPT-6 / Codex; hover layout follow-up: Claude Opus 5.5 / Claude C
  2 files changed, 94 insertions(+), 25 deletions(-)
 
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
-index 2e24fb605211e3a627a8e484fadc0c46a2f700c4..d64f3db6c5250b0740a02678dd4a0e903d42787e 100644
+index e6d3a345f5f3681309e5160fbd518f252c28282d..20ac809c130bb08beba90479e4d97d0bd735f05d 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
 @@ -2,6 +2,7 @@ import "~/index.css";
@@ -84,10 +84,10 @@ index 2e24fb605211e3a627a8e484fadc0c46a2f700c4..d64f3db6c5250b0740a02678dd4a0e90
    vi.mocked(useEnvironmentScope).mockReturnValue(true);
    await using screen = await render(
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index cff07acdaf1d7deab29faccdc1c86a64dc32ab81..b57b58dcb3ce0ffe00dc5ff1b21a598ff5b17a1a 100644
+index 0a36c6a32e070f2acd113c9a88c08167f6102bdf..a9c0e428ba0c931c1f9aa3f07ec242764a31f82f 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -891,7 +891,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -892,7 +892,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      setSnoozeGateClock({ thread, now: new Date(snoozeGateOpensAt).toISOString() });
    }
    const showSnoozeButton =
@@ -99,7 +99,7 @@ index cff07acdaf1d7deab29faccdc1c86a64dc32ab81..b57b58dcb3ce0ffe00dc5ff1b21a598f
    // Closing here, not just masking, keeps the menu from reopening when the button returns.
    if (snoozeMenuOpenRaw && !showSnoozeButton) setSnoozeMenuOpen(false);
    const snoozeMenuOpen = snoozeMenuOpenRaw && showSnoozeButton;
-@@ -1164,7 +1167,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1165,7 +1168,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
            sortable?.isDragging && "relative z-20",
          )}
        >
@@ -108,7 +108,7 @@ index cff07acdaf1d7deab29faccdc1c86a64dc32ab81..b57b58dcb3ce0ffe00dc5ff1b21a598f
            <TooltipTrigger
              render={
                <div
-@@ -1222,7 +1225,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1223,7 +1226,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                ) : (
                  <span
                    className={cn(
@@ -118,7 +118,7 @@ index cff07acdaf1d7deab29faccdc1c86a64dc32ab81..b57b58dcb3ce0ffe00dc5ff1b21a598f
                      props.sweepAction !== null && "hidden",
                      jumpHintLabel && JUMP_HINT_SLOT_CLASS_NAME,
                    )}
-@@ -1231,6 +1235,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1232,6 +1236,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                      className={cn(
                        "inline-flex justify-end tabular-nums text-secondary-label transition-opacity",
                        !isWoke && "group-any-hover/sidebar-row:opacity-0",
@@ -129,7 +129,7 @@ index cff07acdaf1d7deab29faccdc1c86a64dc32ab81..b57b58dcb3ce0ffe00dc5ff1b21a598f
                      )}
                    >
                      {variantAction === "unsnooze" && props.snoozeWakeLabelText !== null ? (
-@@ -1294,27 +1302,63 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1295,27 +1303,63 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                          <AlarmClockOffIcon className="mb-px size-3" />
                        </button>
                      )
@@ -214,7 +214,7 @@ index cff07acdaf1d7deab29faccdc1c86a64dc32ab81..b57b58dcb3ce0ffe00dc5ff1b21a598f
                      <Tooltip>
                        <TooltipTrigger
                          render={
-@@ -1334,7 +1378,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1335,7 +1379,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                        </TooltipTrigger>
                        <TooltipPopup side="top">Settle thread</TooltipPopup>
                      </Tooltip>
