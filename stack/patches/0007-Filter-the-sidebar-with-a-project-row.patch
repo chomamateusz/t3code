@@ -182,10 +182,10 @@ index 0ecc4ece2d0c22889694e468f5221a92d4b279aa..00000000000000000000000000000000
 -  );
 -}
 diff --git a/apps/web/src/components/Sidebar.drag.browser.test.tsx b/apps/web/src/components/Sidebar.drag.browser.test.tsx
-index 8151de08a711025b621c16b9ca8f39454554d16e..5903996bc4c3919d418e467754df12e5bceab715 100644
+index f3402f20a4bc712e1d3b4f94ba0bbdafb47c429b..7cb1fabb5ccd27609c21dc51a83f4cb42758fdff 100644
 --- a/apps/web/src/components/Sidebar.drag.browser.test.tsx
 +++ b/apps/web/src/components/Sidebar.drag.browser.test.tsx
-@@ -51,7 +51,9 @@ it("keeps the title when dragging a search result from a collapsed folder", asyn
+@@ -51,7 +51,9 @@ it("shows the titled preview inside and outside search results from a collapsed
      // AppRoot brings its own router.
      router: false,
    });
@@ -612,7 +612,7 @@ index fa548c04168e746d1ba79367ff0427dd3b1565c9..1dc25cdd7883ca4b9d823433b30d7540
 +  });
 +});
 diff --git a/apps/web/src/components/Sidebar.logic.ts b/apps/web/src/components/Sidebar.logic.ts
-index 5e8268acc171cc768584d27db6154b69b349d51b..8594367466cf9e74d064305854a47611c7c76861 100644
+index 20a1fce7f4cafcbfaa5323af07e4969e8f75c872..3f14170fd2d600aff7e700e43986bc5be1470287 100644
 --- a/apps/web/src/components/Sidebar.logic.ts
 +++ b/apps/web/src/components/Sidebar.logic.ts
 @@ -29,6 +29,7 @@ import type { AsyncResult } from "effect/reactivity";
@@ -937,7 +937,7 @@ index 5e8268acc171cc768584d27db6154b69b349d51b..8594367466cf9e74d064305854a47611
    thread: Pick<SidebarThreadSummary, "latestRun" | "runtime">,
  ): string | null {
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 7cbdad8903f9437659447f2f4d53e9fcfebfa4d1..178fa8b89b12cc719b12e01faa11b41e8301d52c 100644
+index 3ab1390df9e71016c7d6eb1aa8042e7b183df8fc..1da0260fa52a2a636a8b5fd057df7a421caadc66 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -61,18 +61,10 @@ import {
@@ -1422,7 +1422,7 @@ index 7cbdad8903f9437659447f2f4d53e9fcfebfa4d1..178fa8b89b12cc719b12e01faa11b41e
        : null,
      keepEmptyFolders: (group) =>
        scopedProjectGroups.length > 0 || (group.pinned && !group.archived),
-@@ -2704,12 +2731,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2705,12 +2732,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                  AuthOrchestrationOperateScope,
                ),
                branch: thread.branch ?? null,
@@ -1438,7 +1438,7 @@ index 7cbdad8903f9437659447f2f4d53e9fcfebfa4d1..178fa8b89b12cc719b12e01faa11b41e
                      }
                    : null,
                isPinned,
-@@ -2754,9 +2782,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2755,9 +2783,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            case "filter-by-project":
              if (threadProjectGroup) {
                setProjectScopeKeys(
@@ -1454,7 +1454,7 @@ index 7cbdad8903f9437659447f2f4d53e9fcfebfa4d1..178fa8b89b12cc719b12e01faa11b41e
                );
              }
              return;
-@@ -3045,206 +3076,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3046,206 +3077,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    onChange={setEnvironmentScopeKeys}
                  />
                }
@@ -1676,7 +1676,7 @@ index 7cbdad8903f9437659447f2f4d53e9fcfebfa4d1..178fa8b89b12cc719b12e01faa11b41e
                }
                onNewProject={openAddProjectCommandPalette}
                onNewThread={handleNewThreadClick}
-@@ -3389,14 +3235,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3390,14 +3236,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    </span>
                    <button
                      type="button"
@@ -3730,7 +3730,7 @@ index 35dadba487ca83d15e2e79c1460e3454d7939d40..d2f305a246911422d17d47bb17b5621b
    tooltip = label,
    className,
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index dd58160dd8507e336e65f39ac0078e44c08527a7..94c2872b549d842fb71c85dfbb5688a9ca211942 100644
+index 2fee312d4cb86d0da745203c5c4ec57f5147b449..dcf042f30ae3342bdc68929df33ef6c826f38504 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -75,7 +75,7 @@ import { useNowSecond } from "../../hooks/useNowSecond";
@@ -6059,7 +6059,7 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
      set((state) => setSidebarEnvironmentScopeKeys(state, environmentKeys)),
    setPullRequestMergeMethod: (method) => set((state) => setPullRequestMergeMethod(state, method)),
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 4c02f1c79baee321109190e88bf07d750f521ace..5cafd857f25bfea5c9b4ab1951622bef6fab651a 100644
+index 905f3a5bfbe9cb9b4e0feb1bcc009cfcb4ae8876..3c55afe6a250d1fc25bc36f3eaf7f84f2d9d8ab5 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -148,6 +148,60 @@ choice.

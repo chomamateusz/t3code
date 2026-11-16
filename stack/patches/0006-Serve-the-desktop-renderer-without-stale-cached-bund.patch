@@ -66,7 +66,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  7 files changed, 187 insertions(+), 11 deletions(-)
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index 0e7f949bc042cfc8152984b6140a63d83647bb18..bff9eed83fcaa0139c6a54f0cddd677f401074c1 100644
+index f69bf965d0058e197e276e54ca40b4ae4fe202f9..9e292e805eb5de404cce94bb884fb05b138da9e0 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
 @@ -179,6 +179,22 @@ const startLocalBackend = Effect.gen(function* () {
@@ -460,7 +460,7 @@ index bb704b949ee81d95945e50adbd2878398076b08a..9cbd73efc3291d1419ded15f845af019
            setServerExposureMode: () => Effect.die("unexpected server exposure update"),
            setTailscaleServe: () => Effect.die("unexpected Tailscale Serve update"),
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index f66586503e24d5f6051c7c6ae4d781e1e0f9cc00..2b369d00ff79a7d9d9fb61dc84a1a287c8527909 100644
+index 46311dbba812250edaaf1068b9ff1a48eb07f134..c08c266adc0b34174279d499ae2df48be752acf5 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
 @@ -259,6 +259,7 @@ function layerTest(input: {

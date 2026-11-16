@@ -30,6 +30,9 @@ Port to 965ddc1d6c:
 Port to 04f6cfca87:
 - Upstream 8fc6fd01d7 now decodes each HEIC photo once, resizes it to the 2000 px longest edge before encoding the JPEG, and stubs the decoder inside every HEIC test. The shared createImageBitmap stub this commit added to the HEIC tests is dropped: no HEIC case reaches the byte-limit decode any more. A converted JPEG still above the byte cap goes through compressImageToByteLimit, which reuses its decoded bitmap and does not resize again; upstream's preview preservation (shared HEIC thumbnail, inherited placeholder thumbnail) is unchanged.
 
+Port to 6b7027b1f4:
+- Upstream 7d9c365e17 now fingerprints a downloaded image's bytes (readComposerImageBytes) before it reaches the draft, so distinct images with matching metadata both attach. The fingerprint is taken from the prepared file, for downloaded and cached images alike, because preparation can resize or recompress and the draft dedups on the bytes it publishes; upstream's fingerprint of the preview annotation screenshot reads the already prepared capture.
+
 Files:
 apps/web:
 - apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
@@ -178,7 +181,7 @@ index e2bf9676b8b6d22fc44b66e976b69eaa1c7cb205..4df03dea3f04b55b21c4e703e459963e
    });
    expect(pendingDraftWork.has(target)).toBe(false);
 diff --git a/apps/web/src/components/chat/useComposerContextImport.ts b/apps/web/src/components/chat/useComposerContextImport.ts
-index bf23b05d3ab84bd3c2558c773cd0aef379d7f706..8c615a45a62050416ecbc61bb6cda1a1d5c6137e 100644
+index 0cc66d6a71d199a35ff061f15077de959bb75c4c..05e3b6603480d3939114bf394d25e76ead309205 100644
 --- a/apps/web/src/components/chat/useComposerContextImport.ts
 +++ b/apps/web/src/components/chat/useComposerContextImport.ts
 @@ -12,6 +12,7 @@ import {
@@ -189,7 +192,7 @@ index bf23b05d3ab84bd3c2558c773cd0aef379d7f706..8c615a45a62050416ecbc61bb6cda1a1
  } from "@t3tools/contracts";
  import {
    type ComposerFileAttachment,
-@@ -56,6 +57,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
+@@ -57,6 +58,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
  import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
  import { useStableCallback } from "../../hooks/useStableCallback";
  import { countPreparingComposerImages } from "./preparingComposerImages";
@@ -197,7 +200,7 @@ index bf23b05d3ab84bd3c2558c773cd0aef379d7f706..8c615a45a62050416ecbc61bb6cda1a1
  
  const isUnreachable = Schema.is(
    Schema.Union([ConnectionTransientError, ConnectionBlockedError, EnvironmentRpcUnavailableError]),
-@@ -165,7 +167,8 @@ export function useComposerContextImport(input: {
+@@ -166,7 +168,8 @@ export function useComposerContextImport(input: {
          description: `${reason} Remove the chip or attach the file again.`,
        });
      };
@@ -207,11 +210,11 @@ index bf23b05d3ab84bd3c2558c773cd0aef379d7f706..8c615a45a62050416ecbc61bb6cda1a1
      if (!file) {
        const sourceConnection = readPreparedConnection(sourceEnvironmentId);
        if (!sourceConnection) {
-@@ -194,6 +197,24 @@ export function useComposerContextImport(input: {
-         fail("Downloading it from the source failed.");
+@@ -196,7 +199,24 @@ export function useComposerContextImport(input: {
          return;
        }
-+      file = new File([blob], record.name, { type: record.mimeType || blob.type });
+       file = new File([blob], record.name, { type: record.mimeType || blob.type });
+-      if (record.kind === "image") await readComposerImageBytes(file);
 +    }
 +    if (record.kind === "image") {
 +      const prepared = await prepareImageForAttachment(
@@ -227,20 +230,13 @@ index bf23b05d3ab84bd3c2558c773cd0aef379d7f706..8c615a45a62050416ecbc61bb6cda1a1
 +        return;
 +      }
 +      file = prepared.file;
++      await readComposerImageBytes(file);
 +    }
 +    if (!cachedFile || record.kind === "image") {
        // Question attachments have no inline reference; annotations can own their screenshots.
        const references = new Set(collectInlineContextIds(promptRef.current));
        if (
-@@ -208,7 +229,6 @@ export function useComposerContextImport(input: {
-         )
-       )
-         return;
--      file = new File([blob], record.name, { type: record.mimeType || blob.type });
-     }
-     // The draft these bytes belong to may have been sent or switched away from while they
-     // downloaded. Dropping them here keeps them out of whatever draft is open now.
-@@ -239,7 +259,7 @@ export function useComposerContextImport(input: {
+@@ -241,7 +261,7 @@ export function useComposerContextImport(input: {
            {
              type: "image",
              id: localId,
@@ -250,10 +246,10 @@ index bf23b05d3ab84bd3c2558c773cd0aef379d7f706..8c615a45a62050416ecbc61bb6cda1a1
              sizeBytes: file.size,
              previewUrl: URL.createObjectURL(file),
 diff --git a/apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts b/apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts
-index a504d429185af303565549a5d1230edec56f41ca..9e16d277cadc806af26d02b5caac654c8c28b7f2 100644
+index 0915ed9df3b538b26f34d39ae482a35d88f185bd..1fb68ef7272dc5513f1de35a9dd2151cdeb251f8 100644
 --- a/apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts
 +++ b/apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts
-@@ -114,8 +114,9 @@ describe("open question delivery", () => {
+@@ -118,8 +118,9 @@ describe("open question delivery", () => {
      id: "12345678-1234-1234-1234-123456789abc",
      name: "window.png",
      mimeType: "image/png" as const,
@@ -265,7 +261,7 @@ index a504d429185af303565549a5d1230edec56f41ca..9e16d277cadc806af26d02b5caac654c
      source: {
        kind: "snap-shot" as const,
        capturedAt: "2026-09-01T00:00:00.000Z",
-@@ -212,8 +213,9 @@ describe("durable snapshot delivery", () => {
+@@ -219,8 +220,9 @@ describe("durable snapshot delivery", () => {
          id: "12345678-1234-1234-1234-123456789abc",
          name: "window.png",
          mimeType: "image/png" as const,
@@ -277,7 +273,7 @@ index a504d429185af303565549a5d1230edec56f41ca..9e16d277cadc806af26d02b5caac654c
          source: {
            kind: "snap-shot" as const,
            capturedAt: "2026-09-01T00:00:00.000Z",
-@@ -237,7 +239,15 @@ describe("durable snapshot delivery", () => {
+@@ -244,7 +246,15 @@ describe("durable snapshot delivery", () => {
              type: "image",
              ...capture,
              previewUrl: capture.dataUrl,
@@ -295,10 +291,10 @@ index a504d429185af303565549a5d1230edec56f41ca..9e16d277cadc806af26d02b5caac654c
            void store.syncPersistedAttachments(target, [capture]);
          }
 diff --git a/apps/web/src/components/preview/PreviewView.tsx b/apps/web/src/components/preview/PreviewView.tsx
-index 02d856d78ca61a3f7d97e03a4cdcde5090b4faf3..7e8950be6824dcfffdc438cb66bf2af701b11e0c 100644
+index e303ae1451619ea4b48b041a5b3b7759a72590bb..9552f45ed0ee9ee76c6253284d7c71e3649d0bb7 100644
 --- a/apps/web/src/components/preview/PreviewView.tsx
 +++ b/apps/web/src/components/preview/PreviewView.tsx
-@@ -856,7 +856,7 @@ export function PreviewView({
+@@ -857,7 +857,7 @@ export function PreviewView({
        const { annotation: picked, submission, screenshotFailed = false } = result;
        // Send annotations even if the optional crop fails or stalls; drop failed screenshots so prompts cannot
        // claim an attachment.
@@ -306,7 +302,7 @@ index 02d856d78ca61a3f7d97e03a4cdcde5090b4faf3..7e8950be6824dcfffdc438cb66bf2af7
 +      const capture = await capturePreviewAnnotationScreenshot(picked);
        const cropDropped = screenshotFailed || capture.status === "failed";
        const annotation = capture.status === "failed" ? { ...picked, screenshot: null } : picked;
-       addPreviewAnnotation(threadRef, annotation);
+       if (capture.status === "captured") await readComposerImageBytes(capture.file);
 diff --git a/apps/web/src/lib/imageCompression.test.ts b/apps/web/src/lib/imageCompression.test.ts
 index e40c3968bc850e77a2e0e96b762da9f75ffbdbb1..4ad10ae030dd06bce0bbdca541ebfbec1b7412a1 100644
 --- a/apps/web/src/lib/imageCompression.test.ts

@@ -92,7 +92,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
 diff --git a/apps/server/src/usage/UsageService.test.ts b/apps/server/src/usage/UsageService.test.ts
-index d40beb989ec21f0cf30142c049b14151a6d3de98..0325c71281cb256a671fbdbda5e5ec33da0aa345 100644
+index 01cbf3a9f52ce0cb8ef3685faf7e5d56460ff75a..9f97bdebfcaa4950168981caffe599a383e405c7 100644
 --- a/apps/server/src/usage/UsageService.test.ts
 +++ b/apps/server/src/usage/UsageService.test.ts
 @@ -137,6 +137,11 @@ const WINDOW: UsageSummaryInput = {
@@ -107,7 +107,7 @@ index d40beb989ec21f0cf30142c049b14151a6d3de98..0325c71281cb256a671fbdbda5e5ec33
  const setup = Effect.gen(function* () {
    const home = yield* Effect.promise(() =>
      NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "usage-service-test-")),
-@@ -1793,6 +1798,42 @@ describe("UsageService", () => {
+@@ -1864,6 +1869,42 @@ describe("UsageService", () => {
      }),
    );
  
@@ -150,7 +150,7 @@ index d40beb989ec21f0cf30142c049b14151a6d3de98..0325c71281cb256a671fbdbda5e5ec33
    it.effect("restores the Cursor account cache after a restart", () =>
      Effect.gen(function* () {
        const { settings, home } = yield* setup;
-@@ -3106,7 +3147,7 @@ describe("UsageService", () => {
+@@ -3205,7 +3246,7 @@ describe("UsageService", () => {
    );
  
    it.effect.each([4, 5, 6, 7, 8, 10, 11, 12, 13, 14])(
@@ -159,7 +159,7 @@ index d40beb989ec21f0cf30142c049b14151a6d3de98..0325c71281cb256a671fbdbda5e5ec33
      (version) =>
        Effect.gen(function* () {
          yield* TestClock.setTime(Date.parse("2026-08-02T12:00:00Z"));
-@@ -3152,12 +3193,27 @@ describe("UsageService", () => {
+@@ -3251,12 +3292,27 @@ describe("UsageService", () => {
              stateDir,
              version === 4 ? "usage-scan-cache.json" : `usage-scan-cache-v${version}.json`,
            );
@@ -188,7 +188,7 @@ index d40beb989ec21f0cf30142c049b14151a6d3de98..0325c71281cb256a671fbdbda5e5ec33
              const document = decodeUnknownJsonString(await NodeFSP.readFile(cachePath, "utf8")) as {
                files: Record<string, { r: unknown[][]; mr: number; cs: Record<string, unknown> }>;
              };
-@@ -3192,6 +3248,11 @@ describe("UsageService", () => {
+@@ -3291,6 +3347,11 @@ describe("UsageService", () => {
                    encodeUnknownJsonString({ ...document, version: olderVersion, files: {} }),
                  );
                }
@@ -200,7 +200,7 @@ index d40beb989ec21f0cf30142c049b14151a6d3de98..0325c71281cb256a671fbdbda5e5ec33
              }
              await NodeFSP.rm(deleted);
              await NodeFSP.mkdir(`${cachePath}.stale`);
-@@ -3208,12 +3269,24 @@ describe("UsageService", () => {
+@@ -3307,12 +3368,24 @@ describe("UsageService", () => {
            );
            yield* upgraded.awaitPersisted;
            assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v17.json");
@@ -231,7 +231,7 @@ index d40beb989ec21f0cf30142c049b14151a6d3de98..0325c71281cb256a671fbdbda5e5ec33
          }).pipe(
            Effect.provide(
              layerService({
-@@ -3336,7 +3409,7 @@ describe("UsageService", () => {
+@@ -3435,7 +3508,7 @@ describe("UsageService", () => {
      }),
    );
  
@@ -240,7 +240,7 @@ index d40beb989ec21f0cf30142c049b14151a6d3de98..0325c71281cb256a671fbdbda5e5ec33
      Effect.gen(function* () {
        const { transcript, settings, home } = yield* setup;
        const alias = NodePath.join(home, "claude-alias");
-@@ -3344,26 +3417,38 @@ describe("UsageService", () => {
+@@ -3443,26 +3516,38 @@ describe("UsageService", () => {
          NodeFSP.symlink(NodePath.join(home, "claude"), alias, "junction"),
        );
        const content = claudeLine(1, 5);
@@ -284,7 +284,7 @@ index d40beb989ec21f0cf30142c049b14151a6d3de98..0325c71281cb256a671fbdbda5e5ec33
          assert.deepStrictEqual(moved.buckets, first.buckets);
          assert.strictEqual(moved.sources[0]?.distinctSessions, 1);
          yield* restarted.awaitPersisted;
-@@ -3374,7 +3459,7 @@ describe("UsageService", () => {
+@@ -3473,7 +3558,7 @@ describe("UsageService", () => {
            NodeFSP.rm(NodePath.join(home, "claude", "projects"), { recursive: true }),
          );
          const afterRootCleanup = yield* UsageService.make;
@@ -293,7 +293,7 @@ index d40beb989ec21f0cf30142c049b14151a6d3de98..0325c71281cb256a671fbdbda5e5ec33
          assert.deepStrictEqual(missingRoot.buckets, first.buckets);
          assert.strictEqual(missingRoot.sources[0]?.distinctSessions, 1);
          assert.strictEqual(missingRoot.sources[0]?.status, "ok");
-@@ -3384,7 +3469,7 @@ describe("UsageService", () => {
+@@ -3483,7 +3568,7 @@ describe("UsageService", () => {
            await NodeFSP.rename(replacementProjects, projects);
            await NodeFSP.writeFile(NodePath.join(projects, "new.jsonl"), claudeLine(2, 7));
          });
@@ -302,7 +302,7 @@ index d40beb989ec21f0cf30142c049b14151a6d3de98..0325c71281cb256a671fbdbda5e5ec33
          assert.strictEqual(totalOutputTokens(recreated), 12);
          assert.deepStrictEqual(recreated.sources[0]?.fingerprint, first.sources[0]?.fingerprint);
  
-@@ -3408,11 +3493,109 @@ describe("UsageService", () => {
+@@ -3507,11 +3592,109 @@ describe("UsageService", () => {
          assert.strictEqual(merged.costUsd, recreated.buckets[0]?.costUsd);
  
          const outsideWindow = yield* restarted.readSummary({
@@ -413,7 +413,7 @@ index d40beb989ec21f0cf30142c049b14151a6d3de98..0325c71281cb256a671fbdbda5e5ec33
        }).pipe(
          Effect.scoped,
          Effect.provide(
-@@ -3609,38 +3792,41 @@ describe("UsageService", () => {
+@@ -3708,38 +3891,41 @@ describe("UsageService", () => {
        }),
    );
  
@@ -486,7 +486,7 @@ index d40beb989ec21f0cf30142c049b14151a6d3de98..0325c71281cb256a671fbdbda5e5ec33
  
    it.effect("does not share an in-flight scan after custom prices change", () =>
 diff --git a/apps/server/src/usage/UsageService.ts b/apps/server/src/usage/UsageService.ts
-index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad459679a68 100644
+index a59fbc66a02ca160e01bf3192b0bf1f44ec85cea..5bf374601a75dd96b2f8aae47ec376b71fbd8364 100644
 --- a/apps/server/src/usage/UsageService.ts
 +++ b/apps/server/src/usage/UsageService.ts
 @@ -23,6 +23,8 @@ import * as FileSystem from "effect/FileSystem";
@@ -518,7 +518,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
  
  const TRANSCRIPT_READ_CONCURRENCY = 4;
  
-@@ -110,6 +112,14 @@ const RatesCacheFile = Schema.Struct({
+@@ -116,6 +118,14 @@ const RatesCacheFile = Schema.Struct({
  const decodeRatesCache = Schema.decodeUnknownEffect(Schema.fromJsonString(RatesCacheFile));
  const encodeRatesCache = Schema.encodeEffect(Schema.fromJsonString(RatesCacheFile));
  
@@ -533,7 +533,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
  const ScanCacheJson = Schema.fromJsonString(Schema.Unknown);
  const decodeScanCacheFile = Schema.decodeUnknownEffect(ScanCacheJson);
  const encodeUsageRecordKey = Schema.encodeSync(ScanCacheJson);
-@@ -203,6 +213,10 @@ export const make = Effect.gen(function* () {
+@@ -209,6 +219,10 @@ export const make = Effect.gen(function* () {
      coveredSince.set(coverageKey(source), windowStartMs);
      cacheDirty = true;
    };
@@ -544,7 +544,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
    const isWithinDirectory = (filePath: string, dir: string) => {
      const relative = path.relative(dir, filePath);
      return relative !== ".." && !relative.startsWith(".." + path.sep) && !path.isAbsolute(relative);
-@@ -383,7 +397,6 @@ export const make = Effect.gen(function* () {
+@@ -388,7 +402,6 @@ export const make = Effect.gen(function* () {
  
    const resolveTranscriptDirs = Effect.fn("UsageService.resolveTranscriptDirs")(function* (
      settings: ServerSettingsValue,
@@ -552,7 +552,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
      awaitRefresh: boolean,
    ) {
      const dirs: Array<TranscriptSource> = [];
-@@ -414,7 +427,6 @@ export const make = Effect.gen(function* () {
+@@ -419,7 +432,6 @@ export const make = Effect.gen(function* () {
            .some(
              ([filePath, entry]) =>
                entry.provider === provider &&
@@ -560,7 +560,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
                (entry.records.length + entry.tailRecords.length > 0 || entry.malformedRecords > 0) &&
                isWithinDirectory(filePath, dir),
            );
-@@ -443,19 +455,72 @@ export const make = Effect.gen(function* () {
+@@ -448,19 +460,72 @@ export const make = Effect.gen(function* () {
      return { dirs, pending };
    });
  
@@ -637,7 +637,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
          cacheDirty = document !== null;
        }
        if (document === null) return;
-@@ -481,13 +546,10 @@ export const make = Effect.gen(function* () {
+@@ -486,13 +551,10 @@ export const make = Effect.gen(function* () {
    // Serialize writes so concurrently finished window scans cannot overwrite newer snapshots.
    const persistLock = yield* Semaphore.make(1);
  
@@ -652,7 +652,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
      const tempPrefixes = [SCAN_CACHE_FILE_NAME, ...LEGACY_SCAN_CACHE_FILE_NAMES].map(
        (fileName) => `${fileName}.`,
      );
-@@ -509,7 +571,7 @@ export const make = Effect.gen(function* () {
+@@ -514,7 +576,7 @@ export const make = Effect.gen(function* () {
  
    // Clear dirty before encoding to retain concurrent changes; restore it on failure for retry.
    const persistCaches = Effect.gen(function* () {
@@ -661,7 +661,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
        cacheDirty = false;
        yield* Effect.sync(() =>
          writeScanCache(fileCache, {
-@@ -525,9 +587,15 @@ export const make = Effect.gen(function* () {
+@@ -530,9 +592,15 @@ export const make = Effect.gen(function* () {
              return removeSupersededCacheFiles;
            }),
          ),
@@ -679,7 +679,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
            }),
          ),
        );
-@@ -773,7 +841,6 @@ export const make = Effect.gen(function* () {
+@@ -778,7 +846,6 @@ export const make = Effect.gen(function* () {
      { dirs, pending }: Effect.Success<ReturnType<typeof resolveTranscriptDirs>>,
      windowStartMs: number,
      settings: ServerSettingsValue,
@@ -687,7 +687,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
      awaitRefresh: boolean,
      fromMemory: boolean,
    ) {
-@@ -782,7 +849,7 @@ export const make = Effect.gen(function* () {
+@@ -787,7 +854,7 @@ export const make = Effect.gen(function* () {
        ({ driver, reader }) =>
          usageInstances(driver, settings).pipe(
            Effect.flatMap((instances) =>
@@ -696,7 +696,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
            ),
            Effect.flatMap((sources) =>
              Effect.forEach(sources, ({ volumeId, ...source }) =>
-@@ -867,11 +934,9 @@ export const make = Effect.gen(function* () {
+@@ -872,11 +939,9 @@ export const make = Effect.gen(function* () {
      const windowStartMs =
        (hourlyWindow?.sinceTimeMs ?? DateTime.toEpochMillis(windowStart.value)) - MTIME_SLACK_MS;
  
@@ -709,7 +709,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
          Effect.provideContext(readerContext),
        );
        // A window no complete scan has read would show partial totals, so every directory must cover it.
-@@ -886,14 +951,7 @@ export const make = Effect.gen(function* () {
+@@ -891,14 +956,7 @@ export const make = Effect.gen(function* () {
        const [, scanned] = yield* Effect.all(
          [
            fromMemory ? loadSavedRates : provisional ? ensureRates(false) : Effect.void,
@@ -725,7 +725,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
          ],
          { concurrency: 2 },
        );
-@@ -909,7 +967,6 @@ export const make = Effect.gen(function* () {
+@@ -914,7 +972,6 @@ export const make = Effect.gen(function* () {
      const sources: UsageSource[] = [];
  
      // Deleted transcripts' saved usage still aggregates and deduplicates normally.
@@ -733,7 +733,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
      // Saved paths are files below a scanned root, so their folder decides; folders repeat thousands of times.
      const withinDir = (dir: string) => {
        const foldersWithin = new Map<string, boolean>();
-@@ -923,14 +980,21 @@ export const make = Effect.gen(function* () {
+@@ -928,14 +985,21 @@ export const make = Effect.gen(function* () {
          return within;
        };
      };
@@ -757,7 +757,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
            livePaths.has(filePath) ||
            !isRetained(filePath)
          )
-@@ -944,8 +1008,8 @@ export const make = Effect.gen(function* () {
+@@ -949,8 +1013,8 @@ export const make = Effect.gen(function* () {
            malformedRecords: entry.malformedRecords,
          });
        }
@@ -768,7 +768,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
      // Usage two transcripts share counts in the first one, so saved files take the order an exact
      // scan reads them in: walked files in walk order, then the directory's deleted files.
      for (const { provider, dir, walked } of fromMemory ? [] : scannedDirs) {
-@@ -1077,6 +1141,11 @@ export const make = Effect.gen(function* () {
+@@ -1083,6 +1147,11 @@ export const make = Effect.gen(function* () {
          scannedFiles += 1;
          const eventOccurrences = new Map<string, number>();
          for (const rawRecord of file.records) {
@@ -780,7 +780,7 @@ index d84de15a59ed997b2f59a75a990fa845664e11d1..387cdada727e7e4a53b01d710e525ad4
            const record = correctedRecord(rawRecord);
            let usageRecord = record;
            if (
-@@ -1138,15 +1207,6 @@ export const make = Effect.gen(function* () {
+@@ -1144,15 +1213,6 @@ export const make = Effect.gen(function* () {
        });
      }
  
@@ -958,7 +958,7 @@ index 1946922f59dc4562620e2bc91acc7ea61466a7c0..2db7f50b0b1289ff8a3859214782b614
  );
  
 diff --git a/apps/web/src/components/usage/UsagePage.tsx b/apps/web/src/components/usage/UsagePage.tsx
-index 8bc8a93a43d6925d9bf0395ad0f1b8c6bbd4e978..5f8f0203a51c141b920965500c5c30d50c027a9b 100644
+index b60ae71d9ad523ec1883a5f044a1ee5aa5d62f56..a62ff510e7593e66d7139838fd5d988d7a4d1a66 100644
 --- a/apps/web/src/components/usage/UsagePage.tsx
 +++ b/apps/web/src/components/usage/UsagePage.tsx
 @@ -41,7 +41,6 @@ import { shortcutLabelForCommand } from "../../keybindings";

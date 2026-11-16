@@ -147,7 +147,7 @@ index 8aba3212bd06018b70cbfb96c1c2800fb3b24a2b..4cc11452a1f8a6c3acbf9e18ef29dae0
      ["environmentId", { environmentId: remoteId }],
      ["id", { id: ThreadId.make("changed") }],
 diff --git a/apps/web/src/components/Sidebar.logic.ts b/apps/web/src/components/Sidebar.logic.ts
-index 609b570522835303bb968b6b30e1c179a021e9cf..e45c0a0790a9e55c734152850cd0055d980665b0 100644
+index 38d6c061ed76ef5738d497737794746b9538ed09..28d4fa91a8497e735812c4dc1fbdaefb0878af2b 100644
 --- a/apps/web/src/components/Sidebar.logic.ts
 +++ b/apps/web/src/components/Sidebar.logic.ts
 @@ -1065,6 +1065,17 @@ export function resolveSidebarThreadTopStatus(
@@ -169,7 +169,7 @@ index 609b570522835303bb968b6b30e1c179a021e9cf..e45c0a0790a9e55c734152850cd0055d
    "approval",
    "input",
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index f282b2d49ada6b4f750951c7fd62f86b2c6e4c6f..cae2b6a222b8c25658b39d7e3ee0e2824f4c0163 100644
+index ef2ef3cce54e3a8b9d1983c498d1a03f7d05f1fa..10ec21ec922baf52e5c8490043db4a30cfc13f38 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -134,6 +134,7 @@ import {
@@ -209,7 +209,7 @@ index f282b2d49ada6b4f750951c7fd62f86b2c6e4c6f..cae2b6a222b8c25658b39d7e3ee0e282
    // A Settings or Usage modal keeps the thread behind it current.
    const routeTarget = useShownThreadRouteTarget().shownTarget;
    const routeDraftThread = useComposerDraftStore((store) =>
-@@ -2785,6 +2794,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2786,6 +2795,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                isSnoozed,
                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
                isRegeneratingTitle,
@@ -217,7 +217,7 @@ index f282b2d49ada6b4f750951c7fd62f86b2c6e4c6f..cae2b6a222b8c25658b39d7e3ee0e282
                isRunning: !threadRuntimeCanArchive(thread.runtime),
                canShareWithGuest: appAtomRegistry.get(
                  canShareWithGuestAtom(threadRef.environmentId),
-@@ -2928,8 +2938,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2929,8 +2939,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              if (toast) toastManager.add(toast);
              return;
            }
@@ -228,7 +228,7 @@ index f282b2d49ada6b4f750951c7fd62f86b2c6e4c6f..cae2b6a222b8c25658b39d7e3ee0e282
              return;
            case "copy-path":
              if (!threadWorkspacePath) {
-@@ -3431,6 +3442,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3432,6 +3443,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              onUnsnooze={attemptUnsnooze}
                              onUnpin={attemptUnpin}
                              onAcknowledgeWoke={acknowledgeWoke}
@@ -249,7 +249,7 @@ index 20ac809c130bb08beba90479e4d97d0bd735f05d..d07a999df8093e0bdd58e8722953d426
        <li>Outside</li>
      </ul>
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index de10872805beb70a592dc644670955102bdae7f7..3030e7d6d380c455aad1907ec6d184aa4938a277 100644
+index a1af04927ac35eb1f501d9d2634e6ccb769ed7ce..670a18e6b025a89716e716ebfb8191cf04db586a 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -46,6 +46,8 @@ import {
@@ -625,7 +625,7 @@ index 9c5ae260923cdad22a3173c3da361dcd315a2223..6ea1d09058d4f5963e2e85b192f8de56
      turnThreadIntoProject: (target: ScopedThreadRef) =>
        createProjectFromThread({
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index c94da474d7bd6ef8cc193e81bc2d835ed95b9654..1e0d8610beb339f94a4546b06b62a54ee47b2d47 100644
+index 4b4c0ec27da565967896a020504c6ce9c03ddece..b24de3a80c51f3047c1b8bf1cfdcc9d3c881a484 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -84,6 +84,9 @@ viewing. Discarding an unsent draft from the sidebar works the same way: Undo br

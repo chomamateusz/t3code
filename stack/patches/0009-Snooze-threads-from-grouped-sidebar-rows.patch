@@ -86,7 +86,7 @@ index e6d3a345f5f3681309e5160fbd518f252c28282d..20ac809c130bb08beba90479e4d97d0b
    vi.mocked(useEnvironmentScope).mockReturnValue(true);
    await using screen = await render(
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 94c2872b549d842fb71c85dfbb5688a9ca211942..c20ae690b25d054c85f99a3e671e0e0330a6e97a 100644
+index dcf042f30ae3342bdc68929df33ef6c826f38504..7bca2dade0a67f80e07d56d93e3de855f4415b50 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -892,7 +892,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP

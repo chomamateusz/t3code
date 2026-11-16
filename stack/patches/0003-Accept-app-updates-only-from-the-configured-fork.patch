@@ -40,6 +40,10 @@ Port to e07585e5fb:
 
 Port to f7b0b3c4d7: DesktopRemoteUpdates.test.ts: upstream #33605 (a retried remote request recovers the already prepared update's token) added its lease test where the fork track-switch refusal test sits; both are kept. The recovery reports only an update prepared through the guarded request path, and its commit still installs through installPrepared, which rechecks the fork feed.
 
+Port to 6b7027b1f4:
+- DesktopUpdates.ts: upstream #31154 (2cc4b4888e) moved download and install admission into admitAfterCheck, which now also waits for a running check before a download. The feed refusal stays first in downloadAvailableUpdate and installDownloadedUpdate, ahead of that admission; the refusal before electronUpdater.downloadUpdate and both install-time rechecks (after admission and after the backends stop) are unchanged, so a feed changed while waiting on the check is still refused. A check that re-finds the offered version no longer resets the state; checkForUpdates refuses a foreign feed before that point.
+- Upstream #31957 (c1a7ce362b) adds Download and Restart buttons to the Check for Updates menu dialog; they call updates.download and updates.install, the guarded paths. Upstream #32609 (channelBlockedByPolicy) never applies to a configured fork, whose channel is pinned to latest.
+
 Files:
 .github:
 - .github/workflows/release-desktop.yml
@@ -649,7 +653,7 @@ index 029bcaac2b4876e4d6254da74367cee7b7643a06..51cf8220566d5e5366317d0fb1dce50e
  });
  
 diff --git a/apps/desktop/src/app/DesktopStartupRecovery.ts b/apps/desktop/src/app/DesktopStartupRecovery.ts
-index c8228183aad91a82ae376f2c31cac2469ee0c6c9..1f7ba4fbff158b1cc5496ef02a981f65dd6fb70a 100644
+index e6c210043cf263d1b4079634bcd451ed8eead0cd..9f012ebbba8901425b918fe619ccf161a3362d2e 100644
 --- a/apps/desktop/src/app/DesktopStartupRecovery.ts
 +++ b/apps/desktop/src/app/DesktopStartupRecovery.ts
 @@ -18,7 +18,16 @@ import * as DesktopEnvironment from "./DesktopEnvironment.ts";
@@ -670,7 +674,7 @@ index c8228183aad91a82ae376f2c31cac2469ee0c6c9..1f7ba4fbff158b1cc5496ef02a981f65
  const LAST_STARTED_VERSION_FILE = "desktop-last-started-version";
  // Buttons are plain links to this host; will-navigate cancels them and runs the action.
  const ACTION_ORIGIN = "https://startup-recovery.invalid";
-@@ -223,11 +232,11 @@ export const listen: Effect.Effect<
+@@ -222,11 +231,11 @@ export const listen: Effect.Effect<
        }
        case "reinstall":
          if (current._tag === "Reinstall") {
@@ -744,7 +748,7 @@ index 0cc22bb4b16337b0241909e2193a4d8e59cb9577..a6afd196178896fe26ae614a4263887d
      });
    }),
 diff --git a/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts b/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
-index a489a64b4fcb8c1c68acaec19f594fabb9e26146..375ba7ad27f1ea19f4b40f90b0bc7694cb8b9ce2 100644
+index fdac65f86a59558a9715ef720e011f05560009e4..6349594002bfc78623f10e99ff55ea65783bd8f7 100644
 --- a/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
 +++ b/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
 @@ -40,10 +40,15 @@ function runRemoteUpdatesTest(
@@ -950,7 +954,7 @@ index ce2f23ab3e781e724be26ae1f9fec05770d72e94..b1d31456e37d20885db7f9f005f6ef13
              yield* publishReport(state, { outcome: "up-to-date" }, request.requestId);
              return;
 diff --git a/apps/desktop/src/updates/DesktopUpdates.ts b/apps/desktop/src/updates/DesktopUpdates.ts
-index db31e0bc112ba96241eff539cadd382754f196b6..27d12c9aaacbd84d68fc9515f6eb69e336b9d765 100644
+index 055c6574391a6ba7ab723264bcc871b56e135e05..4033a815b3e830e1e6f491af750afe6b53af3019 100644
 --- a/apps/desktop/src/updates/DesktopUpdates.ts
 +++ b/apps/desktop/src/updates/DesktopUpdates.ts
 @@ -285,9 +285,21 @@ export function describeUpdateErrorCause(cause: unknown): string {
@@ -976,7 +980,7 @@ index db31e0bc112ba96241eff539cadd382754f196b6..27d12c9aaacbd84d68fc9515f6eb69e3
      const match = line.match(/^(\w+):\s*(.+)$/);
      if (match?.[1] && match[2]) {
        entries[match[1]] = match[2].trim();
-@@ -383,6 +395,32 @@ export const make = Effect.gen(function* () {
+@@ -387,6 +399,32 @@ export const make = Effect.gen(function* () {
    // Any user can set the mock flag, so it never replaces an administrator's update source.
    const mockUpdates = config.mockUpdates && policy.message === null;
  
@@ -1009,7 +1013,7 @@ index db31e0bc112ba96241eff539cadd382754f196b6..27d12c9aaacbd84d68fc9515f6eb69e3
    const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
    const activeUpdateActionRef = yield* Ref.make<Option.Option<UpdateAction>>(Option.none());
    const installRunningBackendsRef = yield* Ref.make<
-@@ -444,7 +482,7 @@ export const make = Effect.gen(function* () {
+@@ -448,7 +486,7 @@ export const make = Effect.gen(function* () {
      Effect.flatMap(
        Option.match({
          onNone: () => Effect.succeed(Option.none<AppUpdateYmlConfig>()),
@@ -1018,7 +1022,7 @@ index db31e0bc112ba96241eff539cadd382754f196b6..27d12c9aaacbd84d68fc9515f6eb69e3
        }),
      ),
    );
-@@ -467,7 +505,32 @@ export const make = Effect.gen(function* () {
+@@ -471,7 +509,32 @@ export const make = Effect.gen(function* () {
      ),
    );
  
@@ -1051,7 +1055,7 @@ index db31e0bc112ba96241eff539cadd382754f196b6..27d12c9aaacbd84d68fc9515f6eb69e3
      const hasFeedConfig = yield* hasUpdateFeedConfig;
      return Option.fromNullishOr(
        getAutoUpdateDisabledReason({
-@@ -522,6 +585,7 @@ export const make = Effect.gen(function* () {
+@@ -543,6 +606,7 @@ export const make = Effect.gen(function* () {
      channel: DesktopUpdateChannel,
    ) {
      yield* Effect.annotateCurrentSpan({ channel });
@@ -1059,7 +1063,7 @@ index db31e0bc112ba96241eff539cadd382754f196b6..27d12c9aaacbd84d68fc9515f6eb69e3
      const allowsPrerelease = channel === "nightly";
      yield* electronUpdater.setChannel(channel);
      yield* electronUpdater.setAllowPrerelease(allowsPrerelease);
-@@ -544,6 +608,7 @@ export const make = Effect.gen(function* () {
+@@ -565,6 +629,7 @@ export const make = Effect.gen(function* () {
      yield* Effect.annotateCurrentSpan({ reason });
      if (yield* Ref.get(desktopState.quitting)) return false;
      if (!(yield* Ref.get(updaterConfiguredRef))) return false;
@@ -1067,15 +1071,15 @@ index db31e0bc112ba96241eff539cadd382754f196b6..27d12c9aaacbd84d68fc9515f6eb69e3
  
      const state = yield* Ref.get(updateStateRef);
      // A configured updater is disabled only by a channel the managed policy blocks.
-@@ -597,6 +662,7 @@ export const make = Effect.gen(function* () {
+@@ -620,6 +685,7 @@ export const make = Effect.gen(function* () {
    });
  
    const downloadAvailableUpdate = Effect.gen(function* () {
 +    if (yield* refuseDisallowedFeed) return { accepted: false, completed: false };
-     const state = yield* Ref.get(updateStateRef);
-     if (!(yield* Ref.get(updaterConfiguredRef)) || state.status !== "available") {
-       return { accepted: false, completed: false };
-@@ -612,6 +678,7 @@ export const make = Effect.gen(function* () {
+     const admission = yield* Effect.scoped(
+       admitAfterCheck(
+         Effect.gen(function* () {
+@@ -650,6 +716,7 @@ export const make = Effect.gen(function* () {
          isArm64HostRunningIntelBuild(environment.runtimeInfo),
        );
        yield* logUpdaterInfo("downloading update");
@@ -1083,15 +1087,15 @@ index db31e0bc112ba96241eff539cadd382754f196b6..27d12c9aaacbd84d68fc9515f6eb69e3
        yield* electronUpdater.downloadUpdate;
        return { accepted: true, completed: true };
      }).pipe(
-@@ -798,6 +865,7 @@ export const make = Effect.gen(function* () {
+@@ -836,6 +903,7 @@ export const make = Effect.gen(function* () {
    const installDownloadedUpdate = (expectedVersion?: string) =>
      Effect.scoped(
        Effect.gen(function* () {
 +        if (yield* refuseDisallowedFeed) return { accepted: false, completed: false, failed: true };
-         const actionCompletions = yield* PubSub.subscribe(finishedUpdateActions);
-         let admission: "admitted" | "refused" | "wait-for-check" = "wait-for-check";
-         while (admission === "wait-for-check") {
-@@ -843,6 +911,10 @@ export const make = Effect.gen(function* () {
+         const admission = yield* admitAfterCheck(
+           Effect.gen(function* () {
+             const state = yield* Ref.get(updateStateRef);
+@@ -869,6 +937,10 @@ export const make = Effect.gen(function* () {
            return { accepted: false, completed: false, failed: false };
          }
  
@@ -1102,7 +1106,7 @@ index db31e0bc112ba96241eff539cadd382754f196b6..27d12c9aaacbd84d68fc9515f6eb69e3
          yield* Ref.set(desktopState.quitting, true);
          yield* Ref.set(installRunningBackendsRef, []);
  
-@@ -870,6 +942,12 @@ export const make = Effect.gen(function* () {
+@@ -896,6 +968,12 @@ export const make = Effect.gen(function* () {
              ],
              { concurrency: "unbounded" },
            );
@@ -1115,7 +1119,7 @@ index db31e0bc112ba96241eff539cadd382754f196b6..27d12c9aaacbd84d68fc9515f6eb69e3
            yield* electronUpdater.quitAndInstall({
              isSilent: true,
              isForceRunAfter: true,
-@@ -1177,7 +1255,7 @@ export const make = Effect.gen(function* () {
+@@ -1206,7 +1284,7 @@ export const make = Effect.gen(function* () {
          });
        }
  
@@ -1124,7 +1128,7 @@ index db31e0bc112ba96241eff539cadd382754f196b6..27d12c9aaacbd84d68fc9515f6eb69e3
          yield* electronUpdater.setFeedURL({
            provider: "generic",
            url: `http://localhost:${config.mockUpdateServerPort}`,
-@@ -1194,10 +1272,11 @@ export const make = Effect.gen(function* () {
+@@ -1223,10 +1301,11 @@ export const make = Effect.gen(function* () {
        const disabledReason = yield* resolveDisabledReason;
        // A blocked nightly channel still lets the user switch back to stable, so it stays updatable.
        yield* Ref.set(desktopState.canInstallUpdates, Option.isNone(disabledReason));
@@ -1138,7 +1142,7 @@ index db31e0bc112ba96241eff539cadd382754f196b6..27d12c9aaacbd84d68fc9515f6eb69e3
          ),
        );
        if (Option.isSome(disabledReason)) {
-@@ -1247,6 +1326,9 @@ export const make = Effect.gen(function* () {
+@@ -1276,6 +1355,9 @@ export const make = Effect.gen(function* () {
        nextChannel: DesktopUpdateChannel,
        options?: { readonly minimumVersion?: string | undefined },
      ) {
@@ -1649,7 +1653,7 @@ index 770b26e0a686b75139c3c4e87f33e34e6a211f3d..7faf63b77e22f93cfdf9ee357013913c
      }
      await NodeFSP.writeFile(
 diff --git a/apps/web/src/components/desktopUpdate.logic.test.ts b/apps/web/src/components/desktopUpdate.logic.test.ts
-index c7d7c607ea2382c6c56b1eae8dfc72dd59c50eaa..515b5d5f3c84cab51be5bd5c7d46fbe966808cba 100644
+index eb5bacd37f828036a6bc70a10d3654bf61af428c..e2514504988334edf9ed4f2d5dacdd61d20b2cb5 100644
 --- a/apps/web/src/components/desktopUpdate.logic.test.ts
 +++ b/apps/web/src/components/desktopUpdate.logic.test.ts
 @@ -1,9 +1,13 @@
@@ -1703,7 +1707,7 @@ index c7d7c607ea2382c6c56b1eae8dfc72dd59c50eaa..515b5d5f3c84cab51be5bd5c7d46fbe9
    it("keeps retry action available after a download error", () => {
      const state: DesktopUpdateState = {
        ...baseState,
-@@ -64,6 +97,23 @@ describe("desktop update button state", () => {
+@@ -80,6 +113,23 @@ describe("desktop update button state", () => {
    });
  });
  
@@ -1728,7 +1732,7 @@ index c7d7c607ea2382c6c56b1eae8dfc72dd59c50eaa..515b5d5f3c84cab51be5bd5c7d46fbe9
    it.each(["owner/repo/extra", "owner#notes/repo", "owner/repo?tab=notes"])(
      "falls back to upstream for an invalid configured repository: %s",
 diff --git a/apps/web/src/components/desktopUpdate.logic.ts b/apps/web/src/components/desktopUpdate.logic.ts
-index 51b2b92b0a8baf23e7d7f9fad47e69a8175a1d1a..623aba0ef20d0df701fa2890a2a3dd9485ce6b49 100644
+index b658de77e19ff0fcb5381a73adfac532d22afac9..6ec0a5f5977d3a8b9ecd51b0499a748a2b8d56ce 100644
 --- a/apps/web/src/components/desktopUpdate.logic.ts
 +++ b/apps/web/src/components/desktopUpdate.logic.ts
 @@ -21,6 +21,12 @@ function desktopReleaseRepositoryUrl(repository: string | undefined): string {
@@ -1800,7 +1804,7 @@ index 51b2b92b0a8baf23e7d7f9fad47e69a8175a1d1a..623aba0ef20d0df701fa2890a2a3dd94
    if (
      state.notAppliedVersion !== undefined &&
      (state.status === "available" || state.status === "downloaded") &&
-@@ -128,7 +149,8 @@ export function getDesktopUpdateInstallConfirmationMessage(
+@@ -132,7 +153,8 @@ export function getDesktopUpdateInstallConfirmationMessage(
  }
  
  export function getDesktopUpdateActionError(result: DesktopUpdateActionResult): string | null {
@@ -1841,10 +1845,10 @@ index 633e18a567b2faca7362837856164a108444ad28..c2d462c88dc7cb45797ac14da766f0cd
            toastManager.add(
              stackedThreadToast({
 diff --git a/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx b/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx
-index 6ac9219ab2828e02e5efe46e7f24272a95c6563d..95163c0891908758fe414a844c3592721536ffb5 100644
+index a701039f374efb779c9b2b782e056ddc03be805c..3de09de7fb3e6c6b4aae7f8810ea74906041c2eb 100644
 --- a/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx
 +++ b/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx
-@@ -43,7 +43,6 @@ export function UpdateTrackSwitchDialog({
+@@ -44,7 +44,6 @@ export function UpdateTrackSwitchDialog({
    readonly channel: DesktopUpdateChannel;
    readonly onClose: () => void;
  }) {
@@ -1852,7 +1856,7 @@ index 6ac9219ab2828e02e5efe46e7f24272a95c6563d..95163c0891908758fe414a844c359272
    const release = useAtomValue(npmReleaseAtom(channel));
    if (AsyncResult.isSuccess(release) && release.value !== null) {
      return <SwitchPlan release={{ channel, ...release.value }} onClose={onClose} />;
-@@ -58,7 +57,9 @@ export function UpdateTrackSwitchDialog({
+@@ -59,7 +58,9 @@ export function UpdateTrackSwitchDialog({
              {AsyncResult.isFailure(release)
                ? npmReleaseFailureMessage(release.cause)
                : AsyncResult.isSuccess(release)

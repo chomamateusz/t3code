@@ -171,10 +171,10 @@ index 55231a16cba1255af3c8589681992e35d957559e..a3e3b5eed744489a2d4bf40f2d844677
 +  });
 +});
 diff --git a/apps/web/src/components/Sidebar.drag.browser.test.tsx b/apps/web/src/components/Sidebar.drag.browser.test.tsx
-index 5903996bc4c3919d418e467754df12e5bceab715..0c21372cc56b71362a7c85ab000f715794795898 100644
+index 7cb1fabb5ccd27609c21dc51a83f4cb42758fdff..4c8d98453fbc39b4faae7bd817aa5cab573d7f6f 100644
 --- a/apps/web/src/components/Sidebar.drag.browser.test.tsx
 +++ b/apps/web/src/components/Sidebar.drag.browser.test.tsx
-@@ -56,7 +56,7 @@ it("keeps the title when dragging a search result from a collapsed folder", asyn
+@@ -56,7 +56,7 @@ it("shows the titled preview inside and outside search results from a collapsed
      .getByRole("button", { name: /^render/ });
    await expect.element(folder).toHaveAttribute("aria-expanded", "true");
    // A removed row fades out as a clone without its test id, so match the live row only.
@@ -358,7 +358,7 @@ index 1dc25cdd7883ca4b9d823433b30d7540efdf664a..8aba3212bd06018b70cbfb96c1c2800f
  
    it.each([
 diff --git a/apps/web/src/components/Sidebar.logic.ts b/apps/web/src/components/Sidebar.logic.ts
-index 8594367466cf9e74d064305854a47611c7c76861..609b570522835303bb968b6b30e1c179a021e9cf 100644
+index 3f14170fd2d600aff7e700e43986bc5be1470287..38d6c061ed76ef5738d497737794746b9538ed09 100644
 --- a/apps/web/src/components/Sidebar.logic.ts
 +++ b/apps/web/src/components/Sidebar.logic.ts
 @@ -46,7 +46,7 @@ import { THREAD_STATUS_TEXT } from "@t3tools/client-runtime/state/thread-activit
@@ -504,7 +504,7 @@ index 8594367466cf9e74d064305854a47611c7c76861..609b570522835303bb968b6b30e1c179
   * Boring sidebar folders. Folders follow `groups` order and threads keep their
   * input order. A project with no threads gets a folder only when `keepEmpty` says so.
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index a33e9cdcb86830189f13597309d6e70b6fa2907c..f282b2d49ada6b4f750951c7fd62f86b2c6e4c6f 100644
+index 0713b452b0f4aa8ffd4fda85880baa8694e10ade..ef2ef3cce54e3a8b9d1983c498d1a03f7d05f1fa 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -116,12 +116,18 @@ import {
@@ -679,7 +679,7 @@ index a33e9cdcb86830189f13597309d6e70b6fa2907c..f282b2d49ada6b4f750951c7fd62f86b
            ...visibleProjectGroups.filter((project) => project.archived),
          ]
        : null,
-@@ -3291,13 +3329,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3292,13 +3330,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                          const threadKey = scopedThreadKey(
                            scopeThreadRef(thread.environmentId, thread.id),
                          );
@@ -695,7 +695,7 @@ index a33e9cdcb86830189f13597309d6e70b6fa2907c..f282b2d49ada6b4f750951c7fd62f86b
                              ? "card"
                              : "slim";
                          return (
-@@ -3312,6 +3345,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3313,6 +3346,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              }
                              thread={thread}
                              variant={rowVariant}
@@ -703,7 +703,7 @@ index a33e9cdcb86830189f13597309d6e70b6fa2907c..f282b2d49ada6b4f750951c7fd62f86b
                              navigationParent={
                                folderRow ??
                                (section === "working" ||
-@@ -3429,6 +3463,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3430,6 +3464,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                  group={folder.group}
                                  collapsed={folder.collapsed}
                                  hiddenThreads={folder.hiddenThreads}
@@ -1182,7 +1182,7 @@ index 0000000000000000000000000000000000000000..db439e67964e4dea091c47376eead71c
 +    previous.badge?.description === next.badge?.description,
 +);
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index c20ae690b25d054c85f99a3e671e0e0330a6e97a..de10872805beb70a592dc644670955102bdae7f7 100644
+index 7bca2dade0a67f80e07d56d93e3de855f4415b50..a1af04927ac35eb1f501d9d2634e6ccb769ed7ce 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -550,6 +550,7 @@ type SidebarThreadRowProps = {
@@ -1202,7 +1202,7 @@ index c20ae690b25d054c85f99a3e671e0e0330a6e97a..de10872805beb70a592dc64467095510
        )}
      >
 diff --git a/apps/web/src/index.css b/apps/web/src/index.css
-index 0f9942e3295ee01cb0aef66d9913302b75ec9816..d23042c2c21d67a467cc2541114461bf5c0ccf79 100644
+index 771c714b1ff8a210ecaa7ad398e2769036162482..297d59cd9418d1d5c18b68119efa43e67f9b1555 100644
 --- a/apps/web/src/index.css
 +++ b/apps/web/src/index.css
 @@ -109,6 +109,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
@@ -1216,7 +1216,7 @@ index 0f9942e3295ee01cb0aef66d9913302b75ec9816..d23042c2c21d67a467cc2541114461bf
    --command-content-inset: 1rem;
    --floating-content-inset: 0.75rem;
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 6082ab6e752028ba2f824dd576ba8286cec01bfa..c94da474d7bd6ef8cc193e81bc2d835ed95b9654 100644
+index 82ebba5f75775a832496ac277e03249708aadb00..4b4c0ec27da565967896a020504c6ce9c03ddece 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -220,11 +220,15 @@ selections so the thread can appear, while keeping selections for unavailable pr

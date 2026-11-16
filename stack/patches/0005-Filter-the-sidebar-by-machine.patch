@@ -228,7 +228,7 @@ index 9705bf84e73eae05532202cacaccfd0f282d707f..fa548c04168e746d1ba79367ff0427dd
  });
  
 diff --git a/apps/web/src/components/Sidebar.logic.ts b/apps/web/src/components/Sidebar.logic.ts
-index 8c0e678ff667275f1e25e859d46e25e76f7c6173..5e8268acc171cc768584d27db6154b69b349d51b 100644
+index 5060c6ae879af316a21f3aa6ea5c9d48f5a115a3..20a1fce7f4cafcbfaa5323af07e4969e8f75c872 100644
 --- a/apps/web/src/components/Sidebar.logic.ts
 +++ b/apps/web/src/components/Sidebar.logic.ts
 @@ -618,6 +618,7 @@ export function filterSidebarV2VisibleThreads<
@@ -261,7 +261,7 @@ index 8c0e678ff667275f1e25e859d46e25e76f7c6173..5e8268acc171cc768584d27db6154b69
  }
  
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 4c539afa78fc323d3b92bf61fb7e54ae4e901f12..7cbdad8903f9437659447f2f4d53e9fcfebfa4d1 100644
+index 3314537973cbec1ee6da89898778a6d67311dd1b..3ab1390df9e71016c7d6eb1aa8042e7b183df8fc 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -112,6 +112,14 @@ import {
@@ -652,7 +652,7 @@ index 4c539afa78fc323d3b92bf61fb7e54ae4e901f12..7cbdad8903f9437659447f2f4d53e9fc
          : scopedProjectGroups
        : null,
      keepEmptyFolders: (group) =>
-@@ -2964,6 +3036,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2965,6 +3037,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            <SidebarGroup className="z-[1]">
              <SidebarThreadHeader
                hasProjects={projectGroups.length > 0}
@@ -668,7 +668,7 @@ index 4c539afa78fc323d3b92bf61fb7e54ae4e901f12..7cbdad8903f9437659447f2f4d53e9fc
                projectScope={
                  <Combobox
                    items={projectScopeItems}
-@@ -3297,11 +3378,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3298,11 +3379,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                ) : scopedProjectGroups.length > 0 ? (
                  <>
                    <span>
@@ -688,7 +688,7 @@ index 4c539afa78fc323d3b92bf61fb7e54ae4e901f12..7cbdad8903f9437659447f2f4d53e9fc
                    </span>
                    <button
                      type="button"
-@@ -3312,7 +3396,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3313,7 +3397,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    </button>
                  </>
                ) : (
@@ -697,7 +697,7 @@ index 4c539afa78fc323d3b92bf61fb7e54ae4e901f12..7cbdad8903f9437659447f2f4d53e9fc
                )}
              </div>
            ) : null}
-@@ -3433,7 +3517,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3434,7 +3518,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              environmentMachine={
                                environmentMachineById.get(thread.environmentId) ?? "server"
                              }
@@ -706,7 +706,7 @@ index 4c539afa78fc323d3b92bf61fb7e54ae4e901f12..7cbdad8903f9437659447f2f4d53e9fc
                              project={
                                projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ??
                                null
-@@ -3475,6 +3559,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3476,6 +3560,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                            projectByKey={projectByKey}
                            projectDisplayNameByKey={projectDisplayNameByKey}
                            scopedProjectKeys={scopedProjectKeys}
@@ -1202,7 +1202,7 @@ index 0000000000000000000000000000000000000000..e6d3a345f5f3681309e5160fbd518f25
 +  await expect.element(screen.getByText("main")).toBeVisible();
 +});
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 2a3893737c0b0bdaf60829867dab5deb03c86d9a..dd58160dd8507e336e65f39ac0078e44c08527a7 100644
+index 641bc0cfa00bacf98f1a2431bc95b24fed1e6d4e..2fee312d4cb86d0da745203c5c4ec57f5147b449 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -574,7 +574,7 @@ type SidebarThreadRowProps = {

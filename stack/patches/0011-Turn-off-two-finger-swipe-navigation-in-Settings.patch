@@ -101,7 +101,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  9 files changed, 202 insertions(+), 18 deletions(-)
 
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index 2b369d00ff79a7d9d9fb61dc84a1a287c8527909..f12949383ee176dbc2102297fde115b809920a7a 100644
+index c08c266adc0b34174279d499ae2df48be752acf5..958bf7f748258be18da672fe8956ea65ad3a590c 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
 @@ -1,7 +1,7 @@
@@ -141,7 +141,7 @@ index 2b369d00ff79a7d9d9fb61dc84a1a287c8527909..f12949383ee176dbc2102297fde115b8
          layerDesktopServerExposure,
          DesktopState.layer,
          layerElectronApp,
-@@ -1329,7 +1332,17 @@ describe("DesktopWindow", () => {
+@@ -1361,7 +1364,17 @@ describe("DesktopWindow", () => {
        const fakeWindow = makeFakeBrowserWindow();
        const createCount = yield* Ref.make(0);
        const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
@@ -160,7 +160,7 @@ index 2b369d00ff79a7d9d9fb61dc84a1a287c8527909..f12949383ee176dbc2102297fde115b8
  
        yield* Effect.gen(function* () {
          const desktopWindow = yield* DesktopWindow.DesktopWindow;
-@@ -1337,22 +1350,55 @@ describe("DesktopWindow", () => {
+@@ -1369,22 +1382,55 @@ describe("DesktopWindow", () => {
          const swipe = fakeWindow.windowListeners.get("swipe");
          assert.isDefined(swipe);
          if (!swipe) return;
@@ -225,7 +225,7 @@ index 2b369d00ff79a7d9d9fb61dc84a1a287c8527909..f12949383ee176dbc2102297fde115b8
      }),
    );
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 7be14bc720838bff0e6127605de6269b5252fc7c..18dab3844056839a9d5b79cb641a275f7e04cea9 100644
+index 4628be44d5ce10c52f09d9a254cd53e335ef0644..e7f3a600abd8da7b071fefe692cbc1af3e70e96c 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
 @@ -833,9 +833,27 @@ export const make = Effect.gen(function* () {
