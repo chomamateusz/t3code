@@ -86,6 +86,7 @@ Port to ee4ef06469:
 Port to f7b0b3c4d7: QueuedRunsControl.browser.test.tsx: the imports keep upstream #33298's useState, ExpandedImageDialog and ExpandedImagePreview (queued images open in the image viewer) next to this commit's createRef and QueuedRunsControlHandle.
 
 Port to 6b134a7add: runtimeLayer.test.ts conflicted only in its contracts import list: upstream b79d277cdd (#37793) imports OrchestrationV2DomainEvent beside the OrchestrationV2Command type this commit imports; both are kept and the change itself is unchanged.
+useQueuedRunEdit.browser.test.tsx: upstream #37507's steerSavedRun derives the queue state, which this commit's send-each check reads model selections from, so the fixture's runs gain a model selection like every real run has.
 
 Files:
 apps/server:
@@ -99,6 +100,7 @@ apps/web:
 - apps/web/src/components/ChatView.tsx
 - apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx
 - apps/web/src/components/chat/QueuedRunsControl.tsx
+- apps/web/src/components/chat/useQueuedRunEdit.browser.test.tsx
 - apps/web/src/components/settings/KeybindingsSettings.logic.ts
 packages/client-runtime:
 - packages/client-runtime/src/operations/commands.ts
@@ -156,6 +158,7 @@ Tests:
  apps/web/src/components/ChatView.tsx          |   7 +
  .../chat/QueuedRunsControl.browser.test.tsx   | 188 ++++++++++-
  .../src/components/chat/QueuedRunsControl.tsx | 162 ++++++++--
+ .../chat/useQueuedRunEdit.browser.test.tsx    |   5 +-
  .../settings/KeybindingsSettings.logic.ts     |   1 +
  docs/user/composer.md                         |   9 +
  docs/user/keybindings.md                      |   3 +-
@@ -169,7 +172,7 @@ Tests:
  packages/shared/package.json                  |   4 +
  packages/shared/src/model.ts                  |   9 +-
  packages/shared/src/queuedMessageMerge.ts     | 139 ++++++++
- 22 files changed, 1310 insertions(+), 103 deletions(-)
+ 23 files changed, 1314 insertions(+), 104 deletions(-)
  create mode 100644 packages/shared/src/queuedMessageMerge.ts
 
 diff --git a/apps/server/src/orchestration-v2/GuestShare.test.ts b/apps/server/src/orchestration-v2/GuestShare.test.ts
@@ -1313,6 +1316,22 @@ index 8972bf468448b08f92caac5cb3d9e4728b2ef644..7c020be4a9c409d3a4f88c87f608dfb7
          </div>
        ) : null}
      </section>
+diff --git a/apps/web/src/components/chat/useQueuedRunEdit.browser.test.tsx b/apps/web/src/components/chat/useQueuedRunEdit.browser.test.tsx
+index a88da51cce16e360f7ebb0cec7c5ed55a6e30ca1..ef6715ea617f0f08b7b4fff32b143bec9717a7ce 100644
+--- a/apps/web/src/components/chat/useQueuedRunEdit.browser.test.tsx
++++ b/apps/web/src/components/chat/useQueuedRunEdit.browser.test.tsx
+@@ -79,7 +79,10 @@ vi.mock("../../state/threads", async () => {
+           return {
+             projection: {
+               thread: { id: ref.threadId, activeProviderThreadId: null },
+-              runs,
++              runs: runs.map((run) => ({
++                ...run,
++                modelSelection: { instanceId: "claudeAgent", model: "claude-sonnet-4-6" },
++              })),
+               messages: [],
+               providerThreads: [],
+               providerSessions: [
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 index 2db7f50b0b1289ff8a3859214782b614f3016129..21df321eaad7ebe1f5dc89da6f3a0316777c8aa5 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
