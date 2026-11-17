@@ -86,10 +86,10 @@ index e6d3a345f5f3681309e5160fbd518f252c28282d..20ac809c130bb08beba90479e4d97d0b
    vi.mocked(useEnvironmentScope).mockReturnValue(true);
    await using screen = await render(
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index dcf042f30ae3342bdc68929df33ef6c826f38504..7bca2dade0a67f80e07d56d93e3de855f4415b50 100644
+index bd0cd1ad46a1cbd046500a0ff846820a5cbd2e2d..d78c4c7517f01f0c37aaf6945b3c2b35b635e69f 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -892,7 +892,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -898,7 +898,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      setSnoozeGateClock({ thread, now: new Date(snoozeGateOpensAt).toISOString() });
    }
    const showSnoozeButton =
@@ -101,7 +101,7 @@ index dcf042f30ae3342bdc68929df33ef6c826f38504..7bca2dade0a67f80e07d56d93e3de855
    // Closing here, not just masking, keeps the menu from reopening when the button returns.
    if (snoozeMenuOpenRaw && !showSnoozeButton) setSnoozeMenuOpen(false);
    const snoozeMenuOpen = snoozeMenuOpenRaw && showSnoozeButton;
-@@ -1165,7 +1168,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1171,7 +1174,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
            sortable?.isDragging && "relative z-20",
          )}
        >
@@ -110,7 +110,7 @@ index dcf042f30ae3342bdc68929df33ef6c826f38504..7bca2dade0a67f80e07d56d93e3de855
            <TooltipTrigger
              render={
                <div
-@@ -1223,7 +1226,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1229,7 +1232,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                ) : (
                  <span
                    className={cn(
@@ -120,7 +120,7 @@ index dcf042f30ae3342bdc68929df33ef6c826f38504..7bca2dade0a67f80e07d56d93e3de855
                      props.sweepAction !== null && "hidden",
                      jumpHintLabel && JUMP_HINT_SLOT_CLASS_NAME,
                    )}
-@@ -1232,6 +1236,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1238,6 +1242,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                      className={cn(
                        "inline-flex justify-end tabular-nums text-secondary-label transition-opacity",
                        !isWoke && "group-any-hover/sidebar-row:opacity-0",
@@ -131,7 +131,7 @@ index dcf042f30ae3342bdc68929df33ef6c826f38504..7bca2dade0a67f80e07d56d93e3de855
                      )}
                    >
                      {variantAction === "unsnooze" && props.snoozeWakeLabelText !== null ? (
-@@ -1295,27 +1303,63 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1301,27 +1309,63 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                          <AlarmClockOffIcon className="mb-px size-3" />
                        </button>
                      )
@@ -216,7 +216,7 @@ index dcf042f30ae3342bdc68929df33ef6c826f38504..7bca2dade0a67f80e07d56d93e3de855
                      <Tooltip>
                        <TooltipTrigger
                          render={
-@@ -1335,7 +1379,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1341,7 +1385,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                        </TooltipTrigger>
                        <TooltipPopup side="top">Settle thread</TooltipPopup>
                      </Tooltip>

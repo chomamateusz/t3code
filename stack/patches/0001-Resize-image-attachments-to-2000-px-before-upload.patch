@@ -33,6 +33,10 @@ Port to 04f6cfca87:
 Port to 6b7027b1f4:
 - Upstream 7d9c365e17 now fingerprints a downloaded image's bytes (readComposerImageBytes) before it reaches the draft, so distinct images with matching metadata both attach. The fingerprint is taken from the prepared file, for downloaded and cached images alike, because preparation can resize or recompress and the draft dedups on the bytes it publishes; upstream's fingerprint of the preview annotation screenshot reads the already prepared capture.
 
+Port to 6b134a7add:
+- Upstream 750e492ed6 copies snapshot images into another composer as image context records that carry their snap-shot source; they enter through the same context import, so they already pass through prepareImageForAttachment (2000 px longest edge and byte limit), and the prepared image keeps upstream's source metadata, byte fingerprint and deleted-chip guard. The browser test keeps upstream's snapshot source on the image record and checks it survives preparation for downloaded and cached images.
+- New imageCompression case: a HEIC photo whose first converted JPEG is still over the byte cap is re-encoded as large.jpg from a second decode, without a second resize.
+
 Files:
 apps/web:
 - apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
@@ -61,33 +65,33 @@ Tests:
 
 Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
 ---
- .../useComposerContextImport.browser.test.tsx |  52 +++++--
- .../chat/useComposerContextImport.ts          |  26 +++-
+ .../useComposerContextImport.browser.test.tsx |  53 +++++-
+ .../chat/useComposerContextImport.ts          |  26 ++-
  .../SnapShotCoordinator.browser.test.ts       |  20 ++-
  .../src/components/preview/PreviewView.tsx    |   2 +-
- apps/web/src/lib/imageCompression.test.ts     | 135 ++++++++++++++++--
- apps/web/src/lib/imageCompression.ts          |  46 +++---
- apps/web/src/lib/previewAnnotation.test.ts    |  50 ++++++-
+ apps/web/src/lib/imageCompression.test.ts     | 160 ++++++++++++++++--
+ apps/web/src/lib/imageCompression.ts          |  46 ++---
+ apps/web/src/lib/previewAnnotation.test.ts    |  50 +++++-
  apps/web/src/lib/previewAnnotation.ts         |  15 +-
  docs/user/composer.md                         |   4 +
- 9 files changed, 292 insertions(+), 58 deletions(-)
+ 9 files changed, 317 insertions(+), 59 deletions(-)
 
 diff --git a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
-index e2bf9676b8b6d22fc44b66e976b69eaa1c7cb205..4df03dea3f04b55b21c4e703e459963e791b3cd6 100644
+index d48e965895ddd40377c2836ffc39435e889af34a..7b3a651602bdcc7ae5b9f5156ed1fdafc31412ac 100644
 --- a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
 +++ b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
-@@ -48,6 +48,10 @@ function deferred<T>() {
+@@ -48,7 +48,10 @@ function deferred<T>() {
  it.each([
    { kind: "file", edit: "delete" },
    { kind: "image", edit: "delete" },
 +  { kind: "image", edit: "delete-during-decode" },
 +  { kind: "image", edit: "cached-delete-during-decode" },
-+  { kind: "image", edit: "retain" },
+   { kind: "image", edit: "retain" },
 +  { kind: "image", edit: "cached" },
    { kind: "file", edit: "undo" },
    { kind: "file", edit: "retain" },
    { kind: "file", edit: "switch" },
-@@ -61,11 +65,22 @@ it.each([
+@@ -62,11 +65,22 @@ it.each([
    const store = useComposerDraftStore.getState();
    using _draft = { [Symbol.dispose]: () => store.clearComposerContent(target) };
    const sourceEnvironmentId = EnvironmentId.make("clipboard-source");
@@ -113,7 +117,7 @@ index e2bf9676b8b6d22fc44b66e976b69eaa1c7cb205..4df03dea3f04b55b21c4e703e459963e
    );
    using _copy = {
      [Symbol.dispose]: () => rememberCopiedComposerAttachments(sourceEnvironmentId, new Map()),
-@@ -74,6 +89,8 @@ it.each([
+@@ -75,6 +89,8 @@ it.each([
    const downloaded = deferred<Response>();
    const requested = deferred<void>();
    const settled = deferred<void>();
@@ -122,7 +126,7 @@ index e2bf9676b8b6d22fc44b66e976b69eaa1c7cb205..4df03dea3f04b55b21c4e703e459963e
    const input = {
      environmentId: EnvironmentId.make("clipboard-target"),
      linkedEnvironments: new Map(),
-@@ -111,6 +128,18 @@ it.each([
+@@ -112,6 +128,18 @@ it.each([
      requested.resolve();
      return downloaded.promise;
    });
@@ -141,7 +145,7 @@ index e2bf9676b8b6d22fc44b66e976b69eaa1c7cb205..4df03dea3f04b55b21c4e703e459963e
    const contextId = ComposerContextId.make(`${kind}_source`);
    const attachmentFields = {
      version: 1 as const,
-@@ -118,8 +147,8 @@ it.each([
+@@ -119,8 +147,8 @@ it.each([
      label: "notes.txt",
      attachmentId: "source-attachment",
      name: "notes.txt",
@@ -152,7 +156,7 @@ index e2bf9676b8b6d22fc44b66e976b69eaa1c7cb205..4df03dea3f04b55b21c4e703e459963e
    };
    const attachment = (
      kind === "file"
-@@ -154,9 +183,15 @@ it.each([
+@@ -165,9 +193,15 @@ it.each([
      if (edit === "question") pastedPrompt = "Question answer";
      promptRef.current = pastedPrompt;
      store.setPrompt(target, pastedPrompt);
@@ -170,7 +174,7 @@ index e2bf9676b8b6d22fc44b66e976b69eaa1c7cb205..4df03dea3f04b55b21c4e703e459963e
    await act(() => {
      if (
        edit !== "annotation" &&
-@@ -175,7 +210,8 @@ it.each([
+@@ -186,14 +220,15 @@ it.each([
      if (edit === "switch") input.attachmentTargetKeyRef.current = DraftId.make("other-draft");
    });
    await act(async () => {
@@ -180,8 +184,16 @@ index e2bf9676b8b6d22fc44b66e976b69eaa1c7cb205..4df03dea3f04b55b21c4e703e459963e
      await settled.promise;
    });
    expect(pendingDraftWork.has(target)).toBe(false);
+   const draft = store.getComposerDraft(target)!;
+   expect(draft.prompt).toBe(promptRef.current);
+   const attachments = kind === "file" ? draft.files : draft.images;
+-  if (kind === "image" && edit === "retain")
++  if (kind === "image" && (edit === "retain" || edit === "cached"))
+     expect(draft.images[0]?.source).toEqual(
+       attachment.kind === "image" ? attachment.source : undefined,
+     );
 diff --git a/apps/web/src/components/chat/useComposerContextImport.ts b/apps/web/src/components/chat/useComposerContextImport.ts
-index 0cc66d6a71d199a35ff061f15077de959bb75c4c..05e3b6603480d3939114bf394d25e76ead309205 100644
+index 265278faec74708bebed2b9925fe3c466b18602a..c762b7ec49acb559b06fc29013503c79ddbf8d49 100644
 --- a/apps/web/src/components/chat/useComposerContextImport.ts
 +++ b/apps/web/src/components/chat/useComposerContextImport.ts
 @@ -12,6 +12,7 @@ import {
@@ -304,7 +316,7 @@ index e303ae1451619ea4b48b041a5b3b7759a72590bb..9552f45ed0ee9ee76c6253284d7c71e3
        const annotation = capture.status === "failed" ? { ...picked, screenshot: null } : picked;
        if (capture.status === "captured") await readComposerImageBytes(capture.file);
 diff --git a/apps/web/src/lib/imageCompression.test.ts b/apps/web/src/lib/imageCompression.test.ts
-index e40c3968bc850e77a2e0e96b762da9f75ffbdbb1..4ad10ae030dd06bce0bbdca541ebfbec1b7412a1 100644
+index e40c3968bc850e77a2e0e96b762da9f75ffbdbb1..7ecec677c0486af0b59d1cd273433b4f6e79ff78 100644
 --- a/apps/web/src/lib/imageCompression.test.ts
 +++ b/apps/web/src/lib/imageCompression.test.ts
 @@ -235,6 +235,72 @@ describe("compressImageForStash", () => {
@@ -380,7 +392,39 @@ index e40c3968bc850e77a2e0e96b762da9f75ffbdbb1..4ad10ae030dd06bce0bbdca541ebfbec
    it("compressImageToByteLimit refuses sources above the decode-safety ceiling", async () => {
      const bitmapSpy = vi.fn();
      vi.stubGlobal("createImageBitmap", bitmapSpy);
-@@ -461,22 +527,69 @@ describe("attachment max edge", () => {
+@@ -349,6 +415,31 @@ describe("HEIC attachment preparation", () => {
+     ]);
+   });
+ 
++  it("re-encodes a converted HEIC JPEG over the byte cap without resizing it again", async () => {
++    const original = makeHeicFile({ name: "large.heic", type: "image/heic" });
++    const { close, canvasSizes } = stubCanvasPipeline((quality) =>
++      quality === 0.92 ? 2_000_000 : 500_000,
++    );
++    vi.mocked(createImageBitmap)
++      .mockResolvedValueOnce({ width: 4000, height: 3000, close } as unknown as ImageBitmap)
++      .mockResolvedValueOnce({ width: 2000, height: 1500, close } as unknown as ImageBitmap);
++
++    const result = await prepareImageForAttachment(original, 1_000_000);
++
++    expect(result.ok && result.file.name).toBe("large.jpg");
++    expect(result.ok && result.file.type).toBe("image/jpeg");
++    expect(result.ok && result.file.size).toBe(500_000);
++    expect(result.ok && result.imageSize).toEqual({ width: 2000, height: 1500 });
++    expect(createImageBitmap).toHaveBeenCalledTimes(2);
++    expect(mocks.heicTo).not.toHaveBeenCalled();
++    expect(close).toHaveBeenCalledTimes(2);
++    expect(canvasSizes).toEqual([
++      { width: 2000, height: 1500 },
++      { width: 256, height: 256 },
++      { width: 2000, height: 1500 },
++    ]);
++  });
++
+   it("rejects oversized HEIC dimensions before loading the decoder", async () => {
+     const original = makeHeicFile({ width: 16_000, height: 4001 });
+ 
+@@ -461,22 +552,69 @@ describe("attachment max edge", () => {
      expect(result.ok && result.imageSize).toEqual({ width: 1500, height: 2000 });
    });
  

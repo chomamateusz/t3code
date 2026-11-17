@@ -85,6 +85,8 @@ Port to ee4ef06469:
 
 Port to f7b0b3c4d7: QueuedRunsControl.browser.test.tsx: the imports keep upstream #33298's useState, ExpandedImageDialog and ExpandedImagePreview (queued images open in the image viewer) next to this commit's createRef and QueuedRunsControlHandle.
 
+Port to 6b134a7add: runtimeLayer.test.ts conflicted only in its contracts import list: upstream b79d277cdd (#37793) imports OrchestrationV2DomainEvent beside the OrchestrationV2Command type this commit imports; both are kept and the change itself is unchanged.
+
 Files:
 apps/server:
 - apps/server/src/orchestration-v2/GuestShare.test.ts
@@ -225,7 +227,7 @@ index d789b206016b69362be53c9b633683eeadc5f52b..6ed5f1cce494e8d106b1028befd8ce35
  );
  
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index cf42f7d15f86c1146a2956a5dfd44cc9737b1818..0e19b61cd945c214f355a2780731e72da478c823 100644
+index 27b7a2e12878d03688e511719da31595149acb31..fd331a70621cc3bdc880b4c440c50ee13f6d7053 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -30,6 +30,7 @@ import {
@@ -244,7 +246,7 @@ index cf42f7d15f86c1146a2956a5dfd44cc9737b1818..0e19b61cd945c214f355a2780731e72d
  import {
    backgroundWorkHoldsCompletion,
    derivePendingBackgroundWork,
-@@ -206,6 +208,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
+@@ -204,6 +206,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
  import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import * as ServerSettings from "../serverSettings.ts";
  
@@ -252,7 +254,7 @@ index cf42f7d15f86c1146a2956a5dfd44cc9737b1818..0e19b61cd945c214f355a2780731e72d
  const isMessageQuestionAnswer = Schema.is(
    Schema.Union([TrimmedNonEmptyString, Schema.NonEmptyArray(TrimmedNonEmptyString)]),
  );
-@@ -670,6 +673,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
+@@ -668,6 +671,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
      case "queued-run.reorder":
      case "queued-run.cancel":
      case "queued-run.edit":
@@ -260,7 +262,7 @@ index cf42f7d15f86c1146a2956a5dfd44cc9737b1818..0e19b61cd945c214f355a2780731e72d
      case "runtime-request.respond":
      case "runtime-request.delivery.fail":
      case "thread.user-input.dismiss":
-@@ -11713,46 +11717,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -11698,46 +11702,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        { text: command.text, attachments: command.attachments ?? queuedMessage.attachments },
        queuedRunModelSelection(projection, queuedRun).instanceId,
      );
@@ -316,7 +318,7 @@ index cf42f7d15f86c1146a2956a5dfd44cc9737b1818..0e19b61cd945c214f355a2780731e72d
      // Thread deletion only cleans files the thread still references.
      const keptAttachmentIds = new Set(
        (command.attachments ?? queuedMessage.attachments).map((attachment) => attachment.id),
-@@ -11777,6 +11753,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -11762,6 +11738,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
      }
    });
  
@@ -445,7 +447,7 @@ index cf42f7d15f86c1146a2956a5dfd44cc9737b1818..0e19b61cd945c214f355a2780731e72d
    const subagentCount = (threadId: ThreadId) =>
      projectionStore
        .getSubagentCount(threadId)
-@@ -15281,6 +15379,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -15266,6 +15364,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "queued-run.edit":
          yield* dispatchQueuedRunEdit(command, events, effects);
          break;
@@ -455,7 +457,7 @@ index cf42f7d15f86c1146a2956a5dfd44cc9737b1818..0e19b61cd945c214f355a2780731e72d
        case "checkpoint.rollback":
          yield* dispatchCheckpointRollback(command, events, effects);
          break;
-@@ -15513,7 +15614,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -15498,7 +15599,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                ),
              );
            if (
@@ -465,7 +467,7 @@ index cf42f7d15f86c1146a2956a5dfd44cc9737b1818..0e19b61cd945c214f355a2780731e72d
              cause._tag === "OrchestratorDispatchError"
            ) {
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index 82ca01576deea42051f381e5adc9f2018d317b0a..f7b47153dd3f9c61b80c1e09ceb8a006c32641c5 100644
+index b2d12935aa2f814060cb8dc1fa4050e28da7c7ad..e2ab519a9b55c7d63bc9a6cca87f9ae1bda32f8e 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 @@ -10,6 +10,8 @@ import { assert, it } from "@effect/vitest";
@@ -482,10 +484,10 @@ index 82ca01576deea42051f381e5adc9f2018d317b0a..f7b47153dd3f9c61b80c1e09ceb8a006
    TurnItemId,
    type ModelSelection,
 +  type OrchestrationV2Command,
+   type OrchestrationV2DomainEvent,
    type OrchestrationV2Run,
    type OrchestrationV2ShellSnapshot,
-   type OrchestrationV2RuntimeRequest,
-@@ -10368,6 +10371,307 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -10621,6 +10624,307 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
        assert.equal(cancelAgainError._tag, "OrchestratorDispatchError");
      }),
    );
@@ -818,7 +820,7 @@ index 61fb57ada454ed0b1a9a309eb066ff03db841f86..33aa46863d0b7f36613f6f8b959933e7
    "thread.guest-message.dismiss": () => ({ feature: "guest_message.dismiss" }),
  };
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 8e8b30bab3270c7692228750d9a482604e548ec3..9e1b62d96a8fbfb1188529e734b54f019f3c2e60 100644
+index 6defac543eaaca36a9863bb429b376b17cdeb39e..c45498aa24b5d1b3933d74e10659064ef1ed1acd 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -1891,6 +1891,7 @@ export const layerWsRpc = (
@@ -830,7 +832,7 @@ index 8e8b30bab3270c7692228750d9a482604e548ec3..9e1b62d96a8fbfb1188529e734b54f01
            secretReferences: true,
            secretRequestReferences: true,
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index fbec56205975c3b49766645c56eb6bf2e0f1c6b0..2d564e27cef98980f6300f7521567433e46d0b8c 100644
+index c0f8ff42f451ee0ea67ba63ef8a359110c57a4df..ade9cbf9ad832086240b3f81b30fb763a4c50a6d 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
 @@ -2786,6 +2786,8 @@ export default function ChatView(props: ChatViewProps) {
@@ -1845,10 +1847,10 @@ index eda5138b760b9b3d028d89d9b4b7a0c0b7c8075b..56f521670e72594a00b8737a97486206
    "thread.next",
    "thread.copyReference",
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index 38d2e98ef72c2381988b63703b3775c1255cbac8..0279e70a4c1e10005ab224f649b1deaa41099537 100644
+index 11987980cedfaccb7d4f44a0608eb77040af8ee6..f3b869b91bb81f9c5eb665d077da1e03ef1009cc 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
-@@ -3479,6 +3479,13 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3481,6 +3481,13 @@ export const OrchestrationV2Command = Schema.Union([
      // Replaces all attachments; absent preserves them for older clients editing text.
      attachments: Schema.optional(Schema.Array(ChatAttachment)),
    }),
@@ -1863,10 +1865,10 @@ index 38d2e98ef72c2381988b63703b3775c1255cbac8..0279e70a4c1e10005ab224f649b1deaa
      type: Schema.Literal("runtime-request.respond"),
      commandId: CommandId,
 diff --git a/packages/contracts/src/server.ts b/packages/contracts/src/server.ts
-index 144d2814b8804832445a2bea795070a03a2302ef..bf55e1510f571c075415c398029e1b3f6a44b9c3 100644
+index f2e02c6b0a95eee2ae050e05b070abeb74d8935b..76b9bcbc87b8e2abaa7ce59f9d863ae2118cde65 100644
 --- a/packages/contracts/src/server.ts
 +++ b/packages/contracts/src/server.ts
-@@ -723,6 +723,7 @@ export const ServerConfig = Schema.Struct({
+@@ -725,6 +725,7 @@ export const ServerConfig = Schema.Struct({
    threadSnapshotPagination: Schema.optionalKey(Schema.Boolean),
    threadFind: Schema.optionalKey(Schema.Boolean),
    threadFindProgressive: Schema.optionalKey(Schema.Boolean),

@@ -44,6 +44,9 @@ Port to 6b7027b1f4:
 - DesktopUpdates.ts: upstream #31154 (2cc4b4888e) moved download and install admission into admitAfterCheck, which now also waits for a running check before a download. The feed refusal stays first in downloadAvailableUpdate and installDownloadedUpdate, ahead of that admission; the refusal before electronUpdater.downloadUpdate and both install-time rechecks (after admission and after the backends stop) are unchanged, so a feed changed while waiting on the check is still refused. A check that re-finds the offered version no longer resets the state; checkForUpdates refuses a foreign feed before that point.
 - Upstream #31957 (c1a7ce362b) adds Download and Restart buttons to the Check for Updates menu dialog; they call updates.download and updates.install, the guarded paths. Upstream #32609 (channelBlockedByPolicy) never applies to a configured fork, whose channel is pinned to latest.
 
+Port to 6b134a7add:
+- DesktopUpdates.ts: upstream #37476 (83f35dac5c) turns downloadAvailableUpdate into a function that can re-check the feed before downloading, and install now re-checks and downloads a newer release than the retained one. The feed refusal stays the first step of downloadAvailableUpdate, ahead of admission and that re-check, and the refusal right before electronUpdater.downloadUpdate is unchanged; the install-time re-check goes through checkForUpdates, which refuses a foreign feed, and both install rechecks stay. Startup recovery now installs the version the download fetched; its fork release links are unchanged.
+
 Files:
 .github:
 - .github/workflows/release-desktop.yml
@@ -612,7 +615,7 @@ index 0000000000000000000000000000000000000000..65b33f5ed17a389b082c908de46c4f0e
 +          fail_on_unmatched_files: true
 +          token: ${{ github.token }}
 diff --git a/apps/desktop/src/app/DesktopStartupRecovery.test.ts b/apps/desktop/src/app/DesktopStartupRecovery.test.ts
-index 029bcaac2b4876e4d6254da74367cee7b7643a06..51cf8220566d5e5366317d0fb1dce50e6a7c81da 100644
+index 5d407feff79d1eb69a38bec0670e007286cb83a2..3eb93121d420ea01811a620aea6ddf6326ae9307 100644
 --- a/apps/desktop/src/app/DesktopStartupRecovery.test.ts
 +++ b/apps/desktop/src/app/DesktopStartupRecovery.test.ts
 @@ -1,5 +1,6 @@
@@ -653,7 +656,7 @@ index 029bcaac2b4876e4d6254da74367cee7b7643a06..51cf8220566d5e5366317d0fb1dce50e
  });
  
 diff --git a/apps/desktop/src/app/DesktopStartupRecovery.ts b/apps/desktop/src/app/DesktopStartupRecovery.ts
-index e6c210043cf263d1b4079634bcd451ed8eead0cd..9f012ebbba8901425b918fe619ccf161a3362d2e 100644
+index 769a30cf7680bc0a3594fa3e5231e2b7a30379b9..52fca851374842bfc0c0ca0ca50ceb5bb24dc297 100644
 --- a/apps/desktop/src/app/DesktopStartupRecovery.ts
 +++ b/apps/desktop/src/app/DesktopStartupRecovery.ts
 @@ -18,7 +18,16 @@ import * as DesktopEnvironment from "./DesktopEnvironment.ts";
@@ -674,7 +677,7 @@ index e6c210043cf263d1b4079634bcd451ed8eead0cd..9f012ebbba8901425b918fe619ccf161
  const LAST_STARTED_VERSION_FILE = "desktop-last-started-version";
  // Buttons are plain links to this host; will-navigate cancels them and runs the action.
  const ACTION_ORIGIN = "https://startup-recovery.invalid";
-@@ -222,11 +231,11 @@ export const listen: Effect.Effect<
+@@ -225,11 +234,11 @@ export const listen: Effect.Effect<
        }
        case "reinstall":
          if (current._tag === "Reinstall") {
@@ -748,7 +751,7 @@ index 0cc22bb4b16337b0241909e2193a4d8e59cb9577..a6afd196178896fe26ae614a4263887d
      });
    }),
 diff --git a/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts b/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
-index fdac65f86a59558a9715ef720e011f05560009e4..6349594002bfc78623f10e99ff55ea65783bd8f7 100644
+index 5cdf2ba1b56dc80adc27db2a027e5ec19a5e7dbc..1b1e0beb6df541306bfc6e031ec705020b160cb8 100644
 --- a/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
 +++ b/apps/desktop/src/updates/DesktopRemoteUpdates.test.ts
 @@ -40,10 +40,15 @@ function runRemoteUpdatesTest(
@@ -954,7 +957,7 @@ index ce2f23ab3e781e724be26ae1f9fec05770d72e94..b1d31456e37d20885db7f9f005f6ef13
              yield* publishReport(state, { outcome: "up-to-date" }, request.requestId);
              return;
 diff --git a/apps/desktop/src/updates/DesktopUpdates.ts b/apps/desktop/src/updates/DesktopUpdates.ts
-index 055c6574391a6ba7ab723264bcc871b56e135e05..4033a815b3e830e1e6f491af750afe6b53af3019 100644
+index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff27d832938 100644
 --- a/apps/desktop/src/updates/DesktopUpdates.ts
 +++ b/apps/desktop/src/updates/DesktopUpdates.ts
 @@ -285,9 +285,21 @@ export function describeUpdateErrorCause(cause: unknown): string {
@@ -1063,7 +1066,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..4033a815b3e830e1e6f491af750afe6b
      const allowsPrerelease = channel === "nightly";
      yield* electronUpdater.setChannel(channel);
      yield* electronUpdater.setAllowPrerelease(allowsPrerelease);
-@@ -565,6 +629,7 @@ export const make = Effect.gen(function* () {
+@@ -576,6 +640,7 @@ export const make = Effect.gen(function* () {
      yield* Effect.annotateCurrentSpan({ reason });
      if (yield* Ref.get(desktopState.quitting)) return false;
      if (!(yield* Ref.get(updaterConfiguredRef))) return false;
@@ -1071,15 +1074,15 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..4033a815b3e830e1e6f491af750afe6b
  
      const state = yield* Ref.get(updateStateRef);
      // A configured updater is disabled only by a channel the managed policy blocks.
-@@ -620,6 +685,7 @@ export const make = Effect.gen(function* () {
-   });
- 
-   const downloadAvailableUpdate = Effect.gen(function* () {
+@@ -630,6 +695,7 @@ export const make = Effect.gen(function* () {
+   const downloadAvailableUpdate = Effect.fn("desktop.updates.downloadAvailableUpdate")(function* (
+     refresh: boolean,
+   ) {
 +    if (yield* refuseDisallowedFeed) return { accepted: false, completed: false };
      const admission = yield* Effect.scoped(
        admitAfterCheck(
          Effect.gen(function* () {
-@@ -650,6 +716,7 @@ export const make = Effect.gen(function* () {
+@@ -681,6 +747,7 @@ export const make = Effect.gen(function* () {
          isArm64HostRunningIntelBuild(environment.runtimeInfo),
        );
        yield* logUpdaterInfo("downloading update");
@@ -1087,7 +1090,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..4033a815b3e830e1e6f491af750afe6b
        yield* electronUpdater.downloadUpdate;
        return { accepted: true, completed: true };
      }).pipe(
-@@ -836,6 +903,7 @@ export const make = Effect.gen(function* () {
+@@ -867,6 +934,7 @@ export const make = Effect.gen(function* () {
    const installDownloadedUpdate = (expectedVersion?: string) =>
      Effect.scoped(
        Effect.gen(function* () {
@@ -1095,7 +1098,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..4033a815b3e830e1e6f491af750afe6b
          const admission = yield* admitAfterCheck(
            Effect.gen(function* () {
              const state = yield* Ref.get(updateStateRef);
-@@ -869,6 +937,10 @@ export const make = Effect.gen(function* () {
+@@ -900,6 +968,10 @@ export const make = Effect.gen(function* () {
            return { accepted: false, completed: false, failed: false };
          }
  
@@ -1106,7 +1109,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..4033a815b3e830e1e6f491af750afe6b
          yield* Ref.set(desktopState.quitting, true);
          yield* Ref.set(installRunningBackendsRef, []);
  
-@@ -896,6 +968,12 @@ export const make = Effect.gen(function* () {
+@@ -927,6 +999,12 @@ export const make = Effect.gen(function* () {
              ],
              { concurrency: "unbounded" },
            );
@@ -1119,7 +1122,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..4033a815b3e830e1e6f491af750afe6b
            yield* electronUpdater.quitAndInstall({
              isSilent: true,
              isForceRunAfter: true,
-@@ -1206,7 +1284,7 @@ export const make = Effect.gen(function* () {
+@@ -1272,7 +1350,7 @@ export const make = Effect.gen(function* () {
          });
        }
  
@@ -1128,7 +1131,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..4033a815b3e830e1e6f491af750afe6b
          yield* electronUpdater.setFeedURL({
            provider: "generic",
            url: `http://localhost:${config.mockUpdateServerPort}`,
-@@ -1223,10 +1301,11 @@ export const make = Effect.gen(function* () {
+@@ -1289,10 +1367,11 @@ export const make = Effect.gen(function* () {
        const disabledReason = yield* resolveDisabledReason;
        // A blocked nightly channel still lets the user switch back to stable, so it stays updatable.
        yield* Ref.set(desktopState.canInstallUpdates, Option.isNone(disabledReason));
@@ -1142,7 +1145,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..4033a815b3e830e1e6f491af750afe6b
          ),
        );
        if (Option.isSome(disabledReason)) {
-@@ -1276,6 +1355,9 @@ export const make = Effect.gen(function* () {
+@@ -1342,6 +1421,9 @@ export const make = Effect.gen(function* () {
        nextChannel: DesktopUpdateChannel,
        options?: { readonly minimumVersion?: string | undefined },
      ) {

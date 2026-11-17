@@ -92,7 +92,7 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 apps/server/src/provider/fleetProxyLimits.ts
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index b9e2f977a36eeae3197f3ea3bdecc88ae761d2ee..1715435738a9f9ddce29af733105277061917855 100644
+index b2b27327b66dce7d3dfa22d24775c82cee0ee5b9..0063debc6b1aa396dc2ef8da9e4d07d15a44281a 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -76,6 +76,7 @@ import * as Scope from "effect/Scope";
@@ -129,7 +129,7 @@ index b9e2f977a36eeae3197f3ea3bdecc88ae761d2ee..1715435738a9f9ddce29af7331052770
          continuationRequests: {
            offer: (request) =>
              Effect.sync(() => {
-@@ -9527,6 +9533,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -9541,6 +9547,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      ),
    );
  
@@ -303,7 +303,7 @@ index b9e2f977a36eeae3197f3ea3bdecc88ae761d2ee..1715435738a9f9ddce29af7331052770
      Effect.gen(function* () {
        const harness = yield* makeWakeHarness;
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index 996501e885849bd877c0940c76cad9a6b2f41985..bae6cb80316e29d3257fb040a2b745ed0fc5a04c 100644
+index 34d81c88d35592d28affa5f38a810a886defcbae..f94e7d6d1774cb9856e28f11fa767bdce6596c54 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -36,6 +36,7 @@ import {
@@ -322,7 +322,7 @@ index 996501e885849bd877c0940c76cad9a6b2f41985..bae6cb80316e29d3257fb040a2b745ed
  
  import { resolveAttachmentPath } from "../../attachmentStore.ts";
  import { snapshotMcpApp } from "../../mcpApps/McpAppSnapshot.ts";
-@@ -5496,6 +5498,7 @@ export interface ClaudeAdapterV2Options {
+@@ -5536,6 +5538,7 @@ export interface ClaudeAdapterV2Options {
      cwd: string | null,
      launchSettings?: ClaudeSdkSettings,
    ) => Effect.Effect<ClaudeModelCatalog>;
@@ -330,7 +330,7 @@ index 996501e885849bd877c0940c76cad9a6b2f41985..bae6cb80316e29d3257fb040a2b745ed
    readonly continuationRequests?: {
      readonly offer: (
        request: ProviderContinuationRequests.ProviderContinuationRequest,
-@@ -11786,17 +11789,41 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -11888,17 +11891,41 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                resetTimes.length > 0 && resetTimes.every((time) => time !== null)
                  ? resetTimes.reduce((latest, time) => (time! > latest ? time! : latest), "")
                  : null;
@@ -380,7 +380,7 @@ index 996501e885849bd877c0940c76cad9a6b2f41985..bae6cb80316e29d3257fb040a2b745ed
                completedAt,
                result: message,
                ...(terminalFailure === null ? {} : { failure: terminalFailure }),
-@@ -14430,7 +14457,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+@@ -14543,7 +14570,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
      input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
      hooks: Pick<
        ClaudeAdapterV2Options,

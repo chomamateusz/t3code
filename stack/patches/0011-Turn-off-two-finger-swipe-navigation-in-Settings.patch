@@ -450,10 +450,10 @@ index bac40332a27702521a6c08c40aa13b6dc86ced91..769c406f1534c8fdaaebaefa03e19e53
      expect(searchSettings("wsl")).toEqual([]);
      expect(searchSettings("update track")).toEqual([]);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 5043be9efdfd6e0b1beb592e3a72f29509f7c6ea..65ffd0b1194c84770bdec6e6a5a2aae74d071510 100644
+index bba72aa83de22d360d127dbd022a930d66a813de..291a5d81ae9a84200da71e6faeb0cbb107d553bd 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -861,6 +861,13 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -867,6 +867,13 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: ["confirmation desktop app exit direct hold double click press twice"],
      desktopOnly: true,
    },
@@ -468,7 +468,7 @@ index 5043be9efdfd6e0b1beb592e3a72f29509f7c6ea..65ffd0b1194c84770bdec6e6a5a2aae7
      id: "text-generation-model",
      title: "Text generation model",
 diff --git a/packages/contracts/src/settings.test.ts b/packages/contracts/src/settings.test.ts
-index 1db913e38ba3b7ec94ff8a74f784aebb1436722d..b6878ca353d09a59628db1e94d0a9007b40562e9 100644
+index e7cea79c7663e799f2c16630ec577edafb0e7e82..999311c50e1bb3c8ca3c5b0ea727a1a6f1394582 100644
 --- a/packages/contracts/src/settings.test.ts
 +++ b/packages/contracts/src/settings.test.ts
 @@ -338,6 +338,19 @@ describe("ClientSettings quit confirmation", () => {
@@ -492,7 +492,7 @@ index 1db913e38ba3b7ec94ff8a74f784aebb1436722d..b6878ca353d09a59628db1e94d0a9007
    it("resolves instance enabled state with explicit false winning", () => {
      const grok = ProviderDriverKind.make("grok");
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 7bbb03595d4bbcf56ff637732a533d095161f7a6..347a3ba1272fe042ddee9311d5cc365b9b983264 100644
+index 0013e288983e0eb94017c99791aba8ca9ecf23e3..647ff0a9118c0906db71bb85c95889130a370698 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -468,6 +468,7 @@ export const ClientSettingsSchema = Schema.Struct({
@@ -503,7 +503,7 @@ index 7bbb03595d4bbcf56ff637732a533d095161f7a6..347a3ba1272fe042ddee9311d5cc365b
    confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
    confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
    confirmThreadUnpin: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-@@ -2054,6 +2055,7 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2055,6 +2056,7 @@ export const ClientSettingsPatch = Schema.Struct({
    browserProfiles: Schema.optionalKey(Schema.Array(BrowserProfile)),
    browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),
    confirmQuit: Schema.optionalKey(QuitConfirmationMode),

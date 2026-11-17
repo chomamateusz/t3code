@@ -56,7 +56,7 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  3 files changed, 405 insertions(+), 36 deletions(-)
 
 diff --git a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
-index 448e6f90a8ed09bfc14b8b6578b757bf6bd658e1..1fd85f8f22a996a0b4e8a80d722763774cec49d2 100644
+index ac3316d17b1690702275543e8775782f44574ca1..8801c6e9c94e6a18fc5335ff57ee95a6d2594907 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
 +++ b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
 @@ -299,9 +299,79 @@ describe("MessagesTimeline work rows", () => {
@@ -200,7 +200,7 @@ index 448e6f90a8ed09bfc14b8b6578b757bf6bd658e1..1fd85f8f22a996a0b4e8a80d72276377
      ];
      await using screen = await render(<MessagesTimeline {...props} timelineEntries={entries} />, {
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-index 1cd8066dbcd32aa48cb99890da8eca44a8b12bc5..0dc538ef80af4b9c082aa020670c8261b02fa839 100644
+index f834c7cc355b98afde0975a322f0ebd6f2daf835..a4286939d0b394916be5b71c52cc1b84ef9ef6d8 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 @@ -1146,7 +1146,106 @@ describe("deriveMessagesTimelineRows", () => {

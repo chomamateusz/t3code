@@ -511,10 +511,10 @@ index 2456ca357e1788664c2f583189dd6180ae103416..41c1386abfc8f1b867f7d6fcce043455
        return openWithIntent({ kind: "change-theme" });
    }
 diff --git a/apps/web/src/components/CommandPalette.tsx b/apps/web/src/components/CommandPalette.tsx
-index ec7393427b9018408d91dd9ae3f326de3a41ef77..0d1e19b2a6bdf3eaaeba5125590b8383cc3c00e5 100644
+index cd32eeb4a6468251a7f8b052ec93293558ef9615..64504aa58aa4766470988ea91c60b28eb4ed00f6 100644
 --- a/apps/web/src/components/CommandPalette.tsx
 +++ b/apps/web/src/components/CommandPalette.tsx
-@@ -98,6 +98,9 @@ import { useAtomValue } from "@effect/atom-react";
+@@ -99,6 +99,9 @@ import { useAtomValue } from "@effect/atom-react";
  
  import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
  import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
@@ -575,7 +575,7 @@ index ec7393427b9018408d91dd9ae3f326de3a41ef77..0d1e19b2a6bdf3eaaeba5125590b8383
    const browsePath = getFilesystemBrowsePath(query, browseEnvironmentPlatform, canBrowsePaths);
    const isBrowsing = browsePath.isBrowsing;
    const browseDirectoryPath = browsePath.directoryPath;
-@@ -860,6 +874,22 @@ function OpenCommandPaletteDialog(props: {
+@@ -855,6 +869,22 @@ function OpenCommandPaletteDialog(props: {
      true,
    );
  
@@ -598,7 +598,7 @@ index ec7393427b9018408d91dd9ae3f326de3a41ef77..0d1e19b2a6bdf3eaaeba5125590b8383
    const openingOrderThreadItems = useOrderWhileOpen(
      (() => {
        const isScratch = (project: CommandPaletteProject) =>
-@@ -893,7 +923,6 @@ function OpenCommandPaletteDialog(props: {
+@@ -888,7 +918,6 @@ function OpenCommandPaletteDialog(props: {
          },
        });
        if (scratchTargetEnvironmentId === null) return projectItems;
@@ -606,7 +606,7 @@ index ec7393427b9018408d91dd9ae3f326de3a41ef77..0d1e19b2a6bdf3eaaeba5125590b8383
        const noProjectIndex = newThreadNoProjectIndex(
          projectPickerEntries.map(({ group, targetProject, isPreferred }) => ({
            isScratch: isScratchProject(
-@@ -921,15 +950,63 @@ function OpenCommandPaletteDialog(props: {
+@@ -916,15 +945,63 @@ function OpenCommandPaletteDialog(props: {
      rowOrderKey("new-thread-in"),
      true,
    );
@@ -677,7 +677,7 @@ index ec7393427b9018408d91dd9ae3f326de3a41ef77..0d1e19b2a6bdf3eaaeba5125590b8383
  
    const {
      threadItems: allThreadItems,
-@@ -959,6 +1036,10 @@ function OpenCommandPaletteDialog(props: {
+@@ -954,6 +1031,10 @@ function OpenCommandPaletteDialog(props: {
    });
  
    function popView(): void {
@@ -688,7 +688,7 @@ index ec7393427b9018408d91dd9ae3f326de3a41ef77..0d1e19b2a6bdf3eaaeba5125590b8383
      browseNavigation.invalidate();
      setAddProjectCloneFlow(null);
      setNewProjectFlow(null);
-@@ -1338,7 +1419,7 @@ function OpenCommandPaletteDialog(props: {
+@@ -1333,7 +1414,7 @@ function OpenCommandPaletteDialog(props: {
        title: "New thread in...",
        icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
        addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
@@ -697,7 +697,7 @@ index ec7393427b9018408d91dd9ae3f326de3a41ef77..0d1e19b2a6bdf3eaaeba5125590b8383
      });
    }
  
-@@ -1816,19 +1897,20 @@ function OpenCommandPaletteDialog(props: {
+@@ -1811,19 +1892,20 @@ function OpenCommandPaletteDialog(props: {
        : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
          ? addProjectEntryGroups()
          : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
@@ -731,7 +731,7 @@ index ec7393427b9018408d91dd9ae3f326de3a41ef77..0d1e19b2a6bdf3eaaeba5125590b8383
  
    const isLinkedThreadSearch =
      linkedThreadSearch?.linkedThreads !== undefined && deferredQuery === linkedThreadSearch.query;
-@@ -1836,7 +1918,7 @@ function OpenCommandPaletteDialog(props: {
+@@ -1831,7 +1913,7 @@ function OpenCommandPaletteDialog(props: {
      activeGroups,
      query: deferredQuery,
      isInSubmenu: currentView !== null,
@@ -740,7 +740,7 @@ index ec7393427b9018408d91dd9ae3f326de3a41ef77..0d1e19b2a6bdf3eaaeba5125590b8383
        ? {
            allOptions: {
              rootGroups,
-@@ -2455,7 +2537,26 @@ function OpenCommandPaletteDialog(props: {
+@@ -2450,7 +2532,26 @@ function OpenCommandPaletteDialog(props: {
            },
          ];
  
@@ -822,10 +822,10 @@ index 3039ac9e6f2615771e116a577937e6a665e3c3df..1a52121bc571ce574d1ad54653456db1
        <CommandPaletteMetaDot />
        <span className="min-w-0 flex-1 truncate">{props.workspaceRoot}</span>
 diff --git a/apps/web/src/components/Sidebar.browser.test.tsx b/apps/web/src/components/Sidebar.browser.test.tsx
-index be674b66520d232b4bc394914c9e400f9fc2855d..55231a16cba1255af3c8589681992e35d957559e 100644
+index b99591c92b1127071d98f8d60d1f61d0fbce4904..0493e3a9d1e1ab0fa44cb8a5c7c6ef6553bade41 100644
 --- a/apps/web/src/components/Sidebar.browser.test.tsx
 +++ b/apps/web/src/components/Sidebar.browser.test.tsx
-@@ -21,11 +21,17 @@ import { useHandleNewThread } from "../hooks/useHandleNewThread";
+@@ -22,12 +22,18 @@ import { useHandleNewThread } from "../hooks/useHandleNewThread";
  import { useNowMinute } from "../hooks/useNowMinute";
  import { __setClientSettingsForTests, getClientSettings } from "../hooks/useSettings";
  import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
@@ -839,12 +839,13 @@ index be674b66520d232b4bc394914c9e400f9fc2855d..55231a16cba1255af3c8589681992e35
  import { readEnvironmentScope, useEnvironmentScope } from "../state/session";
  import { useOrchestrationCommand } from "../state/use-orchestration-command";
  import { useTerminalUiStateStore } from "../terminalUiStateStore";
+ import { readLocalApi } from "../localApi";
  import type { Project } from "../types";
 +import { useUiStateStore } from "../uiStateStore";
  import Sidebar from "./Sidebar";
  import { THREAD_JUMP_HINT_SHOW_DELAY_MS } from "./Sidebar.logic";
  import { SortableThreadRow } from "./sidebar/SidebarThreadRow";
-@@ -83,6 +89,7 @@ describe("sidebar header new thread", () => {
+@@ -86,6 +92,7 @@ describe("sidebar header new thread", () => {
      { mode: "boring", count: 1, shift: false, picker: false },
    ] as const)("$mode sidebar, $count projects, shift=$shift: picker=$picker", async (scenario) => {
      using stack = new DisposableStack();
@@ -852,7 +853,7 @@ index be674b66520d232b4bc394914c9e400f9fc2855d..55231a16cba1255af3c8589681992e35
      const previousSettings = getClientSettings();
      stack.defer(() => __setClientSettingsForTests(previousSettings));
      __setClientSettingsForTests({
-@@ -96,6 +103,7 @@ describe("sidebar header new thread", () => {
+@@ -99,6 +106,7 @@ describe("sidebar header new thread", () => {
      };
      const startThread = vi.fn().mockResolvedValue(null);
      vi.mocked(useProjects).mockReturnValue(projects);
@@ -860,7 +861,7 @@ index be674b66520d232b4bc394914c9e400f9fc2855d..55231a16cba1255af3c8589681992e35
      vi.mocked(useHandleNewThread).mockReturnValue({
        activeDraftThread: null,
        activeThread: null,
-@@ -117,7 +125,10 @@ describe("sidebar header new thread", () => {
+@@ -120,7 +128,10 @@ describe("sidebar header new thread", () => {
      });
  
      if (scenario.picker) {
@@ -873,10 +874,10 @@ index be674b66520d232b4bc394914c9e400f9fc2855d..55231a16cba1255af3c8589681992e35
      } else {
        expect(openCommandPalette).not.toHaveBeenCalled();
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 1da0260fa52a2a636a8b5fd057df7a421caadc66..0713b452b0f4aa8ffd4fda85880baa8694e10ade 100644
+index beac7fe5cd8ee4933e5b5bb9c5f7faa98c407d5f..29b8065987cf1621258a3fd1d24e564e529f964d 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -120,6 +120,7 @@ import {
+@@ -124,6 +124,7 @@ import {
  } from "../sidebarProjectRow";
  import { ConnectedSidebarProjectRow } from "./sidebar/SidebarProjectRow";
  import { searchableSetting } from "./settings/settingsSearch";
@@ -884,7 +885,7 @@ index 1da0260fa52a2a636a8b5fd057df7a421caadc66..0713b452b0f4aa8ffd4fda85880baa86
  import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
  import {
    getThreadKeysToDeselectAfterDelete,
-@@ -189,6 +190,7 @@ import {
+@@ -193,6 +194,7 @@ import {
    isInSidebarScope,
    isSidebarNestedLinkClick,
    isTrailingDoubleClick,
@@ -892,7 +893,7 @@ index 1da0260fa52a2a636a8b5fd057df7a421caadc66..0713b452b0f4aa8ffd4fda85880baa86
    orderItemsByPreferredIds,
    planSidebarThreadDrop,
    resolveAdjacentThreadId,
-@@ -199,7 +201,6 @@ import {
+@@ -203,7 +205,6 @@ import {
    resolveSidebarReorderableThreadKeys,
    resolveSidebarThreadShelfState,
    searchSidebarThreads,
@@ -900,7 +901,7 @@ index 1da0260fa52a2a636a8b5fd057df7a421caadc66..0713b452b0f4aa8ffd4fda85880baa86
    shouldNavigateAfterThreadPark,
    sidebarListItemId,
    sidebarThreadKeyAtY,
-@@ -3029,13 +3030,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3035,13 +3036,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const showJumpHints = useThreadJumpHintsVisible(keybindings, routeThreadRef);
  
    const handleNewThreadClick = (event?: ReactMouseEvent) => {
@@ -915,7 +916,7 @@ index 1da0260fa52a2a636a8b5fd057df7a421caadc66..0713b452b0f4aa8ffd4fda85880baa86
        if (isMobile) setOpenMobile(false);
        // With no current or open project, such as when every project is archived, pick one.
        void startNewThreadFromContext({
-@@ -3049,7 +3044,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3055,7 +3050,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
        return;
      }
      if (isMobile) setOpenMobile(false);
@@ -931,7 +932,7 @@ index 1da0260fa52a2a636a8b5fd057df7a421caadc66..0713b452b0f4aa8ffd4fda85880baa86
    };
  
    const newThreadShortcutLabel =
-@@ -3095,16 +3097,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3101,16 +3103,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                }
                onNewProject={openAddProjectCommandPalette}
                onNewThread={handleNewThreadClick}
