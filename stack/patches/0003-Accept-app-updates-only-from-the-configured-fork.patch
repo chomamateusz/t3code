@@ -1818,7 +1818,7 @@ index b658de77e19ff0fcb5381a73adfac532d22afac9..6ec0a5f5977d3a8b9ecd51b0499a748a
    const message = result.state.message.trim();
    return message.length > 0 ? message : null;
 diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
-index 633e18a567b2faca7362837856164a108444ad28..c2d462c88dc7cb45797ac14da766f0cd6e9aab3c 100644
+index c7fa7b4c08c4711da97fbedb61f64e1ee1906d27..2f1d2ed5d29fecc47f149826680dbb99f9ce5b8d 100644
 --- a/apps/web/src/components/settings/SettingsPanels.tsx
 +++ b/apps/web/src/components/settings/SettingsPanels.tsx
 @@ -37,6 +37,7 @@ import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
@@ -2183,7 +2183,7 @@ index 63f7cca9cbfc679ee82dee992176e51d0cbac8c8..ec4f10e8e9fd893062ae53c347efdbed
    readonly APP_VERSION: string;
  }
 diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
-index 83847db8c00a0ddf19cf4b47bddddd440fd0568d..7a5929fc0682c06e5331c2ae920ca1a53f4bac01 100644
+index 1916d2dd54fc0f6ca78beef2b4daf2eb07ae97a5..61435cb807139381246f3e5343c3ce6dec8ccacc 100644
 --- a/apps/web/vite.config.ts
 +++ b/apps/web/vite.config.ts
 @@ -350,6 +350,11 @@ export default defineConfig(({ command }) => {

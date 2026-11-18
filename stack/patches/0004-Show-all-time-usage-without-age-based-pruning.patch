@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Mateusz Choma <chomamateusz@gmail.com>
-Date: Sat, 3 Oct 2026 19:22:12 +0200
+From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 02:11:50 +0100
 Subject: =?UTF-8?q?=F0=9F=93=88=20Show=20all-time=20usage=20without=20age-?=
  =?UTF-8?q?based=20pruning?=
 MIME-Version: 1.0
@@ -9,18 +9,18 @@ Content-Transfer-Encoding: 8bit
 
 Behaviours:
 Durable usage history:
-- Remove the 92-day scan-cache retention cutoff and prune helper, retain already scanned records even when original transcripts disappear, and keep their directories discoverable for aggregation.
+- Keep scanned usage history with no age limit by default: a missing usageHistoryRetentionDays decodes to "unlimited", so the retention cutoff is epoch zero and nothing is pruned; retain already scanned records even when original transcripts disappear, and keep their directories discoverable for aggregation. An explicitly configured number of days still prunes through upstream's setting.
 - Preserve existing source aggregation and deduplication, reuse cached record arrays when no tail is present, and cooperatively yield every 1000 cache entries/records during large scans.
 
-Pass an epoch-zero retention cutoff through the current provider reader contract, including the relocated Cursor account cache; verify all-time Cursor fetch, refresh and restart.
+With the default, the provider reader contract and the Cursor account cache receive an epoch-zero retention cutoff; verify all-time Cursor fetch, refresh and restart.
 
 All-time web/desktop range:
 - Add a persisted all-time range using a 1970-01-01 query start, support it in both period controls and refresh behavior, and trim chart enumeration to the earliest returned usage day or today for empty results.
 - Retain hourly handling for the 24-hour range and existing finite-range shortcuts; let all-time appear without inventing a keybinding and update shortcut type handling and Settings keybinding iteration.
-- Document all-time usage and indefinite cached history, update retained-source/preference tests, preserve current scan-cache tests and add focused all-time window/chart coverage.
+- Document all-time usage, indefinite cached history by default and the setting that limits it, update retained-source/preference tests, preserve current scan-cache tests and add focused all-time window/chart coverage.
 
 Integration details:
-- Preserve upstream v11 scan-cache migration, service-tier reconciliation, route-modal layout, and relocated wide/compact period controls while removing only history-age retention.
+- Preserve upstream v11 scan-cache migration, service-tier reconciliation, route-modal layout, and relocated wide/compact period controls while turning off only history-age retention by default.
 
 - Skip retained deleted-transcript cache entries whose mtime precedes the requested window start, while retaining their records indefinitely for all-time queries. Finite-range source file/session counts exclude those entries; align existing out-of-window source assertions.
 
@@ -44,8 +44,20 @@ Port to ee4ef06469:
 
 Port to f7b0b3c4d7: UsageService.test.ts: upstream #30694 (Grok turns from resumed sessions) bumps the scan cache to v17. The cache-upgrade case keeps this commit's resave and kept-older-files assertions and now expects usage-scan-cache-v17.json.
 
+Port to 25875c11b2: Upstream #28111 (428d365932) adds the usageHistoryRetentionDays server setting (a positive number of days or "unlimited", forced to "unlimited" while settings.json cannot be parsed), prunes the scan cache through pruneScanCache inside settingsService.withSettingsSnapshot only when the setting did not change mid-scan, and passes the cutoff to the Cursor account cache.
+- Taken from upstream as they are: the setting, its parse-failure override, pruneScanCache, the settings-snapshot guard with its coverage clamp, the computed retentionCutoffMs and its use in resolveTranscriptDirs, collectDirs, reader.scan and the retained-entry filter (retainedSinceMs), and the Cursor account cache freshness check.
+- Dropped from this commit: removing CACHE_RETENTION_DAYS (upstream removed it identically), and removing pruneScanCache, its call and coverage clamp, the retentionCutoffMs parameters of resolveTranscriptDirs and collectDirs, the hard-coded retentionCutoffMs: 0 passed to reader.scan and the retainedSinceMs clamp; with the fork default each of these upstream paths evaluates to the old epoch-zero behaviour.
+- packages/contracts/src/settings.ts: the decoding default of usageHistoryRetentionDays is "unlimited" instead of 92, so a host whose settings.json lacks the key prunes nothing.
+- Kept on top of upstream: the 1,000-item cooperative yield, the unreadable-cache set-aside and freeze, older cache files kept after a save, the writer length limit, the all-time web/desktop range, its query start, chart trimming and shortcut handling.
+- UsageService.test.ts: upstream's retention table now expects the default to keep all 15 tokens of deleted transcripts after a restart and refresh, with a new explicit 92-day row that keeps 1 (the later 1-day setting still prunes everything); the Cursor cutoff table expects epoch zero for the default and gains an explicit 92-day row; the retention-race case configures 92 days explicitly so the widening still matters. The all-time Cursor case stays next to upstream's cutoff table.
+- serverSettings.test.ts: the saved-usage-settings case checks that a settings.json without the key reads back as "unlimited", both from the service and decoded from the file (it fails with upstream's default of 92).
+- docs/user/usage.md: history is kept indefinitely by default, the setting limits it, and the all-time range shows all available history.
+
 Files:
+packages/contracts:
+- packages/contracts/src/settings.ts
 apps/server:
+- apps/server/src/serverSettings.test.ts
 - apps/server/src/usage/UsageService.test.ts
 - apps/server/src/usage/UsageService.ts
 - apps/server/src/usage/usageScanCache.ts
@@ -61,6 +73,7 @@ docs:
 - docs/user/usage.md
 
 Tests:
+- apps/server/src/serverSettings.test.ts
 - apps/server/src/storageCleanup.test.ts
 - apps/server/src/usage/UsageService.test.ts
 - apps/server/src/usage/usageScanCache.test.ts
@@ -75,27 +88,43 @@ Tests:
 
 Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
 ---
- apps/server/src/usage/UsageService.test.ts    | 280 +++++++++++++++---
- apps/server/src/usage/UsageService.ts         | 144 ++++++---
+ apps/server/src/serverSettings.test.ts        |   2 +
+ apps/server/src/usage/UsageService.test.ts    | 296 +++++++++++++++---
+ apps/server/src/usage/UsageService.ts         | 112 ++++++-
  apps/server/src/usage/usageScanCache.test.ts  |  36 ++-
- apps/server/src/usage/usageScanCache.ts       |  53 ++--
+ apps/server/src/usage/usageScanCache.ts       |  42 ++-
  .../settings/KeybindingsSettings.logic.ts     |   4 +-
- apps/web/src/components/usage/UsagePage.tsx   |  51 ++--
+ apps/web/src/components/usage/UsagePage.tsx   |  51 +--
  .../usage/usagePagePreferences.test.ts        |   6 +
  .../components/usage/usagePagePreferences.ts  |   2 +-
  .../src/components/usage/usageRange.test.ts   |  44 +++
  apps/web/src/components/usage/usageRange.ts   |  26 ++
  .../src/components/usage/usageShortcuts.ts    |   8 +-
- docs/user/usage.md                            |   7 +-
- 12 files changed, 526 insertions(+), 135 deletions(-)
+ docs/user/usage.md                            |  17 +-
+ packages/contracts/src/settings.ts            |   2 +-
+ 14 files changed, 542 insertions(+), 106 deletions(-)
  create mode 100644 apps/web/src/components/usage/usageRange.test.ts
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
+diff --git a/apps/server/src/serverSettings.test.ts b/apps/server/src/serverSettings.test.ts
+index 10d0b3fe6c1e6854f08b8f95c92e20bb262ef9bf..dd20538877e092a470923da98c803b07bd3db178 100644
+--- a/apps/server/src/serverSettings.test.ts
++++ b/apps/server/src/serverSettings.test.ts
+@@ -649,7 +649,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+           storageCleanup: { worktreeSettledAfterDays: 0, worktreeKeepWhen: "any-local-files" },
+         });
+         assert.deepStrictEqual(updated.usageLimitSources, saved.usageLimitSources);
++        assert.equal(updated.usageHistoryRetentionDays, "unlimited");
+         const persisted = yield* readPersisted;
++        assert.equal(persisted.usageHistoryRetentionDays, "unlimited");
+         assert.deepStrictEqual(persisted.usagePriceOverrides, { "example-model": prices });
+         assert.deepStrictEqual(persisted.usageModelAliases, usageModelAliases);
+         assert.deepStrictEqual(persisted.usageLimitSources, usageLimitSources);
 diff --git a/apps/server/src/usage/UsageService.test.ts b/apps/server/src/usage/UsageService.test.ts
-index 01cbf3a9f52ce0cb8ef3685faf7e5d56460ff75a..9f97bdebfcaa4950168981caffe599a383e405c7 100644
+index 9a7f7ab82c8f19d32f70cfc01ded17092e4f91a7..5133773f903e04b553a3a538c4f23affddada996 100644
 --- a/apps/server/src/usage/UsageService.test.ts
 +++ b/apps/server/src/usage/UsageService.test.ts
-@@ -137,6 +137,11 @@ const WINDOW: UsageSummaryInput = {
+@@ -138,6 +138,11 @@ const WINDOW: UsageSummaryInput = {
    untilDay: UsageDay.make("2026-08-02"),
  };
  
@@ -107,7 +136,7 @@ index 01cbf3a9f52ce0cb8ef3685faf7e5d56460ff75a..9f97bdebfcaa4950168981caffe599a3
  const setup = Effect.gen(function* () {
    const home = yield* Effect.promise(() =>
      NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "usage-service-test-")),
-@@ -1864,6 +1869,42 @@ describe("UsageService", () => {
+@@ -1867,8 +1872,45 @@ describe("UsageService", () => {
      }),
    );
  
@@ -147,10 +176,14 @@ index 01cbf3a9f52ce0cb8ef3685faf7e5d56460ff75a..9f97bdebfcaa4950168981caffe599a3
 +    }),
 +  );
 +
-   it.effect("restores the Cursor account cache after a restart", () =>
-     Effect.gen(function* () {
-       const { settings, home } = yield* setup;
-@@ -3205,7 +3246,7 @@ describe("UsageService", () => {
+   it.effect.each([
+-    { label: "default", retention: undefined, cutoff: CURSOR_NOW - 92 * 24 * HOUR_MS },
++    { label: "default", retention: undefined, cutoff: 0 },
++    { label: "92 days", retention: 92, cutoff: CURSOR_NOW - 92 * 24 * HOUR_MS },
+     { label: "unlimited", retention: "unlimited" as const, cutoff: 0 },
+     { label: "36500 days", retention: 36500, cutoff: 0 },
+   ])(
+@@ -3282,7 +3324,7 @@ describe("UsageService", () => {
    );
  
    it.effect.each([4, 5, 6, 7, 8, 10, 11, 12, 13, 14])(
@@ -159,7 +192,7 @@ index 01cbf3a9f52ce0cb8ef3685faf7e5d56460ff75a..9f97bdebfcaa4950168981caffe599a3
      (version) =>
        Effect.gen(function* () {
          yield* TestClock.setTime(Date.parse("2026-08-02T12:00:00Z"));
-@@ -3251,12 +3292,27 @@ describe("UsageService", () => {
+@@ -3328,12 +3370,27 @@ describe("UsageService", () => {
              stateDir,
              version === 4 ? "usage-scan-cache.json" : `usage-scan-cache-v${version}.json`,
            );
@@ -188,7 +221,7 @@ index 01cbf3a9f52ce0cb8ef3685faf7e5d56460ff75a..9f97bdebfcaa4950168981caffe599a3
              const document = decodeUnknownJsonString(await NodeFSP.readFile(cachePath, "utf8")) as {
                files: Record<string, { r: unknown[][]; mr: number; cs: Record<string, unknown> }>;
              };
-@@ -3291,6 +3347,11 @@ describe("UsageService", () => {
+@@ -3368,6 +3425,11 @@ describe("UsageService", () => {
                    encodeUnknownJsonString({ ...document, version: olderVersion, files: {} }),
                  );
                }
@@ -200,7 +233,7 @@ index 01cbf3a9f52ce0cb8ef3685faf7e5d56460ff75a..9f97bdebfcaa4950168981caffe599a3
              }
              await NodeFSP.rm(deleted);
              await NodeFSP.mkdir(`${cachePath}.stale`);
-@@ -3307,12 +3368,24 @@ describe("UsageService", () => {
+@@ -3384,12 +3446,24 @@ describe("UsageService", () => {
            );
            yield* upgraded.awaitPersisted;
            assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v17.json");
@@ -231,7 +264,7 @@ index 01cbf3a9f52ce0cb8ef3685faf7e5d56460ff75a..9f97bdebfcaa4950168981caffe599a3
          }).pipe(
            Effect.provide(
              layerService({
-@@ -3435,7 +3508,7 @@ describe("UsageService", () => {
+@@ -3512,7 +3586,7 @@ describe("UsageService", () => {
      }),
    );
  
@@ -240,7 +273,7 @@ index 01cbf3a9f52ce0cb8ef3685faf7e5d56460ff75a..9f97bdebfcaa4950168981caffe599a3
      Effect.gen(function* () {
        const { transcript, settings, home } = yield* setup;
        const alias = NodePath.join(home, "claude-alias");
-@@ -3443,26 +3516,38 @@ describe("UsageService", () => {
+@@ -3520,26 +3594,38 @@ describe("UsageService", () => {
          NodeFSP.symlink(NodePath.join(home, "claude"), alias, "junction"),
        );
        const content = claudeLine(1, 5);
@@ -284,7 +317,7 @@ index 01cbf3a9f52ce0cb8ef3685faf7e5d56460ff75a..9f97bdebfcaa4950168981caffe599a3
          assert.deepStrictEqual(moved.buckets, first.buckets);
          assert.strictEqual(moved.sources[0]?.distinctSessions, 1);
          yield* restarted.awaitPersisted;
-@@ -3473,7 +3558,7 @@ describe("UsageService", () => {
+@@ -3550,7 +3636,7 @@ describe("UsageService", () => {
            NodeFSP.rm(NodePath.join(home, "claude", "projects"), { recursive: true }),
          );
          const afterRootCleanup = yield* UsageService.make;
@@ -293,7 +326,7 @@ index 01cbf3a9f52ce0cb8ef3685faf7e5d56460ff75a..9f97bdebfcaa4950168981caffe599a3
          assert.deepStrictEqual(missingRoot.buckets, first.buckets);
          assert.strictEqual(missingRoot.sources[0]?.distinctSessions, 1);
          assert.strictEqual(missingRoot.sources[0]?.status, "ok");
-@@ -3483,7 +3568,7 @@ describe("UsageService", () => {
+@@ -3560,7 +3646,7 @@ describe("UsageService", () => {
            await NodeFSP.rename(replacementProjects, projects);
            await NodeFSP.writeFile(NodePath.join(projects, "new.jsonl"), claudeLine(2, 7));
          });
@@ -302,7 +335,7 @@ index 01cbf3a9f52ce0cb8ef3685faf7e5d56460ff75a..9f97bdebfcaa4950168981caffe599a3
          assert.strictEqual(totalOutputTokens(recreated), 12);
          assert.deepStrictEqual(recreated.sources[0]?.fingerprint, first.sources[0]?.fingerprint);
  
-@@ -3507,11 +3592,109 @@ describe("UsageService", () => {
+@@ -3584,11 +3670,109 @@ describe("UsageService", () => {
          assert.strictEqual(merged.costUsd, recreated.buckets[0]?.costUsd);
  
          const outsideWindow = yield* restarted.readSummary({
@@ -413,7 +446,34 @@ index 01cbf3a9f52ce0cb8ef3685faf7e5d56460ff75a..9f97bdebfcaa4950168981caffe599a3
        }).pipe(
          Effect.scoped,
          Effect.provide(
-@@ -3708,38 +3891,41 @@ describe("UsageService", () => {
+@@ -3614,7 +3798,8 @@ describe("UsageService", () => {
+   );
+ 
+   it.effect.each([
+-    { label: "the default 92 days", retention: undefined, expected: 1 },
++    { label: "the default", retention: undefined, expected: 15 },
++    { label: "92 days", retention: 92, expected: 1 },
+     { label: "unlimited", retention: "unlimited" as const, expected: 15 },
+   ])(
+     "retains deleted transcripts according to $label across restart and settings changes",
+@@ -3719,7 +3904,15 @@ describe("UsageService", () => {
+         yield* service.awaitPersisted;
+         const restarted = yield* UsageService.make;
+         assert.strictEqual(totalOutputTokens(yield* restarted.readSummary(window)), 11);
+-      }).pipe(Effect.provide(layerService({ prefix: "usage-retention-race", home, settings })));
++      }).pipe(
++        Effect.provide(
++          layerService({
++            prefix: "usage-retention-race",
++            home,
++            settings: { ...settings, usageHistoryRetentionDays: 92 },
++          }),
++        ),
++      );
+     }),
+   );
+ 
+@@ -3895,38 +4088,41 @@ describe("UsageService", () => {
        }),
    );
  
@@ -486,7 +546,7 @@ index 01cbf3a9f52ce0cb8ef3685faf7e5d56460ff75a..9f97bdebfcaa4950168981caffe599a3
  
    it.effect("does not share an in-flight scan after custom prices change", () =>
 diff --git a/apps/server/src/usage/UsageService.ts b/apps/server/src/usage/UsageService.ts
-index a59fbc66a02ca160e01bf3192b0bf1f44ec85cea..5bf374601a75dd96b2f8aae47ec376b71fbd8364 100644
+index 30edc903a580fa74ac7b5dc7830a199ca803f35c..8a33a0b01a7c4e51d0a0cb1e21dee082ffe17914 100644
 --- a/apps/server/src/usage/UsageService.ts
 +++ b/apps/server/src/usage/UsageService.ts
 @@ -23,6 +23,8 @@ import * as FileSystem from "effect/FileSystem";
@@ -498,27 +558,23 @@ index a59fbc66a02ca160e01bf3192b0bf1f44ec85cea..5bf374601a75dd96b2f8aae47ec376b7
  import * as Schema from "effect/Schema";
  import * as Semaphore from "effect/Semaphore";
  import { HttpClient, HttpClientResponse } from "effect/http";
-@@ -58,8 +60,8 @@ import {
-   dedupeWithinFile,
-   LEGACY_SCAN_CACHE_FILE_NAMES,
+@@ -60,6 +62,7 @@ import {
    makeScanCacheWriter,
--  pruneScanCache,
+   pruneScanCache,
    SCAN_CACHE_FILE_NAME,
 +  isScanCacheTooLargeError,
    type CachedFile,
    type ScanCache,
  } from "./usageScanCache.ts";
-@@ -77,8 +79,8 @@ const RATES_REFRESH_FLOOR_MS = 60 * 1000;
- const MTIME_SLACK_MS = 36 * 60 * 60 * 1000;
+@@ -78,6 +81,7 @@ const MTIME_SLACK_MS = 36 * 60 * 60 * 1000;
  const MAX_HOURLY_WINDOW_MS = 24 * 60 * 60 * 1000;
  
--const CACHE_RETENTION_DAYS = 92;
  const STALE_TEMP_DIRECTORY_MS = 60 * 60 * 1000;
 +const SCAN_YIELD_ITEMS = 1_000;
  
  const TRANSCRIPT_READ_CONCURRENCY = 4;
  
-@@ -116,6 +118,14 @@ const RatesCacheFile = Schema.Struct({
+@@ -115,6 +119,14 @@ const RatesCacheFile = Schema.Struct({
  const decodeRatesCache = Schema.decodeUnknownEffect(Schema.fromJsonString(RatesCacheFile));
  const encodeRatesCache = Schema.encodeEffect(Schema.fromJsonString(RatesCacheFile));
  
@@ -533,7 +589,7 @@ index a59fbc66a02ca160e01bf3192b0bf1f44ec85cea..5bf374601a75dd96b2f8aae47ec376b7
  const ScanCacheJson = Schema.fromJsonString(Schema.Unknown);
  const decodeScanCacheFile = Schema.decodeUnknownEffect(ScanCacheJson);
  const encodeUsageRecordKey = Schema.encodeSync(ScanCacheJson);
-@@ -209,6 +219,10 @@ export const make = Effect.gen(function* () {
+@@ -208,6 +220,10 @@ export const make = Effect.gen(function* () {
      coveredSince.set(coverageKey(source), windowStartMs);
      cacheDirty = true;
    };
@@ -544,23 +600,7 @@ index a59fbc66a02ca160e01bf3192b0bf1f44ec85cea..5bf374601a75dd96b2f8aae47ec376b7
    const isWithinDirectory = (filePath: string, dir: string) => {
      const relative = path.relative(dir, filePath);
      return relative !== ".." && !relative.startsWith(".." + path.sep) && !path.isAbsolute(relative);
-@@ -388,7 +402,6 @@ export const make = Effect.gen(function* () {
- 
-   const resolveTranscriptDirs = Effect.fn("UsageService.resolveTranscriptDirs")(function* (
-     settings: ServerSettingsValue,
--    retentionCutoffMs: number,
-     awaitRefresh: boolean,
-   ) {
-     const dirs: Array<TranscriptSource> = [];
-@@ -419,7 +432,6 @@ export const make = Effect.gen(function* () {
-           .some(
-             ([filePath, entry]) =>
-               entry.provider === provider &&
--              entry.mtimeMs >= retentionCutoffMs &&
-               (entry.records.length + entry.tailRecords.length > 0 || entry.malformedRecords > 0) &&
-               isWithinDirectory(filePath, dir),
-           );
-@@ -448,19 +460,72 @@ export const make = Effect.gen(function* () {
+@@ -447,19 +463,72 @@ export const make = Effect.gen(function* () {
      return { dirs, pending };
    });
  
@@ -637,7 +677,7 @@ index a59fbc66a02ca160e01bf3192b0bf1f44ec85cea..5bf374601a75dd96b2f8aae47ec376b7
          cacheDirty = document !== null;
        }
        if (document === null) return;
-@@ -486,13 +551,10 @@ export const make = Effect.gen(function* () {
+@@ -485,13 +554,10 @@ export const make = Effect.gen(function* () {
    // Serialize writes so concurrently finished window scans cannot overwrite newer snapshots.
    const persistLock = yield* Semaphore.make(1);
  
@@ -652,7 +692,7 @@ index a59fbc66a02ca160e01bf3192b0bf1f44ec85cea..5bf374601a75dd96b2f8aae47ec376b7
      const tempPrefixes = [SCAN_CACHE_FILE_NAME, ...LEGACY_SCAN_CACHE_FILE_NAMES].map(
        (fileName) => `${fileName}.`,
      );
-@@ -514,7 +576,7 @@ export const make = Effect.gen(function* () {
+@@ -513,7 +579,7 @@ export const make = Effect.gen(function* () {
  
    // Clear dirty before encoding to retain concurrent changes; restore it on failure for retry.
    const persistCaches = Effect.gen(function* () {
@@ -661,7 +701,7 @@ index a59fbc66a02ca160e01bf3192b0bf1f44ec85cea..5bf374601a75dd96b2f8aae47ec376b7
        cacheDirty = false;
        yield* Effect.sync(() =>
          writeScanCache(fileCache, {
-@@ -530,9 +592,15 @@ export const make = Effect.gen(function* () {
+@@ -529,9 +595,15 @@ export const make = Effect.gen(function* () {
              return removeSupersededCacheFiles;
            }),
          ),
@@ -679,61 +719,7 @@ index a59fbc66a02ca160e01bf3192b0bf1f44ec85cea..5bf374601a75dd96b2f8aae47ec376b7
            }),
          ),
        );
-@@ -778,7 +846,6 @@ export const make = Effect.gen(function* () {
-     { dirs, pending }: Effect.Success<ReturnType<typeof resolveTranscriptDirs>>,
-     windowStartMs: number,
-     settings: ServerSettingsValue,
--    retentionCutoffMs: number,
-     awaitRefresh: boolean,
-     fromMemory: boolean,
-   ) {
-@@ -787,7 +854,7 @@ export const make = Effect.gen(function* () {
-       ({ driver, reader }) =>
-         usageInstances(driver, settings).pipe(
-           Effect.flatMap((instances) =>
--            reader.scan({ instances, settings, windowStartMs, retentionCutoffMs, awaitRefresh }),
-+            reader.scan({ instances, settings, windowStartMs, retentionCutoffMs: 0, awaitRefresh }),
-           ),
-           Effect.flatMap((sources) =>
-             Effect.forEach(sources, ({ volumeId, ...source }) =>
-@@ -872,11 +939,9 @@ export const make = Effect.gen(function* () {
-     const windowStartMs =
-       (hourlyWindow?.sinceTimeMs ?? DateTime.toEpochMillis(windowStart.value)) - MTIME_SLACK_MS;
- 
--    const retentionCutoffMs = startedAtMs - CACHE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
--
-     const awaitRefresh = input.awaitRefresh === true;
-     const collect = Effect.gen(function* () {
--      const resolved = yield* resolveTranscriptDirs(settings, retentionCutoffMs, awaitRefresh).pipe(
-+      const resolved = yield* resolveTranscriptDirs(settings, awaitRefresh).pipe(
-         Effect.provideContext(readerContext),
-       );
-       // A window no complete scan has read would show partial totals, so every directory must cover it.
-@@ -891,14 +956,7 @@ export const make = Effect.gen(function* () {
-       const [, scanned] = yield* Effect.all(
-         [
-           fromMemory ? loadSavedRates : provisional ? ensureRates(false) : Effect.void,
--          collectDirs(
--            resolved,
--            windowStartMs,
--            settings,
--            retentionCutoffMs,
--            awaitRefresh,
--            fromMemory,
--          ),
-+          collectDirs(resolved, windowStartMs, settings, awaitRefresh, fromMemory),
-         ],
-         { concurrency: 2 },
-       );
-@@ -914,7 +972,6 @@ export const make = Effect.gen(function* () {
-     const sources: UsageSource[] = [];
- 
-     // Deleted transcripts' saved usage still aggregates and deduplicates normally.
--    const retainedSinceMs = Math.max(windowStartMs, retentionCutoffMs);
-     // Saved paths are files below a scanned root, so their folder decides; folders repeat thousands of times.
-     const withinDir = (dir: string) => {
-       const foldersWithin = new Map<string, boolean>();
-@@ -928,14 +985,21 @@ export const make = Effect.gen(function* () {
+@@ -930,11 +1002,18 @@ export const make = Effect.gen(function* () {
          return within;
        };
      };
@@ -752,12 +738,8 @@ index a59fbc66a02ca160e01bf3192b0bf1f44ec85cea..5bf374601a75dd96b2f8aae47ec376b7
 +        }
          if (
            entry.provider !== provider ||
--          entry.mtimeMs < retainedSinceMs ||
-+          entry.mtimeMs < windowStartMs ||
-           livePaths.has(filePath) ||
-           !isRetained(filePath)
-         )
-@@ -949,8 +1013,8 @@ export const make = Effect.gen(function* () {
+           entry.mtimeMs < retainedSinceMs ||
+@@ -951,8 +1030,8 @@ export const make = Effect.gen(function* () {
            malformedRecords: entry.malformedRecords,
          });
        }
@@ -768,7 +750,7 @@ index a59fbc66a02ca160e01bf3192b0bf1f44ec85cea..5bf374601a75dd96b2f8aae47ec376b7
      // Usage two transcripts share counts in the first one, so saved files take the order an exact
      // scan reads them in: walked files in walk order, then the directory's deleted files.
      for (const { provider, dir, walked } of fromMemory ? [] : scannedDirs) {
-@@ -1083,6 +1147,11 @@ export const make = Effect.gen(function* () {
+@@ -1085,6 +1164,11 @@ export const make = Effect.gen(function* () {
          scannedFiles += 1;
          const eventOccurrences = new Map<string, number>();
          for (const rawRecord of file.records) {
@@ -780,22 +762,6 @@ index a59fbc66a02ca160e01bf3192b0bf1f44ec85cea..5bf374601a75dd96b2f8aae47ec376b7
            const record = correctedRecord(rawRecord);
            let usageRecord = record;
            if (
-@@ -1144,15 +1213,6 @@ export const make = Effect.gen(function* () {
-       });
-     }
- 
--    const pruned = pruneScanCache(fileCache, retentionCutoffMs);
--    if (pruned > 0) {
--      cacheDirty = true;
--      // Pruned files are no longer saved, so nothing before the cutoff stays covered.
--      for (const [key, since] of coveredSince) {
--        if (since < retentionCutoffMs) coveredSince.set(key, retentionCutoffMs);
--      }
--    }
--
-     const aggregated = aggregator.finish();
-     const readAt = yield* DateTime.now;
-     const finishedAtMs = yield* Clock.currentTimeMillis;
 diff --git a/apps/server/src/usage/usageScanCache.test.ts b/apps/server/src/usage/usageScanCache.test.ts
 index 36864768eb525ef0afcbab7360b5d25249779e0f..1d4ae32c23193b411e1b082037f0a4e137472813 100644
 --- a/apps/server/src/usage/usageScanCache.test.ts
@@ -851,7 +817,7 @@ index 36864768eb525ef0afcbab7360b5d25249779e0f..1d4ae32c23193b411e1b082037f0a4e1
      expect(decodeScanCache(null, TEST_FORMAT_MAP).size).toBe(0);
      expect(decodeScanCache("nonsense", TEST_FORMAT_MAP).size).toBe(0);
 diff --git a/apps/server/src/usage/usageScanCache.ts b/apps/server/src/usage/usageScanCache.ts
-index 843b414b97f32872cba0ad85fee3516a15d37551..67ea9398006977ae7a186ec8cefd314a7d18e85d 100644
+index 843b414b97f32872cba0ad85fee3516a15d37551..18cd2915ab568654eecc4d1ef8dd14664aecef83 100644
 --- a/apps/server/src/usage/usageScanCache.ts
 +++ b/apps/server/src/usage/usageScanCache.ts
 @@ -1,3 +1,5 @@
@@ -924,26 +890,8 @@ index 843b414b97f32872cba0ad85fee3516a15d37551..67ea9398006977ae7a186ec8cefd314a
    }
    // Snapshot now: the encoding runs later, while the file is written.
    return (cache, extra) => encode([...cache], extra);
-@@ -366,17 +390,6 @@ function makeStateValidators(
-   );
- }
- 
--export function pruneScanCache(cache: ScanCache, retentionCutoffMs: number): number {
--  let removed = 0;
--  for (const [path, entry] of cache) {
--    if (entry.mtimeMs < retentionCutoffMs) {
--      cache.delete(path);
--      removed += 1;
--    }
--  }
--  return removed;
--}
--
- /** Pass only newline-terminated records: an unterminated tail can still change, so the aggregator merges it per scan. */
- export function dedupeWithinFile(records: readonly UsageRecord[]): readonly UsageRecord[] {
-   const kept: UsageRecord[] = [];
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index 1946922f59dc4562620e2bc91acc7ea61466a7c0..2db7f50b0b1289ff8a3859214782b614f3016129 100644
+index e5db82230a6f0002677b3e734ec7427830651696..de3da78531e7a9e3d6a1366922682f0a5c49f2d2 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 @@ -21,7 +21,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
@@ -1241,21 +1189,38 @@ index f8e66a8533637e88dc79c11ac41c21d5ecd0a92c..308d1572c109fe836486a405cc222881
  export function resolveUsageShortcut(
    event: ShortcutEventLike & { target: EventTarget | null },
 diff --git a/docs/user/usage.md b/docs/user/usage.md
-index e6b3a46d5a14e5e9c1788192173f24c056de9e78..394ae8d2617c5005ccc920cffb70d0f0590cef6b 100644
+index 5160becc21567016fa0770d658113c405185eace..f09d22e6d26b71b43045b9ee356dbb63da4fd47c 100644
 --- a/docs/user/usage.md
 +++ b/docs/user/usage.md
-@@ -54,6 +54,10 @@ environments are selected by default. The dropdown shows which environments are
+@@ -20,12 +20,12 @@ record are missing from the totals.
+ Text generation (thread titles, commit messages, PR text, branch names and review guides) is not in
+ the totals for Codex or Claude Code 2.0.63 and newer, because those runs save no session history.
+ 
+-The server keeps scanned usage history for 92 days by default. Claude Code deletes its own
+-transcripts after 30 days, so for older Claude usage this history is the only record left. To keep
+-it longer, set `usageHistoryRetentionDays` in `<T3 home>/userdata/settings.json` to a number of days
+-such as `365`, or to `"unlimited"`. Usage views still show at most 90 days. Lowering the value
+-prunes older history on the next refresh, and raising it again does not bring pruned history back.
+-While `settings.json` cannot be read, nothing is pruned.
++The server keeps scanned usage history indefinitely by default, even after the original transcripts
++are deleted. Claude Code deletes its own transcripts after 30 days, so for older Claude usage this
++history is the only record left. To limit it, set `usageHistoryRetentionDays` in
++`<T3 home>/userdata/settings.json` to a number of days such as `365`; `"unlimited"` restores the
++default. Lowering the value prunes older history on the next refresh, and raising it again does not
++bring pruned history back. While `settings.json` cannot be read, nothing is pruned.
+ 
+ OpenCode reads its SQLite database and older JSON history. Antigravity reads local conversation
+ databases, including T3-managed profiles. Set `OPENCODE_DATA_DIR` or `ANTIGRAVITY_DATA_DIR` on the
+@@ -61,6 +61,8 @@ environments are selected by default. The dropdown shows which environments are
  results appear as each one responds, and figures still updating are dimmed. Cursor shows its last
  saved totals first, then updates them when Cursor's API responds.
  
 +Cost and Tokens can show the past 24 hours, 7 days, 30 days, 90 days, or all available history.
-+Previously scanned transcript usage remains saved without an age limit, even after the original
-+transcripts are deleted.
 +
  If recent work is missing or a new model shows no cost, refresh to rescan session history and
  update model pricing.
  
-@@ -196,6 +200,7 @@ Session, Weekly, or both for each provider. Reopen T3 to refresh expired reading
+@@ -203,6 +205,7 @@ Session, Weekly, or both for each provider. Reopen T3 to refresh expired reading
  On web and desktop, open Usage from the command palette. While on Usage,
  press `C`, `T`, or `L` for Cost, Tokens, or Limits while not typing in a field.
  Use `Ctrl+Shift+1/2/3/4` (`Cmd+Shift+1/2/3/4` on macOS) for the past
@@ -1264,3 +1229,16 @@ index e6b3a46d5a14e5e9c1788192173f24c056de9e78..394ae8d2617c5005ccc920cffb70d0f0
 +history. Period shortcuts do nothing on Limits.
  Press `Escape` to return to the previous page. Customize these shortcuts in
  **Settings → Keybindings**.
+diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
+index 678f58294c66aeecb1c4310e7fb23697b353ecf3..78a5004e339064b4a71115f13bccd009ece52089 100644
+--- a/packages/contracts/src/settings.ts
++++ b/packages/contracts/src/settings.ts
+@@ -1590,7 +1590,7 @@ export const ServerSettings = Schema.Struct({
+   ),
+ 
+   usageHistoryRetentionDays: UsageHistoryRetentionDays.pipe(
+-    Schema.withDecodingDefault(Effect.succeed(92)),
++    Schema.withDecodingDefault(Effect.succeed("unlimited" as const)),
+   ),
+ 
+   usagePriceOverrides: Schema.Record(TrimmedNonEmptyString, UsageModelPriceOverride).pipe(

@@ -266,7 +266,7 @@ index 351505c4c666c5e2831114ebe9b88baed2843f5f..66a7604d0050df71ffe26bce5a7065d2
  }
  
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index e6cdb90d5c86dae20194d22db465ac00ca4e6de4..399c56a202d5df885753927f237b0817d958e89a 100644
+index 4a76a689fa21f4b1dab4453750d01c5257cc3c21..873c6b043803cdf102521b4118bb04af7bcff0b2 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -116,6 +116,14 @@ import {
@@ -674,7 +674,7 @@ index e6cdb90d5c86dae20194d22db465ac00ca4e6de4..399c56a202d5df885753927f237b0817
                projectScope={
                  <Combobox
                    items={projectScopeItems}
-@@ -3304,11 +3385,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3308,11 +3389,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                ) : scopedProjectGroups.length > 0 ? (
                  <>
                    <span>
@@ -694,7 +694,7 @@ index e6cdb90d5c86dae20194d22db465ac00ca4e6de4..399c56a202d5df885753927f237b0817
                    </span>
                    <button
                      type="button"
-@@ -3319,7 +3403,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3323,7 +3407,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    </button>
                  </>
                ) : (
@@ -703,7 +703,7 @@ index e6cdb90d5c86dae20194d22db465ac00ca4e6de4..399c56a202d5df885753927f237b0817
                )}
              </div>
            ) : null}
-@@ -3440,7 +3524,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3444,7 +3528,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              environmentMachine={
                                environmentMachineById.get(thread.environmentId) ?? "server"
                              }
@@ -712,7 +712,7 @@ index e6cdb90d5c86dae20194d22db465ac00ca4e6de4..399c56a202d5df885753927f237b0817
                              project={
                                projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ??
                                null
-@@ -3482,6 +3566,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3486,6 +3570,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                            projectByKey={projectByKey}
                            projectDisplayNameByKey={projectDisplayNameByKey}
                            scopedProjectKeys={scopedProjectKeys}
@@ -1208,10 +1208,10 @@ index 0000000000000000000000000000000000000000..e6d3a345f5f3681309e5160fbd518f25
 +  await expect.element(screen.getByText("main")).toBeVisible();
 +});
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index d901418db85a565aa6877c6b54ee86ebe55c0e6e..905fe3de83c326f08da08557ad4679482aee85a3 100644
+index 20f97159fdb2c845106011705c64f481d370f4b8..374c5b6a9944327de934460dcdc5a1d3bd818f21 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -576,7 +576,7 @@ type SidebarThreadRowProps = {
+@@ -578,7 +578,7 @@ type SidebarThreadRowProps = {
    currentEnvironmentId: string | null;
    environmentLabel: string | null;
    environmentMachine: EnvironmentMachineKind;
@@ -1220,7 +1220,7 @@ index d901418db85a565aa6877c6b54ee86ebe55c0e6e..905fe3de83c326f08da08557ad467948
    project: EnvironmentProject | null;
    projectDisplayName: string | null;
    providerEntryByInstanceId: ReadonlyMap<string, SidebarProviderEntry>;
-@@ -836,7 +836,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -838,7 +838,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      : thread.modelSelection.model;
  
    const isRemote = thread.environmentId !== props.currentEnvironmentId;
@@ -1229,7 +1229,7 @@ index d901418db85a565aa6877c6b54ee86ebe55c0e6e..905fe3de83c326f08da08557ad467948
  
    const detailsTooltip = (
      <SidebarThreadTooltip
-@@ -1159,7 +1159,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1166,7 +1166,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
    ) : null;
  
    const remoteMachineIcon =
@@ -1238,7 +1238,7 @@ index d901418db85a565aa6877c6b54ee86ebe55c0e6e..905fe3de83c326f08da08557ad467948
        <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
          <EnvironmentMachineIcon aria-hidden kind={props.environmentMachine} className="size-3.5" />
        </span>
-@@ -1168,27 +1168,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1175,27 +1175,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
    // Only the trailing icons would remain, so the row moves them to the title line instead.
    const metaLineEmpty =
      !checkoutThread.branch &&

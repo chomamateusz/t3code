@@ -171,7 +171,7 @@ index 59196c7bf4b750236bb1b33586a63949b001bd27..7be7ab883d5943402226a5dda7cf813b
    "approval",
    "input",
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index a162ee6fef117f1b9f4297079d491b72be3206b5..af7a0ba6bd25c7ab389b66696ff37b40debad6a0 100644
+index 687cdaf21cc48f95234692122cc4b3625219d35f..1be65a6388c6c74de241b48c436ae8cc497b5977 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -138,6 +138,7 @@ import {
@@ -230,7 +230,7 @@ index a162ee6fef117f1b9f4297079d491b72be3206b5..af7a0ba6bd25c7ab389b66696ff37b40
              return;
            case "copy-path":
              if (!threadWorkspacePath) {
-@@ -3438,6 +3449,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3442,6 +3453,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              onUnsnooze={attemptUnsnooze}
                              onUnpin={attemptUnpin}
                              onAcknowledgeWoke={acknowledgeWoke}
@@ -251,7 +251,7 @@ index 20ac809c130bb08beba90479e4d97d0bd735f05d..d07a999df8093e0bdd58e8722953d426
        <li>Outside</li>
      </ul>
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 454f15352e04981e89eb36493511560a35dc24ea..e5088af932ee292e3b1662db9b33731836dfd88b 100644
+index da3e5df30845a22a05901e5c22d75dfc6b5ab037..7da08473479dd0875c376ebdac3401865f2899fc 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -48,6 +48,8 @@ import {
@@ -274,7 +274,7 @@ index 454f15352e04981e89eb36493511560a35dc24ea..e5088af932ee292e3b1662db9b337318
    shouldRecedeSidebarThread,
    resolveWorkingStartedAt,
    useRetainedValue,
-@@ -436,6 +440,37 @@ function SnoozeMenuButton(props: {
+@@ -438,6 +442,37 @@ function SnoozeMenuButton(props: {
    );
  }
  
@@ -312,7 +312,7 @@ index 454f15352e04981e89eb36493511560a35dc24ea..e5088af932ee292e3b1662db9b337318
  type SortableThreadRowBag = Pick<
    ReturnType<typeof useSortable>,
    "listeners" | "setNodeRef" | "transform" | "transition" | "isDragging"
-@@ -605,6 +640,7 @@ type SidebarThreadRowProps = {
+@@ -607,6 +642,7 @@ type SidebarThreadRowProps = {
    onUnsnooze: (threadRef: ScopedThreadRef) => void;
    onUnpin: (threadRef: ScopedThreadRef) => void;
    onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
@@ -320,7 +320,7 @@ index 454f15352e04981e89eb36493511560a35dc24ea..e5088af932ee292e3b1662db9b337318
    onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
  };
  
-@@ -657,6 +693,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -659,6 +695,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      onContextMenu,
      onAcknowledgeWoke,
      onFileDropThreads,
@@ -328,7 +328,7 @@ index 454f15352e04981e89eb36493511560a35dc24ea..e5088af932ee292e3b1662db9b337318
      onRenameTitleChange,
      onSettle,
      onActionSweepStart,
-@@ -749,6 +786,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -751,6 +788,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      isSelected,
    });
    const isWokeStatus = topStatus?.icon === "woke";
@@ -339,7 +339,7 @@ index 454f15352e04981e89eb36493511560a35dc24ea..e5088af932ee292e3b1662db9b337318
  
    const branchMismatch = resolveLocalCheckoutBranchMismatch({
      effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
-@@ -844,6 +885,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -846,6 +887,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
          addFolders: () => {},
        })
      : null;
@@ -351,7 +351,7 @@ index 454f15352e04981e89eb36493511560a35dc24ea..e5088af932ee292e3b1662db9b337318
    const handleSettleClick = (event: ReactMouseEvent) => {
      event.preventDefault();
      event.stopPropagation();
-@@ -1531,7 +1577,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1538,7 +1584,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                        <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
                      )}
                    </span>
@@ -363,7 +363,7 @@ index 454f15352e04981e89eb36493511560a35dc24ea..e5088af932ee292e3b1662db9b337318
                      <span
                        className={cn(
                          // Mouse clicks leave Settle focused; focus-within would pin controls over
-@@ -1557,6 +1606,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1564,6 +1613,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                            <TooltipPopup side="top">Discard draft</TooltipPopup>
                          </Tooltip>
                        ) : null}

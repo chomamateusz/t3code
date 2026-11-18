@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Mateusz Choma <chomamateusz@gmail.com>
-Date: Tue, 10 Nov 2026 15:32:41 +0100
+From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 02:17:57 +0100
 Subject: =?UTF-8?q?=F0=9F=93=A4=20Send=20every=20queued=20message=20at=20o?=
  =?UTF-8?q?nce?=
 MIME-Version: 1.0
@@ -88,6 +88,8 @@ Port to f7b0b3c4d7: QueuedRunsControl.browser.test.tsx: the imports keep upstrea
 Port to 6b134a7add: runtimeLayer.test.ts conflicted only in its contracts import list: upstream b79d277cdd (#37793) imports OrchestrationV2DomainEvent beside the OrchestrationV2Command type this commit imports; both are kept and the change itself is unchanged.
 useQueuedRunEdit.browser.test.tsx: upstream #37507's steerSavedRun derives the queue state, which this commit's send-each check reads model selections from, so the fixture's runs gain a model selection like every real run has.
 
+Port to 25875c11b2: Upstream #31283 (8753e4d36b) shows a toast with the server's reason when Send now fails. QueuedRunsControl.tsx: that toast now sits in this commit's shared sendNow helper, so Send now keeps upstream's message and the send after a merge and each step of Send one by one report a refused send the same way; Send one by one still stops at the first failure. QueuedRunsControl.browser.test.tsx: the command mock returns queued results or success, failures are real command failures with a cause (built by commandFailure), and upstream's Send now case renders inside its ToastProvider next to this commit's queue-action cases.
+
 Files:
 apps/server:
 - apps/server/src/orchestration-v2/GuestShare.test.ts
@@ -156,8 +158,8 @@ Tests:
  apps/server/src/telemetry/FeatureUsage.ts     |   1 +
  apps/server/src/ws.ts                         |   1 +
  apps/web/src/components/ChatView.tsx          |   7 +
- .../chat/QueuedRunsControl.browser.test.tsx   | 188 ++++++++++-
- .../src/components/chat/QueuedRunsControl.tsx | 162 ++++++++--
+ .../chat/QueuedRunsControl.browser.test.tsx   | 214 +++++++++++-
+ .../src/components/chat/QueuedRunsControl.tsx | 159 +++++++--
  .../chat/useQueuedRunEdit.browser.test.tsx    |   5 +-
  .../settings/KeybindingsSettings.logic.ts     |   1 +
  docs/user/composer.md                         |   9 +
@@ -172,7 +174,7 @@ Tests:
  packages/shared/package.json                  |   4 +
  packages/shared/src/model.ts                  |   9 +-
  packages/shared/src/queuedMessageMerge.ts     | 139 ++++++++
- 23 files changed, 1314 insertions(+), 104 deletions(-)
+ 23 files changed, 1326 insertions(+), 115 deletions(-)
  create mode 100644 packages/shared/src/queuedMessageMerge.ts
 
 diff --git a/apps/server/src/orchestration-v2/GuestShare.test.ts b/apps/server/src/orchestration-v2/GuestShare.test.ts
@@ -230,10 +232,10 @@ index d789b206016b69362be53c9b633683eeadc5f52b..6ed5f1cce494e8d106b1028befd8ce35
  );
  
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 27b7a2e12878d03688e511719da31595149acb31..fd331a70621cc3bdc880b4c440c50ee13f6d7053 100644
+index 819aa90c03b9823ded62c8d5214d4bea7ac4324a..563179ebc218e329500940120a3413091021c790 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
-@@ -30,6 +30,7 @@ import {
+@@ -31,6 +31,7 @@ import {
    isOrchestrationV2WorkActive,
    isProviderNativeSubagentThread,
    MessageId,
@@ -241,7 +243,7 @@ index 27b7a2e12878d03688e511719da31595149acb31..fd331a70621cc3bdc880b4c440c50ee1
    type NodeId,
    type ModelSelection,
    OrchestrationV2Command,
-@@ -85,6 +86,7 @@ import { modelSwitchSince } from "./modelSwitch.ts";
+@@ -87,6 +88,7 @@ import { contextBoundaryOrdinal, isScheduledFreshRun } from "./contextBoundary.t
  import { isPlaceholderThreadTitle } from "./placeholderThreadTitle.ts";
  import { combinePullRequestWatchWakes, type PullRequestWatchWake } from "./pullRequestWatch.ts";
  import { recordThreadOpen } from "@t3tools/shared/paletteSearch";
@@ -249,7 +251,7 @@ index 27b7a2e12878d03688e511719da31595149acb31..fd331a70621cc3bdc880b4c440c50ee1
  import {
    backgroundWorkHoldsCompletion,
    derivePendingBackgroundWork,
-@@ -204,6 +206,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
+@@ -209,6 +211,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
  import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import * as ServerSettings from "../serverSettings.ts";
  
@@ -257,7 +259,7 @@ index 27b7a2e12878d03688e511719da31595149acb31..fd331a70621cc3bdc880b4c440c50ee1
  const isMessageQuestionAnswer = Schema.is(
    Schema.Union([TrimmedNonEmptyString, Schema.NonEmptyArray(TrimmedNonEmptyString)]),
  );
-@@ -668,6 +671,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
+@@ -676,6 +679,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
      case "queued-run.reorder":
      case "queued-run.cancel":
      case "queued-run.edit":
@@ -265,7 +267,7 @@ index 27b7a2e12878d03688e511719da31595149acb31..fd331a70621cc3bdc880b4c440c50ee1
      case "runtime-request.respond":
      case "runtime-request.delivery.fail":
      case "thread.user-input.dismiss":
-@@ -11698,46 +11702,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -11802,46 +11806,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        { text: command.text, attachments: command.attachments ?? queuedMessage.attachments },
        queuedRunModelSelection(projection, queuedRun).instanceId,
      );
@@ -321,7 +323,7 @@ index 27b7a2e12878d03688e511719da31595149acb31..fd331a70621cc3bdc880b4c440c50ee1
      // Thread deletion only cleans files the thread still references.
      const keptAttachmentIds = new Set(
        (command.attachments ?? queuedMessage.attachments).map((attachment) => attachment.id),
-@@ -11762,6 +11738,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -11866,6 +11842,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
      }
    });
  
@@ -450,7 +452,7 @@ index 27b7a2e12878d03688e511719da31595149acb31..fd331a70621cc3bdc880b4c440c50ee1
    const subagentCount = (threadId: ThreadId) =>
      projectionStore
        .getSubagentCount(threadId)
-@@ -15266,6 +15364,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -15376,6 +15474,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "queued-run.edit":
          yield* dispatchQueuedRunEdit(command, events, effects);
          break;
@@ -460,7 +462,7 @@ index 27b7a2e12878d03688e511719da31595149acb31..fd331a70621cc3bdc880b4c440c50ee1
        case "checkpoint.rollback":
          yield* dispatchCheckpointRollback(command, events, effects);
          break;
-@@ -15498,7 +15599,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -15608,7 +15709,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                ),
              );
            if (
@@ -470,7 +472,7 @@ index 27b7a2e12878d03688e511719da31595149acb31..fd331a70621cc3bdc880b4c440c50ee1
              cause._tag === "OrchestratorDispatchError"
            ) {
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index b2d12935aa2f814060cb8dc1fa4050e28da7c7ad..e2ab519a9b55c7d63bc9a6cca87f9ae1bda32f8e 100644
+index 82fd3381e20d975b816972633f01f72c4575a3db..744390b209b7fabd4c902e365b1d2a939a352fe5 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 @@ -10,6 +10,8 @@ import { assert, it } from "@effect/vitest";
@@ -482,7 +484,7 @@ index b2d12935aa2f814060cb8dc1fa4050e28da7c7ad..e2ab519a9b55c7d63bc9a6cca87f9ae1
    CheckpointId,
    CheckpointRef,
    CommandId,
-@@ -21,6 +23,7 @@ import {
+@@ -22,6 +24,7 @@ import {
    RuntimeRequestId,
    TurnItemId,
    type ModelSelection,
@@ -490,7 +492,7 @@ index b2d12935aa2f814060cb8dc1fa4050e28da7c7ad..e2ab519a9b55c7d63bc9a6cca87f9ae1
    type OrchestrationV2DomainEvent,
    type OrchestrationV2Run,
    type OrchestrationV2ShellSnapshot,
-@@ -10621,6 +10624,307 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -10846,6 +10849,307 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
        assert.equal(cancelAgainError._tag, "OrchestratorDispatchError");
      }),
    );
@@ -799,10 +801,10 @@ index b2d12935aa2f814060cb8dc1fa4050e28da7c7ad..e2ab519a9b55c7d63bc9a6cca87f9ae1
  
  it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (it) => {
 diff --git a/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts b/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
-index 0d428e1a6e1e0950e2a19555980b83c335605cb2..c7aeab940cf52374134fb91ce534d6b63210fd92 100644
+index 15ac7ecb8d3fe8a2e2b0ef65df5cbfd32e5ef243..952162d2f11872ba8ad9119263d47ebdc3f8e038 100644
 --- a/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
 +++ b/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
-@@ -182,6 +182,7 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
+@@ -184,6 +184,7 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
      case "queued-run.reorder":
      case "queued-run.cancel":
      case "queued-run.edit":
@@ -823,10 +825,10 @@ index 61fb57ada454ed0b1a9a309eb066ff03db841f86..33aa46863d0b7f36613f6f8b959933e7
    "thread.guest-message.dismiss": () => ({ feature: "guest_message.dismiss" }),
  };
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 6defac543eaaca36a9863bb429b376b17cdeb39e..c45498aa24b5d1b3933d74e10659064ef1ed1acd 100644
+index bbe80f28e9681db09bbc06ecdc960ca8d7e9f375..77c65c79f34ba2b190a9c4d3e93a29d89fcbbe33 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
-@@ -1891,6 +1891,7 @@ export const layerWsRpc = (
+@@ -1902,6 +1902,7 @@ export const layerWsRpc = (
            threadSnapshotPagination: true,
            threadFind: true,
            threadFindProgressive: true,
@@ -835,7 +837,7 @@ index 6defac543eaaca36a9863bb429b376b17cdeb39e..c45498aa24b5d1b3933d74e10659064e
            secretReferences: true,
            secretRequestReferences: true,
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index c0f8ff42f451ee0ea67ba63ef8a359110c57a4df..ade9cbf9ad832086240b3f81b30fb763a4c50a6d 100644
+index 1a50e7fdfa6b39ac15214ce451089c386731623e..20267f4aaec60ece3cdcfa284b39f5894387696f 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
 @@ -2786,6 +2786,8 @@ export default function ChatView(props: ChatViewProps) {
@@ -860,10 +862,10 @@ index c0f8ff42f451ee0ea67ba63ef8a359110c57a4df..ade9cbf9ad832086240b3f81b30fb763
            threadId={activeThread.id}
            optimisticMessages={optimisticUserMessages}
 diff --git a/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx b/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx
-index 8781327b5e8ada5309428f09344a934099a771ee..1a0eb45266706203a23b0c91e8d9ce02af35b68e 100644
+index 4f4daf7c798b46ac677cae2e3d552f2cf71cd43a..e581d006b1e74a63bb3cf5b7e1d3f49b3dea33b1 100644
 --- a/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx
 +++ b/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx
-@@ -9,13 +9,16 @@ import {
+@@ -16,14 +16,16 @@ import * as Cause from "effect/Cause";
  import * as DateTime from "effect/DateTime";
  import * as Option from "effect/Option";
  import { AsyncResult, type Atom, AtomRegistry } from "effect/reactivity";
@@ -876,13 +878,14 @@ index 8781327b5e8ada5309428f09344a934099a771ee..1a0eb45266706203a23b0c91e8d9ce02
  const state = vi.hoisted(() => ({
    threadState: null as unknown as Atom.Writable<AsyncResult.AsyncResult<EnvironmentThreadState>>,
    workflow: null as unknown,
+-  commandResult: undefined as unknown,
 +  queuedRunMerge: true as boolean | undefined,
 +  commands: [] as Array<readonly [string, unknown]>,
-+  results: [] as Array<"Success" | "Failure">,
++  results: [] as Array<unknown>,
  }));
  
  vi.mock(import("@t3tools/client-runtime/state/thread-workflows"), async (importOriginal) => ({
-@@ -38,6 +41,11 @@ vi.mock(import("../../state/environments"), async (importOriginal) => ({
+@@ -46,6 +48,11 @@ vi.mock(import("../../state/environments"), async (importOriginal) => ({
      environmentId === "environment:linked" ? { environmentId } : null) as never,
  }));
  
@@ -894,22 +897,22 @@ index 8781327b5e8ada5309428f09344a934099a771ee..1a0eb45266706203a23b0c91e8d9ce02
  vi.mock(import("../../state/query"), async (importOriginal) => ({
    ...(await importOriginal()),
    useEnvironmentQuery: (() => ({
-@@ -66,7 +74,10 @@ vi.mock(import("../../state/threads"), async (importOriginal) => {
+@@ -74,7 +81,10 @@ vi.mock(import("../../state/threads"), async (importOriginal) => {
  
  vi.mock(import("../../state/use-atom-command"), async (importOriginal) => ({
    ...(await importOriginal()),
--  useAtomCommand: (() => async () => undefined) as never,
+-  useAtomCommand: (() => async () => state.commandResult) as never,
 +  useAtomCommand: ((command: { readonly label: string }) => async (value: unknown) => {
 +    state.commands.push([command.label.split(":").at(-1) ?? command.label, value]);
-+    return { _tag: state.results.shift() ?? "Success" };
++    return state.results.shift() ?? { _tag: "Success" };
 +  }) as never,
  }));
  
  vi.mock(import("../../assets/assetUrls"), async (importOriginal) => ({
-@@ -80,12 +91,15 @@ import { EMPTY_ENVIRONMENT_THREAD_STATE } from "@t3tools/client-runtime/state/th
- 
+@@ -89,13 +99,28 @@ import { EMPTY_ENVIRONMENT_THREAD_STATE } from "@t3tools/client-runtime/state/th
  import { act, render as renderUi } from "../../../test/render";
  import { makeStreamingTimelineFixture, makeThreadProjectionFixture } from "../../test-fixtures";
+ import { ToastProvider } from "../ui/toast";
 -import { QueuedRunsControl } from "./QueuedRunsControl";
 +import { QueuedRunsControl, type QueuedRunsControlHandle } from "./QueuedRunsControl";
  import { ExpandedImageDialog } from "./ExpandedImageDialog";
@@ -917,15 +920,47 @@ index 8781327b5e8ada5309428f09344a934099a771ee..1a0eb45266706203a23b0c91e8d9ce02
  
  function setup() {
    state.workflow = null;
+-  state.commandResult = undefined;
 +  state.queuedRunMerge = true;
 +  state.commands = [];
 +  state.results = [];
++}
++
++function commandFailure(reason: string) {
++  return AsyncResult.failure(
++    Cause.fail(
++      new OrchestrationV2DispatchCommandError({
++        commandId: CommandId.make("command:promote"),
++        commandType: "queued-message.promote-to-steer",
++        message: reason,
++        detail: reason,
++      }),
++    ),
++  );
  }
  
  const baseProps = {
-@@ -399,3 +413,169 @@ it("does not re-render while assistant text streams into the thread", async () =
-   await act(() => registry.set(state.threadState, thread("Hello there", true)));
-   expect(renders).toBeGreaterThan(settled);
+@@ -424,16 +449,7 @@ it("tells the user why Send now was rejected", async () => {
+       },
+     ],
+   };
+-  state.commandResult = AsyncResult.failure(
+-    Cause.fail(
+-      new OrchestrationV2DispatchCommandError({
+-        commandId: CommandId.make("command:promote"),
+-        commandType: "queued-message.promote-to-steer",
+-        message: reason,
+-        detail: reason,
+-      }),
+-    ),
+-  );
++  state.results = [commandFailure(reason)];
+   await using _screen = await renderUi(
+     <ToastProvider timeout={0}>
+       <QueuedRunsControl {...baseProps} />
+@@ -443,3 +459,169 @@ it("tells the user why Send now was rejected", async () => {
+   await page.getByRole("button", { name: "Send now" }).click();
+   await vi.waitFor(() => expect(page.getByText(reason).element()).toBeVisible());
  });
 +
 +function queueOfTwo(workflow: Record<string, unknown>) {
@@ -979,7 +1014,7 @@ index 8781327b5e8ada5309428f09344a934099a771ee..1a0eb45266706203a23b0c91e8d9ce02
 +it("sends nothing when combining fails", async () => {
 +  setup();
 +  queueOfTwo({});
-+  state.results = ["Failure"];
++  state.results = [commandFailure("Refused")];
 +  await using _screen = await renderQueue();
 +
 +  await sendAllAsOne().click();
@@ -990,7 +1025,7 @@ index 8781327b5e8ada5309428f09344a934099a771ee..1a0eb45266706203a23b0c91e8d9ce02
 +it("steers queued messages one by one and stops at the first failure", async () => {
 +  setup();
 +  queueOfTwo({});
-+  state.results = ["Failure"];
++  state.results = [commandFailure("Refused")];
 +  await using _screen = await renderQueue();
 +
 +  await sendOneByOne().click();
@@ -1094,10 +1129,10 @@ index 8781327b5e8ada5309428f09344a934099a771ee..1a0eb45266706203a23b0c91e8d9ce02
 +  await expect.element(sendAllAsOne()).not.toBeInTheDocument();
 +});
 diff --git a/apps/web/src/components/chat/QueuedRunsControl.tsx b/apps/web/src/components/chat/QueuedRunsControl.tsx
-index 8972bf468448b08f92caac5cb3d9e4728b2ef644..7c020be4a9c409d3a4f88c87f608dfb7a3204d44 100644
+index 49cbc8f050eea869c240701b14c86f15055334bf..6469c7484acff09d28f5d8eb48cc9706f27f9e2f 100644
 --- a/apps/web/src/components/chat/QueuedRunsControl.tsx
 +++ b/apps/web/src/components/chat/QueuedRunsControl.tsx
-@@ -54,6 +54,7 @@ const QUEUE_VISIBLE_ROWS = 3;
+@@ -59,6 +59,7 @@ const QUEUE_VISIBLE_ROWS = 3;
  export interface QueuedRunsControlHandle {
    steerNext: (repeat: boolean) => boolean;
    editLatest: (repeat: boolean) => boolean;
@@ -1105,7 +1140,7 @@ index 8972bf468448b08f92caac5cb3d9e4728b2ef644..7c020be4a9c409d3a4f88c87f608dfb7
  }
  
  type ThreadQueueProjection = Parameters<typeof deriveThreadQueueWorkflowState>[0];
-@@ -76,6 +77,7 @@ export function QueuedRunsControl({
+@@ -81,6 +82,7 @@ export function QueuedRunsControl({
    readonly ref?: Ref<QueuedRunsControlHandle>;
    readonly steerShortcutLabel?: string | null;
    readonly editShortcutLabel?: string | null;
@@ -1113,7 +1148,7 @@ index 8972bf468448b08f92caac5cb3d9e4728b2ef644..7c020be4a9c409d3a4f88c87f608dfb7
    readonly environmentId: EnvironmentId;
    readonly threadId: ThreadId;
    readonly optimisticMessages: ReadonlyArray<
-@@ -93,9 +95,12 @@ export function QueuedRunsControl({
+@@ -98,9 +100,12 @@ export function QueuedRunsControl({
    const projection = useQuietThreadProjection(
      scopeThreadRef(props.environmentId, props.threadId),
    )?.projection;
@@ -1126,7 +1161,7 @@ index 8972bf468448b08f92caac5cb3d9e4728b2ef644..7c020be4a9c409d3a4f88c87f608dfb7
    const [showAll, setShowAll] = useState(false);
    const queueListId = useId();
    const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
-@@ -161,28 +166,85 @@ export function QueuedRunsControl({
+@@ -166,13 +171,7 @@ export function QueuedRunsControl({
      })),
    ];
  
@@ -1138,32 +1173,33 @@ index 8972bf468448b08f92caac5cb3d9e4728b2ef644..7c020be4a9c409d3a4f88c87f608dfb7
 -    steerInFlightRef.current = true;
 -    setBusyRunId(queuedRunId);
 +  const sendNow = async (queuedRunId: RunId) => {
-     if (workflow?.canSendNow) {
--      await resume({
-+      return resume({
-         environmentId: props.environmentId,
-         input: { threadId: props.threadId, runId: queuedRunId },
-       });
--    } else if (activeRun !== null) {
--      await promote({
-+    }
-+    if (activeRun !== null) {
-+      return promote({
-         environmentId: props.environmentId,
-         input: { threadId: props.threadId, queuedRunId, targetRunId: activeRun.id },
+     const result = workflow?.canSendNow
+       ? await resume({
+           environmentId: props.environmentId,
+@@ -184,8 +183,6 @@ export function QueuedRunsControl({
+             input: { threadId: props.threadId, queuedRunId, targetRunId: activeRun.id },
+           })
+         : null;
+-    steerInFlightRef.current = false;
+-    setBusyRunId(null);
+     if (result?._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+       const error = squashAtomCommandFailure(result);
+       toastManager.add({
+@@ -194,6 +191,70 @@ export function QueuedRunsControl({
+         description: error instanceof Error ? error.message : "An error occurred.",
        });
      }
-+    return null;
++    return result;
 +  };
 +
 +  const runQueueAction = async (busyRun: RunId, action: () => Promise<void>) => {
 +    steerInFlightRef.current = true;
 +    setBusyRunId(busyRun);
 +    await action();
-     steerInFlightRef.current = false;
-     setBusyRunId(null);
-   };
- 
++    steerInFlightRef.current = false;
++    setBusyRunId(null);
++  };
++
 +  const sendQueuedMessage = async (queuedRunId: RunId) => {
 +    const freshContext = queued.some(
 +      ({ run }) => run.id === queuedRunId && run.freshContext === true,
@@ -1217,12 +1253,10 @@ index 8972bf468448b08f92caac5cb3d9e4728b2ef644..7c020be4a9c409d3a4f88c87f608dfb7
 +        if (sent?._tag !== "Success") return;
 +      }
 +    });
-+  };
-+
+   };
+ 
    useImperativeHandle(ref, () => ({
-     steerNext(repeat) {
-       const next = queued[0];
-@@ -213,6 +275,11 @@ export function QueuedRunsControl({
+@@ -226,6 +287,11 @@ export function QueuedRunsControl({
        }
        return true;
      },
@@ -1234,7 +1268,7 @@ index 8972bf468448b08f92caac5cb3d9e4728b2ef644..7c020be4a9c409d3a4f88c87f608dfb7
    }));
  
    if (items.length === 0) return null;
-@@ -367,25 +434,62 @@ export function QueuedRunsControl({
+@@ -380,25 +446,62 @@ export function QueuedRunsControl({
            );
          })}
        </ol>
@@ -1333,10 +1367,10 @@ index a88da51cce16e360f7ebb0cec7c5ed55a6e30ca1..ef6715ea617f0f08b7b4fff32b143bec
                providerThreads: [],
                providerSessions: [
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index 2db7f50b0b1289ff8a3859214782b614f3016129..21df321eaad7ebe1f5dc89da6f3a0316777c8aa5 100644
+index de3da78531e7a9e3d6a1366922682f0a5c49f2d2..4d83b4aa34443b57c7eb4c5599c57df84b4b9cf7 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-@@ -379,6 +379,7 @@ export function commandLabel(command: KeybindingCommand): string {
+@@ -392,6 +392,7 @@ export function commandLabel(command: KeybindingCommand): string {
    if (command === "composer.dictation") return "Composer: Start or Finish Dictation";
    if (command === "thread.steerQueuedMessage") return "Queue: Send First Queued Message";
    if (command === "thread.editQueuedMessage") return "Queue: Edit Last Queued Message";
@@ -1365,10 +1399,10 @@ index fc25f0df52b08ccf5493f37d551aae236e714a09..b28190361d94f7c05adc66d3c39c577d
  running the send button shows which action it will take. Long-press it to use the
  other action for a single message. From a hardware keyboard, `Cmd+Return`
 diff --git a/docs/user/keybindings.md b/docs/user/keybindings.md
-index 3e4d47e7c9433e26dcd5d08d73c255c6463796fb..4a8e63ef2de67b68887bb44d43fd6b75736e1f8e 100644
+index 308d7d934c1f8b1cbfc6916b5f93992d990f894f..252ce0c6628128e64b78f9b2c6720133430e02fd 100644
 --- a/docs/user/keybindings.md
 +++ b/docs/user/keybindings.md
-@@ -25,7 +25,8 @@ send shortcut. Click the send button to use the configured follow-up behavior.
+@@ -28,7 +28,8 @@ send shortcut. Click the send button to use the configured follow-up behavior.
  
  When a thread has queued messages, `mod+Shift+Enter` sends the first one as a steer
  while a turn is running, or as a new turn when the thread is stopped. Change it under
@@ -1379,7 +1413,7 @@ index 3e4d47e7c9433e26dcd5d08d73c255c6463796fb..4a8e63ef2de67b68887bb44d43fd6b75
  Use `mod+shift+m` to choose a model and `mod+shift+h` to choose a host.
  To step a new thread to the next machine instead of opening the menu, bind
 diff --git a/packages/client-runtime/src/operations/commands.ts b/packages/client-runtime/src/operations/commands.ts
-index 50717d0cafd414b9dd11f14ad8fde66adbac8b82..fd06f5d7d8be91f61b9652520506d8fd9cd95d6c 100644
+index 6b9ccbb69953a6e9ac2ac04b7f71d506d996ecf9..ffcd15f979c02db483651057e9c7a50b13bc812c 100644
 --- a/packages/client-runtime/src/operations/commands.ts
 +++ b/packages/client-runtime/src/operations/commands.ts
 @@ -264,6 +264,10 @@ export interface CancelQueuedRunInput extends ThreadCommandInput {
@@ -1412,7 +1446,7 @@ index 50717d0cafd414b9dd11f14ad8fde66adbac8b82..fd06f5d7d8be91f61b9652520506d8fd
    function* (input: RetryWorkspacePreparationInput) {
      return yield* dispatch({
 diff --git a/packages/client-runtime/src/state/threadCommands.ts b/packages/client-runtime/src/state/threadCommands.ts
-index 0e9de03f5c06640ba76ef6353a1cca3cf63cd214..ee1d8d8fb65fa3fb3458dfe78de5d15e7e8654ef 100644
+index 41b74e9f2ac789cf69e499f71c4d846d627eeab1..2d9ac28f00a8b24ef3b074ac4750ea31a940da9f 100644
 --- a/packages/client-runtime/src/state/threadCommands.ts
 +++ b/packages/client-runtime/src/state/threadCommands.ts
 @@ -35,6 +35,7 @@ import {
@@ -1423,7 +1457,7 @@ index 0e9de03f5c06640ba76ef6353a1cca3cf63cd214..ee1d8d8fb65fa3fb3458dfe78de5d15e
    mergeThreadBack,
    promoteQueuedRun,
    resumeThreadQueue,
-@@ -393,6 +394,12 @@ export function createThreadEnvironmentAtoms<R, E>(
+@@ -407,6 +408,12 @@ export function createThreadEnvironmentAtoms<R, E>(
        scheduler,
        concurrency,
      }),
@@ -1866,10 +1900,10 @@ index eda5138b760b9b3d028d89d9b4b7a0c0b7c8075b..56f521670e72594a00b8737a97486206
    "thread.next",
    "thread.copyReference",
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index 11987980cedfaccb7d4f44a0608eb77040af8ee6..f3b869b91bb81f9c5eb665d077da1e03ef1009cc 100644
+index a297d92a444d42bb67ad7de419c4ebf2f8922255..b41e51d0b839e4b0ae5b8843253aaee49129b285 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
-@@ -3481,6 +3481,13 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3509,6 +3509,13 @@ export const OrchestrationV2Command = Schema.Union([
      // Replaces all attachments; absent preserves them for older clients editing text.
      attachments: Schema.optional(Schema.Array(ChatAttachment)),
    }),
@@ -1884,7 +1918,7 @@ index 11987980cedfaccb7d4f44a0608eb77040af8ee6..f3b869b91bb81f9c5eb665d077da1e03
      type: Schema.Literal("runtime-request.respond"),
      commandId: CommandId,
 diff --git a/packages/contracts/src/server.ts b/packages/contracts/src/server.ts
-index f2e02c6b0a95eee2ae050e05b070abeb74d8935b..76b9bcbc87b8e2abaa7ce59f9d863ae2118cde65 100644
+index 6ba3a09f8053bbc671431f6247857a9e9bfccfe4..9437282591058afd0a5fffac2a604e66b6671008 100644
 --- a/packages/contracts/src/server.ts
 +++ b/packages/contracts/src/server.ts
 @@ -725,6 +725,7 @@ export const ServerConfig = Schema.Struct({

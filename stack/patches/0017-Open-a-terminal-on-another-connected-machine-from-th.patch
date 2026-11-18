@@ -179,7 +179,7 @@ Tests:
  create mode 100644 apps/web/src/components/terminal/remoteTerminalClose.ts
 
 diff --git a/apps/server/src/terminal/Manager.test.ts b/apps/server/src/terminal/Manager.test.ts
-index 8499197acb76565517083158b7ce919b45f04bd2..d5f9d05404f9b381971dad98ffed5ddae91c7ab2 100644
+index a7d292e2740338411e823ee4fbad48d7c6b49d2f..e77d7855f6ba8fa0286278478d6c2bab65c88e6f 100644
 --- a/apps/server/src/terminal/Manager.test.ts
 +++ b/apps/server/src/terminal/Manager.test.ts
 @@ -4,9 +4,11 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -194,7 +194,7 @@ index 8499197acb76565517083158b7ce919b45f04bd2..d5f9d05404f9b381971dad98ffed5dda
    type TerminalAttachStreamEvent,
    type TerminalEvent,
    type TerminalOpenInput,
-@@ -875,6 +877,33 @@ it.layer(
+@@ -877,6 +879,33 @@ it.layer(
      }),
    );
  
@@ -229,7 +229,7 @@ index 8499197acb76565517083158b7ce919b45f04bd2..d5f9d05404f9b381971dad98ffed5dda
      Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) => fs.exists(filePath));
  
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index d7fff551faaf8577eccea91899fef7ac11ff80dd..210fd4ed605d9394ec01d97379028d21a692e847 100644
+index 504bb2c3b5fdc76b61e755a551ecfea12e1c28ba..9b2ca9ff16a2a99e5049838f502cdeb26c1ae03b 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
 @@ -21,6 +21,7 @@ import {
@@ -258,7 +258,7 @@ index d7fff551faaf8577eccea91899fef7ac11ff80dd..210fd4ed605d9394ec01d97379028d21
    };
  }
  
-@@ -3248,6 +3253,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+@@ -3291,6 +3296,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
          runtimeEnv: normalizedRuntimeEnv(input.env),
          stopOnSettle: input.stopOnSettle ?? false,
          startupError: null,
@@ -466,7 +466,7 @@ index a387349b4c038e12df15de15e2e25db37ae6f48f..52a7709104b6ed2f4a3ad387f4e2cbbc
        </div>
      </div>
 diff --git a/apps/web/src/components/ThreadTerminalDrawer.browser.test.tsx b/apps/web/src/components/ThreadTerminalDrawer.browser.test.tsx
-index f9990ea7d0c45c8d7570b19cf914f7ea10c01fc6..be2f3504d6064e0dc715a1d233a1b58b8e0b500f 100644
+index 7632d01b5f9075a724391762d7fa5ae8bae3358f..9fd26fee8ca45a6e10c402819b203ae4f61fba73 100644
 --- a/apps/web/src/components/ThreadTerminalDrawer.browser.test.tsx
 +++ b/apps/web/src/components/ThreadTerminalDrawer.browser.test.tsx
 @@ -153,6 +153,7 @@ vi.mock("../state/terminalSessions", async () => {
@@ -1544,7 +1544,7 @@ index de568dc9101fef661e390a09b660b18c881354c2..42d01dfd449d5dd7db3c80edf6c2f260
      writeToTerminal: useStableCallback(writeToTerminal),
    };
 diff --git a/apps/web/src/hooks/useRightPanelSurfaceClose.browser.test.tsx b/apps/web/src/hooks/useRightPanelSurfaceClose.browser.test.tsx
-index 8513f18f35ac227907fdbb9a689f20a16de986b3..a31b75c097b05ce0c24d83501208eb77b62a3652 100644
+index 4fca86f5b87d7f9269878a7d06ddc041380b9a20..b46c7fa4ef30ebd08b4de266239901ae5143edaf 100644
 --- a/apps/web/src/hooks/useRightPanelSurfaceClose.browser.test.tsx
 +++ b/apps/web/src/hooks/useRightPanelSurfaceClose.browser.test.tsx
 @@ -64,8 +64,12 @@ vi.mock("../state/terminal", () => ({ terminalEnvironment: { open: {}, close: {}
@@ -1559,7 +1559,7 @@ index 8513f18f35ac227907fdbb9a689f20a16de986b3..a31b75c097b05ce0c24d83501208eb77
 +  runAtomCommand: () => Promise.resolve(null),
  }));
  
- function setup() {
+ function setup(mode: "single" | "all") {
 diff --git a/apps/web/src/hooks/useThreadActions.permissions.test.ts b/apps/web/src/hooks/useThreadActions.permissions.test.ts
 index c15dc90bb11f3d1ca8f5694d896c6ef7d7dd6342..e0ac7d1d0d53870130139c961cca4058bb947f62 100644
 --- a/apps/web/src/hooks/useThreadActions.permissions.test.ts
@@ -2102,10 +2102,10 @@ index b442e855ca12d2d9a189b4b7bf8bc4b15e2b34d7..61b41110d171543b571d9fc033d1e085
      },
    ),
 diff --git a/docs/user/terminal.md b/docs/user/terminal.md
-index dd921eb9a96507bfd2b938f263db8e4316477c92..bbd31aa9296cd0a275dda0c02f0e826c387a02fd 100644
+index a92ddc1ab6458799ee55554bf886a23f653292a0..44c93fd26e4dce8b6d15e071bfee4d782a67d9d2 100644
 --- a/docs/user/terminal.md
 +++ b/docs/user/terminal.md
-@@ -20,6 +20,20 @@ Jump to latest in the context menu returns to the current output.
+@@ -49,6 +49,20 @@ Jump to latest in the context menu returns to the current output.
  On iPhone and iPad, long-press the terminal to paste or to choose Select Text.
  Select Text shows the visible output, where you can copy text or tap a link.
  

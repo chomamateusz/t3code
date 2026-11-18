@@ -37,6 +37,8 @@ Port to 6b134a7add:
 - Upstream 750e492ed6 copies snapshot images into another composer as image context records that carry their snap-shot source; they enter through the same context import, so they already pass through prepareImageForAttachment (2000 px longest edge and byte limit), and the prepared image keeps upstream's source metadata, byte fingerprint and deleted-chip guard. The browser test keeps upstream's snapshot source on the image record and checks it survives preparation for downloaded and cached images.
 - New imageCompression case: a HEIC photo whose first converted JPEG is still over the byte cap is re-encoded as large.jpg from a second decode, without a second resize.
 
+Port to 25875c11b2: Applied without conflicts. An image copied from another thread or environment that preparation resizes now gets its snap-shot source scaled to the prepared size through upstream's resizeSnapShotSource, so the accessibility element tree's imageSize and bounds match the attached pixels instead of the original capture; an image preparation leaves unchanged keeps its source as it was. useComposerContextImport.browser.test.tsx: a new case imports a 3000 x 1500 capture and expects its element tree at 2000 x 1000 (it fails without the scaling).
+
 Files:
 apps/web:
 - apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
@@ -65,8 +67,8 @@ Tests:
 
 Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
 ---
- .../useComposerContextImport.browser.test.tsx |  53 +++++-
- .../chat/useComposerContextImport.ts          |  26 ++-
+ .../useComposerContextImport.browser.test.tsx | 157 ++++++++++++++++-
+ .../chat/useComposerContextImport.ts          |  33 +++-
  .../SnapShotCoordinator.browser.test.ts       |  20 ++-
  .../src/components/preview/PreviewView.tsx    |   2 +-
  apps/web/src/lib/imageCompression.test.ts     | 160 ++++++++++++++++--
@@ -74,10 +76,10 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  apps/web/src/lib/previewAnnotation.test.ts    |  50 +++++-
  apps/web/src/lib/previewAnnotation.ts         |  15 +-
  docs/user/composer.md                         |   4 +
- 9 files changed, 317 insertions(+), 59 deletions(-)
+ 9 files changed, 427 insertions(+), 60 deletions(-)
 
 diff --git a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
-index d48e965895ddd40377c2836ffc39435e889af34a..7b3a651602bdcc7ae5b9f5156ed1fdafc31412ac 100644
+index d48e965895ddd40377c2836ffc39435e889af34a..32111a881eee54403248d3da956e194082b6d448 100644
 --- a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
 +++ b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
 @@ -48,7 +48,10 @@ function deferred<T>() {
@@ -192,8 +194,119 @@ index d48e965895ddd40377c2836ffc39435e889af34a..7b3a651602bdcc7ae5b9f5156ed1fdaf
      expect(draft.images[0]?.source).toEqual(
        attachment.kind === "image" ? attachment.source : undefined,
      );
+@@ -208,6 +243,110 @@ it.each([
+   );
+ });
+ 
++it("scales a copied snapshot's element tree to the resized image", async () => {
++  const target = DraftId.make("clipboard-resized-snapshot");
++  const store = useComposerDraftStore.getState();
++  using _draft = { [Symbol.dispose]: () => store.clearComposerContent(target) };
++  const sourceEnvironmentId = EnvironmentId.make("clipboard-resized-source");
++  const canvas = new OffscreenCanvas(3000, 1500);
++  canvas.getContext("2d")!.fillRect(0, 0, 3000, 1500);
++  const file = new File([await canvas.convertToBlob({ type: "image/png" })], "window.png", {
++    type: "image/png",
++  });
++  rememberCopiedComposerAttachments(sourceEnvironmentId, new Map([["window", file]]));
++  using _copy = {
++    [Symbol.dispose]: () => rememberCopiedComposerAttachments(sourceEnvironmentId, new Map()),
++  };
++  const settled = deferred<void>();
++  const end = pendingDraftWork.end.bind(pendingDraftWork);
++  using _settled = vi.spyOn(pendingDraftWork, "end").mockImplementation((key) => {
++    end(key);
++    settled.resolve();
++  });
++  const promptRef = { current: "" };
++  const input = {
++    environmentId: EnvironmentId.make("clipboard-target"),
++    linkedEnvironments: new Map(),
++    activeThread: undefined,
++    activeThreadId: null,
++    composerDraftTarget: target,
++    attachmentDraftTarget: target,
++    attachmentTargetKey: target,
++    attachmentTargetKeyRef: { current: target },
++    questionAttachmentTarget: null,
++    pendingUserInputs: [],
++    composerContextRecords: new Map(),
++    composerImages: [],
++    composerFilesRef: { current: [] },
++    pendingThreadImportsRef: { current: new Map() },
++    promptRef,
++    addComposerFilesToDraft: (files: Parameters<typeof store.addFiles>[1]) =>
++      store.addFiles(target, files),
++  } satisfies ImportInput;
++  let importer!: Importer;
++  await using _screen = await render(
++    <Harness
++      input={input}
++      ready={(value) => {
++        importer = value;
++      }}
++    />,
++  );
++  const contextId = ComposerContextId.make("image_window");
++  const record = {
++    version: 1,
++    kind: "image",
++    contextId,
++    label: "window.png",
++    attachmentId: "window",
++    name: "window.png",
++    mimeType: "image/png",
++    sizeBytes: file.size,
++    source: {
++      kind: "snap-shot",
++      appName: "Editor",
++      windowTitle: "main.ts",
++      capturedAt: "2026-01-01T00:00:00.000Z",
++      accessibility: {
++        format: "element-tree",
++        coordinateSpace: "captured-image",
++        imageSize: { width: 3000, height: 1500 },
++        truncated: false,
++        root: {
++          role: "window",
++          bounds: { x: 0, y: 0, width: 3000, height: 1500 },
++          children: [
++            {
++              role: "button",
++              name: "Save",
++              bounds: { x: 2700, y: 1200, width: 150, height: 150 },
++              children: [],
++            },
++          ],
++        },
++      },
++    },
++  } satisfies ComposerContextRecord;
++  await act(async () => {
++    const remapped = importer.importContextRecords([record], sourceEnvironmentId);
++    promptRef.current = formatInlineContextReference({
++      kind: "image",
++      contextId: remapped.get(contextId)!,
++      label: "window.png",
++    });
++    store.setPrompt(target, promptRef.current);
++    await settled.promise;
++  });
++
++  expect(store.getComposerDraft(target)?.images[0]?.source?.accessibility).toMatchObject({
++    imageSize: { width: 2000, height: 1000 },
++    root: {
++      bounds: { x: 0, y: 0, width: 2000, height: 1000 },
++      children: [{ bounds: { x: 1800, y: 800, width: 100, height: 100 } }],
++    },
++  });
++});
++
+ it.each(["same", "other-environment"] as const)(
+   "preserves thread identity across repeated pastes: %s",
+   async (variant) => {
 diff --git a/apps/web/src/components/chat/useComposerContextImport.ts b/apps/web/src/components/chat/useComposerContextImport.ts
-index 265278faec74708bebed2b9925fe3c466b18602a..c762b7ec49acb559b06fc29013503c79ddbf8d49 100644
+index 265278faec74708bebed2b9925fe3c466b18602a..1ecbe910ffea463236ee40975ba04ea6b5fba77e 100644
 --- a/apps/web/src/components/chat/useComposerContextImport.ts
 +++ b/apps/web/src/components/chat/useComposerContextImport.ts
 @@ -12,6 +12,7 @@ import {
@@ -204,15 +317,16 @@ index 265278faec74708bebed2b9925fe3c466b18602a..c762b7ec49acb559b06fc29013503c79
  } from "@t3tools/contracts";
  import {
    type ComposerFileAttachment,
-@@ -57,6 +58,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
+@@ -57,6 +58,8 @@ import { useAtomCommand } from "../../state/use-atom-command";
  import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
  import { useStableCallback } from "../../hooks/useStableCallback";
  import { countPreparingComposerImages } from "./preparingComposerImages";
 +import { prepareImageForAttachment } from "~/lib/imageCompression";
++import { resizeSnapShotSource } from "~/lib/snapShotSource";
  
  const isUnreachable = Schema.is(
    Schema.Union([ConnectionTransientError, ConnectionBlockedError, EnvironmentRpcUnavailableError]),
-@@ -166,7 +168,8 @@ export function useComposerContextImport(input: {
+@@ -166,7 +169,8 @@ export function useComposerContextImport(input: {
          description: `${reason} Remove the chip or attach the file again.`,
        });
      };
@@ -222,12 +336,13 @@ index 265278faec74708bebed2b9925fe3c466b18602a..c762b7ec49acb559b06fc29013503c79
      if (!file) {
        const sourceConnection = readPreparedConnection(sourceEnvironmentId);
        if (!sourceConnection) {
-@@ -196,7 +199,24 @@ export function useComposerContextImport(input: {
+@@ -196,7 +200,26 @@ export function useComposerContextImport(input: {
          return;
        }
        file = new File([blob], record.name, { type: record.mimeType || blob.type });
 -      if (record.kind === "image") await readComposerImageBytes(file);
 +    }
++    let preparedImageSize: { width: number; height: number } | undefined;
 +    if (record.kind === "image") {
 +      const prepared = await prepareImageForAttachment(
 +        file,
@@ -242,13 +357,14 @@ index 265278faec74708bebed2b9925fe3c466b18602a..c762b7ec49acb559b06fc29013503c79
 +        return;
 +      }
 +      file = prepared.file;
++      preparedImageSize = prepared.imageSize;
 +      await readComposerImageBytes(file);
 +    }
 +    if (!cachedFile || record.kind === "image") {
        // Question attachments have no inline reference; annotations can own their screenshots.
        const references = new Set(collectInlineContextIds(promptRef.current));
        if (
-@@ -241,7 +261,7 @@ export function useComposerContextImport(input: {
+@@ -241,12 +264,14 @@ export function useComposerContextImport(input: {
            {
              type: "image",
              id: localId,
@@ -257,6 +373,14 @@ index 265278faec74708bebed2b9925fe3c466b18602a..c762b7ec49acb559b06fc29013503c79
              mimeType: file.type,
              sizeBytes: file.size,
              previewUrl: URL.createObjectURL(file),
+             file,
+-            ...(record.source ? { source: record.source } : {}),
++            ...(record.source
++              ? { source: resizeSnapShotSource(record.source, preparedImageSize) }
++              : {}),
+           },
+         ],
+         {
 diff --git a/apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts b/apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts
 index 0915ed9df3b538b26f34d39ae482a35d88f185bd..1fb68ef7272dc5513f1de35a9dd2151cdeb251f8 100644
 --- a/apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts

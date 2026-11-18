@@ -569,7 +569,7 @@ index 7be7ab883d5943402226a5dda7cf813bd899a162..3dce84fc283cd162c9e3f91f3c741497
    T extends Pick<
      SidebarThreadSummary,
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index af7a0ba6bd25c7ab389b66696ff37b40debad6a0..1e907d6d9a36372c7857aa0fe8926aa5cb269a05 100644
+index 1be65a6388c6c74de241b48c436ae8cc497b5977..b13ef5d4d4bbe6dd5095f6f15c6582c88a85c9b3 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -208,6 +208,8 @@ import {
@@ -781,7 +781,7 @@ index af7a0ba6bd25c7ab389b66696ff37b40debad6a0..1e907d6d9a36372c7857aa0fe8926aa5
              ),
              plan.kind === "move-active"
                ? "Failed to reorder active threads"
-@@ -3454,7 +3461,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3458,7 +3465,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                            />
                          );
                        };
@@ -794,10 +794,10 @@ index af7a0ba6bd25c7ab389b66696ff37b40debad6a0..1e907d6d9a36372c7857aa0fe8926aa5
                          <SidebarDraftBlock
                            key="draft-sessions"
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index e5088af932ee292e3b1662db9b33731836dfd88b..0db166a4dd5a9c5c1bcef5a9f1db133c7b662558 100644
+index 7da08473479dd0875c376ebdac3401865f2899fc..ca949a3b4db6dbd0636e025543c4b8c948a0af2e 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -400,6 +400,7 @@ function SnoozeMenuButton(props: {
+@@ -402,6 +402,7 @@ function SnoozeMenuButton(props: {
                    type="button"
                    aria-label="Snooze thread"
                    onClick={(event) => event.stopPropagation()}
@@ -805,7 +805,7 @@ index e5088af932ee292e3b1662db9b33731836dfd88b..0db166a4dd5a9c5c1bcef5a9f1db133c
                    onDoubleClick={(event) => event.stopPropagation()}
                    className="inline-flex h-full cursor-pointer items-center gap-0.5 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
                  />
-@@ -1597,6 +1598,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1604,6 +1605,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                  type="button"
                                  aria-label="Discard draft"
                                  onClick={handleDiscardDraftClick}

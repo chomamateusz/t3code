@@ -506,7 +506,7 @@ index 1684c1b0ca5a4ac33ab3d1afacd9c0eed10403f0..59196c7bf4b750236bb1b33586a63949
   * Boring sidebar folders. Folders follow `groups` order and threads keep their
   * input order. A project with no threads gets a folder only when `keepEmpty` says so.
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 29b8065987cf1621258a3fd1d24e564e529f964d..a162ee6fef117f1b9f4297079d491b72be3206b5 100644
+index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b3625219d35f 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -120,12 +120,18 @@ import {
@@ -681,7 +681,7 @@ index 29b8065987cf1621258a3fd1d24e564e529f964d..a162ee6fef117f1b9f4297079d491b72
            ...visibleProjectGroups.filter((project) => project.archived),
          ]
        : null,
-@@ -3298,13 +3336,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3302,13 +3340,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                          const threadKey = scopedThreadKey(
                            scopeThreadRef(thread.environmentId, thread.id),
                          );
@@ -697,7 +697,7 @@ index 29b8065987cf1621258a3fd1d24e564e529f964d..a162ee6fef117f1b9f4297079d491b72
                              ? "card"
                              : "slim";
                          return (
-@@ -3319,6 +3352,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3323,6 +3356,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              }
                              thread={thread}
                              variant={rowVariant}
@@ -705,7 +705,7 @@ index 29b8065987cf1621258a3fd1d24e564e529f964d..a162ee6fef117f1b9f4297079d491b72
                              navigationParent={
                                folderRow ??
                                (section === "working" ||
-@@ -3436,6 +3470,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3440,6 +3474,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                  group={folder.group}
                                  collapsed={folder.collapsed}
                                  hiddenThreads={folder.hiddenThreads}
@@ -770,7 +770,7 @@ index e28143807027464cf9fa351e28fd4fc7d0bc1439..b87f6d64fe4521fce5930bf6fdcacefc
  function GuestLinksRowWithSignIn() {
    const { isSignedIn } = useAuth();
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 291a5d81ae9a84200da71e6faeb0cbb107d553bd..99eb6d2bace4f4ffde45382f9854bc27cd0107f8 100644
+index 6cf9c562d9705d9c6c4d6bfdc0fa0f167208abc6..9d752ac64d28f4563ade4e9c1a49c1a4bd077181 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -471,20 +471,12 @@ export const SETTINGS_SEARCH_ITEMS = [
@@ -1193,10 +1193,10 @@ index 0000000000000000000000000000000000000000..db439e67964e4dea091c47376eead71c
 +    previous.badge?.description === next.badge?.description,
 +);
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index d78c4c7517f01f0c37aaf6945b3c2b35b635e69f..454f15352e04981e89eb36493511560a35dc24ea 100644
+index 09f9b187885e6d4646a54005c9ef537e124f92d2..da3e5df30845a22a05901e5c22d75dfc6b5ab037 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -552,6 +552,7 @@ type SidebarThreadRowProps = {
+@@ -554,6 +554,7 @@ type SidebarThreadRowProps = {
    // "folder-multiline" adds the card's branch and PR line under it.
    variant: "card" | "slim" | "folder" | "folder-multiline";
    navigationParent?: string | undefined;
@@ -1204,7 +1204,7 @@ index d78c4c7517f01f0c37aaf6945b3c2b35b635e69f..454f15352e04981e89eb36493511560a
    variantAction: SidebarSweepAction;
    settlementSupported: boolean;
    snoozeSupported: boolean;
-@@ -1409,6 +1410,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1416,6 +1417,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
        className={cn(
          "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
          metaLineEmpty && "[contain-intrinsic-size:auto_60px]",
@@ -1213,7 +1213,7 @@ index d78c4c7517f01f0c37aaf6945b3c2b35b635e69f..454f15352e04981e89eb36493511560a
        )}
      >
 diff --git a/apps/web/src/index.css b/apps/web/src/index.css
-index 771c714b1ff8a210ecaa7ad398e2769036162482..297d59cd9418d1d5c18b68119efa43e67f9b1555 100644
+index 05541d3970d1aad77b906204987a202d5f09e360..9eec4f9448141552decc58bc47f0f642ce606cfc 100644
 --- a/apps/web/src/index.css
 +++ b/apps/web/src/index.css
 @@ -109,6 +109,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
