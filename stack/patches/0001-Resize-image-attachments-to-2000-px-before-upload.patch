@@ -39,6 +39,8 @@ Port to 6b134a7add:
 
 Port to 25875c11b2: Applied without conflicts. An image copied from another thread or environment that preparation resizes now gets its snap-shot source scaled to the prepared size through upstream's resizeSnapShotSource, so the accessibility element tree's imageSize and bounds match the attached pixels instead of the original capture; an image preparation leaves unchanged keeps its source as it was. useComposerContextImport.browser.test.tsx: a new case imports a 3000 x 1500 capture and expects its element tree at 2000 x 1000 (it fails without the scaling).
 
+Port to b6ac2449f1: upstream 055b44919e wraps imageCompression.ts's read errors in m(msg()) and imports gt-react beside the header-dimension import this commit removes; the import block keeps gt-react and still drops the header read. Upstream ad77fd88e2 (Enter during image compression sends once it finishes) tracks pending images in preparingComposerImages around the intake and keeps compressImageToByteLimit as the compressor, so the 2000 px resize, the HEIC over-cap re-encode and the resizeSnapShotSource scaling are unchanged on top of it; 733bc8f1d0 changes docs/user/composer.md elsewhere.
+
 Files:
 apps/web:
 - apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
@@ -306,10 +308,10 @@ index d48e965895ddd40377c2836ffc39435e889af34a..32111a881eee54403248d3da956e1940
    "preserves thread identity across repeated pastes: %s",
    async (variant) => {
 diff --git a/apps/web/src/components/chat/useComposerContextImport.ts b/apps/web/src/components/chat/useComposerContextImport.ts
-index 265278faec74708bebed2b9925fe3c466b18602a..1ecbe910ffea463236ee40975ba04ea6b5fba77e 100644
+index 61d0abd7319a6b2fcf5f5095e8b194dcb25c08c4..c38ffa28d328ef1a4e915a73045556bfe8f6326c 100644
 --- a/apps/web/src/components/chat/useComposerContextImport.ts
 +++ b/apps/web/src/components/chat/useComposerContextImport.ts
-@@ -12,6 +12,7 @@ import {
+@@ -14,6 +14,7 @@ import {
    type ComposerContextRecord,
    type EnvironmentId,
    PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
@@ -317,7 +319,7 @@ index 265278faec74708bebed2b9925fe3c466b18602a..1ecbe910ffea463236ee40975ba04ea6
  } from "@t3tools/contracts";
  import {
    type ComposerFileAttachment,
-@@ -57,6 +58,8 @@ import { useAtomCommand } from "../../state/use-atom-command";
+@@ -59,6 +60,8 @@ import { useAtomCommand } from "../../state/use-atom-command";
  import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
  import { useStableCallback } from "../../hooks/useStableCallback";
  import { countPreparingComposerImages } from "./preparingComposerImages";
@@ -326,8 +328,8 @@ index 265278faec74708bebed2b9925fe3c466b18602a..1ecbe910ffea463236ee40975ba04ea6
  
  const isUnreachable = Schema.is(
    Schema.Union([ConnectionTransientError, ConnectionBlockedError, EnvironmentRpcUnavailableError]),
-@@ -166,7 +169,8 @@ export function useComposerContextImport(input: {
-         description: `${reason} Remove the chip or attach the file again.`,
+@@ -168,7 +171,8 @@ export function useComposerContextImport(input: {
+         description: m(msg("{reason} Remove the chip or attach the file again.", { reason })),
        });
      };
 -    let file = copiedComposerAttachmentFile(sourceEnvironmentId, record.attachmentId);
@@ -336,7 +338,7 @@ index 265278faec74708bebed2b9925fe3c466b18602a..1ecbe910ffea463236ee40975ba04ea6
      if (!file) {
        const sourceConnection = readPreparedConnection(sourceEnvironmentId);
        if (!sourceConnection) {
-@@ -196,7 +200,26 @@ export function useComposerContextImport(input: {
+@@ -198,7 +202,26 @@ export function useComposerContextImport(input: {
          return;
        }
        file = new File([blob], record.name, { type: record.mimeType || blob.type });
@@ -364,7 +366,7 @@ index 265278faec74708bebed2b9925fe3c466b18602a..1ecbe910ffea463236ee40975ba04ea6
        // Question attachments have no inline reference; annotations can own their screenshots.
        const references = new Set(collectInlineContextIds(promptRef.current));
        if (
-@@ -241,12 +264,14 @@ export function useComposerContextImport(input: {
+@@ -243,12 +266,14 @@ export function useComposerContextImport(input: {
            {
              type: "image",
              id: localId,
@@ -427,10 +429,10 @@ index 0915ed9df3b538b26f34d39ae482a35d88f185bd..1fb68ef7272dc5513f1de35a9dd2151c
            void store.syncPersistedAttachments(target, [capture]);
          }
 diff --git a/apps/web/src/components/preview/PreviewView.tsx b/apps/web/src/components/preview/PreviewView.tsx
-index e303ae1451619ea4b48b041a5b3b7759a72590bb..9552f45ed0ee9ee76c6253284d7c71e3649d0bb7 100644
+index 4d7320272e40bec31211195f6e2df0b7ff7f69d3..37aa4a35dd5d57fea42b0269a9474df9d7441f00 100644
 --- a/apps/web/src/components/preview/PreviewView.tsx
 +++ b/apps/web/src/components/preview/PreviewView.tsx
-@@ -857,7 +857,7 @@ export function PreviewView({
+@@ -866,7 +866,7 @@ export function PreviewView({
        const { annotation: picked, submission, screenshotFailed = false } = result;
        // Send annotations even if the optional crop fails or stalls; drop failed screenshots so prompts cannot
        // claim an attachment.
@@ -630,7 +632,7 @@ index e40c3968bc850e77a2e0e96b762da9f75ffbdbb1..7ecec677c0486af0b59d1cd273433b4f
  });
  
 diff --git a/apps/web/src/lib/imageCompression.ts b/apps/web/src/lib/imageCompression.ts
-index 53e948e535b752c5a25ecc91485ed2e7136696ba..a7e491155fc3437579107b8e2df5cbde534707e5 100644
+index b876ceff6a44ab2ea383f48add71c909bc7b4880..350bf973e64ca56874cec444cad69ad56035e0f5 100644
 --- a/apps/web/src/lib/imageCompression.ts
 +++ b/apps/web/src/lib/imageCompression.ts
 @@ -3,10 +3,6 @@ import {
@@ -641,10 +643,10 @@ index 53e948e535b752c5a25ecc91485ed2e7136696ba..a7e491155fc3437579107b8e2df5cbde
 -  IMAGE_DIMENSIONS_HEADER_BYTES,
 -  readImageDimensions,
 -} from "@t3tools/shared/imageDimensions";
+ import { msg } from "gt-react";
  
- const MAX_DIMENSION = IMAGE_ATTACHMENT_MAX_EDGE;
- export const MAX_STASH_IMAGE_DATA_URL_CHARS = 1_300_000;
-@@ -324,14 +320,16 @@ async function reencodeWithinBudget(
+ import { m } from "../i18n/messages";
+@@ -327,14 +323,16 @@ async function reencodeWithinBudget(
    file: File,
    budgetChars: number,
    preferredMimeType?: "image/jpeg",
@@ -662,7 +664,7 @@ index 53e948e535b752c5a25ecc91485ed2e7136696ba..a7e491155fc3437579107b8e2df5cbde
    } catch {
      return { ok: false, reason: "unreadable" };
    }
-@@ -400,16 +398,13 @@ export async function compressImageForStash(
+@@ -403,16 +401,13 @@ export async function compressImageForStash(
    }
  }
  
@@ -684,7 +686,7 @@ index 53e948e535b752c5a25ecc91485ed2e7136696ba..a7e491155fc3437579107b8e2df5cbde
      const imageSize = fitImageAttachmentSize(bitmap);
      if (!imageSize) return null;
      const target = createCanvas(imageSize.width, imageSize.height);
-@@ -424,8 +419,6 @@ async function fitImageToMaxEdge(file: File): Promise<{ file: File; imageSize: I
+@@ -427,8 +422,6 @@ async function fitImageToMaxEdge(file: File): Promise<{ file: File; imageSize: I
      };
    } catch {
      return null;
@@ -693,7 +695,7 @@ index 53e948e535b752c5a25ecc91485ed2e7136696ba..a7e491155fc3437579107b8e2df5cbde
    }
  }
  
-@@ -434,21 +427,30 @@ export async function compressImageToByteLimit(
+@@ -437,21 +430,30 @@ export async function compressImageToByteLimit(
    maxBytes: number,
    options?: { preferredMimeType?: "image/jpeg"; sourceSizeBytes?: number },
  ): Promise<CompressImageFileResult> {
@@ -843,7 +845,7 @@ index 8f8b944e2fa1ce73444ca9f27e41d37da76b07af..fdd8b9af2e1ca40c29b5d3eb0885a10e
      return { status: "failed" };
    }
 diff --git a/docs/user/composer.md b/docs/user/composer.md
-index 89a96f120d4d0eaa00ffd406d25b0c2a55300e4d..fc25f0df52b08ccf5493f37d551aae236e714a09 100644
+index 7f27587971a2bc3e54c10a035673219099052513..e75c33876f798a344d6827eac3a2a094f9883e4b 100644
 --- a/docs/user/composer.md
 +++ b/docs/user/composer.md
 @@ -58,6 +58,10 @@ also send files to T3 Code through another app's system share sheet.

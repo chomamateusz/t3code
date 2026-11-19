@@ -649,10 +649,10 @@ index f834c7cc355b98afde0975a322f0ebd6f2daf835..a4286939d0b394916be5b71c52cc1b84
      ]);
    });
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index 5c4f99d76dc44c652d94a93376963cea619c1179..5ce185436f83d46e26c86dabb378cd56e4fbf27d 100644
+index 8d282aff42689bb69dd456a184b104d5bf40bb4a..3823715de12e0d7c43836951b0d3c5a1527dff34 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-@@ -814,6 +814,30 @@ function retainedAssistantReplyEntryIds(
+@@ -844,6 +844,30 @@ function retainedAssistantReplyEntryIds(
    return replyEntryIds;
  }
  
@@ -683,7 +683,7 @@ index 5c4f99d76dc44c652d94a93376963cea619c1179..5ce185436f83d46e26c86dabb378cd56
  function deriveSupersededAttemptFolds(
    timelineEntries: ReadonlyArray<TimelineEntry>,
    unfoldedRunIds: ReadonlySet<RunId>,
-@@ -825,11 +849,13 @@ function deriveSupersededAttemptFolds(
+@@ -855,11 +879,13 @@ function deriveSupersededAttemptFolds(
        entry.attempt !== undefined && retainedReplyEntryIds.has(entry.id) ? [entry.attempt.id] : [],
      ),
    );
@@ -697,7 +697,7 @@ index 5c4f99d76dc44c652d94a93376963cea619c1179..5ce185436f83d46e26c86dabb378cd56
        unfoldedRunIds.has(entry.attempt.runId) ||
        (entry.kind === "message" && entry.message.role === "user") ||
        (entry.kind === "event" && entry.projectedItem.item.type === "handoff") ||
-@@ -1164,7 +1190,7 @@ function deriveTurnFolds(input: {
+@@ -1195,7 +1221,7 @@ function deriveTurnFolds(input: {
      // Folded dividers lose their place in the turn, so only the latest stays visible.
      const visibleCompactionId = group.entries.findLast(timelineEntryIsCompaction)?.id;
      for (const [index, entry] of group.entries.entries()) {

@@ -40,10 +40,10 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  2 files changed, 5 insertions(+), 1 deletion(-)
 
 diff --git a/apps/server/src/auth/SessionStore.test.ts b/apps/server/src/auth/SessionStore.test.ts
-index b224112168bb96ebf0236f9b4e5a5c8fe08d675f..c23485e86b0143f3dc32d15e9575aff9fb8b33de 100644
+index 11b31894c23070c83b2eab559ee53042a26f6a79..26be18019e8eb4cab737e77031afc6f745d33329 100644
 --- a/apps/server/src/auth/SessionStore.test.ts
 +++ b/apps/server/src/auth/SessionStore.test.ts
-@@ -568,6 +568,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("SessionStore.lay
+@@ -593,6 +593,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("SessionStore.lay
        );
  
        expect(beforeRevoke).toHaveLength(2);
@@ -55,10 +55,10 @@ index b224112168bb96ebf0236f9b4e5a5c8fe08d675f..c23485e86b0143f3dc32d15e9575aff9
          true,
        );
 diff --git a/apps/server/src/auth/SessionStore.ts b/apps/server/src/auth/SessionStore.ts
-index 5717479a47ba92b702dda00f05023c74fca13466..f26378066a927ca18961a6ac54aa43779d7a77d2 100644
+index e3af51958b80686b83692d0110789c3e021434a2..2c067528c7891913e578f079d1b363c96e40e9a4 100644
 --- a/apps/server/src/auth/SessionStore.ts
 +++ b/apps/server/src/auth/SessionStore.ts
-@@ -445,7 +445,7 @@ export class SessionStore extends Context.Service<
+@@ -479,7 +479,7 @@ export class SessionStore extends Context.Service<
  >()("t3/auth/SessionStore") {}
  
  const SIGNING_SECRET_NAME = "server-signing-key";

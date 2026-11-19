@@ -23,6 +23,8 @@ Port to ee4ef06469:
 
 Port to fe59fa44d0: the folder row details tooltip now reads disabled={isRenaming || snoozeMenuOpen || sortable?.isDragging}, keeping the rename suppression upstream #31009 added next to the open-menu suppression, in the order upstream uses on the other row variant.
 
+Port to b6ac2449f1: the Snooze and Settle hover branch keeps this commit's structure under upstream's translated labels (055b44919e): gt() aria labels and <T> tooltips, English unchanged.
+
 Files:
 apps/web:
 - apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
@@ -38,9 +40,9 @@ Tests:
 
 Model/harness: GPT-6 / Codex; hover layout follow-up: Claude Opus 5.5 / Claude Code; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
 ---
- .../sidebar/SidebarThreadRow.browser.test.tsx | 25 +++++
- .../components/sidebar/SidebarThreadRow.tsx   | 94 ++++++++++++++-----
- 2 files changed, 94 insertions(+), 25 deletions(-)
+ .../sidebar/SidebarThreadRow.browser.test.tsx |  25 +++++
+ .../components/sidebar/SidebarThreadRow.tsx   | 100 +++++++++++++-----
+ 2 files changed, 98 insertions(+), 27 deletions(-)
 
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
 index e6d3a345f5f3681309e5160fbd518f252c28282d..20ac809c130bb08beba90479e4d97d0bd735f05d 100644
@@ -86,10 +88,10 @@ index e6d3a345f5f3681309e5160fbd518f252c28282d..20ac809c130bb08beba90479e4d97d0b
    vi.mocked(useEnvironmentScope).mockReturnValue(true);
    await using screen = await render(
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 49e5a1431e8ba6d580f10b6f57da6adf750868fc..09f9b187885e6d4646a54005c9ef537e124f92d2 100644
+index a68d594784b6cb33446973ac6b99b2d1723a852d..c958f846bf44f22cb0429440a4fb32b36224b199 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -900,7 +900,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -930,7 +930,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      setSnoozeGateClock({ thread, now: new Date(snoozeGateOpensAt).toISOString() });
    }
    const showSnoozeButton =
@@ -101,7 +103,7 @@ index 49e5a1431e8ba6d580f10b6f57da6adf750868fc..09f9b187885e6d4646a54005c9ef537e
    // Closing here, not just masking, keeps the menu from reopening when the button returns.
    if (snoozeMenuOpenRaw && !showSnoozeButton) setSnoozeMenuOpen(false);
    const snoozeMenuOpen = snoozeMenuOpenRaw && showSnoozeButton;
-@@ -1178,7 +1181,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1276,7 +1279,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
            sortable?.isDragging && "relative z-20",
          )}
        >
@@ -110,7 +112,7 @@ index 49e5a1431e8ba6d580f10b6f57da6adf750868fc..09f9b187885e6d4646a54005c9ef537e
            <TooltipTrigger
              render={
                <div
-@@ -1236,7 +1239,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1335,7 +1338,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                ) : (
                  <span
                    className={cn(
@@ -120,7 +122,7 @@ index 49e5a1431e8ba6d580f10b6f57da6adf750868fc..09f9b187885e6d4646a54005c9ef537e
                      props.sweepAction !== null && "hidden",
                      jumpHintLabel && JUMP_HINT_SLOT_CLASS_NAME,
                    )}
-@@ -1245,6 +1249,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1344,6 +1348,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                      className={cn(
                        "inline-flex justify-end tabular-nums text-secondary-label transition-opacity",
                        !isWoke && "group-any-hover/sidebar-row:opacity-0",
@@ -131,7 +133,7 @@ index 49e5a1431e8ba6d580f10b6f57da6adf750868fc..09f9b187885e6d4646a54005c9ef537e
                      )}
                    >
                      {variantAction === "unsnooze" && props.snoozeWakeLabelText !== null ? (
-@@ -1308,27 +1316,63 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1411,29 +1419,67 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                          <AlarmClockOffIcon className="mb-px size-3" />
                        </button>
                      )
@@ -141,7 +143,7 @@ index 49e5a1431e8ba6d580f10b6f57da6adf750868fc..09f9b187885e6d4646a54005c9ef537e
 -                        render={
 -                          <button
 -                            type="button"
--                            aria-label="Un-settle thread"
+-                            aria-label={gt("Un-settle thread")}
 -                            onClick={handleUnsettleClick}
 -                            onPointerDown={handleActionPointerDown}
 -                            className={cn(
@@ -153,7 +155,9 @@ index 49e5a1431e8ba6d580f10b6f57da6adf750868fc..09f9b187885e6d4646a54005c9ef537e
 -                      >
 -                        <Undo2Icon className="mb-px size-3.5" />
 -                      </TooltipTrigger>
--                      <TooltipPopup side="top">Un-settle thread</TooltipPopup>
+-                      <TooltipPopup side="top">
+-                        <T>Un-settle thread</T>
+-                      </TooltipPopup>
 -                    </Tooltip>
 -                  ) : (
 +                  ) : variantAction === "unsettle" ? (
@@ -163,7 +167,7 @@ index 49e5a1431e8ba6d580f10b6f57da6adf750868fc..09f9b187885e6d4646a54005c9ef537e
 +                          render={
 +                            <button
 +                              type="button"
-+                              aria-label="Un-settle thread"
++                              aria-label={gt("Un-settle thread")}
 +                              onClick={handleUnsettleClick}
 +                              onPointerDown={handleActionPointerDown}
 +                              className={cn(
@@ -175,7 +179,9 @@ index 49e5a1431e8ba6d580f10b6f57da6adf750868fc..09f9b187885e6d4646a54005c9ef537e
 +                        >
 +                          <Undo2Icon className="mb-px size-3.5" />
 +                        </TooltipTrigger>
-+                        <TooltipPopup side="top">Un-settle thread</TooltipPopup>
++                        <TooltipPopup side="top">
++                          <T>Un-settle thread</T>
++                        </TooltipPopup>
 +                      </Tooltip>
 +                    )
 +                  ) : showSnoozeButton ? (
@@ -199,7 +205,7 @@ index 49e5a1431e8ba6d580f10b6f57da6adf750868fc..09f9b187885e6d4646a54005c9ef537e
 +                            render={
 +                              <button
 +                                type="button"
-+                                aria-label="Settle thread"
++                                aria-label={gt("Settle thread")}
 +                                onClick={handleSettleClick}
 +                                onPointerDown={handleActionPointerDown}
 +                                className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground hover:text-foreground"
@@ -208,7 +214,9 @@ index 49e5a1431e8ba6d580f10b6f57da6adf750868fc..09f9b187885e6d4646a54005c9ef537e
 +                          >
 +                            <CheckIcon className="size-3" />
 +                          </TooltipTrigger>
-+                          <TooltipPopup side="top">Settle thread</TooltipPopup>
++                          <TooltipPopup side="top">
++                            <T>Settle thread</T>
++                          </TooltipPopup>
 +                        </Tooltip>
 +                      ) : null}
 +                    </span>
@@ -216,9 +224,9 @@ index 49e5a1431e8ba6d580f10b6f57da6adf750868fc..09f9b187885e6d4646a54005c9ef537e
                      <Tooltip>
                        <TooltipTrigger
                          render={
-@@ -1348,7 +1392,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
-                       </TooltipTrigger>
-                       <TooltipPopup side="top">Settle thread</TooltipPopup>
+@@ -1455,7 +1501,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+                         <T>Settle thread</T>
+                       </TooltipPopup>
                      </Tooltip>
 -                  )}
 +                  ) : null}

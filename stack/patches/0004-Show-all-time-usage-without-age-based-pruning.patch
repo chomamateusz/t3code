@@ -53,6 +53,8 @@ Port to 25875c11b2: Upstream #28111 (428d365932) adds the usageHistoryRetentionD
 - serverSettings.test.ts: the saved-usage-settings case checks that a settings.json without the key reads back as "unlimited", both from the service and decoded from the file (it fails with upstream's default of 92).
 - docs/user/usage.md: history is kept indefinitely by default, the setting limits it, and the all-time range shows all available history.
 
+Port to b6ac2449f1: the All period follows upstream's translation (055b44919e): its label is msg("All") and its shortcut title resolves through useMessages, and "All time" and the range label use gt() with upstream's locale-aware "{start} to {end}". Upstream's keybinding label table is keyed by usage commands, so its key type drops the All option's undefined command.
+
 Files:
 packages/contracts:
 - packages/contracts/src/settings.ts
@@ -93,8 +95,8 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  apps/server/src/usage/UsageService.ts         | 112 ++++++-
  apps/server/src/usage/usageScanCache.test.ts  |  36 ++-
  apps/server/src/usage/usageScanCache.ts       |  42 ++-
- .../settings/KeybindingsSettings.logic.ts     |   4 +-
- apps/web/src/components/usage/UsagePage.tsx   |  51 +--
+ .../settings/KeybindingsSettings.logic.ts     |   8 +-
+ apps/web/src/components/usage/UsagePage.tsx   |  63 ++--
  .../usage/usagePagePreferences.test.ts        |   6 +
  .../components/usage/usagePagePreferences.ts  |   2 +-
  .../src/components/usage/usageRange.test.ts   |  44 +++
@@ -102,7 +104,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .../src/components/usage/usageShortcuts.ts    |   8 +-
  docs/user/usage.md                            |  17 +-
  packages/contracts/src/settings.ts            |   2 +-
- 14 files changed, 542 insertions(+), 106 deletions(-)
+ 14 files changed, 551 insertions(+), 113 deletions(-)
  create mode 100644 apps/web/src/components/usage/usageRange.test.ts
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
@@ -121,7 +123,7 @@ index 10d0b3fe6c1e6854f08b8f95c92e20bb262ef9bf..dd20538877e092a470923da98c803b07
          assert.deepStrictEqual(persisted.usageModelAliases, usageModelAliases);
          assert.deepStrictEqual(persisted.usageLimitSources, usageLimitSources);
 diff --git a/apps/server/src/usage/UsageService.test.ts b/apps/server/src/usage/UsageService.test.ts
-index 9a7f7ab82c8f19d32f70cfc01ded17092e4f91a7..5133773f903e04b553a3a538c4f23affddada996 100644
+index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cada8c66bcd 100644
 --- a/apps/server/src/usage/UsageService.test.ts
 +++ b/apps/server/src/usage/UsageService.test.ts
 @@ -138,6 +138,11 @@ const WINDOW: UsageSummaryInput = {
@@ -183,7 +185,7 @@ index 9a7f7ab82c8f19d32f70cfc01ded17092e4f91a7..5133773f903e04b553a3a538c4f23aff
      { label: "unlimited", retention: "unlimited" as const, cutoff: 0 },
      { label: "36500 days", retention: 36500, cutoff: 0 },
    ])(
-@@ -3282,7 +3324,7 @@ describe("UsageService", () => {
+@@ -3354,7 +3396,7 @@ describe("UsageService", () => {
    );
  
    it.effect.each([4, 5, 6, 7, 8, 10, 11, 12, 13, 14])(
@@ -192,7 +194,7 @@ index 9a7f7ab82c8f19d32f70cfc01ded17092e4f91a7..5133773f903e04b553a3a538c4f23aff
      (version) =>
        Effect.gen(function* () {
          yield* TestClock.setTime(Date.parse("2026-08-02T12:00:00Z"));
-@@ -3328,12 +3370,27 @@ describe("UsageService", () => {
+@@ -3400,12 +3442,27 @@ describe("UsageService", () => {
              stateDir,
              version === 4 ? "usage-scan-cache.json" : `usage-scan-cache-v${version}.json`,
            );
@@ -221,7 +223,7 @@ index 9a7f7ab82c8f19d32f70cfc01ded17092e4f91a7..5133773f903e04b553a3a538c4f23aff
              const document = decodeUnknownJsonString(await NodeFSP.readFile(cachePath, "utf8")) as {
                files: Record<string, { r: unknown[][]; mr: number; cs: Record<string, unknown> }>;
              };
-@@ -3368,6 +3425,11 @@ describe("UsageService", () => {
+@@ -3440,6 +3497,11 @@ describe("UsageService", () => {
                    encodeUnknownJsonString({ ...document, version: olderVersion, files: {} }),
                  );
                }
@@ -233,7 +235,7 @@ index 9a7f7ab82c8f19d32f70cfc01ded17092e4f91a7..5133773f903e04b553a3a538c4f23aff
              }
              await NodeFSP.rm(deleted);
              await NodeFSP.mkdir(`${cachePath}.stale`);
-@@ -3384,12 +3446,24 @@ describe("UsageService", () => {
+@@ -3456,12 +3518,24 @@ describe("UsageService", () => {
            );
            yield* upgraded.awaitPersisted;
            assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v17.json");
@@ -264,7 +266,7 @@ index 9a7f7ab82c8f19d32f70cfc01ded17092e4f91a7..5133773f903e04b553a3a538c4f23aff
          }).pipe(
            Effect.provide(
              layerService({
-@@ -3512,7 +3586,7 @@ describe("UsageService", () => {
+@@ -3584,7 +3658,7 @@ describe("UsageService", () => {
      }),
    );
  
@@ -273,7 +275,7 @@ index 9a7f7ab82c8f19d32f70cfc01ded17092e4f91a7..5133773f903e04b553a3a538c4f23aff
      Effect.gen(function* () {
        const { transcript, settings, home } = yield* setup;
        const alias = NodePath.join(home, "claude-alias");
-@@ -3520,26 +3594,38 @@ describe("UsageService", () => {
+@@ -3592,26 +3666,38 @@ describe("UsageService", () => {
          NodeFSP.symlink(NodePath.join(home, "claude"), alias, "junction"),
        );
        const content = claudeLine(1, 5);
@@ -317,7 +319,7 @@ index 9a7f7ab82c8f19d32f70cfc01ded17092e4f91a7..5133773f903e04b553a3a538c4f23aff
          assert.deepStrictEqual(moved.buckets, first.buckets);
          assert.strictEqual(moved.sources[0]?.distinctSessions, 1);
          yield* restarted.awaitPersisted;
-@@ -3550,7 +3636,7 @@ describe("UsageService", () => {
+@@ -3622,7 +3708,7 @@ describe("UsageService", () => {
            NodeFSP.rm(NodePath.join(home, "claude", "projects"), { recursive: true }),
          );
          const afterRootCleanup = yield* UsageService.make;
@@ -326,7 +328,7 @@ index 9a7f7ab82c8f19d32f70cfc01ded17092e4f91a7..5133773f903e04b553a3a538c4f23aff
          assert.deepStrictEqual(missingRoot.buckets, first.buckets);
          assert.strictEqual(missingRoot.sources[0]?.distinctSessions, 1);
          assert.strictEqual(missingRoot.sources[0]?.status, "ok");
-@@ -3560,7 +3646,7 @@ describe("UsageService", () => {
+@@ -3632,7 +3718,7 @@ describe("UsageService", () => {
            await NodeFSP.rename(replacementProjects, projects);
            await NodeFSP.writeFile(NodePath.join(projects, "new.jsonl"), claudeLine(2, 7));
          });
@@ -335,7 +337,7 @@ index 9a7f7ab82c8f19d32f70cfc01ded17092e4f91a7..5133773f903e04b553a3a538c4f23aff
          assert.strictEqual(totalOutputTokens(recreated), 12);
          assert.deepStrictEqual(recreated.sources[0]?.fingerprint, first.sources[0]?.fingerprint);
  
-@@ -3584,11 +3670,109 @@ describe("UsageService", () => {
+@@ -3656,11 +3742,109 @@ describe("UsageService", () => {
          assert.strictEqual(merged.costUsd, recreated.buckets[0]?.costUsd);
  
          const outsideWindow = yield* restarted.readSummary({
@@ -446,7 +448,7 @@ index 9a7f7ab82c8f19d32f70cfc01ded17092e4f91a7..5133773f903e04b553a3a538c4f23aff
        }).pipe(
          Effect.scoped,
          Effect.provide(
-@@ -3614,7 +3798,8 @@ describe("UsageService", () => {
+@@ -3686,7 +3870,8 @@ describe("UsageService", () => {
    );
  
    it.effect.each([
@@ -456,7 +458,7 @@ index 9a7f7ab82c8f19d32f70cfc01ded17092e4f91a7..5133773f903e04b553a3a538c4f23aff
      { label: "unlimited", retention: "unlimited" as const, expected: 15 },
    ])(
      "retains deleted transcripts according to $label across restart and settings changes",
-@@ -3719,7 +3904,15 @@ describe("UsageService", () => {
+@@ -3791,7 +3976,15 @@ describe("UsageService", () => {
          yield* service.awaitPersisted;
          const restarted = yield* UsageService.make;
          assert.strictEqual(totalOutputTokens(yield* restarted.readSummary(window)), 11);
@@ -473,7 +475,7 @@ index 9a7f7ab82c8f19d32f70cfc01ded17092e4f91a7..5133773f903e04b553a3a538c4f23aff
      }),
    );
  
-@@ -3895,38 +4088,41 @@ describe("UsageService", () => {
+@@ -3967,38 +4160,41 @@ describe("UsageService", () => {
        }),
    );
  
@@ -891,10 +893,10 @@ index 843b414b97f32872cba0ad85fee3516a15d37551..18cd2915ab568654eecc4d1ef8dd1466
    // Snapshot now: the encoding runs later, while the file is written.
    return (cache, extra) => encode([...cache], extra);
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index e5db82230a6f0002677b3e734ec7427830651696..de3da78531e7a9e3d6a1366922682f0a5c49f2d2 100644
+index e90f58d7566beb358a6befbfe08984f91067fb4d..7cc865cb973557c12c0cb48cf2b774d354673d04 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-@@ -21,7 +21,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
+@@ -23,7 +23,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
  const usageCommandOrder = new Map<KeybindingCommand, number>(
    [
      "usage.open" as const,
@@ -905,11 +907,22 @@ index e5db82230a6f0002677b3e734ec7427830651696..de3da78531e7a9e3d6a1366922682f0a
    ].map((command, index) => [command, index]),
  );
  
+@@ -470,7 +472,9 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+ 
+ // Whole labels: search titles keep the encoded message, which cannot nest another one.
+ const USAGE_COMMAND_LABELS: Record<
+-  (typeof METRIC_OPTIONS)[number]["command"] | (typeof WINDOW_OPTIONS)[number]["command"],
++  NonNullable<
++    (typeof METRIC_OPTIONS)[number]["command"] | (typeof WINDOW_OPTIONS)[number]["command"]
++  >,
+   string
+ > = {
+   "usage.cost": msg("Usage: Cost"),
 diff --git a/apps/web/src/components/usage/UsagePage.tsx b/apps/web/src/components/usage/UsagePage.tsx
-index b60ae71d9ad523ec1883a5f044a1ee5aa5d62f56..a62ff510e7593e66d7139838fd5d988d7a4d1a66 100644
+index adb05afb92ebb220460ff11023a5d3dcc88dd843..17a8bed7a11d31d047b8057eff44204c51c3237e 100644
 --- a/apps/web/src/components/usage/UsagePage.tsx
 +++ b/apps/web/src/components/usage/UsagePage.tsx
-@@ -41,7 +41,6 @@ import { shortcutLabelForCommand } from "../../keybindings";
+@@ -42,7 +42,6 @@ import { shortcutLabelForCommand } from "../../keybindings";
  import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
  import { useAtomCommand } from "../../state/use-atom-command";
  import {
@@ -918,12 +931,12 @@ index b60ae71d9ad523ec1883a5f044a1ee5aa5d62f56..a62ff510e7593e66d7139838fd5d988d
    formatCount,
    formatDateTimeShort,
 @@ -51,7 +50,6 @@ import {
+   formatPercent,
    formatTokens,
-   formatUsageContractMismatch,
    formatUsd,
 -  makeWindow,
-   usageSourceMessages,
  } from "@t3tools/shared/usageFormat";
+ import { formatUsageContractMismatch, usageSourceMessages } from "@t3tools/shared/usageFormatCopy";
  import { Button, InlineButton } from "../ui/button";
 @@ -107,12 +105,20 @@ import {
    type UsagePagePreferences,
@@ -948,15 +961,15 @@ index b60ae71d9ad523ec1883a5f044a1ee5aa5d62f56..a62ff510e7593e66d7139838fd5d988d
  }
  
  const providerLabel = (provider: UsageProviderKind) => PROVIDER_PRESENTATION[provider].label;
-@@ -181,6 +187,7 @@ export function UsagePage() {
+@@ -184,6 +190,7 @@ export function UsagePage() {
    const shortcutTitle = (
      option: (typeof METRIC_OPTIONS)[number] | (typeof WINDOW_OPTIONS)[number],
    ) => {
-+    if (option.command === undefined) return option.label;
++    if (option.command === undefined) return m(option.label);
      const shortcut = shortcutLabelForCommand(keybindings, option.command, {
        context: { usagePageOpen: true },
      });
-@@ -188,11 +195,7 @@ export function UsagePage() {
+@@ -193,11 +200,7 @@ export function UsagePage() {
    };
    const [windowSelection, setWindowSelection] = useState(() => ({
      days: preferences.windowDays,
@@ -969,7 +982,7 @@ index b60ae71d9ad523ec1883a5f044a1ee5aa5d62f56..a62ff510e7593e66d7139838fd5d988d
    }));
    const metric = preferences.metric;
    const showingLimits = metric === "limits";
-@@ -204,7 +207,6 @@ export function UsagePage() {
+@@ -209,7 +212,6 @@ export function UsagePage() {
      useState<ReadonlySet<EnvironmentId> | null>(null);
    const hiddenProviders = new Set(preferences.hiddenProviders);
    const { days: windowDays, window } = windowSelection;
@@ -977,7 +990,7 @@ index b60ae71d9ad523ec1883a5f044a1ee5aa5d62f56..a62ff510e7593e66d7139838fd5d988d
    const {
      merged: answeredUsage,
      environments,
-@@ -235,12 +237,11 @@ export function UsagePage() {
+@@ -240,12 +242,11 @@ export function UsagePage() {
      setPreferences(nextPreferences);
      saveUsagePagePreferences(nextPreferences);
    };
@@ -992,7 +1005,7 @@ index b60ae71d9ad523ec1883a5f044a1ee5aa5d62f56..a62ff510e7593e66d7139838fd5d988d
      });
    };
    const selectMetric = (nextMetric: UsageMetric) => {
-@@ -305,7 +306,7 @@ export function UsagePage() {
+@@ -310,7 +311,7 @@ export function UsagePage() {
        });
        return;
      }
@@ -1001,7 +1014,7 @@ index b60ae71d9ad523ec1883a5f044a1ee5aa5d62f56..a62ff510e7593e66d7139838fd5d988d
      if (
        nextWindow.sinceDay !== window.sinceDay ||
        nextWindow.untilDay !== window.untilDay ||
-@@ -339,7 +340,7 @@ export function UsagePage() {
+@@ -344,7 +345,7 @@ export function UsagePage() {
      if (showingLimits && connectedLimitsEnvironments) autoRefreshLimits();
    }, [showingLimits, connectedLimitsEnvironments]);
  
@@ -1010,22 +1023,34 @@ index b60ae71d9ad523ec1883a5f044a1ee5aa5d62f56..a62ff510e7593e66d7139838fd5d988d
    const hours =
      shownWindow.sinceTime === undefined || shownWindow.untilTime === undefined
        ? []
-@@ -353,9 +354,11 @@ export function UsagePage() {
+@@ -358,15 +359,17 @@ export function UsagePage() {
      );
  
    const windowLabel =
 -    shownHourly && shownWindow.sinceTime !== undefined && shownWindow.untilTime !== undefined
--      ? `${formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone, hour12)} to ${formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone, hour12)}`
--      : `${formatDayShort(shownWindow.sinceDay)} to ${formatDayShort(shownWindow.untilDay)}`;
+-      ? gt("{start} to {end}", {
+-          start: formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone, hour12, locale),
+-          end: formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone, hour12, locale),
+-        })
+-      : gt("{start} to {end}", {
+-          start: formatDayShort(shownWindow.sinceDay, locale),
+-          end: formatDayShort(shownWindow.untilDay, locale),
+-        });
 +    shownWindow.sinceDay === ALL_USAGE_SINCE_DAY
-+      ? "All time"
++      ? gt("All time")
 +      : shownHourly && shownWindow.sinceTime !== undefined && shownWindow.untilTime !== undefined
-+        ? `${formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone, hour12)} to ${formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone, hour12)}`
-+        : `${formatDayShort(shownWindow.sinceDay)} to ${formatDayShort(shownWindow.untilDay)}`;
++        ? gt("{start} to {end}", {
++            start: formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone, hour12, locale),
++            end: formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone, hour12, locale),
++          })
++        : gt("{start} to {end}", {
++            start: formatDayShort(shownWindow.sinceDay, locale),
++            end: formatDayShort(shownWindow.untilDay, locale),
++          });
+   const windowOptionLabel = WINDOW_OPTIONS.find((option) => option.days === windowDays)?.label;
+   const metricOptionLabel = METRIC_OPTIONS.find((option) => option.value === metric)?.label;
    const topbarContent = (
-     <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-2 @4xl/usage-header:flex">
-       <WorkspaceBreadcrumb ariaLabel="Usage breadcrumb" className="min-w-0">
-@@ -399,8 +402,8 @@ export function UsagePage() {
+@@ -414,8 +417,8 @@ export function UsagePage() {
              variant="segmented"
              value={[String(windowDays)]}
              onValueChange={(next) => {
@@ -1036,7 +1061,7 @@ index b60ae71d9ad523ec1883a5f044a1ee5aa5d62f56..a62ff510e7593e66d7139838fd5d988d
              }}
            >
              {WINDOW_OPTIONS.map((option) => (
-@@ -438,7 +441,13 @@ export function UsagePage() {
+@@ -453,7 +456,13 @@ export function UsagePage() {
        </div>
        <div className="ms-auto flex shrink-0 items-center justify-end gap-1 @4xl/usage-header:hidden">
          {showingLimits ? null : (
@@ -1049,7 +1074,7 @@ index b60ae71d9ad523ec1883a5f044a1ee5aa5d62f56..a62ff510e7593e66d7139838fd5d988d
 +            }}
 +          >
              <SelectTrigger
-               aria-label="Usage period"
+               aria-label={gt("Usage period")}
                size="compact"
 diff --git a/apps/web/src/components/usage/usagePagePreferences.test.ts b/apps/web/src/components/usage/usagePagePreferences.test.ts
 index 075076a9b3c52a45673bfb11db385e02c65db2d8..220a71fdb440d37b4e3bf72e0675bd6cc1084913 100644
@@ -1164,22 +1189,23 @@ index 0000000000000000000000000000000000000000..7401e43c650cdff626866c69a57c0e8e
 +  return enumerateDays(sinceDay, window.untilDay);
 +}
 diff --git a/apps/web/src/components/usage/usageShortcuts.ts b/apps/web/src/components/usage/usageShortcuts.ts
-index f8e66a8533637e88dc79c11ac41c21d5ecd0a92c..308d1572c109fe836486a405cc2228816a8eef61 100644
+index 64a81e20a53e4c097382dcb3e75b948cf038f61c..0348b19cf5a64eedb542b361ea15c57188808849 100644
 --- a/apps/web/src/components/usage/usageShortcuts.ts
 +++ b/apps/web/src/components/usage/usageShortcuts.ts
-@@ -1,5 +1,6 @@
+@@ -1,6 +1,7 @@
+ import { msg } from "gt-react";
  import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/contracts";
  import type { UsageChartMetric } from "./UsageProviderChart";
 +import type { UsageRange } from "./usageRange";
  import { resolveShortcutCommand, type ShortcutEventLike } from "../../keybindings";
  
  export type UsageMetric = UsageChartMetric | "limits";
-@@ -14,7 +15,12 @@ export const WINDOW_OPTIONS = [
-   { days: 7, label: "7 days", command: "usage.period.week" },
-   { days: 30, label: "30 days", command: "usage.period.month" },
-   { days: 90, label: "90 days", command: "usage.period.quarter" },
+@@ -15,7 +16,12 @@ export const WINDOW_OPTIONS = [
+   { days: 7, label: msg("7 days"), command: "usage.period.week" },
+   { days: 30, label: msg("30 days"), command: "usage.period.month" },
+   { days: 90, label: msg("90 days"), command: "usage.period.quarter" },
 -] as const;
-+  { days: "all", label: "All", command: undefined },
++  { days: "all", label: msg("All"), command: undefined },
 +] as const satisfies readonly {
 +  days: UsageRange;
 +  label: string;

@@ -34,6 +34,8 @@ Port to e07585e5fb:
 Port to ee4ef06469:
 - AppSidebarLayout.browser.test.tsx: upstream #29612 added this file with a sidebar-shortcut case. The swipe cases follow it in the same file, which keeps upstream's keybinding and Sidebar mocks and adds the desktop, announcer, brand-probe and local API mocks the swipe cases need.
 
+Port to b6ac2449f1: the Navigation section, swipe row, restore-list label and settings search entry follow upstream's translation (055b44919e) with gt() and msg(), English unchanged; the reset button uses upstream's ariaLabel ("Reset swipe navigation to default") and the row reads its title through upstream's useSearchableSetting.
+
 Files:
 apps/desktop:
 - apps/desktop/src/window/DesktopWindow.test.ts
@@ -93,12 +95,12 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  apps/desktop/src/window/DesktopWindow.ts      | 24 ++++++-
  .../AppSidebarLayout.browser.test.tsx         | 64 ++++++++++++++++-
  apps/web/src/components/AppSidebarLayout.tsx  |  5 +-
- .../components/settings/SettingsPanels.tsx    | 33 +++++++++
+ .../components/settings/SettingsPanels.tsx    | 35 ++++++++++
  .../settings/settingsSearch.test.ts           |  2 +
- .../src/components/settings/settingsSearch.ts |  7 ++
+ .../src/components/settings/settingsSearch.ts |  9 +++
  packages/contracts/src/settings.test.ts       | 13 ++++
  packages/contracts/src/settings.ts            |  2 +
- 9 files changed, 202 insertions(+), 18 deletions(-)
+ 9 files changed, 206 insertions(+), 18 deletions(-)
 
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
 index c08c266adc0b34174279d499ae2df48be752acf5..958bf7f748258be18da672fe8956ea65ad3a590c 100644
@@ -225,10 +227,10 @@ index c08c266adc0b34174279d499ae2df48be752acf5..958bf7f748258be18da672fe8956ea65
      }),
    );
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 4628be44d5ce10c52f09d9a254cd53e335ef0644..e7f3a600abd8da7b071fefe692cbc1af3e70e96c 100644
+index 556853a6cc5f80c96613908807cef67e661e9518..b7f4126e37f7694eb13cca8aad750fe25a71dc93 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
-@@ -833,9 +833,27 @@ export const make = Effect.gen(function* () {
+@@ -835,9 +835,27 @@ export const make = Effect.gen(function* () {
      if (environment.platform === "darwin") {
        // Mouse drivers can deliver Back/Forward as macOS swipe gestures instead of buttons.
        window.on("swipe", (_event, direction) => {
@@ -349,10 +351,10 @@ index c97ea5e6412aa03730e1c7eeec996e57b18359d3..9807024a6a1cf078d241bd524a760c55
 +  );
 +});
 diff --git a/apps/web/src/components/AppSidebarLayout.tsx b/apps/web/src/components/AppSidebarLayout.tsx
-index 0de938caa35a8067e2c9c11efcdb57cf4ff7206d..bf424a2f86227ca22bc30f24993fcb8893a5ea1d 100644
+index 4b7a6d36a98cdcb7d10d9e2f507a46ed834df534..03dcd7f9663dd20e52dcdc57971c0b2168346e62 100644
 --- a/apps/web/src/components/AppSidebarLayout.tsx
 +++ b/apps/web/src/components/AppSidebarLayout.tsx
-@@ -31,7 +31,7 @@ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
+@@ -32,7 +32,7 @@ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
  import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
  import { cn, isMacPlatform } from "../lib/utils";
  import { primaryServerKeybindingsAtom } from "../state/server";
@@ -361,15 +363,15 @@ index 0de938caa35a8067e2c9c11efcdb57cf4ff7206d..bf424a2f86227ca22bc30f24993fcb88
  import {
    PanelAnimationSuppressionProvider,
    usePanelAnimationSettings,
-@@ -417,6 +417,7 @@ export function AppSidebarLayout({
-   children: ReactNode;
+@@ -422,6 +422,7 @@ export function AppSidebarLayout({
    showSidebar?: boolean;
  }) {
+   const gt = useGT();
 +  const historySwipeNavigation = useClientSettings((settings) => settings.historySwipeNavigation);
-   const sidebarArea = workspaceAreaProps("sidebar", 0, "Threads");
+   const sidebarArea = workspaceAreaProps("sidebar", 0, gt("Threads"));
    const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
      observedKey: null,
-@@ -494,7 +495,7 @@ export function AppSidebarLayout({
+@@ -499,7 +500,7 @@ export function AppSidebarLayout({
          {children}
          <BackgroundThreadAnnouncer />
          <SidebarControl showSidebar={showSidebar} />
@@ -379,20 +381,20 @@ index 0de938caa35a8067e2c9c11efcdb57cf4ff7206d..bf424a2f86227ca22bc30f24993fcb88
      </PanelAnimationSuppressionProvider>
    );
 diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
-index 2f1d2ed5d29fecc47f149826680dbb99f9ce5b8d..163caefb31f9d06f9ccebd34b10d8e8db36da5f9 100644
+index 25664036163153971d3c095e95057cce61216afa..48f61b65de9905cd5e9a537c68295c76c1fa639d 100644
 --- a/apps/web/src/components/settings/SettingsPanels.tsx
 +++ b/apps/web/src/components/settings/SettingsPanels.tsx
-@@ -602,6 +602,9 @@ export function useSettingsRestore(onRestored?: () => void) {
-       ? ["Delete confirmation"]
+@@ -640,6 +640,9 @@ export function useSettingsRestore(onRestored?: () => void) {
+       ? [gt("Delete confirmation")]
        : []),
-     ...(settings.confirmQuit !== DEFAULT_UNIFIED_SETTINGS.confirmQuit ? ["Quit shortcut"] : []),
+     ...(settings.confirmQuit !== DEFAULT_UNIFIED_SETTINGS.confirmQuit ? [gt("Quit shortcut")] : []),
 +    ...(settings.historySwipeNavigation !== DEFAULT_UNIFIED_SETTINGS.historySwipeNavigation
-+      ? ["Swipe to go back and forward"]
++      ? [gt("Swipe to go back and forward")]
 +      : []),
-     ...(isTextGenerationModelDirty ? ["Text generation model"] : []),
+     ...(isTextGenerationModelDirty ? [gt("Text generation model")] : []),
      ...(settings.threadTitleInstructions !== DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions
-       ? ["Thread title instructions"]
-@@ -715,6 +718,7 @@ export function useSettingsRestore(onRestored?: () => void) {
+       ? [gt("Thread title instructions")]
+@@ -754,6 +757,7 @@ export function useSettingsRestore(onRestored?: () => void) {
        confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
        confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
        confirmQuit: DEFAULT_UNIFIED_SETTINGS.confirmQuit,
@@ -400,20 +402,22 @@ index 2f1d2ed5d29fecc47f149826680dbb99f9ce5b8d..163caefb31f9d06f9ccebd34b10d8e8d
        textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
        threadTitleInstructions: DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions,
        fontFamilySans: DEFAULT_UNIFIED_SETTINGS.fontFamilySans,
-@@ -948,6 +952,35 @@ export function GeneralSettingsPanel() {
+@@ -979,6 +983,37 @@ export function GeneralSettingsPanel() {
          />
        </SettingsSection>
  
 +      {isElectron ? (
-+        <SettingsSection id="navigation" title="Navigation">
++        <SettingsSection id="navigation" title={gt("Navigation")}>
 +          <SettingsRow
-+            {...searchableSetting("history-swipe-navigation")}
-+            description="Two-finger horizontal swipes move through your thread history. Turn off if a mouse with a horizontal wheel switches threads by accident."
++            {...setting("history-swipe-navigation")}
++            description={gt(
++              "Two-finger horizontal swipes move through your thread history. Turn off if a mouse with a horizontal wheel switches threads by accident.",
++            )}
 +            resetAction={
 +              settings.historySwipeNavigation !==
 +              DEFAULT_UNIFIED_SETTINGS.historySwipeNavigation ? (
 +                <SettingResetButton
-+                  label="swipe navigation"
++                  ariaLabel={gt("Reset swipe navigation to default")}
 +                  onClick={() =>
 +                    updateSettings({
 +                      historySwipeNavigation: DEFAULT_UNIFIED_SETTINGS.historySwipeNavigation,
@@ -426,7 +430,7 @@ index 2f1d2ed5d29fecc47f149826680dbb99f9ce5b8d..163caefb31f9d06f9ccebd34b10d8e8d
 +              <Switch
 +                checked={settings.historySwipeNavigation}
 +                onCheckedChange={(checked) => updateSettings({ historySwipeNavigation: checked })}
-+                aria-label="Swipe to go back and forward"
++                aria-label={gt("Swipe to go back and forward")}
 +              />
 +            }
 +          />
@@ -437,10 +441,10 @@ index 2f1d2ed5d29fecc47f149826680dbb99f9ce5b8d..163caefb31f9d06f9ccebd34b10d8e8d
          <SettingsRow
            {...setting("unpin-confirmation")}
 diff --git a/apps/web/src/components/settings/settingsSearch.test.ts b/apps/web/src/components/settings/settingsSearch.test.ts
-index bac40332a27702521a6c08c40aa13b6dc86ced91..769c406f1534c8fdaaebaefa03e19e53d3ae5f6e 100644
+index 52dadd9c8fb2950a5b26dbd75bd645d29e70a247..fc682f6fcbcdda29dd1464c53585354ee28bdc16 100644
 --- a/apps/web/src/components/settings/settingsSearch.test.ts
 +++ b/apps/web/src/components/settings/settingsSearch.test.ts
-@@ -115,6 +115,8 @@ describe("searchSettings", () => {
+@@ -116,6 +116,8 @@ describe("searchSettings", () => {
  
    it("hides desktop-only settings from browser search", () => {
      expect(SETTINGS_SEARCH_ITEMS.some((item) => item.id === "quit-confirmation")).toBe(true);
@@ -450,23 +454,25 @@ index bac40332a27702521a6c08c40aa13b6dc86ced91..769c406f1534c8fdaaebaefa03e19e53
      expect(searchSettings("wsl")).toEqual([]);
      expect(searchSettings("update track")).toEqual([]);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 9c54c9d4049e15d29bd2db5e08b1ee190133db8e..6cf9c562d9705d9c6c4d6bfdc0fa0f167208abc6 100644
+index 4b7467805b28bfd72a9a08ee5473a3db45a22583..f91b7a912d5761a4ca8c62d54623bd28be1ad565 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -873,6 +873,13 @@ export const SETTINGS_SEARCH_ITEMS = [
-     searchTerms: ["confirmation desktop app exit direct hold double click press twice"],
+@@ -919,6 +919,15 @@ export const SETTINGS_SEARCH_ITEMS = [
+     searchTerms: [msg("confirmation desktop app exit direct hold double click press twice")],
      desktopOnly: true,
    },
 +  {
 +    id: "history-swipe-navigation",
-+    title: "Swipe to go back and forward",
++    title: msg("Swipe to go back and forward"),
 +    to: "/settings/general",
-+    searchTerms: ["two-finger horizontal trackpad gesture mouse wheel thread history navigation"],
++    searchTerms: [
++      msg("two-finger horizontal trackpad gesture mouse wheel thread history navigation"),
++    ],
 +    desktopOnly: true,
 +  },
    {
      id: "text-generation-model",
-     title: "Text generation model",
+     title: msg("Text generation model"),
 diff --git a/packages/contracts/src/settings.test.ts b/packages/contracts/src/settings.test.ts
 index 9dc56d7a6a02d95c0b3c89882cbbc4dff1739bd6..771e102d2b25467839ce623f83e76d9085c10e63 100644
 --- a/packages/contracts/src/settings.test.ts

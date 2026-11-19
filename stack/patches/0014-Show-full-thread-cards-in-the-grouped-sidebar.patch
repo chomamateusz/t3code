@@ -38,6 +38,8 @@ Port to ee4ef06469:
 
 Port to 6b134a7add: SidebarProjectFolderHeader.tsx: upstream #37727 (1d1489d0b8) passes the context menu source (contextMenuSourceOf) with the folder's context menu so a keyboard-opened menu selects its first item. The folder header's props interface takes that source as the third onContextMenu argument, the header passes it, and the scopedThreadKey import this commit dropped stays dropped.
 
+Port to b6ac2449f1: the project icon order description and search terms this commit extends use gt() and msg() (upstream 055b44919e); upstream's translated two-line folder row and its search entry are removed as before; the folder header takes upstream's i18n imports, passes useMessages to the badge summary and replaces upstream's translated folder-dot labels.
+
 Files:
 apps/web:
 - apps/web/src/components/Sidebar.browser.test.tsx
@@ -73,9 +75,9 @@ Model/harness: Claude Opus 5.5 / Claude Code (implementation and fix waves); rev
  apps/web/src/components/Sidebar.logic.test.ts | 127 ++++++++++++------
  apps/web/src/components/Sidebar.logic.ts      | 107 ++++++++++-----
  apps/web/src/components/Sidebar.tsx           |  95 ++++++++-----
- .../components/settings/LabsSettingsPanel.tsx |  31 +----
+ .../components/settings/LabsSettingsPanel.tsx |  35 +----
  .../src/components/settings/settingsSearch.ts |  10 +-
- .../sidebar/SidebarProjectFolderHeader.tsx    | 104 +++++++-------
+ .../sidebar/SidebarProjectFolderHeader.tsx    | 109 ++++++++-------
  .../SidebarProjectRow.browser.test.tsx        |   4 +-
  .../components/sidebar/SidebarProjectRow.css  |  33 +----
  .../components/sidebar/SidebarProjectRow.tsx  |  38 ++----
@@ -84,7 +86,7 @@ Model/harness: Claude Opus 5.5 / Claude Code (implementation and fix waves); rev
  .../components/sidebar/SidebarThreadRow.tsx   |   2 +
  apps/web/src/index.css                        |   3 +
  docs/user/thread-sidebar.md                   |  12 +-
- 16 files changed, 432 insertions(+), 258 deletions(-)
+ 16 files changed, 435 insertions(+), 264 deletions(-)
  create mode 100644 apps/web/src/components/sidebar/SidebarThreadBadge.css
  create mode 100644 apps/web/src/components/sidebar/SidebarThreadBadge.tsx
 
@@ -360,10 +362,10 @@ index d86ae940b250314476532c856e45b1470f2a3594..9487506836361f33d57af92c77366acd
  
    it.each([
 diff --git a/apps/web/src/components/Sidebar.logic.ts b/apps/web/src/components/Sidebar.logic.ts
-index 1684c1b0ca5a4ac33ab3d1afacd9c0eed10403f0..59196c7bf4b750236bb1b33586a63949b001bd27 100644
+index a09b827fea2d8c6d6034afbaf293f9ad018488c4..c0026ea21fd8c14d68613939bd9e12bf930349f8 100644
 --- a/apps/web/src/components/Sidebar.logic.ts
 +++ b/apps/web/src/components/Sidebar.logic.ts
-@@ -45,7 +45,7 @@ import { THREAD_STATUS_TEXT } from "@t3tools/client-runtime/state/thread-activit
+@@ -47,7 +47,7 @@ import { THREAD_STATUS_TEXT } from "@t3tools/client-runtime/state/thread-activit
  import { observeIntersection } from "../lib/observeIntersection";
  import { deadlineAfter, deadlineStore, type ClockStore } from "@t3tools/client-runtime/clock";
  import { useDeadlinePassed } from "../hooks/useDeadline";
@@ -372,7 +374,7 @@ index 1684c1b0ca5a4ac33ab3d1afacd9c0eed10403f0..59196c7bf4b750236bb1b33586a63949
  import { isElectron } from "../env";
  import { shouldShowThreadJumpHintsForModifiers } from "../keybindings";
  import { isTerminalFocused, subscribeToTerminalFocusChanges } from "../lib/terminalFocus";
-@@ -1169,16 +1169,8 @@ export function buildSidebarProjectBadges(
+@@ -1241,16 +1241,8 @@ export function buildSidebarProjectBadges(
      const key = groupKeyByMember.get(`${thread.environmentId}:${thread.projectId}`);
      const counts = key === undefined ? undefined : countsByGroup.get(key);
      if (counts === undefined) continue;
@@ -391,7 +393,7 @@ index 1684c1b0ca5a4ac33ab3d1afacd9c0eed10403f0..59196c7bf4b750236bb1b33586a63949
    }
    return groups.map((group) => ({
      projectKey: group.projectKey,
-@@ -1186,6 +1178,58 @@ export function buildSidebarProjectBadges(
+@@ -1258,6 +1250,58 @@ export function buildSidebarProjectBadges(
    }));
  }
  
@@ -450,7 +452,7 @@ index 1684c1b0ca5a4ac33ab3d1afacd9c0eed10403f0..59196c7bf4b750236bb1b33586a63949
  export function sameSidebarProjectBadgeThreads(
    left: readonly SidebarThreadSummary[],
    right: readonly SidebarThreadSummary[],
-@@ -1244,32 +1288,6 @@ export function sameSidebarProjectBadges(
+@@ -1316,32 +1360,6 @@ export function sameSidebarProjectBadges(
    );
  }
  
@@ -483,7 +485,7 @@ index 1684c1b0ca5a4ac33ab3d1afacd9c0eed10403f0..59196c7bf4b750236bb1b33586a63949
  /**
   * Keys the old per-project sidebar saved folder open state under, most
   * specific first, for `resolveProjectExpanded`. Boring folders read and write
-@@ -1289,6 +1307,21 @@ export function sidebarFolderExpansionKeys(group: {
+@@ -1361,6 +1379,21 @@ export function sidebarFolderExpansionKeys(group: {
    ];
  }
  
@@ -506,10 +508,10 @@ index 1684c1b0ca5a4ac33ab3d1afacd9c0eed10403f0..59196c7bf4b750236bb1b33586a63949
   * Boring sidebar folders. Folders follow `groups` order and threads keep their
   * input order. A project with no threads gets a folder only when `keepEmpty` says so.
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b3625219d35f 100644
+index 959d9d29f54f84683fc324f5b95f6f3a028fca91..0795eb60eaaa5e27f740700ca3ccc16bf874928a 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -120,12 +120,18 @@ import {
+@@ -123,12 +123,18 @@ import {
    includeSidebarProjectSelection,
    revealSidebarProject,
    sidebarProjectMemberScope,
@@ -518,7 +520,7 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
    toggleSidebarProjectSelection,
  } from "../sidebarProjectRow";
  import { ConnectedSidebarProjectRow } from "./sidebar/SidebarProjectRow";
- import { searchableSetting } from "./settings/settingsSearch";
+ import { useSearchableSetting } from "./settings/settingsSearch";
  import { startNewThreadInSidebarFilter } from "../newThreadActions";
 -import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
 +import {
@@ -529,7 +531,7 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
  import {
    getThreadKeysToDeselectAfterDelete,
    useThreadSelectionStore,
-@@ -187,6 +193,7 @@ import {
+@@ -190,6 +196,7 @@ import {
    filterSidebarV2VisibleThreads,
    groupSidebarThreadsByProject,
    sidebarFolderExpansionKeys,
@@ -537,7 +539,7 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
    buildBulkTitleRegenerationContextMenuItem,
    buildBulkUnpinContextMenuItem,
    deleteSelectedThreadEntries,
-@@ -206,6 +213,7 @@ import {
+@@ -209,6 +216,7 @@ import {
    resolveSidebarThreadShelfState,
    searchSidebarThreads,
    shouldNavigateAfterThreadPark,
@@ -545,7 +547,7 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
    sidebarListItemId,
    sidebarThreadKeyAtY,
    sortInboxThreadsByReturn,
-@@ -560,6 +568,15 @@ function useSidebarThreads(input: {
+@@ -563,6 +571,15 @@ function useSidebarThreads(input: {
                : EMPTY_THREADS,
            };
          });
@@ -561,7 +563,7 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
    const orderedThreads = [
      ...pinnedThreads,
      ...(projectFolders === null
-@@ -606,10 +623,10 @@ function useSidebarThreads(input: {
+@@ -609,10 +626,10 @@ function useSidebarThreads(input: {
      workingShelfExpanded,
      toggleWorkingShelf: () => setWorkingShelfExpanded((value) => !value),
      projectFolders,
@@ -576,7 +578,7 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
      renderedSettledThreads,
      visibleSnoozedThreads,
      visibleWorkingThreads,
-@@ -856,6 +873,34 @@ function useSidebarLookups() {
+@@ -859,6 +876,34 @@ function useSidebarLookups() {
    };
  }
  
@@ -611,7 +613,7 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
  function canOperateThreads(
    threads: ReadonlyArray<Pick<SidebarThreadSummary, "environmentId">>,
  ): boolean {
-@@ -972,7 +1017,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -982,7 +1027,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      },
    });
    const boringSidebarEnabled = useClientSettings((settings) => settings.boringSidebarEnabled);
@@ -619,7 +621,7 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
    const newThreadContext = useHandleNewThread();
    // Row callbacks capture only the handler; the rest of the context changes with the route.
    const { handleNewThread } = newThreadContext;
-@@ -996,23 +1040,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1006,23 +1050,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const setPersistedProjectScopeKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
    const persistedProjectExcludeKeys = useUiStateStore((store) => store.sidebarProjectExcludeKeys);
    const projectFilterMode = useUiStateStore((store) => store.sidebarProjectFilterMode);
@@ -647,7 +649,7 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
    const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
    const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
    // Hold dropped rows until server placement is confirmed; block another pickup from replacing the hold.
-@@ -1079,11 +1116,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1089,11 +1126,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    // A scope whose project is gone reads as all projects once every snapshot has
    // loaded. The stored keys are left alone, so the scope returns with its project.
    const scopeGroups = pickableProjectGroups(projectGroups);
@@ -659,7 +661,7 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
    const storedProjectSelection = {
      include: persistedProjectScopeKeys,
      exclude: persistedProjectExcludeKeys,
-@@ -1420,6 +1452,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1430,6 +1462,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      toggleWorkingShelf,
      projectFolders,
      toggleProjectFolder,
@@ -667,7 +669,7 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
      renderedSettledThreads,
      visibleSnoozedThreads,
      visibleWorkingThreads,
-@@ -1444,7 +1477,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1454,7 +1487,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      routeRowThreadKey,
      folderGroups: boringSidebarEnabled
        ? [
@@ -681,7 +683,7 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
            ...visibleProjectGroups.filter((project) => project.archived),
          ]
        : null,
-@@ -3302,13 +3340,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3325,13 +3363,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                          const threadKey = scopedThreadKey(
                            scopeThreadRef(thread.environmentId, thread.id),
                          );
@@ -697,7 +699,7 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
                              ? "card"
                              : "slim";
                          return (
-@@ -3323,6 +3356,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3346,6 +3379,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              }
                              thread={thread}
                              variant={rowVariant}
@@ -705,7 +707,7 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
                              navigationParent={
                                folderRow ??
                                (section === "working" ||
-@@ -3440,6 +3474,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3465,6 +3499,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                  group={folder.group}
                                  collapsed={folder.collapsed}
                                  hiddenThreads={folder.hiddenThreads}
@@ -714,11 +716,11 @@ index fd6c2072d679701d0974d97d12ec37679dbe0506..687cdaf21cc48f95234692122cc4b362
                                  onNewThread={startThreadInProjectFolder}
                                  onContextMenu={handleProjectFolderContextMenu}
 diff --git a/apps/web/src/components/settings/LabsSettingsPanel.tsx b/apps/web/src/components/settings/LabsSettingsPanel.tsx
-index e28143807027464cf9fa351e28fd4fc7d0bc1439..b87f6d64fe4521fce5930bf6fdcacefc963ab5ca 100644
+index fb68c2fc20217b17885373a74b72ddaba4c3443b..ec5f9440e952f33ea1826afbacb2d7dc68d60346 100644
 --- a/apps/web/src/components/settings/LabsSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/LabsSettingsPanel.tsx
-@@ -58,13 +58,7 @@ function BoringSidebarRow() {
-           aria-label="Boring sidebar (group by project)"
+@@ -64,13 +64,7 @@ function BoringSidebarRow() {
+           aria-label={gt("Boring sidebar (group by project)")}
          />
        }
 -    >
@@ -732,34 +734,38 @@ index e28143807027464cf9fa351e28fd4fc7d0bc1439..b87f6d64fe4521fce5930bf6fdcacefc
    );
  }
  
-@@ -80,7 +74,7 @@ function ProjectIconOrderRow() {
-   return (
+@@ -90,7 +84,7 @@ function ProjectIconOrderRow() {
      <SettingsRow
        {...searchableSetting("project-icon-order")}
--      description="Order of project icons in the sidebar filter row. Pinned projects come first; Manual follows the order you drag here."
-+      description="Order of project icons in the sidebar filter row and of project folders while threads are grouped. Pinned projects come first; Manual follows the order you drag here."
+       description={gt(
+-        "Order of project icons in the sidebar filter row. Pinned projects come first; Manual follows the order you drag here.",
++        "Order of project icons in the sidebar filter row and of project folders while threads are grouped. Pinned projects come first; Manual follows the order you drag here.",
+       )}
        resetAction={
          order === "name" ? null : (
-           <SettingResetButton label="project icon order" onClick={() => setOrder("name")} />
-@@ -111,27 +105,6 @@ function ProjectIconOrderRow() {
+@@ -125,31 +119,6 @@ function ProjectIconOrderRow() {
    );
  }
  
 -function BoringSidebarMultilineRow() {
+-  const searchableSetting = useSearchableSetting();
 -  const settings = useScopedSettings();
 -  const updateSettings = useUpdateScopedSettings();
+-  const gt = useGT();
 -  return (
 -    <SettingsRow
 -      {...searchableSetting("boring-sidebar-multiline")}
 -      className="px-0 py-2 sm:px-0"
--      description="Show folder threads on two lines: the title, then the branch, pull request, and agent."
+-      description={gt(
+-        "Show folder threads on two lines: the title, then the branch, pull request, and agent.",
+-      )}
 -      control={
 -        <Switch
 -          checked={settings.boringSidebarMultilineRows}
 -          onCheckedChange={(checked) =>
 -            updateSettings({ boringSidebarMultilineRows: Boolean(checked) })
 -          }
--          aria-label="Two-line folder rows"
+-          aria-label={gt("Two-line folder rows")}
 -        />
 -      }
 -    />
@@ -768,43 +774,46 @@ index e28143807027464cf9fa351e28fd4fc7d0bc1439..b87f6d64fe4521fce5930bf6fdcacefc
 -
  /** Signed out of T3 Connect, the row offers to sign in instead of its switch. */
  function GuestLinksRowWithSignIn() {
-   const { isSignedIn } = useAuth();
+   const searchableSetting = useSearchableSetting();
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 6cf9c562d9705d9c6c4d6bfdc0fa0f167208abc6..9d752ac64d28f4563ade4e9c1a49c1a4bd077181 100644
+index f91b7a912d5761a4ca8c62d54623bd28be1ad565..3eb3e3022ae0242e88f153585363420b3df766e8 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -471,20 +471,12 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -493,21 +493,13 @@ export const SETTINGS_SEARCH_ITEMS = [
      to: "/settings/labs",
-     searchTerms: ["beta folders project tree classic sidebar"],
+     searchTerms: [msg("beta folders project tree classic sidebar")],
    },
 -  {
 -    id: "boring-sidebar-multiline",
--    title: "Two-line folder rows",
+-    title: msg("Two-line folder rows"),
 -    to: "/settings/labs",
 -    // Shown inside the boring sidebar row only while it is on, so search lands on the parent.
 -    targetId: "boring-sidebar",
--    searchTerms: ["beta boring sidebar folder rows multiline branch pull request details"],
+-    searchTerms: [msg("beta boring sidebar folder rows multiline branch pull request details")],
 -  },
    {
      id: "project-icon-order",
-     title: "Project icon order",
+     title: msg("Project icon order"),
      to: "/settings/labs",
      searchTerms: [
--      "beta sidebar filter row project icons sort alphabetical name latest activity manual drag arrange",
-+      "beta sidebar filter row project icons sort alphabetical name latest activity manual drag arrange folders grouped headers",
+       msg(
+-        "beta sidebar filter row project icons sort alphabetical name latest activity manual drag arrange",
++        "beta sidebar filter row project icons sort alphabetical name latest activity manual drag arrange folders grouped headers",
+       ),
      ],
    },
-   {
 diff --git a/apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx b/apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx
-index b438db4e6a111a85cbb67d523afde3ffdfb9cf70..b555076803235ead1457f282b4cc8239a775ff4c 100644
+index 7ebda48e5b89af1af91ad0c438155fc35fef10f1..cec9861bb6a760de02e2543a1d639b4afcb39f03 100644
 --- a/apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx
 +++ b/apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx
-@@ -1,68 +1,70 @@
+@@ -1,71 +1,74 @@
  import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 -import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
  import type { ContextMenuSource } from "@t3tools/contracts";
  import { ChevronDownIcon, SquarePenIcon } from "lucide-react";
+-import { msg, T, useGT, useMessages, Var } from "gt-react";
 -import { memo } from "react";
++import { T, useGT, useMessages, Var } from "gt-react";
 +import { memo, type KeyboardEvent } from "react";
 +import { shallow } from "zustand/vanilla/shallow";
  
@@ -826,10 +835,10 @@ index b438db4e6a111a85cbb67d523afde3ffdfb9cf70..b555076803235ead1457f282b4cc8239
 -} as const;
 -
 -const FOLDER_DOT_LABEL = {
--  attention: ", needs you",
--  failed: ", failed",
--  unread: ", done",
--  working: ", working",
+-  attention: msg(", needs you", { $context: "project folder status, read after its name" }),
+-  failed: msg(", failed", { $context: "project folder status, read after its name" }),
+-  unread: msg(", done", { $context: "project folder status, read after its name" }),
+-  working: msg(", working", { $context: "project folder status, read after its name" }),
 -} as const;
 +import { SidebarThreadBadge } from "./SidebarThreadBadge";
  
@@ -888,6 +897,9 @@ index b438db4e6a111a85cbb67d523afde3ffdfb9cf70..b555076803235ead1457f282b4cc8239
 +export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHeader(
 +  props: SidebarProjectFolderHeaderProps,
 +) {
+   const gt = useGT();
+-  const m = useMessages();
++  const messages = useMessages();
    const { group, collapsed, hiddenThreads } = props;
    const rowId = sidebarFolderRowId(group.projectKey);
    const localLastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
@@ -908,10 +920,11 @@ index b438db4e6a111a85cbb67d523afde3ffdfb9cf70..b555076803235ead1457f282b4cc8239
 +          now: props.now,
 +          localLastVisitedAtById,
 +        }),
++        messages,
        )
      : null;
    return (
-@@ -74,7 +76,12 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
+@@ -77,7 +80,12 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
          type="button"
          data-sidebar-row={rowId}
          aria-expanded={!collapsed}
@@ -925,7 +938,7 @@ index b438db4e6a111a85cbb67d523afde3ffdfb9cf70..b555076803235ead1457f282b4cc8239
          onContextMenu={(event) => {
            event.preventDefault();
            props.onContextMenu(
-@@ -83,17 +90,14 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
+@@ -86,17 +94,14 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
              contextMenuSourceOf(event),
            );
          }}
@@ -939,7 +952,7 @@ index b438db4e6a111a85cbb67d523afde3ffdfb9cf70..b555076803235ead1457f282b4cc8239
          </span>
 -        {dot ? (
 -          <span className={cn("size-1.5 shrink-0 rounded-full", FOLDER_DOT_CLASS_NAME[dot])}>
--            <span className="sr-only">{FOLDER_DOT_LABEL[dot]}</span>
+-            <span className="sr-only">{m(FOLDER_DOT_LABEL[dot])}</span>
 -          </span>
 -        ) : null}
 +        <SidebarThreadBadge badge={badge} />
@@ -947,7 +960,7 @@ index b438db4e6a111a85cbb67d523afde3ffdfb9cf70..b555076803235ead1457f282b4cc8239
          {collapsed && hiddenThreads.length > 0 ? (
            <span className="shrink-0 text-xs tabular-nums text-sidebar-muted-foreground group-hover/project-folder:invisible group-has-[[data-sidebar-action-for]:focus]/project-folder:invisible pointer-coarse:invisible">
              {hiddenThreads.length}
-@@ -128,4 +132,4 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
+@@ -135,4 +140,4 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
        </span>
      </li>
    );
@@ -1035,10 +1048,10 @@ index 8f11ab36b7670a8f5e93ff8ad709fbb4dc4aff0b..c1065cfe8b497b1239f3f17d24662a97
    color: var(--popover);
  }
 diff --git a/apps/web/src/components/sidebar/SidebarProjectRow.tsx b/apps/web/src/components/sidebar/SidebarProjectRow.tsx
-index f8680c9de938b42bbd2552dc8d07809a9483fc8c..d144b8fcf192c5330dd6284a89e144817b1fdb9d 100644
+index 8724c45df7a47ada86c5f5fc607101e78e747edf..7cca44e20f31552c2072195421d1c665b56d6d9c 100644
 --- a/apps/web/src/components/sidebar/SidebarProjectRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarProjectRow.tsx
-@@ -28,32 +28,10 @@ import {
+@@ -29,32 +29,10 @@ import {
  import { Kbd } from "../ui/kbd";
  import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  import { SidebarProjectModeSwitch } from "./SidebarProjectModeSwitch";
@@ -1073,8 +1086,8 @@ index f8680c9de938b42bbd2552dc8d07809a9483fc8c..d144b8fcf192c5330dd6284a89e14481
    if (badge === null) return null;
    return (
      <div data-project-row="tooltip-counts">
-@@ -75,7 +53,7 @@ function ProjectBadgeLegend() {
-         {SIDEBAR_PROJECT_BADGE_LEGEND.map((entry) => (
+@@ -79,7 +57,7 @@ function ProjectBadgeLegend() {
+         {sidebarProjectBadgeLegend(messages).map((entry) => (
            <span key={entry.state}>
              <span data-project-row="tooltip-swatch">
 -              <ProjectThreadBadge badge={entry.badge} />
@@ -1082,7 +1095,7 @@ index f8680c9de938b42bbd2552dc8d07809a9483fc8c..d144b8fcf192c5330dd6284a89e14481
              </span>
              {entry.label}
            </span>
-@@ -100,7 +78,7 @@ function ProjectIconTooltip({
+@@ -104,7 +82,7 @@ function ProjectIconTooltip({
    readonly state: "Selected" | "Shown" | "Hidden";
    readonly showMachines: boolean;
    readonly threadCount: number;
@@ -1090,17 +1103,17 @@ index f8680c9de938b42bbd2552dc8d07809a9483fc8c..d144b8fcf192c5330dd6284a89e14481
 +  readonly badge: SidebarThreadBadgeSummary;
    readonly selectionModifier: string;
  }) {
-   const machineNames = showMachines
-@@ -144,7 +122,7 @@ function OverflowTooltip({
+   const gt = useGT();
+@@ -165,7 +143,7 @@ function OverflowTooltip({
  }: {
    readonly count: number;
    readonly selectedCount: number;
 -  readonly badge: ProjectBadgeSummary;
 +  readonly badge: SidebarThreadBadgeSummary;
  }) {
+   const gt = useGT();
    return (
-     <div data-project-row="tooltip">
-@@ -353,7 +331,7 @@ export const SidebarProjectRow = memo(
+@@ -390,7 +368,7 @@ export const SidebarProjectRow = memo(
                    <span data-project-row="favicon">
                      <ProjectFavicon project={project} className="size-4" />
                    </span>
@@ -1109,7 +1122,7 @@ index f8680c9de938b42bbd2552dc8d07809a9483fc8c..d144b8fcf192c5330dd6284a89e14481
                  </TooltipTrigger>
                  <TooltipPopup side="bottom">
                    <ProjectIconTooltip
-@@ -415,7 +393,7 @@ export const SidebarProjectRow = memo(
+@@ -452,7 +430,7 @@ export const SidebarProjectRow = memo(
                  }
                >
                  +{layout.overflow.length}
@@ -1118,7 +1131,7 @@ index f8680c9de938b42bbd2552dc8d07809a9483fc8c..d144b8fcf192c5330dd6284a89e14481
                </TooltipTrigger>
                <TooltipPopup side="bottom">
                  <OverflowTooltip
-@@ -462,7 +440,7 @@ export const SidebarProjectRow = memo(
+@@ -501,7 +479,7 @@ export const SidebarProjectRow = memo(
                      </span>
                      <span data-project-row="popup-icon">
                        <ProjectFavicon project={project} className="size-4" />
@@ -1193,10 +1206,10 @@ index 0000000000000000000000000000000000000000..db439e67964e4dea091c47376eead71c
 +    previous.badge?.description === next.badge?.description,
 +);
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 09f9b187885e6d4646a54005c9ef537e124f92d2..da3e5df30845a22a05901e5c22d75dfc6b5ab037 100644
+index c958f846bf44f22cb0429440a4fb32b36224b199..005f858a949f650c97e0f7401828991e2a02c0a2 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -554,6 +554,7 @@ type SidebarThreadRowProps = {
+@@ -577,6 +577,7 @@ type SidebarThreadRowProps = {
    // "folder-multiline" adds the card's branch and PR line under it.
    variant: "card" | "slim" | "folder" | "folder-multiline";
    navigationParent?: string | undefined;
@@ -1204,7 +1217,7 @@ index 09f9b187885e6d4646a54005c9ef537e124f92d2..da3e5df30845a22a05901e5c22d75dfc
    variantAction: SidebarSweepAction;
    settlementSupported: boolean;
    snoozeSupported: boolean;
-@@ -1416,6 +1417,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1525,6 +1526,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
        className={cn(
          "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
          metaLineEmpty && "[contain-intrinsic-size:auto_60px]",

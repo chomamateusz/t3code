@@ -90,6 +90,8 @@ useQueuedRunEdit.browser.test.tsx: upstream #37507's steerSavedRun derives the q
 
 Port to 25875c11b2: Upstream #31283 (8753e4d36b) shows a toast with the server's reason when Send now fails. QueuedRunsControl.tsx: that toast now sits in this commit's shared sendNow helper, so Send now keeps upstream's message and the send after a merge and each step of Send one by one report a refused send the same way; Send one by one still stops at the first failure. QueuedRunsControl.browser.test.tsx: the command mock returns queued results or success, failures are real command failures with a cause (built by commandFailure), and upstream's Send now case renders inside its ToastProvider next to this commit's queue-action cases.
 
+Port to b6ac2449f1: the copy follows upstream's translation (055b44919e) with its English unchanged: the queue buttons, tooltips and blocked reasons use gt() and <T> (Show all keeps upstream's plural); deriveThreadQueueWorkflowState's reasons are msg() through upstream's resolver; packages/shared/src/queuedMessageMerge.ts names its reasons in QUEUED_MESSAGE_MERGE_REASONS and the new client-only packages/shared/src/queuedMessageMergeCopy.ts translates them, so the server keeps English as docs/internals/i18n.md requires; the keybinding label joins upstream's msg() table.
+
 Files:
 apps/server:
 - apps/server/src/orchestration-v2/GuestShare.test.ts
@@ -159,7 +161,7 @@ Tests:
  apps/server/src/ws.ts                         |   1 +
  apps/web/src/components/ChatView.tsx          |   7 +
  .../chat/QueuedRunsControl.browser.test.tsx   | 214 +++++++++++-
- .../src/components/chat/QueuedRunsControl.tsx | 159 +++++++--
+ .../src/components/chat/QueuedRunsControl.tsx | 184 +++++++++--
  .../chat/useQueuedRunEdit.browser.test.tsx    |   5 +-
  .../settings/KeybindingsSettings.logic.ts     |   1 +
  docs/user/composer.md                         |   9 +
@@ -167,21 +169,23 @@ Tests:
  .../client-runtime/src/operations/commands.ts |  15 +
  .../src/state/threadCommands.ts               |   7 +
  .../src/state/threadWorkflows.test.ts         | 220 ++++++++++++-
- .../src/state/threadWorkflows.ts              | 123 +++++--
+ .../src/state/threadWorkflows.ts              | 128 ++++++--
  packages/contracts/src/keybindings.ts         |   1 +
  packages/contracts/src/orchestrationV2.ts     |   7 +
  packages/contracts/src/server.ts              |   1 +
- packages/shared/package.json                  |   4 +
+ packages/shared/package.json                  |   8 +
  packages/shared/src/model.ts                  |   9 +-
- packages/shared/src/queuedMessageMerge.ts     | 139 ++++++++
- 23 files changed, 1326 insertions(+), 115 deletions(-)
+ packages/shared/src/queuedMessageMerge.ts     | 153 +++++++++
+ packages/shared/src/queuedMessageMergeCopy.ts |  28 ++
+ 24 files changed, 1398 insertions(+), 119 deletions(-)
  create mode 100644 packages/shared/src/queuedMessageMerge.ts
+ create mode 100644 packages/shared/src/queuedMessageMergeCopy.ts
 
 diff --git a/apps/server/src/orchestration-v2/GuestShare.test.ts b/apps/server/src/orchestration-v2/GuestShare.test.ts
-index d789b206016b69362be53c9b633683eeadc5f52b..6ed5f1cce494e8d106b1028befd8ce3519577b2a 100644
+index 7ea6f95a7a5159dc636b48f8aa020f543ec653a8..646cee832d6d4372a0132985fe4811f7867480b5 100644
 --- a/apps/server/src/orchestration-v2/GuestShare.test.ts
 +++ b/apps/server/src/orchestration-v2/GuestShare.test.ts
-@@ -186,7 +186,7 @@ it.effect("drops guest attribution that a client sends on its own message", () =
+@@ -199,7 +199,7 @@ it.effect("drops guest attribution that a client sends on its own message", () =
    }).pipe(Effect.provide(layerTest)),
  );
  
@@ -190,7 +194,7 @@ index d789b206016b69362be53c9b633683eeadc5f52b..6ed5f1cce494e8d106b1028befd8ce35
    Effect.gen(function* () {
      const orchestrator = yield* setup;
      const projections = yield* ProjectionStore.ProjectionStoreV2;
-@@ -241,10 +241,39 @@ it.effect("keeps a queued guest message unchanged when the owner tries to edit i
+@@ -254,10 +254,39 @@ it.effect("keeps a queued guest message unchanged when the owner tries to edit i
        text: "My own words",
      });
      assert.isTrue(Exit.isFailure(yield* Effect.exit(edit)));
@@ -232,7 +236,7 @@ index d789b206016b69362be53c9b633683eeadc5f52b..6ed5f1cce494e8d106b1028befd8ce35
  );
  
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 819aa90c03b9823ded62c8d5214d4bea7ac4324a..563179ebc218e329500940120a3413091021c790 100644
+index 5c370c32c8223a8d825faeb2217bf222305d996f..4cf5d188b8db3d9326d94816c6d16077b5229897 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -31,6 +31,7 @@ import {
@@ -243,7 +247,7 @@ index 819aa90c03b9823ded62c8d5214d4bea7ac4324a..563179ebc218e329500940120a341309
    type NodeId,
    type ModelSelection,
    OrchestrationV2Command,
-@@ -87,6 +88,7 @@ import { contextBoundaryOrdinal, isScheduledFreshRun } from "./contextBoundary.t
+@@ -89,6 +90,7 @@ import { contextBoundaryOrdinal, isScheduledFreshRun } from "./contextBoundary.t
  import { isPlaceholderThreadTitle } from "./placeholderThreadTitle.ts";
  import { combinePullRequestWatchWakes, type PullRequestWatchWake } from "./pullRequestWatch.ts";
  import { recordThreadOpen } from "@t3tools/shared/paletteSearch";
@@ -251,7 +255,7 @@ index 819aa90c03b9823ded62c8d5214d4bea7ac4324a..563179ebc218e329500940120a341309
  import {
    backgroundWorkHoldsCompletion,
    derivePendingBackgroundWork,
-@@ -209,6 +211,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
+@@ -211,6 +213,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
  import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import * as ServerSettings from "../serverSettings.ts";
  
@@ -259,7 +263,7 @@ index 819aa90c03b9823ded62c8d5214d4bea7ac4324a..563179ebc218e329500940120a341309
  const isMessageQuestionAnswer = Schema.is(
    Schema.Union([TrimmedNonEmptyString, Schema.NonEmptyArray(TrimmedNonEmptyString)]),
  );
-@@ -676,6 +679,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
+@@ -678,6 +681,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
      case "queued-run.reorder":
      case "queued-run.cancel":
      case "queued-run.edit":
@@ -267,7 +271,7 @@ index 819aa90c03b9823ded62c8d5214d4bea7ac4324a..563179ebc218e329500940120a341309
      case "runtime-request.respond":
      case "runtime-request.delivery.fail":
      case "thread.user-input.dismiss":
-@@ -11802,46 +11806,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -11817,46 +11821,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        { text: command.text, attachments: command.attachments ?? queuedMessage.attachments },
        queuedRunModelSelection(projection, queuedRun).instanceId,
      );
@@ -323,7 +327,7 @@ index 819aa90c03b9823ded62c8d5214d4bea7ac4324a..563179ebc218e329500940120a341309
      // Thread deletion only cleans files the thread still references.
      const keptAttachmentIds = new Set(
        (command.attachments ?? queuedMessage.attachments).map((attachment) => attachment.id),
-@@ -11866,6 +11842,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -11881,6 +11857,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
      }
    });
  
@@ -452,7 +456,7 @@ index 819aa90c03b9823ded62c8d5214d4bea7ac4324a..563179ebc218e329500940120a341309
    const subagentCount = (threadId: ThreadId) =>
      projectionStore
        .getSubagentCount(threadId)
-@@ -15376,6 +15474,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -15391,6 +15489,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "queued-run.edit":
          yield* dispatchQueuedRunEdit(command, events, effects);
          break;
@@ -462,7 +466,7 @@ index 819aa90c03b9823ded62c8d5214d4bea7ac4324a..563179ebc218e329500940120a341309
        case "checkpoint.rollback":
          yield* dispatchCheckpointRollback(command, events, effects);
          break;
-@@ -15608,7 +15709,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -15623,7 +15724,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                ),
              );
            if (
@@ -825,10 +829,10 @@ index 61fb57ada454ed0b1a9a309eb066ff03db841f86..33aa46863d0b7f36613f6f8b959933e7
    "thread.guest-message.dismiss": () => ({ feature: "guest_message.dismiss" }),
  };
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index bbe80f28e9681db09bbc06ecdc960ca8d7e9f375..77c65c79f34ba2b190a9c4d3e93a29d89fcbbe33 100644
+index 63d45c48816e4631dd8b14937c024e48d2450864..bcb5c6862f1ce179e85976ff74cba3574f35de55 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
-@@ -1902,6 +1902,7 @@ export const layerWsRpc = (
+@@ -1904,6 +1904,7 @@ export const layerWsRpc = (
            threadSnapshotPagination: true,
            threadFind: true,
            threadFindProgressive: true,
@@ -837,10 +841,10 @@ index bbe80f28e9681db09bbc06ecdc960ca8d7e9f375..77c65c79f34ba2b190a9c4d3e93a29d8
            secretReferences: true,
            secretRequestReferences: true,
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 1a50e7fdfa6b39ac15214ce451089c386731623e..20267f4aaec60ece3cdcfa284b39f5894387696f 100644
+index a731a5798e191b75724c38fd4ef9cc5bcf15fe20..b4e67980d3fa071d5176eca439576db170baa252 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -2786,6 +2786,8 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2816,6 +2816,8 @@ export default function ChatView(props: ChatViewProps) {
          routeKind !== "draft" &&
          composerRef.current?.isCaretAtStart() === true &&
          queuedRunsControlRef.current?.editLatest(event.repeat) === true,
@@ -849,7 +853,7 @@ index 1a50e7fdfa6b39ac15214ce451089c386731623e..20267f4aaec60ece3cdcfa284b39f589
        "thread.stop": ({ event }) => {
          if (!canInterruptRunningThread) return false;
          if (!event.repeat) void onInterruptStable();
-@@ -3068,6 +3070,11 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3098,6 +3100,11 @@ export default function ChatView(props: ChatViewProps) {
            editShortcutLabel={shortcutLabelForCommand(keybindings, "thread.editQueuedMessage", {
              context: { composerFocus: true },
            })}
@@ -1129,10 +1133,10 @@ index 4f4daf7c798b46ac677cae2e3d552f2cf71cd43a..e581d006b1e74a63bb3cf5b7e1d3f49b
 +  await expect.element(sendAllAsOne()).not.toBeInTheDocument();
 +});
 diff --git a/apps/web/src/components/chat/QueuedRunsControl.tsx b/apps/web/src/components/chat/QueuedRunsControl.tsx
-index 49cbc8f050eea869c240701b14c86f15055334bf..6469c7484acff09d28f5d8eb48cc9706f27f9e2f 100644
+index fb82f9c858d61ac5efaf31be0947d31682f65089..58d71a62361be1aebcb76b3ffeb16da06ff33774 100644
 --- a/apps/web/src/components/chat/QueuedRunsControl.tsx
 +++ b/apps/web/src/components/chat/QueuedRunsControl.tsx
-@@ -59,6 +59,7 @@ const QUEUE_VISIBLE_ROWS = 3;
+@@ -62,6 +62,7 @@ const QUEUE_VISIBLE_ROWS = 3;
  export interface QueuedRunsControlHandle {
    steerNext: (repeat: boolean) => boolean;
    editLatest: (repeat: boolean) => boolean;
@@ -1140,7 +1144,7 @@ index 49cbc8f050eea869c240701b14c86f15055334bf..6469c7484acff09d28f5d8eb48cc9706
  }
  
  type ThreadQueueProjection = Parameters<typeof deriveThreadQueueWorkflowState>[0];
-@@ -81,6 +82,7 @@ export function QueuedRunsControl({
+@@ -84,6 +85,7 @@ export function QueuedRunsControl({
    readonly ref?: Ref<QueuedRunsControlHandle>;
    readonly steerShortcutLabel?: string | null;
    readonly editShortcutLabel?: string | null;
@@ -1148,7 +1152,7 @@ index 49cbc8f050eea869c240701b14c86f15055334bf..6469c7484acff09d28f5d8eb48cc9706
    readonly environmentId: EnvironmentId;
    readonly threadId: ThreadId;
    readonly optimisticMessages: ReadonlyArray<
-@@ -98,9 +100,12 @@ export function QueuedRunsControl({
+@@ -103,9 +105,12 @@ export function QueuedRunsControl({
    const projection = useQuietThreadProjection(
      scopeThreadRef(props.environmentId, props.threadId),
    )?.projection;
@@ -1161,7 +1165,7 @@ index 49cbc8f050eea869c240701b14c86f15055334bf..6469c7484acff09d28f5d8eb48cc9706
    const [showAll, setShowAll] = useState(false);
    const queueListId = useId();
    const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
-@@ -166,13 +171,7 @@ export function QueuedRunsControl({
+@@ -171,13 +176,7 @@ export function QueuedRunsControl({
      })),
    ];
  
@@ -1176,7 +1180,7 @@ index 49cbc8f050eea869c240701b14c86f15055334bf..6469c7484acff09d28f5d8eb48cc9706
      const result = workflow?.canSendNow
        ? await resume({
            environmentId: props.environmentId,
-@@ -184,8 +183,6 @@ export function QueuedRunsControl({
+@@ -189,8 +188,6 @@ export function QueuedRunsControl({
              input: { threadId: props.threadId, queuedRunId, targetRunId: activeRun.id },
            })
          : null;
@@ -1185,8 +1189,8 @@ index 49cbc8f050eea869c240701b14c86f15055334bf..6469c7484acff09d28f5d8eb48cc9706
      if (result?._tag === "Failure" && !isAtomCommandInterrupted(result)) {
        const error = squashAtomCommandFailure(result);
        toastManager.add({
-@@ -194,6 +191,70 @@ export function QueuedRunsControl({
-         description: error instanceof Error ? error.message : "An error occurred.",
+@@ -202,6 +199,90 @@ export function QueuedRunsControl({
+             : m(msg("An error occurred.")),
        });
      }
 +    return result;
@@ -1212,17 +1216,37 @@ index 49cbc8f050eea869c240701b14c86f15055334bf..6469c7484acff09d28f5d8eb48cc9706
 +
 +  const queueActionBlockedReason =
 +    props.editingRunId !== null
-+      ? "Finish editing the queued message first."
++      ? gt("Finish editing the queued message first.")
 +      : optimisticQueued.length > 0
-+        ? "Wait for queued messages to save."
++        ? gt("Wait for queued messages to save.")
 +        : busyRunId !== null
-+          ? "Another queue action is still running."
++          ? gt("Another queue action is still running.")
 +          : null;
 +  const sendAllAsOneBlockedReason =
 +    queueActionBlockedReason ??
-+    (!supportsQueuedRunMerge ? "Update this environment to send queued messages as one." : null) ??
++    (!supportsQueuedRunMerge
++      ? gt("Update this environment to send queued messages as one.")
++      : null) ??
 +    workflow?.sendAsOneBlockedReason ??
 +    null;
++  const sendAllAsOneShortcut = props.sendAllAsOneShortcutLabel || null;
++  const sendAllAsOneTooltip = workflow?.canSendNow
++    ? sendAllAsOneShortcut
++      ? gt("Combine them into one message and start a turn ({shortcut})", {
++          shortcut: sendAllAsOneShortcut,
++        })
++      : gt("Combine them into one message and start a turn")
++    : workflow?.promoteSkipsCompaction
++      ? sendAllAsOneShortcut
++        ? gt("Combine them into one message and skip compaction ({shortcut})", {
++            shortcut: sendAllAsOneShortcut,
++          })
++        : gt("Combine them into one message and skip compaction")
++      : sendAllAsOneShortcut
++        ? gt("Combine them into one message and send it into the current turn ({shortcut})", {
++            shortcut: sendAllAsOneShortcut,
++          })
++        : gt("Combine them into one message and send it into the current turn");
 +  const sendEachBlockedReason = queueActionBlockedReason ?? workflow?.sendEachBlockedReason ?? null;
 +  const queuedRunIds = queued.map(({ run }) => run.id);
 +
@@ -1256,7 +1280,7 @@ index 49cbc8f050eea869c240701b14c86f15055334bf..6469c7484acff09d28f5d8eb48cc9706
    };
  
    useImperativeHandle(ref, () => ({
-@@ -226,6 +287,11 @@ export function QueuedRunsControl({
+@@ -234,6 +315,11 @@ export function QueuedRunsControl({
        }
        return true;
      },
@@ -1268,7 +1292,7 @@ index 49cbc8f050eea869c240701b14c86f15055334bf..6469c7484acff09d28f5d8eb48cc9706
    }));
  
    if (items.length === 0) return null;
-@@ -380,25 +446,62 @@ export function QueuedRunsControl({
+@@ -420,30 +506,64 @@ export function QueuedRunsControl({
            );
          })}
        </ol>
@@ -1282,15 +1306,11 @@ index 49cbc8f050eea869c240701b14c86f15055334bf..6469c7484acff09d28f5d8eb48cc9706
 -            onPointerDown={(event) => event.preventDefault()}
 -            onClick={() => setShowAll((value) => !value)}
 -          >
--            {showAll ? "Show fewer" : `Show all ${items.length} queued`}
--            <ChevronDownIcon
--              aria-hidden
--              className={cn(
--                "size-3.5 transition-transform duration-150 motion-reduce:transition-none",
--                showAll && "rotate-180",
--              )}
--            />
--          </InlineButton>
+-            {showAll
+-              ? gt("Show fewer")
+-              : gt(
+-                  "{count, plural, one {Show all {count} queued} other {Show all {count} queued}}",
+-                  { count: items.length },
 +      {items.length >= 2 ? (
 +        <div className="flex items-center gap-1.5 self-end pe-1 text-xs pointer-coarse:[&_[data-slot=inline-button]]:relative pointer-coarse:[&_[data-slot=inline-button]]:after:absolute pointer-coarse:[&_[data-slot=inline-button]]:after:-inset-x-1.5 pointer-coarse:[&_[data-slot=inline-button]]:after:-inset-y-3.5">
 +          {collapsible ? (
@@ -1302,13 +1322,26 @@ index 49cbc8f050eea869c240701b14c86f15055334bf..6469c7484acff09d28f5d8eb48cc9706
 +              onPointerDown={(event) => event.preventDefault()}
 +              onClick={() => setShowAll((value) => !value)}
 +            >
-+              {showAll ? "Show fewer" : `Show all ${items.length} queued`}
++              {showAll
++                ? gt("Show fewer")
++                : gt(
++                    "{count, plural, one {Show all {count} queued} other {Show all {count} queued}}",
++                    { count: items.length },
++                  )}
 +              <ChevronDownIcon
 +                aria-hidden
 +                className={cn(
 +                  "size-3.5 transition-transform duration-150 motion-reduce:transition-none",
 +                  showAll && "rotate-180",
-+                )}
+                 )}
+-            <ChevronDownIcon
+-              aria-hidden
+-              className={cn(
+-                "size-3.5 transition-transform duration-150 motion-reduce:transition-none",
+-                showAll && "rotate-180",
+-              )}
+-            />
+-          </InlineButton>
 +              />
 +            </InlineButton>
 +          ) : null}
@@ -1320,14 +1353,14 @@ index 49cbc8f050eea869c240701b14c86f15055334bf..6469c7484acff09d28f5d8eb48cc9706
 +                disabled={sendEachBlockedReason !== null}
 +                onClick={() => void sendEach()}
 +              >
-+                Send one by one
++                <T>Send one by one</T>
 +              </Button>
 +            </TooltipTrigger>
 +            <TooltipPopup>
 +              {sendEachBlockedReason ??
 +                (workflow?.canSendNow
-+                  ? "Start a turn for each message, in order"
-+                  : "Send each message into the current turn, in order")}
++                  ? gt("Start a turn for each message, in order")
++                  : gt("Send each message into the current turn, in order"))}
 +            </TooltipPopup>
 +          </Tooltip>
 +          <Tooltip>
@@ -1339,13 +1372,10 @@ index 49cbc8f050eea869c240701b14c86f15055334bf..6469c7484acff09d28f5d8eb48cc9706
 +                onClick={() => void sendAllAsOne()}
 +              >
 +                <ArrowUpIcon />
-+                Send all as one
++                <T>Send all as one</T>
 +              </Button>
 +            </TooltipTrigger>
-+            <TooltipPopup>
-+              {sendAllAsOneBlockedReason ??
-+                `${workflow?.canSendNow ? "Combine them into one message and start a turn" : workflow?.promoteSkipsCompaction ? "Combine them into one message and skip compaction" : "Combine them into one message and send it into the current turn"}${props.sendAllAsOneShortcutLabel ? ` (${props.sendAllAsOneShortcutLabel})` : ""}`}
-+            </TooltipPopup>
++            <TooltipPopup>{sendAllAsOneBlockedReason ?? sendAllAsOneTooltip}</TooltipPopup>
 +          </Tooltip>
          </div>
        ) : null}
@@ -1367,19 +1397,19 @@ index a88da51cce16e360f7ebb0cec7c5ed55a6e30ca1..ef6715ea617f0f08b7b4fff32b143bec
                providerThreads: [],
                providerSessions: [
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index de3da78531e7a9e3d6a1366922682f0a5c49f2d2..4d83b4aa34443b57c7eb4c5599c57df84b4b9cf7 100644
+index 7cc865cb973557c12c0cb48cf2b774d354673d04..7d7a1ddbbc4ca508ce5ce8cb26e8bd211b895fb9 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-@@ -392,6 +392,7 @@ export function commandLabel(command: KeybindingCommand): string {
-   if (command === "composer.dictation") return "Composer: Start or Finish Dictation";
-   if (command === "thread.steerQueuedMessage") return "Queue: Send First Queued Message";
-   if (command === "thread.editQueuedMessage") return "Queue: Edit Last Queued Message";
-+  if (command === "thread.sendQueuedMessagesAsOne") return "Queue: Send All Queued as One Message";
-   if (command === "thread.copyReference") return "Pull Request: Copy Link or Thread";
-   const usageMetric = METRIC_OPTIONS.find((option) => option.command === command);
-   if (usageMetric) return `Usage: ${usageMetric.label}`;
+@@ -415,6 +415,7 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+   "composer.dictation": msg("Composer: Start or Finish Dictation"),
+   "thread.steerQueuedMessage": msg("Queue: Send First Queued Message"),
+   "thread.editQueuedMessage": msg("Queue: Edit Last Queued Message"),
++  "thread.sendQueuedMessagesAsOne": msg("Queue: Send All Queued as One Message"),
+   "thread.copyReference": msg("Pull Request: Copy Link or Thread"),
+   "sidebar.toggle": msg("Sidebar: Toggle"),
+   "navigation.back": msg("Navigation: Back"),
 diff --git a/docs/user/composer.md b/docs/user/composer.md
-index fc25f0df52b08ccf5493f37d551aae236e714a09..b28190361d94f7c05adc66d3c39c577dfe46b6c1 100644
+index e75c33876f798a344d6827eac3a2a094f9883e4b..a27f62d16f15604f5adf271c88cbb12be092d48c 100644
 --- a/docs/user/composer.md
 +++ b/docs/user/composer.md
 @@ -87,6 +87,15 @@ Press `Option+Up` on macOS or `Alt+Up` on Windows and Linux with the cursor at t
@@ -1413,10 +1443,10 @@ index 308d7d934c1f8b1cbfc6916b5f93992d990f894f..252ce0c6628128e64b78f9b2c6720133
  Use `mod+shift+m` to choose a model and `mod+shift+h` to choose a host.
  To step a new thread to the next machine instead of opening the menu, bind
 diff --git a/packages/client-runtime/src/operations/commands.ts b/packages/client-runtime/src/operations/commands.ts
-index 6b9ccbb69953a6e9ac2ac04b7f71d506d996ecf9..ffcd15f979c02db483651057e9c7a50b13bc812c 100644
+index ce64335922834dc0d4a5664f6938b0ac55bb19e4..19bb0244896d4b95bad9dfa4d2f98eabbaf69820 100644
 --- a/packages/client-runtime/src/operations/commands.ts
 +++ b/packages/client-runtime/src/operations/commands.ts
-@@ -264,6 +264,10 @@ export interface CancelQueuedRunInput extends ThreadCommandInput {
+@@ -266,6 +266,10 @@ export interface CancelQueuedRunInput extends ThreadCommandInput {
    readonly runId: RunId;
  }
  
@@ -1427,7 +1457,7 @@ index 6b9ccbb69953a6e9ac2ac04b7f71d506d996ecf9..ffcd15f979c02db483651057e9c7a50b
  export interface RetryWorkspacePreparationInput extends ThreadCommandInput {
    readonly runId: RunId;
  }
-@@ -1148,6 +1152,17 @@ export const cancelQueuedRun = Effect.fn("EnvironmentCommands.cancelQueuedRun")(
+@@ -1154,6 +1158,17 @@ export const cancelQueuedRun = Effect.fn("EnvironmentCommands.cancelQueuedRun")(
    });
  });
  
@@ -1725,19 +1755,20 @@ index 3fe571e84b5bf59089a5e21afe58e147947c3f1f..7bdbb9c646dfc75b819038021c869314
      const projectedItem = {
        item: { type: "assistant_message", runId: "run", status: "completed" },
 diff --git a/packages/client-runtime/src/state/threadWorkflows.ts b/packages/client-runtime/src/state/threadWorkflows.ts
-index 1f50bff8e24684d1642c5de28497a1d7e40e80eb..5da954490a36dfc11ddca8c5faf6897e2a6b807e 100644
+index ef39233707a7b1835188f9d2f881b5ed36695ff4..4fc3b74ce8909e036e5a5813678b4e51ed76bb35 100644
 --- a/packages/client-runtime/src/state/threadWorkflows.ts
 +++ b/packages/client-runtime/src/state/threadWorkflows.ts
-@@ -5,6 +5,8 @@ import {
-   type OrchestrationV2ProviderCapabilities,
- } from "@t3tools/contracts";
+@@ -7,6 +7,9 @@ import {
  import { copySorted } from "@t3tools/shared/Array";
+ import { mFallback, msg } from "gt-i18n";
+ import type { MFunctionType } from "gt-i18n/types";
 +import { isSlashCommandText, modelSelectionsEqual } from "@t3tools/shared/model";
 +import { mergeQueuedMessages } from "@t3tools/shared/queuedMessageMerge";
++import { queuedMessageMergeReason } from "@t3tools/shared/queuedMessageMergeCopy";
  
  import type { ThreadStructure } from "./models.ts";
  
-@@ -39,8 +41,12 @@ export interface ThreadQueueWorkflowState {
+@@ -41,8 +44,12 @@ export interface ThreadQueueWorkflowState {
    /** The active run is a compaction, so promoting a queued message stops it instead of steering. */
    readonly promoteSkipsCompaction: boolean;
    readonly canSendNow: boolean;
@@ -1745,12 +1776,12 @@ index 1f50bff8e24684d1642c5de28497a1d7e40e80eb..5da954490a36dfc11ddca8c5faf6897e
 +  readonly sendEachBlockedReason: string | null;
  }
  
-+const SEND_NOT_NOW_REASON = "The current turn can't take messages right now.";
++const SEND_NOT_NOW_REASON = msg("The current turn can't take messages right now.");
 +
  export function resolveActiveThreadRun(projection: Pick<Projection, "runs">): Run | null {
    return projection.runs.findLast((run) => ACTIVE_RUN_STATUSES.has(run.status)) ?? null;
  }
-@@ -151,45 +157,110 @@ export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQu
+@@ -156,45 +163,114 @@ export function deriveThreadQueueWorkflowState(
      projection.providerTurns.some(
        (turn) => turn.runAttemptId === activeRun.activeAttemptId && turn.status === "running",
      );
@@ -1773,7 +1804,7 @@ index 1f50bff8e24684d1642c5de28497a1d7e40e80eb..5da954490a36dfc11ddca8c5faf6897e
 -    return {
 -      run,
 -      // A queued guest message shows the guest's words; the agent still gets the attributed text.
--      text: message?.context?.guest?.text ?? message?.text ?? "Queued message",
+-      text: message?.context?.guest?.text ?? message?.text ?? resolve(msg("Queued message")),
 -      attachments: message?.attachments ?? [],
 -      messageId: run.userMessageId,
 -      ...(message?.context ? { context: message.context } : {}),
@@ -1788,7 +1819,7 @@ index 1f50bff8e24684d1642c5de28497a1d7e40e80eb..5da954490a36dfc11ddca8c5faf6897e
 +      return {
 +        run,
 +        // A queued guest message shows the guest's words; the agent still gets the attributed text.
-+        text: message?.context?.guest?.text ?? message?.text ?? "Queued message",
++        text: message?.context?.guest?.text ?? message?.text ?? resolve(msg("Queued message")),
 +        attachments: message?.attachments ?? [],
 +        messageId: run.userMessageId,
 +        ...(message?.context ? { context: message.context } : {}),
@@ -1820,6 +1851,7 @@ index 1f50bff8e24684d1642c5de28497a1d7e40e80eb..5da954490a36dfc11ddca8c5faf6897e
 +    canPromoteToSteer,
 +    promoteSkipsCompaction,
 +    capabilities,
++    resolve,
    });
  
    return {
@@ -1843,13 +1875,13 @@ index 1f50bff8e24684d1642c5de28497a1d7e40e80eb..5da954490a36dfc11ddca8c5faf6897e
 +    canPromoteToSteer,
      promoteSkipsCompaction,
 +    sendAsOneBlockedReason: !queueIsContiguous
-+      ? "A notification is waiting between these messages."
++      ? resolve(msg("A notification is waiting between these messages."))
 +      : merged._tag === "Blocked"
-+        ? merged.reason
++        ? queuedMessageMergeReason(merged.reason, resolve)
 +        : canSendNow || promoteSkipsCompaction
 +          ? null
 +          : !canPromoteToSteer
-+            ? SEND_NOT_NOW_REASON
++            ? resolve(SEND_NOT_NOW_REASON)
 +            : capabilities === undefined || capabilities.supportsSteeringByInterruptRestart
 +              ? null
 +              : steerEachBlockedReason,
@@ -1867,12 +1899,15 @@ index 1f50bff8e24684d1642c5de28497a1d7e40e80eb..5da954490a36dfc11ddca8c5faf6897e
 +  readonly canPromoteToSteer: boolean;
 +  readonly promoteSkipsCompaction: boolean;
 +  readonly capabilities: ProviderSession["capabilities"]["turns"] | undefined;
++  readonly resolve: MFunctionType;
 +}): string | null {
-+  const { activeRun, capabilities } = input;
-+  if (!input.canPromoteToSteer || activeRun === null) return SEND_NOT_NOW_REASON;
-+  if (input.promoteSkipsCompaction) return "Send them as one to skip the compaction.";
++  const { activeRun, capabilities, resolve } = input;
++  if (!input.canPromoteToSteer || activeRun === null) return resolve(SEND_NOT_NOW_REASON);
++  if (input.promoteSkipsCompaction) return resolve(msg("Send them as one to skip the compaction."));
 +  if (capabilities?.supportsActiveSteering !== true) {
-+    return "This agent restarts its turn for every message. Send them as one instead.";
++    return resolve(
++      msg("This agent restarts its turn for every message. Send them as one instead."),
++    );
 +  }
 +  const joinsRunningTurn = ({ run, message, attachments }: QueuedThreadRun) =>
 +    run.freshContext !== true &&
@@ -1881,7 +1916,7 @@ index 1f50bff8e24684d1642c5de28497a1d7e40e80eb..5da954490a36dfc11ddca8c5faf6897e
 +    (attachments.length === 0 || capabilities.activeSteeringAcceptsAttachments !== false);
 +  return input.queuedRuns.every(joinsRunningTurn)
 +    ? null
-+    : "Some queued messages can't join the current turn.";
++    : resolve(msg("Some queued messages can't join the current turn."));
 +}
 +
  export function canForkProjectedAssistantItem(input: {
@@ -1900,10 +1935,10 @@ index eda5138b760b9b3d028d89d9b4b7a0c0b7c8075b..56f521670e72594a00b8737a97486206
    "thread.next",
    "thread.copyReference",
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index a297d92a444d42bb67ad7de419c4ebf2f8922255..b41e51d0b839e4b0ae5b8843253aaee49129b285 100644
+index 48ccf7c3f164179fa70962c58a480c370aca9d6e..7f54e812171f2bdfbe9e17a0887942412b25c86f 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
-@@ -3509,6 +3509,13 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3511,6 +3511,13 @@ export const OrchestrationV2Command = Schema.Union([
      // Replaces all attachments; absent preserves them for older clients editing text.
      attachments: Schema.optional(Schema.Array(ChatAttachment)),
    }),
@@ -1918,10 +1953,10 @@ index a297d92a444d42bb67ad7de419c4ebf2f8922255..b41e51d0b839e4b0ae5b8843253aaee4
      type: Schema.Literal("runtime-request.respond"),
      commandId: CommandId,
 diff --git a/packages/contracts/src/server.ts b/packages/contracts/src/server.ts
-index 6ba3a09f8053bbc671431f6247857a9e9bfccfe4..9437282591058afd0a5fffac2a604e66b6671008 100644
+index f1b8be4062c1ef3aa5a1b159f015d5d05c91b176..4f432bd92dee50cbf2c79482399ea529ff4108af 100644
 --- a/packages/contracts/src/server.ts
 +++ b/packages/contracts/src/server.ts
-@@ -725,6 +725,7 @@ export const ServerConfig = Schema.Struct({
+@@ -735,6 +735,7 @@ export const ServerConfig = Schema.Struct({
    threadSnapshotPagination: Schema.optionalKey(Schema.Boolean),
    threadFind: Schema.optionalKey(Schema.Boolean),
    threadFindProgressive: Schema.optionalKey(Schema.Boolean),
@@ -1930,16 +1965,20 @@ index 6ba3a09f8053bbc671431f6247857a9e9bfccfe4..9437282591058afd0a5fffac2a604e66
    secretProviderSettings: Schema.optionalKey(Schema.Boolean),
    /** Secret settings may point at a secret provider; older servers drop the reference. */
 diff --git a/packages/shared/package.json b/packages/shared/package.json
-index 3de18958220efb411cea74e7142fb195d6126aaf..87e16671e7a33fcfa494bfb5a10e3f62eb2424cb 100644
+index 781d1a4e125e1f630ecc0f900bfbea6a33b8cea6..df9c7fa18f45e652c60c5875167ff1dfae3521e0 100644
 --- a/packages/shared/package.json
 +++ b/packages/shared/package.json
-@@ -307,6 +307,10 @@
+@@ -307,6 +307,14 @@
        "types": "./src/composerContextReferences.ts",
        "import": "./src/composerContextReferences.ts"
      },
 +    "./queuedMessageMerge": {
 +      "types": "./src/queuedMessageMerge.ts",
 +      "import": "./src/queuedMessageMerge.ts"
++    },
++    "./queuedMessageMergeCopy": {
++      "types": "./src/queuedMessageMergeCopy.ts",
++      "import": "./src/queuedMessageMergeCopy.ts"
 +    },
      "./composerContextLegacy": {
        "types": "./src/composerContextLegacy.ts",
@@ -1973,10 +2012,10 @@ index babe1347cc056a3be1888bd40c74712fe096d77f..49f8863643415d9090c274c786022f7f
    if (trimmed.startsWith("Ultrathink:")) {
 diff --git a/packages/shared/src/queuedMessageMerge.ts b/packages/shared/src/queuedMessageMerge.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..177a32e59e6bc56945ff86b4fe9aff6883137326
+index 0000000000000000000000000000000000000000..c52be48659cac635c245ae19fb284b8846e9e332
 --- /dev/null
 +++ b/packages/shared/src/queuedMessageMerge.ts
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,153 @@
 +import {
 +  type ChatAttachment,
 +  COMPOSER_CONTEXT_MAX_RECORDS,
@@ -2029,6 +2068,20 @@ index 0000000000000000000000000000000000000000..177a32e59e6bc56945ff86b4fe9aff68
 +    }
 +  | { readonly _tag: "Blocked"; readonly reason: string };
 +
++export const QUEUED_MESSAGE_MERGE_REASONS = {
++  loading: "Some queued messages are still loading.",
++  guest: "A guest's message can't be combined with others.",
++  automation: "Messages from agents and automations are sent on their own.",
++  command: "Commands are sent on their own.",
++  freshContext: "A message that starts a fresh session is sent on its own.",
++  continuation: "Plan and continuation messages are sent on their own.",
++  models: "Queued messages use different models.",
++  tooFew: "Queue two or more messages to send them as one.",
++  sharedAttachment: "Queued messages share an attachment.",
++  conflictingContext: "Queued messages have conflicting context.",
++  tooMuchContext: "Queued messages carry too much context to send as one.",
++} as const;
++
 +const ULTRATHINK_PREFIX = /^Ultrathink:\s*/i;
 +
 +function partBlockedReason(
@@ -2036,9 +2089,9 @@ index 0000000000000000000000000000000000000000..177a32e59e6bc56945ff86b4fe9aff68
 +  first: QueuedMessageMergePart,
 +): string | null {
 +  const { run, message } = part;
-+  if (message === undefined) return "Some queued messages are still loading.";
++  if (message === undefined) return QUEUED_MESSAGE_MERGE_REASONS.loading;
 +  if (message.context?.guest !== undefined) {
-+    return "A guest's message can't be combined with others.";
++    return QUEUED_MESSAGE_MERGE_REASONS.guest;
 +  }
 +  if (
 +    message.createdBy !== "user" ||
@@ -2049,21 +2102,21 @@ index 0000000000000000000000000000000000000000..177a32e59e6bc56945ff86b4fe9aff68
 +    message.delegatedCompletion !== undefined ||
 +    message.notification !== undefined
 +  ) {
-+    return "Messages from agents and automations are sent on their own.";
++    return QUEUED_MESSAGE_MERGE_REASONS.automation;
 +  }
-+  if (isSlashCommandText(message.text)) return "Commands are sent on their own.";
++  if (isSlashCommandText(message.text)) return QUEUED_MESSAGE_MERGE_REASONS.command;
 +  if (run.freshContext === true) {
-+    return "A message that starts a fresh session is sent on its own.";
++    return QUEUED_MESSAGE_MERGE_REASONS.freshContext;
 +  }
 +  if (
 +    run.sourcePlanRef !== undefined ||
 +    run.restartContinuationOfRunId !== undefined ||
 +    run.usageLimitContinuationOfRunId !== undefined
 +  ) {
-+    return "Plan and continuation messages are sent on their own.";
++    return QUEUED_MESSAGE_MERGE_REASONS.continuation;
 +  }
 +  if (!modelSelectionsEqual(run.modelSelection, first.run.modelSelection)) {
-+    return "Queued messages use different models.";
++    return QUEUED_MESSAGE_MERGE_REASONS.models;
 +  }
 +  return null;
 +}
@@ -2073,7 +2126,7 @@ index 0000000000000000000000000000000000000000..177a32e59e6bc56945ff86b4fe9aff68
 +): QueuedMessageMerge {
 +  const first = parts[0];
 +  if (first === undefined || parts.length < 2) {
-+    return { _tag: "Blocked", reason: "Queue two or more messages to send them as one." };
++    return { _tag: "Blocked", reason: QUEUED_MESSAGE_MERGE_REASONS.tooFew };
 +  }
 +  for (const part of parts) {
 +    const reason = partBlockedReason(part, first);
@@ -2082,7 +2135,7 @@ index 0000000000000000000000000000000000000000..177a32e59e6bc56945ff86b4fe9aff68
 +  const messages = parts.flatMap(({ message }) => (message === undefined ? [] : [message]));
 +  const attachments = messages.flatMap((message) => message.attachments);
 +  if (new Set(attachments.map((attachment) => attachment.id)).size !== attachments.length) {
-+    return { _tag: "Blocked", reason: "Queued messages share an attachment." };
++    return { _tag: "Blocked", reason: QUEUED_MESSAGE_MERGE_REASONS.sharedAttachment };
 +  }
 +  const attachmentLimitError = getProviderAttachmentLimitError(attachments);
 +  if (attachmentLimitError !== undefined) return { _tag: "Blocked", reason: attachmentLimitError };
@@ -2090,13 +2143,13 @@ index 0000000000000000000000000000000000000000..177a32e59e6bc56945ff86b4fe9aff68
 +  for (const record of messages.flatMap((message) => message.context?.records ?? [])) {
 +    const previous = recordsById.get(record.contextId);
 +    if (previous !== undefined && !Equal.equals(previous, record)) {
-+      return { _tag: "Blocked", reason: "Queued messages have conflicting context." };
++      return { _tag: "Blocked", reason: QUEUED_MESSAGE_MERGE_REASONS.conflictingContext };
 +    }
 +    recordsById.set(record.contextId, record);
 +  }
 +  const records = [...recordsById.values()];
 +  if (records.length > COMPOSER_CONTEXT_MAX_RECORDS) {
-+    return { _tag: "Blocked", reason: "Queued messages carry too much context to send as one." };
++    return { _tag: "Blocked", reason: QUEUED_MESSAGE_MERGE_REASONS.tooMuchContext };
 +  }
 +  const ultrathink = messages.some((message) => ULTRATHINK_PREFIX.test(message.text));
 +  const body = messages
@@ -2115,4 +2168,38 @@ index 0000000000000000000000000000000000000000..177a32e59e6bc56945ff86b4fe9aff68
 +      ? { version: 1, records }
 +      : undefined,
 +  };
++}
+diff --git a/packages/shared/src/queuedMessageMergeCopy.ts b/packages/shared/src/queuedMessageMergeCopy.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d1f959effb015f8cccd1dcfd808ea73939ba5d33
+--- /dev/null
++++ b/packages/shared/src/queuedMessageMergeCopy.ts
+@@ -0,0 +1,28 @@
++import { mFallback, msg } from "gt-i18n";
++import type { MFunctionType } from "gt-i18n/types";
++
++import { QUEUED_MESSAGE_MERGE_REASONS } from "./queuedMessageMerge.ts";
++
++const REASON_COPY: Readonly<Record<keyof typeof QUEUED_MESSAGE_MERGE_REASONS, string>> = {
++  loading: msg("Some queued messages are still loading."),
++  guest: msg("A guest's message can't be combined with others."),
++  automation: msg("Messages from agents and automations are sent on their own."),
++  command: msg("Commands are sent on their own."),
++  freshContext: msg("A message that starts a fresh session is sent on its own."),
++  continuation: msg("Plan and continuation messages are sent on their own."),
++  models: msg("Queued messages use different models."),
++  tooFew: msg("Queue two or more messages to send them as one."),
++  sharedAttachment: msg("Queued messages share an attachment."),
++  conflictingContext: msg("Queued messages have conflicting context."),
++  tooMuchContext: msg("Queued messages carry too much context to send as one."),
++};
++
++export function queuedMessageMergeReason(
++  reason: string,
++  resolve: MFunctionType = mFallback,
++): string {
++  const key = (
++    Object.keys(QUEUED_MESSAGE_MERGE_REASONS) as Array<keyof typeof QUEUED_MESSAGE_MERGE_REASONS>
++  ).find((candidate) => QUEUED_MESSAGE_MERGE_REASONS[candidate] === reason);
++  return key === undefined ? reason : resolve(REASON_COPY[key]);
 +}

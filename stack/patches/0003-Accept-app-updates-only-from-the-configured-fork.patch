@@ -47,6 +47,8 @@ Port to 6b7027b1f4:
 Port to 6b134a7add:
 - DesktopUpdates.ts: upstream #37476 (83f35dac5c) turns downloadAvailableUpdate into a function that can re-check the feed before downloading, and install now re-checks and downloads a newer release than the retained one. The feed refusal stays the first step of downloadAvailableUpdate, ahead of admission and that re-check, and the refusal right before electronUpdater.downloadUpdate is unchanged; the install-time re-check goes through checkForUpdates, which refuses a foreign feed, and both install rechecks stay. Startup recovery now installs the version the download fetched; its fork release links are unchanged.
 
+Port to b6ac2449f1: the web copy this commit adds follows upstream's translation (055b44919e) with its English unchanged: the configured-repository track-switch and release-check messages use gt() and resolve(msg()), the disabled-updates tooltip resolve(msg()), the About and sidebar install errors gt() and m(msg()), and the missing-track refusal in updateTrackSwitch.logic.ts m(msg()). installLocalUpdate still reports a refused install before the not-accepted branch. Upstream's desktopUpdate.logic.ts now imports GT, so the release-link helpers move to the GT-free apps/web/src/lib/desktopReleaseLinks.ts (re-exported from desktopUpdate.logic.ts) and the renderer boot-failure page imports them from there; bundledDev.test.ts copies that module into its bootstrap bundle. Desktop main-process refusal messages stay English, like upstream's own DesktopUpdates messages. Upstream 3ce2145864 (#29399) updates the fx provider CLI only and adds no T3 Code update path.
+
 Files:
 .github:
 - .github/workflows/release-desktop.yml
@@ -127,28 +129,30 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .../desktop/src/updates/updatesTestHarness.ts |  24 +-
  apps/desktop/vite.config.test.ts              |  30 ++
  apps/desktop/vite.config.ts                   |   5 +
- apps/web/src/bundledDev.test.ts               |   8 +-
+ apps/web/src/bundledDev.test.ts               |   7 +-
  .../components/desktopUpdate.logic.test.ts    |  52 ++-
- .../web/src/components/desktopUpdate.logic.ts |  30 +-
+ .../web/src/components/desktopUpdate.logic.ts |  52 +--
  .../components/settings/SettingsPanels.tsx    |  12 +
- .../settings/UpdateTrackSwitchDialog.tsx      |   5 +-
+ .../settings/UpdateTrackSwitchDialog.tsx      |  16 +-
  .../settings/updateTrackSwitch.logic.test.ts  |   8 +-
- .../settings/updateTrackSwitch.logic.ts       |   3 +
+ .../settings/updateTrackSwitch.logic.ts       |   6 +
  .../components/sidebar/SidebarUpdatePill.tsx  |  12 +-
  apps/web/src/lib/bootError.ts                 |   5 +-
+ apps/web/src/lib/desktopReleaseLinks.ts       |  47 ++
  apps/web/src/state/npmRelease.test.ts         |  96 +++-
- apps/web/src/state/npmRelease.ts              |  51 +-
+ apps/web/src/state/npmRelease.ts              |  57 ++-
  apps/web/src/vite-env.d.ts                    |   1 +
  apps/web/vite.config.ts                       |   5 +
  scripts/build-desktop-artifact.test.ts        |  64 +++
  scripts/build-desktop-artifact.ts             |  15 +-
  scripts/verify-fork-update-feed.test.ts       |  37 ++
  scripts/verify-fork-update-feed.ts            |  36 ++
- 32 files changed, 1538 insertions(+), 41 deletions(-)
+ 33 files changed, 1587 insertions(+), 80 deletions(-)
  create mode 100644 .github/workflows/release-fork.yml
  create mode 100644 apps/desktop/src/updates/forkFeedPolicy.test.ts
  create mode 100644 apps/desktop/src/updates/forkUpdateProvider.test.ts
  create mode 100644 apps/desktop/vite.config.test.ts
+ create mode 100644 apps/web/src/lib/desktopReleaseLinks.ts
  create mode 100644 scripts/verify-fork-update-feed.test.ts
  create mode 100644 scripts/verify-fork-update-feed.ts
 
@@ -656,10 +660,10 @@ index 5d407feff79d1eb69a38bec0670e007286cb83a2..3eb93121d420ea01811a620aea6ddf63
  });
  
 diff --git a/apps/desktop/src/app/DesktopStartupRecovery.ts b/apps/desktop/src/app/DesktopStartupRecovery.ts
-index 769a30cf7680bc0a3594fa3e5231e2b7a30379b9..52fca851374842bfc0c0ca0ca50ceb5bb24dc297 100644
+index 768fe2ee3d8d38bf9c1e21cfb850cccfe9e11825..6c425536ebcf2798971b46d8246a98d1eae29dfe 100644
 --- a/apps/desktop/src/app/DesktopStartupRecovery.ts
 +++ b/apps/desktop/src/app/DesktopStartupRecovery.ts
-@@ -18,7 +18,16 @@ import * as DesktopEnvironment from "./DesktopEnvironment.ts";
+@@ -20,7 +20,16 @@ import * as DesktopEnvironment from "./DesktopEnvironment.ts";
  import * as DesktopObservability from "./DesktopObservability.ts";
  import * as DesktopState from "./DesktopState.ts";
  
@@ -677,7 +681,7 @@ index 769a30cf7680bc0a3594fa3e5231e2b7a30379b9..52fca851374842bfc0c0ca0ca50ceb5b
  const LAST_STARTED_VERSION_FILE = "desktop-last-started-version";
  // Buttons are plain links to this host; will-navigate cancels them and runs the action.
  const ACTION_ORIGIN = "https://startup-recovery.invalid";
-@@ -225,11 +234,11 @@ export const listen: Effect.Effect<
+@@ -257,11 +266,11 @@ export const listen: Effect.Effect<
        }
        case "reinstall":
          if (current._tag === "Reinstall") {
@@ -1636,21 +1640,19 @@ index 3e6fd9531106bdfca01438e0cd2f7178bfd82bd5..8216a8fb620706237406df5b0c53f2eb
      repoEnv.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() ?? "",
    ),
 diff --git a/apps/web/src/bundledDev.test.ts b/apps/web/src/bundledDev.test.ts
-index 770b26e0a686b75139c3c4e87f33e34e6a211f3d..7faf63b77e22f93cfdf9ee357013913cbf8f1512 100644
+index 770b26e0a686b75139c3c4e87f33e34e6a211f3d..7c6fb1b2348d5f20a8b737b401090fe8631bed8b 100644
 --- a/apps/web/src/bundledDev.test.ts
 +++ b/apps/web/src/bundledDev.test.ts
-@@ -25,8 +25,14 @@ it("initializes React refresh before a shared UI chunk runs in bundled dev", asy
- 
+@@ -26,7 +26,12 @@ it("initializes React refresh before a shared UI chunk runs in bundled dev", asy
    try {
      await NodeFSP.mkdir(NodePath.join(root, "src/lib"), { recursive: true });
-+    await NodeFSP.mkdir(NodePath.join(root, "src/components"), { recursive: true });
      await NodeFSP.writeFile(NodePath.join(root, "package.json"), '{"type":"module"}');
 -    for (const file of ["index.html", "src/bootstrap.ts", "src/lib/bootError.ts"]) {
 +    for (const file of [
 +      "index.html",
 +      "src/bootstrap.ts",
 +      "src/lib/bootError.ts",
-+      "src/components/desktopUpdate.logic.ts",
++      "src/lib/desktopReleaseLinks.ts",
 +    ]) {
        await NodeFSP.copyFile(new URL(`../${file}`, import.meta.url), NodePath.join(root, file));
      }
@@ -1735,49 +1737,60 @@ index eb5bacd37f828036a6bc70a10d3654bf61af428c..e2514504988334edf9ed4f2d5dacdd61
    it.each(["owner/repo/extra", "owner#notes/repo", "owner/repo?tab=notes"])(
      "falls back to upstream for an invalid configured repository: %s",
 diff --git a/apps/web/src/components/desktopUpdate.logic.ts b/apps/web/src/components/desktopUpdate.logic.ts
-index b658de77e19ff0fcb5381a73adfac532d22afac9..6ec0a5f5977d3a8b9ecd51b0499a748a2b8d56ce 100644
+index b6018a592c0ff621dd21c0cdbb3f3fdd3920c6df..816393a113cc908d65a7e85a8ceff494efd67a30 100644
 --- a/apps/web/src/components/desktopUpdate.logic.ts
 +++ b/apps/web/src/components/desktopUpdate.logic.ts
-@@ -21,6 +21,12 @@ function desktopReleaseRepositoryUrl(repository: string | undefined): string {
-   return `https://github.com/${releaseRepository}/releases`;
- }
+@@ -3,50 +3,23 @@ import { msg } from "gt-react";
  
-+function configuredDesktopReleaseRepository() {
-+  return (
-+    import.meta.env.T3CODE_RELEASE_REPOSITORY || import.meta.env.T3CODE_DESKTOP_UPDATE_REPOSITORY
-+  );
-+}
-+
+ import { m, type MessageResolver } from "../i18n/messages";
+ 
+-export type DesktopUpdateButtonAction = "download" | "install" | "none";
+-
+-const DEFAULT_DESKTOP_RELEASE_REPOSITORY = "pingdotgg/t3code";
+-const GITHUB_REPOSITORY_SEGMENT = /^[A-Za-z0-9._-]+$/u;
++export {
++  getDesktopUpdateDownloadUrl,
++  getDesktopUpdateReleaseHistoryUrl,
++  getDesktopUpdateReleaseUrl,
++} from "../lib/desktopReleaseLinks";
+ 
+-function isValidRepositorySegment(value: string | undefined): value is string {
+-  return (
+-    value !== undefined && value !== "." && value !== ".." && GITHUB_REPOSITORY_SEGMENT.test(value)
+-  );
+-}
+-
+-function desktopReleaseRepositoryUrl(repository: string | undefined): string {
+-  const configuredRepository = repository?.trim() ?? "";
+-  const [owner, name, ...extra] = configuredRepository.split("/");
+-  const releaseRepository =
+-    isValidRepositorySegment(owner) && isValidRepositorySegment(name) && extra.length === 0
+-      ? configuredRepository
+-      : DEFAULT_DESKTOP_RELEASE_REPOSITORY;
+-  return `https://github.com/${releaseRepository}/releases`;
+-}
++export type DesktopUpdateButtonAction = "download" | "install" | "none";
+ 
  /** The download RPC can beat the updater's downloadedVersion event; fall back to the requested version. */
  export function getDesktopUpdateDownloadedVersion(state: DesktopUpdateState): string | null {
    return state.downloadedVersion ?? state.availableVersion;
-@@ -28,7 +34,7 @@ export function getDesktopUpdateDownloadedVersion(state: DesktopUpdateState): st
- 
- export function getDesktopUpdateReleaseUrl(
-   version: string | null,
--  repository: string | undefined = import.meta.env.T3CODE_DESKTOP_UPDATE_REPOSITORY,
-+  repository: string | undefined = configuredDesktopReleaseRepository(),
- ): string | null {
-   const normalizedVersion = version?.trim();
-   if (!normalizedVersion) return null;
-@@ -36,14 +42,23 @@ export function getDesktopUpdateReleaseUrl(
  }
  
- export function getDesktopUpdateReleaseHistoryUrl(
+-export function getDesktopUpdateReleaseUrl(
+-  version: string | null,
 -  repository: string | undefined = import.meta.env.T3CODE_DESKTOP_UPDATE_REPOSITORY,
-+  repository: string | undefined = configuredDesktopReleaseRepository(),
- ): string {
-   return desktopReleaseRepositoryUrl(repository);
- }
- 
-+export function getDesktopUpdateDownloadUrl(
-+  channel: string,
-+  repository: string | undefined = configuredDesktopReleaseRepository(),
-+): string {
-+  if (repository?.trim()) return getDesktopUpdateReleaseHistoryUrl(repository);
-+  return `https://t3.codes/download${channel === "nightly" ? "?channel=nightly" : ""}`;
-+}
-+
+-): string | null {
+-  const normalizedVersion = version?.trim();
+-  if (!normalizedVersion) return null;
+-  return `${desktopReleaseRepositoryUrl(repository)}/tag/v${encodeURIComponent(normalizedVersion)}`;
+-}
+-
+-export function getDesktopUpdateReleaseHistoryUrl(
+-  repository: string | undefined = import.meta.env.T3CODE_DESKTOP_UPDATE_REPOSITORY,
+-): string {
+-  return desktopReleaseRepositoryUrl(repository);
+-}
+-
  export function resolveDesktopUpdateButtonAction(
    state: DesktopUpdateState,
  ): DesktopUpdateButtonAction {
@@ -1785,7 +1798,7 @@ index b658de77e19ff0fcb5381a73adfac532d22afac9..6ec0a5f5977d3a8b9ecd51b0499a748a
    if (
      state.downloadedVersion &&
      (state.status === "downloaded" ||
-@@ -68,7 +83,10 @@ export function shouldShowArm64IntelBuildWarning(state: DesktopUpdateState | nul
+@@ -71,7 +44,10 @@ export function shouldShowArm64IntelBuildWarning(state: DesktopUpdateState | nul
  }
  
  export function isDesktopUpdateButtonDisabled(state: DesktopUpdateState | null): boolean {
@@ -1796,18 +1809,18 @@ index b658de77e19ff0fcb5381a73adfac532d22afac9..6ec0a5f5977d3a8b9ecd51b0499a748a
 +  );
  }
  
- export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState): string {
-@@ -87,6 +105,9 @@ export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState):
- }
- 
- export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string {
+ export function getArm64IntelBuildWarningDescription(
+@@ -108,6 +84,9 @@ export function getDesktopUpdateButtonTooltip(
+   state: DesktopUpdateState,
+   resolve: MessageResolver = m,
+ ): string {
 +  if (!state.enabled || state.status === "disabled") {
-+    return state.message ?? "Automatic updates are not available in this build.";
++    return state.message ?? resolve(msg("Automatic updates are not available in this build."));
 +  }
    if (
      state.notAppliedVersion !== undefined &&
      (state.status === "available" || state.status === "downloaded") &&
-@@ -132,7 +153,8 @@ export function getDesktopUpdateInstallConfirmationMessage(
+@@ -182,7 +161,8 @@ export function getDesktopUpdateInstallConfirmationMessage(
  }
  
  export function getDesktopUpdateActionError(result: DesktopUpdateActionResult): string | null {
@@ -1818,10 +1831,10 @@ index b658de77e19ff0fcb5381a73adfac532d22afac9..6ec0a5f5977d3a8b9ecd51b0499a748a
    const message = result.state.message.trim();
    return message.length > 0 ? message : null;
 diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
-index c7fa7b4c08c4711da97fbedb61f64e1ee1906d27..2f1d2ed5d29fecc47f149826680dbb99f9ce5b8d 100644
+index e0a12417848fa097a20dd7309b5e3c8467a95bf5..25664036163153971d3c095e95057cce61216afa 100644
 --- a/apps/web/src/components/settings/SettingsPanels.tsx
 +++ b/apps/web/src/components/settings/SettingsPanels.tsx
-@@ -37,6 +37,7 @@ import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
+@@ -42,6 +42,7 @@ import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
  import { MobileAppSettingsRow } from "./MobileAppSettingsRow";
  import {
    canCheckForUpdate,
@@ -1829,7 +1842,7 @@ index c7fa7b4c08c4711da97fbedb61f64e1ee1906d27..2f1d2ed5d29fecc47f149826680dbb99
    getDesktopUpdateButtonTooltip,
    getDesktopUpdateDisabledReason,
    getDesktopUpdateInstallConfirmationMessage,
-@@ -244,6 +245,17 @@ function AboutVersionSection() {
+@@ -257,6 +258,17 @@ function AboutVersionSection() {
        }
        void bridge
          .installUpdate()
@@ -1839,7 +1852,7 @@ index c7fa7b4c08c4711da97fbedb61f64e1ee1906d27..2f1d2ed5d29fecc47f149826680dbb99
 +            toastManager.add(
 +              stackedThreadToast({
 +                type: "error",
-+                title: "Could not install update",
++                title: gt("Could not install update"),
 +                description: message,
 +              }),
 +            );
@@ -1848,26 +1861,37 @@ index c7fa7b4c08c4711da97fbedb61f64e1ee1906d27..2f1d2ed5d29fecc47f149826680dbb99
            toastManager.add(
              stackedThreadToast({
 diff --git a/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx b/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx
-index a701039f374efb779c9b2b782e056ddc03be805c..3de09de7fb3e6c6b4aae7f8810ea74906041c2eb 100644
+index fd844977b81f5c9e1ed191152c6cb5fc5b784f0c..b2e211c6a45ace0a59ba9af0e2b47de6b11c2ea4 100644
 --- a/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx
 +++ b/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx
-@@ -44,7 +44,6 @@ export function UpdateTrackSwitchDialog({
-   readonly channel: DesktopUpdateChannel;
-   readonly onClose: () => void;
+@@ -49,7 +49,6 @@ export function UpdateTrackSwitchDialog({
  }) {
+   const gt = useGT();
+   const m = useMessages();
 -  // npm dist-tags match the desktop channel names.
    const release = useAtomValue(npmReleaseAtom(channel));
    if (AsyncResult.isSuccess(release) && release.value !== null) {
      return <SwitchPlan release={{ channel, ...release.value }} onClose={onClose} />;
-@@ -59,7 +58,9 @@ export function UpdateTrackSwitchDialog({
+@@ -68,12 +67,15 @@ export function UpdateTrackSwitchDialog({
              {AsyncResult.isFailure(release)
-               ? npmReleaseFailureMessage(release.cause)
+               ? npmReleaseFailureMessage(release.cause, m)
                : AsyncResult.isSuccess(release)
--                ? `Could not find the latest ${label} release in this environment's npm registry.`
+-                ? gt(
+-                    "Could not find the latest {label} release in this environment's npm registry.",
+-                    {
+-                      label,
+-                    },
+-                  )
 +                ? import.meta.env.T3CODE_RELEASE_REPOSITORY?.trim()
-+                  ? `Could not find the latest ${label} release in this build's configured repository.`
-+                  : `Could not find the latest ${label} release in this environment's npm registry.`
-                 : "Checking releases…"}
++                  ? gt(
++                      "Could not find the latest {label} release in this build's configured repository.",
++                      { label },
++                    )
++                  : gt(
++                      "Could not find the latest {label} release in this environment's npm registry.",
++                      { label },
++                    )
+                 : gt("Checking releases…")}
            </AlertDialogDescription>
          </AlertDialogHeader>
 diff --git a/apps/web/src/components/settings/updateTrackSwitch.logic.test.ts b/apps/web/src/components/settings/updateTrackSwitch.logic.test.ts
@@ -1904,30 +1928,33 @@ index 2543304ef0519f36faa66a90206a2ce7d039fe22..cbfc7f20b6dfb58cc55f7ff21f586e2b
        ok: false,
        message: "feed check failed",
 diff --git a/apps/web/src/components/settings/updateTrackSwitch.logic.ts b/apps/web/src/components/settings/updateTrackSwitch.logic.ts
-index 06a26fa7593b74528627feb76ccd033d44d94ac4..4d5d77c422fc2247d0dde8274db3412fecf29c32 100644
+index 1a961de85c5c2c5edb1566caf9a911fbd4db2ae3..d79f3a305be595122a964eefca427b2cfc85e3f9 100644
 --- a/apps/web/src/components/settings/updateTrackSwitch.logic.ts
 +++ b/apps/web/src/components/settings/updateTrackSwitch.logic.ts
-@@ -31,6 +31,9 @@ export async function prepareLocalTrackSwitch(
-       message: error instanceof Error ? error.message : "The update track did not change.",
+@@ -38,6 +38,12 @@ export async function prepareLocalTrackSwitch(
+           : m(msg("The update track did not change.")),
      };
    }
 +  if (local.channel !== input.channel) {
-+    return { ok: false, message: "This build does not offer the requested update track." };
++    return {
++      ok: false,
++      message: m(msg("This build does not offer the requested update track.")),
++    };
 +  }
    if (!input.reinstall) return { ok: true, local: null };
    const found = local.downloadedVersion ?? local.availableVersion;
    if (
 diff --git a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
-index 5df8007ef46772d7efc2b8c3389bb945c74e3502..530c7cae454728c0691fa60b3691d05321521b96 100644
+index ce45fe8bf73a4ce5f5596213052e8eae55467c87..317d35436dea47991e5ed7450731da674ee616ef 100644
 --- a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
 +++ b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
-@@ -173,16 +173,16 @@ export async function installLocalUpdate(
+@@ -177,16 +177,16 @@ export async function installLocalUpdate(
  ): Promise<boolean> {
    try {
      const result = await bridge.installUpdate(expectedVersion);
 +    const actionError = getDesktopUpdateActionError(result);
 +    if (actionError) {
-+      reportError("Could not install update", actionError);
++      reportError(m(msg("Could not install update")), actionError);
 +      return false;
 +    }
      if (!result.accepted) {
@@ -1938,27 +1965,27 @@ index 5df8007ef46772d7efc2b8c3389bb945c74e3502..530c7cae454728c0691fa60b3691d053
 -      ? getDesktopUpdateActionError(result)
 -      : null;
 -    if (!actionError) return true;
--    reportError("Could not install update", actionError);
+-    reportError(m(msg("Could not install update")), actionError);
 -    return false;
 +    return true;
    } catch (error) {
      reportError(
-       "Could not install update",
+       m(msg("Could not install update")),
 diff --git a/apps/web/src/lib/bootError.ts b/apps/web/src/lib/bootError.ts
-index 3e0b05a0164fe061229a46862822a9fc60160d22..4b61106c918d05ba7cdfa40ca44aece327dcedf0 100644
+index 49fd3aec52ca984fc19ce03c2d111fa225a7a41a..b6494976d4c80ee1baabc82b1c7e4316e3990123 100644
 --- a/apps/web/src/lib/bootError.ts
 +++ b/apps/web/src/lib/bootError.ts
 @@ -1,7 +1,8 @@
  import type { DesktopBridge, DesktopUpdateState } from "@t3tools/contracts";
  
-+import { getDesktopUpdateDownloadUrl } from "../components/desktopUpdate.logic";
++import { getDesktopUpdateDownloadUrl } from "./desktopReleaseLinks";
 +
  const FALLBACK_TRIAGE_COMMAND = "npx t3 triage";
 -const DOWNLOAD_URL = "https://t3.codes/download";
  const ISSUE_URL = "https://github.com/pingdotgg/t3code/issues/new";
  const LAST_FAILURE_KEY = "t3code:boot-failed-at";
  const REPEAT_FAILURE_MS = 5 * 60_000;
-@@ -357,7 +358,7 @@ export function showBootError(error: unknown) {
+@@ -362,7 +363,7 @@ export function showBootError(error: unknown) {
      ...(bridge
        ? [
            link(
@@ -1967,6 +1994,59 @@ index 3e0b05a0164fe061229a46862822a9fc60160d22..4b61106c918d05ba7cdfa40ca44aece3
              nightly
                ? "Download and reinstall the latest nightly build"
                : "Download and reinstall T3 Code",
+diff --git a/apps/web/src/lib/desktopReleaseLinks.ts b/apps/web/src/lib/desktopReleaseLinks.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..486596c62fee8ed8dd10b389d069b6dd7eb0b0a9
+--- /dev/null
++++ b/apps/web/src/lib/desktopReleaseLinks.ts
+@@ -0,0 +1,47 @@
++const DEFAULT_DESKTOP_RELEASE_REPOSITORY = "pingdotgg/t3code";
++const GITHUB_REPOSITORY_SEGMENT = /^[A-Za-z0-9._-]+$/u;
++
++function isValidRepositorySegment(value: string | undefined): value is string {
++  return (
++    value !== undefined && value !== "." && value !== ".." && GITHUB_REPOSITORY_SEGMENT.test(value)
++  );
++}
++
++function desktopReleaseRepositoryUrl(repository: string | undefined): string {
++  const configuredRepository = repository?.trim() ?? "";
++  const [owner, name, ...extra] = configuredRepository.split("/");
++  const releaseRepository =
++    isValidRepositorySegment(owner) && isValidRepositorySegment(name) && extra.length === 0
++      ? configuredRepository
++      : DEFAULT_DESKTOP_RELEASE_REPOSITORY;
++  return `https://github.com/${releaseRepository}/releases`;
++}
++
++function configuredDesktopReleaseRepository() {
++  return (
++    import.meta.env.T3CODE_RELEASE_REPOSITORY || import.meta.env.T3CODE_DESKTOP_UPDATE_REPOSITORY
++  );
++}
++
++export function getDesktopUpdateReleaseUrl(
++  version: string | null,
++  repository: string | undefined = configuredDesktopReleaseRepository(),
++): string | null {
++  const normalizedVersion = version?.trim();
++  if (!normalizedVersion) return null;
++  return `${desktopReleaseRepositoryUrl(repository)}/tag/v${encodeURIComponent(normalizedVersion)}`;
++}
++
++export function getDesktopUpdateReleaseHistoryUrl(
++  repository: string | undefined = configuredDesktopReleaseRepository(),
++): string {
++  return desktopReleaseRepositoryUrl(repository);
++}
++
++export function getDesktopUpdateDownloadUrl(
++  channel: string,
++  repository: string | undefined = configuredDesktopReleaseRepository(),
++): string {
++  if (repository?.trim()) return getDesktopUpdateReleaseHistoryUrl(repository);
++  return `https://t3.codes/download${channel === "nightly" ? "?channel=nightly" : ""}`;
++}
 diff --git a/apps/web/src/state/npmRelease.test.ts b/apps/web/src/state/npmRelease.test.ts
 index d11ef8d76985b838ba0405ef9b64fc1c0f4ac7e5..001d0f4eb2e4f388b8e31557886e5acfad866f50 100644
 --- a/apps/web/src/state/npmRelease.test.ts
@@ -2100,7 +2180,7 @@ index d11ef8d76985b838ba0405ef9b64fc1c0f4ac7e5..001d0f4eb2e4f388b8e31557886e5acf
 +    }),
 +);
 diff --git a/apps/web/src/state/npmRelease.ts b/apps/web/src/state/npmRelease.ts
-index 2e8159c0b9b88d8c3344f15d8dc92bf22bbcd74d..dd3b7acc3f43db581cbed3372dda4f7230db3811 100644
+index 0cf2327d9c6f7331c2b1b9c0954ceb7f306c5391..f5191609482e0d96635585c1bbf6e6c6c7da4a1d 100644
 --- a/apps/web/src/state/npmRelease.ts
 +++ b/apps/web/src/state/npmRelease.ts
 @@ -1,4 +1,6 @@
@@ -2110,14 +2190,21 @@ index 2e8159c0b9b88d8c3344f15d8dc92bf22bbcd74d..dd3b7acc3f43db581cbed3372dda4f72
  import * as Cause from "effect/Cause";
  import * as Effect from "effect/Effect";
  import * as Option from "effect/Option";
-@@ -26,11 +28,58 @@ export function npmReleaseFailureMessage(cause: Cause.Cause<unknown>): string {
-   const error = Option.getOrUndefined(Cause.findErrorOption(cause));
+@@ -37,14 +39,63 @@ export function npmReleaseFailureMessage(
    return isServerNpmReleaseError(error)
      ? error.message
--    : "Could not check this environment's npm registry. Check the connection and registry settings.";
-+    : import.meta.env.T3CODE_RELEASE_REPOSITORY?.trim()
-+      ? "Could not check this build's configured release repository. Check the connection and try again."
-+      : "Could not check this environment's npm registry. Check the connection and registry settings.";
+     : resolve(
+-        msg(
+-          "Could not check this environment's npm registry. Check the connection and registry settings.",
+-        ),
++        import.meta.env.T3CODE_RELEASE_REPOSITORY?.trim()
++          ? msg(
++              "Could not check this build's configured release repository. Check the connection and try again.",
++            )
++          : msg(
++              "Could not check this environment's npm registry. Check the connection and registry settings.",
++            ),
+       );
  }
  
 +const ForkRelease = Schema.Struct({
