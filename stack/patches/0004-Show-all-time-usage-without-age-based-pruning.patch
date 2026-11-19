@@ -12,7 +12,7 @@ Durable usage history:
 - Keep scanned usage history with no age limit by default: a missing usageHistoryRetentionDays decodes to "unlimited", so the retention cutoff is epoch zero and nothing is pruned; retain already scanned records even when original transcripts disappear, and keep their directories discoverable for aggregation. An explicitly configured number of days still prunes through upstream's setting.
 - Preserve existing source aggregation and deduplication, reuse cached record arrays when no tail is present, and cooperatively yield every 1000 cache entries/records during large scans.
 
-With the default, the provider reader contract and the Cursor account cache receive an epoch-zero retention cutoff; verify all-time Cursor fetch, refresh and restart.
+With the default, the provider reader contract receives an epoch-zero retention cutoff; the Cursor account cache reads back to 2023-01-01, before which no Cursor usage exists, whenever the retention start would be earlier; verify all-time Cursor fetch, refresh and restart.
 
 All-time web/desktop range:
 - Add a persisted all-time range using a 1970-01-01 query start, support it in both period controls and refresh behavior, and trim chart enumeration to the earliest returned usage day or today for empty results.
@@ -55,9 +55,17 @@ Port to 25875c11b2: Upstream #28111 (428d365932) adds the usageHistoryRetentionD
 
 Port to b6ac2449f1: the All period follows upstream's translation (055b44919e): its label is msg("All") and its shortcut title resolves through useMessages, and "All time" and the range label use gt() with upstream's locale-aware "{start} to {end}". Upstream's keybinding label table is keyed by usage commands, so its key type drops the All option's undefined command.
 
+Port to b6ac2449f1: upstream 52f0f8afb8 (#38567) makes CursorUsageAccounts.refreshAccount read a large account in pieces, halving the span down to CURSOR_MIN_FETCH_SPAN_MS after a failed read and looping until the cache reaches the retention start. With this commit's epoch-zero default (and upstream's "unlimited") that walk heads back toward 1970 and does not finish.
+- packages/provider-cursor: CursorUsageAccounts.scan raises the retention start to CURSOR_HISTORY_START_MS = 2023-01-01T00:00:00Z (accountCache.ts) whenever it would be earlier. Cursor's first release came out in March 2023, and the reader asks GetFilteredUsageEvents for startDate/endDate in epoch milliseconds, so no Cursor usage event predates the floor; the start of 2023 leaves a margin before the launch. A number of days whose cutoff falls after the floor keeps upstream's cutoff; a very large one (36500 days) gets the floor like "unlimited". All-time usage stays all-time: transcript readers still get epoch zero, and the window filter is unchanged.
+- Cached Cursor records are pruned only below the floor, where Cursor has none. An existing cache whose sinceMs is 0 counts as complete (0 is before the floor), its next top-up keeps every record and records the floor as its sinceMs.
+- UsageService.test.ts: upstream's "loads Cursor history that cannot be read in one request within the deadline" is pinned to usageHistoryRetentionDays 92. Its fake read fails above 12 hours and its loop allows 10 refreshes, enough to halve down from 92 days but not from the 2023 floor (about 12 halvings, then thousands of reads at the narrowed span), so under the fork default it would test the all-time depth instead of the piecewise read. The new "loads all-time Cursor history too large for one read down to its start" keeps the default setting, fails reads wider than 100 days, and requires all three records, an ok source, the earliest read at the floor and fewer than 30 reads; without the floor it reads down to epoch zero. The Cursor cutoff table expects the floor for the default, unlimited and 36500-day rows, the shared-refresh widening case expects its older read to start at the floor, and the all-time Cursor case reads from the floor.
+
 Files:
 packages/contracts:
 - packages/contracts/src/settings.ts
+packages/provider-cursor:
+- packages/provider-cursor/src/server/CursorUsageAccounts.ts
+- packages/provider-cursor/src/server/accountCache.ts
 apps/server:
 - apps/server/src/serverSettings.test.ts
 - apps/server/src/usage/UsageService.test.ts
@@ -87,13 +95,14 @@ Tests:
 - vp run typecheck passed in apps/web, apps/desktop, apps/server, packages/contracts and scripts; vp lint and vp fmt --check passed on the 119 changed files.
 - Baseline: UsageService.test.ts on detached 965ddc1d6c fails the same 2 assertions (Pi /var versus /private/var path equality; Codex open-spy raw-path equality); no assertion was changed to hide them.
 - No installed-client or live remote/relay/tunnel pass: no development servers or installed app changes were authorized.
+- On b6ac2449f1: the apps/server usage tests and serverSettings.test.ts (288 tests in 9 files) and packages/provider-cursor/src/server tests (158 in 16 files) pass; vp run typecheck passed in apps/server and packages/provider-cursor.
 
-Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
+Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code; Cursor history floor on b6ac2449f1: Claude Opus 5.5 / Claude Code.
 ---
  apps/server/src/serverSettings.test.ts        |   2 +
- apps/server/src/usage/UsageService.test.ts    | 296 +++++++++++++++---
- apps/server/src/usage/UsageService.ts         | 112 ++++++-
- apps/server/src/usage/usageScanCache.test.ts  |  36 ++-
+ apps/server/src/usage/UsageService.test.ts    | 357 +++++++++++++++---
+ apps/server/src/usage/UsageService.ts         | 112 +++++-
+ apps/server/src/usage/usageScanCache.test.ts  |  36 +-
  apps/server/src/usage/usageScanCache.ts       |  42 ++-
  .../settings/KeybindingsSettings.logic.ts     |   8 +-
  apps/web/src/components/usage/UsagePage.tsx   |  63 ++--
@@ -104,7 +113,9 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .../src/components/usage/usageShortcuts.ts    |   8 +-
  docs/user/usage.md                            |  17 +-
  packages/contracts/src/settings.ts            |   2 +-
- 14 files changed, 551 insertions(+), 113 deletions(-)
+ .../src/server/CursorUsageAccounts.ts         |   3 +-
+ .../src/server/accountCache.ts                |   3 +
+ 16 files changed, 613 insertions(+), 118 deletions(-)
  create mode 100644 apps/web/src/components/usage/usageRange.test.ts
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
@@ -123,7 +134,7 @@ index 10d0b3fe6c1e6854f08b8f95c92e20bb262ef9bf..dd20538877e092a470923da98c803b07
          assert.deepStrictEqual(persisted.usageModelAliases, usageModelAliases);
          assert.deepStrictEqual(persisted.usageLimitSources, usageLimitSources);
 diff --git a/apps/server/src/usage/UsageService.test.ts b/apps/server/src/usage/UsageService.test.ts
-index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cada8c66bcd 100644
+index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6d0b6324a 100644
 --- a/apps/server/src/usage/UsageService.test.ts
 +++ b/apps/server/src/usage/UsageService.test.ts
 @@ -138,6 +138,11 @@ const WINDOW: UsageSummaryInput = {
@@ -138,11 +149,19 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cad
  const setup = Effect.gen(function* () {
    const home = yield* Effect.promise(() =>
      NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "usage-service-test-")),
-@@ -1867,8 +1872,45 @@ describe("UsageService", () => {
+@@ -282,6 +287,7 @@ function totalOutputTokens(summary: { buckets: readonly { totals: { outputTokens
+ }
+ 
+ const CURSOR_NOW = Date.parse("2026-08-02T12:00:00Z");
++const CURSOR_HISTORY_START = Date.parse("2023-01-01T00:00:00Z");
+ const HOUR_MS = 60 * 60 * 1000;
+ 
+ function makeFakeCursor() {
+@@ -1867,10 +1873,49 @@ describe("UsageService", () => {
      }),
    );
  
-+  it.effect("requests all-time Cursor history from epoch zero and retains it after refresh", () =>
++  it.effect("requests all-time Cursor history from its start and retains it after refresh", () =>
 +    Effect.gen(function* () {
 +      const { settings, home } = yield* setup;
 +      yield* TestClock.setTime(CURSOR_NOW);
@@ -155,7 +174,9 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cad
 +        const service = yield* makeWithCursor(cursor.read);
 +        const original = yield* service.readSummary({ ...ALL_TIME_WINDOW, awaitRefresh: true });
 +        assert.strictEqual(totalOutputTokens(original), 12);
-+        assert.deepStrictEqual(cursor.state.calls, [{ sinceMs: 0, untilMs: CURSOR_NOW }]);
++        assert.deepStrictEqual(cursor.state.calls, [
++          { sinceMs: CURSOR_HISTORY_START, untilMs: CURSOR_NOW },
++        ]);
 +        yield* service.awaitPersisted;
 +
 +        yield* TestClock.adjust(Duration.minutes(2));
@@ -180,12 +201,91 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cad
 +
    it.effect.each([
 -    { label: "default", retention: undefined, cutoff: CURSOR_NOW - 92 * 24 * HOUR_MS },
-+    { label: "default", retention: undefined, cutoff: 0 },
+-    { label: "unlimited", retention: "unlimited" as const, cutoff: 0 },
+-    { label: "36500 days", retention: 36500, cutoff: 0 },
++    { label: "default", retention: undefined, cutoff: CURSOR_HISTORY_START },
 +    { label: "92 days", retention: 92, cutoff: CURSOR_NOW - 92 * 24 * HOUR_MS },
-     { label: "unlimited", retention: "unlimited" as const, cutoff: 0 },
-     { label: "36500 days", retention: 36500, cutoff: 0 },
++    { label: "unlimited", retention: "unlimited" as const, cutoff: CURSOR_HISTORY_START },
++    { label: "36500 days", retention: 36500, cutoff: CURSOR_HISTORY_START },
    ])(
-@@ -3354,7 +3396,7 @@ describe("UsageService", () => {
+     "propagates the $label cutoff and restores the Cursor account cache after a restart",
+     ({ retention, cutoff }) =>
+@@ -1967,7 +2012,7 @@ describe("UsageService", () => {
+       const sources = yield* Fiber.join(wider);
+       assert.deepStrictEqual(cursor.state.calls, [
+         { sinceMs: input.retentionCutoffMs, untilMs: CURSOR_NOW },
+-        { sinceMs: 0, untilMs: input.retentionCutoffMs },
++        { sinceMs: CURSOR_HISTORY_START, untilMs: input.retentionCutoffMs },
+       ]);
+       assert.strictEqual(sources[0]?.status, "ok");
+       assert.deepStrictEqual(
+@@ -2127,7 +2172,7 @@ describe("UsageService", () => {
+           layerService({
+             prefix: "usage-service-cursor-large-account",
+             home,
+-            settings,
++            settings: { ...settings, usageHistoryRetentionDays: 92 },
+             platform: "darwin",
+             environment: {},
+             secretStore: {
+@@ -2149,6 +2194,56 @@ describe("UsageService", () => {
+     }),
+   );
+ 
++  it.effect("loads all-time Cursor history too large for one read down to its start", () =>
++    Effect.gen(function* () {
++      const { settings, home } = yield* setup;
++      yield* TestClock.setTime(CURSOR_NOW);
++      const cursor = makeFakeCursor();
++      cursor.state.events = [
++        { timestampMs: Date.parse("2023-06-01T00:00:00Z"), outputTokens: 2 },
++        { timestampMs: CURSOR_NOW - 400 * 24 * HOUR_MS, outputTokens: 7 },
++        { timestampMs: CURSOR_NOW - 3 * HOUR_MS, outputTokens: 5 },
++      ];
++      const read: CursorAccountReader.CursorAccountReader["Service"]["read"] = (
++        credential,
++        sinceMs,
++        untilMs,
++      ) =>
++        untilMs - sinceMs > 100 * 24 * HOUR_MS
++          ? Effect.succeed({
++              accountKey: cursor.state.accountKey,
++              records: [],
++              missing: false,
++              error: "Cursor account usage could not be read.",
++            })
++          : cursor.read(credential, sinceMs, untilMs);
++      yield* Effect.gen(function* () {
++        const service = yield* makeWithCursor(read);
++        let summary = yield* service.readSummary({ ...ALL_TIME_WINDOW, awaitRefresh: true });
++        for (let attempt = 1; attempt < 20 && totalOutputTokens(summary) < 14; attempt++) {
++          yield* TestClock.adjust("2 minutes");
++          summary = yield* service.readSummary({ ...ALL_TIME_WINDOW, awaitRefresh: true });
++        }
++        assert.strictEqual(totalOutputTokens(summary), 14);
++        assert.strictEqual(cursorSource(summary)?.status, "ok");
++        assert.strictEqual(
++          Math.min(...cursor.state.calls.map((call) => call.sinceMs)),
++          CURSOR_HISTORY_START,
++        );
++        assert.isBelow(cursor.state.calls.length, 30);
++      }).pipe(
++        Effect.provide(
++          layerService({
++            prefix: "usage-service-cursor-large-all-time",
++            home,
++            settings,
++            environment: { CURSOR_API_KEY: "large-account-key" },
++          }),
++        ),
++      );
++    }),
++  );
++
+   it.effect("keeps a new Cursor key's refresh visible beside a failing key", () =>
+     Effect.gen(function* () {
+       const { settings, home } = yield* setup;
+@@ -3354,7 +3449,7 @@ describe("UsageService", () => {
    );
  
    it.effect.each([4, 5, 6, 7, 8, 10, 11, 12, 13, 14])(
@@ -194,7 +294,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cad
      (version) =>
        Effect.gen(function* () {
          yield* TestClock.setTime(Date.parse("2026-08-02T12:00:00Z"));
-@@ -3400,12 +3442,27 @@ describe("UsageService", () => {
+@@ -3400,12 +3495,27 @@ describe("UsageService", () => {
              stateDir,
              version === 4 ? "usage-scan-cache.json" : `usage-scan-cache-v${version}.json`,
            );
@@ -223,7 +323,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cad
              const document = decodeUnknownJsonString(await NodeFSP.readFile(cachePath, "utf8")) as {
                files: Record<string, { r: unknown[][]; mr: number; cs: Record<string, unknown> }>;
              };
-@@ -3440,6 +3497,11 @@ describe("UsageService", () => {
+@@ -3440,6 +3550,11 @@ describe("UsageService", () => {
                    encodeUnknownJsonString({ ...document, version: olderVersion, files: {} }),
                  );
                }
@@ -235,7 +335,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cad
              }
              await NodeFSP.rm(deleted);
              await NodeFSP.mkdir(`${cachePath}.stale`);
-@@ -3456,12 +3518,24 @@ describe("UsageService", () => {
+@@ -3456,12 +3571,24 @@ describe("UsageService", () => {
            );
            yield* upgraded.awaitPersisted;
            assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v17.json");
@@ -266,7 +366,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cad
          }).pipe(
            Effect.provide(
              layerService({
-@@ -3584,7 +3658,7 @@ describe("UsageService", () => {
+@@ -3584,7 +3711,7 @@ describe("UsageService", () => {
      }),
    );
  
@@ -275,7 +375,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cad
      Effect.gen(function* () {
        const { transcript, settings, home } = yield* setup;
        const alias = NodePath.join(home, "claude-alias");
-@@ -3592,26 +3666,38 @@ describe("UsageService", () => {
+@@ -3592,26 +3719,38 @@ describe("UsageService", () => {
          NodeFSP.symlink(NodePath.join(home, "claude"), alias, "junction"),
        );
        const content = claudeLine(1, 5);
@@ -319,7 +419,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cad
          assert.deepStrictEqual(moved.buckets, first.buckets);
          assert.strictEqual(moved.sources[0]?.distinctSessions, 1);
          yield* restarted.awaitPersisted;
-@@ -3622,7 +3708,7 @@ describe("UsageService", () => {
+@@ -3622,7 +3761,7 @@ describe("UsageService", () => {
            NodeFSP.rm(NodePath.join(home, "claude", "projects"), { recursive: true }),
          );
          const afterRootCleanup = yield* UsageService.make;
@@ -328,7 +428,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cad
          assert.deepStrictEqual(missingRoot.buckets, first.buckets);
          assert.strictEqual(missingRoot.sources[0]?.distinctSessions, 1);
          assert.strictEqual(missingRoot.sources[0]?.status, "ok");
-@@ -3632,7 +3718,7 @@ describe("UsageService", () => {
+@@ -3632,7 +3771,7 @@ describe("UsageService", () => {
            await NodeFSP.rename(replacementProjects, projects);
            await NodeFSP.writeFile(NodePath.join(projects, "new.jsonl"), claudeLine(2, 7));
          });
@@ -337,7 +437,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cad
          assert.strictEqual(totalOutputTokens(recreated), 12);
          assert.deepStrictEqual(recreated.sources[0]?.fingerprint, first.sources[0]?.fingerprint);
  
-@@ -3656,11 +3742,109 @@ describe("UsageService", () => {
+@@ -3656,11 +3795,109 @@ describe("UsageService", () => {
          assert.strictEqual(merged.costUsd, recreated.buckets[0]?.costUsd);
  
          const outsideWindow = yield* restarted.readSummary({
@@ -448,7 +548,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cad
        }).pipe(
          Effect.scoped,
          Effect.provide(
-@@ -3686,7 +3870,8 @@ describe("UsageService", () => {
+@@ -3686,7 +3923,8 @@ describe("UsageService", () => {
    );
  
    it.effect.each([
@@ -458,7 +558,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cad
      { label: "unlimited", retention: "unlimited" as const, expected: 15 },
    ])(
      "retains deleted transcripts according to $label across restart and settings changes",
-@@ -3791,7 +3976,15 @@ describe("UsageService", () => {
+@@ -3791,7 +4029,15 @@ describe("UsageService", () => {
          yield* service.awaitPersisted;
          const restarted = yield* UsageService.make;
          assert.strictEqual(totalOutputTokens(yield* restarted.readSummary(window)), 11);
@@ -475,7 +575,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..67d86ff6bf5f2524dbeb08adb5f89cad
      }),
    );
  
-@@ -3967,38 +4160,41 @@ describe("UsageService", () => {
+@@ -3967,38 +4213,41 @@ describe("UsageService", () => {
        }),
    );
  
@@ -1268,3 +1368,38 @@ index 678f58294c66aeecb1c4310e7fb23697b353ecf3..78a5004e339064b4a71115f13bccd009
    ),
  
    usagePriceOverrides: Schema.Record(TrimmedNonEmptyString, UsageModelPriceOverride).pipe(
+diff --git a/packages/provider-cursor/src/server/CursorUsageAccounts.ts b/packages/provider-cursor/src/server/CursorUsageAccounts.ts
+index 7bea5ce83290a7a6696a98d4a064d001654f805a..be4b796b123b85e269c4e97ec575c8660226efbf 100644
+--- a/packages/provider-cursor/src/server/CursorUsageAccounts.ts
++++ b/packages/provider-cursor/src/server/CursorUsageAccounts.ts
+@@ -18,6 +18,7 @@ import * as Semaphore from "effect/Semaphore";
+ import {
+   CURSOR_ACCOUNT_CACHE_FILE_NAME,
+   CURSOR_ACCOUNT_TTL_MS,
++  CURSOR_HISTORY_START_MS,
+   CURSOR_MIN_FETCH_SPAN_MS,
+   cursorFetchRange,
+   decodeCursorAccountCaches,
+@@ -284,7 +285,7 @@ const make = Effect.gen(function* () {
+             accountSource(
+               { kind: "apiKey", apiKey },
+               windowStartMs,
+-              retentionCutoffMs,
++              Math.max(retentionCutoffMs, CURSOR_HISTORY_START_MS),
+               awaitRefresh,
+             ),
+           { concurrency: 2 },
+diff --git a/packages/provider-cursor/src/server/accountCache.ts b/packages/provider-cursor/src/server/accountCache.ts
+index da65677781add3de65f055ea7794da636e5619e4..579ec4d2fc6a9032398cf838acbb971859f199f8 100644
+--- a/packages/provider-cursor/src/server/accountCache.ts
++++ b/packages/provider-cursor/src/server/accountCache.ts
+@@ -6,6 +6,9 @@ export type CursorCredentialSource = { readonly kind: "apiKey"; readonly apiKey:
+ 
+ export const CURSOR_ACCOUNT_TTL_MS = 60 * 1000;
+ 
++/** No Cursor usage predates its first release in March 2023, so reads never reach further back. */
++export const CURSOR_HISTORY_START_MS = Date.UTC(2023, 0, 1);
++
+ /** Dashboard events can be finalized after they were first read. */
+ const REFETCH_OVERLAP_MS = 60 * 60 * 1000;
+ 

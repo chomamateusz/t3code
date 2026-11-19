@@ -9,19 +9,28 @@ Content-Transfer-Encoding: 8bit
 
 Behaviours:
 - Change the default session lifetime from 30 days to 3650 days so newly issued direct-pairing sessions last ten years on this private, single-operator deployment.
+- Give renewable pairing-link sessions (a plain pairing link exchanged with a DPoP proof) the same 3650-day renewal window instead of 30 days: each renewal still returns a one-hour DPoP-bound access token and now moves the session's expiry ten years out, so a paired device left unused for more than 30 days stays signed in. A session issued with the 30-day window keeps that expiry until its next renewal, which moves it ten years out; one already past its 30 days has to pair again.
 - Preserve explicit lifetime overrides and device revocation through Settings > Connections; existing expired sessions still require pairing again.
-- Guard the default 3650-day issued-session lifetime in the existing active-session listing test.
+- Guard the default 3650-day issued-session lifetime in the existing active-session listing test, and the ten-year renewal window in the pairing-link DPoP renewal test.
+- Remote access and environment-auth docs describe the ten-year window.
 
 Integration details:
-- Preserve upstream DPoP renewal-chain behavior and every explicit TTL; only the default changes.
+- Preserve upstream DPoP renewal-chain behavior, the one-hour renewable access token, the DPoP binding, the rule that only plain pairing links renew, the 30-day MCP client session TTL and every other explicit TTL; only the default session lifetime and the renewal window of pairing-link sessions change. RENEWABLE_SESSION_WINDOW reuses SessionStore's DEFAULT_SESSION_TTL (now exported), so both lifetimes are one constant.
 
 Port to 965ddc1d6c:
 - Applied without conflicts. On 965ddc1d6c SessionStore.ts still declares DEFAULT_SESSION_TTL = Duration.days(30) and issues with input?.ttl ?? DEFAULT_SESSION_TTL (SessionStore.ts:653); the separate 30-day MCP client session TTL is untouched.
 
+Port to b6ac2449f1: upstream dd512d86c5 (#37980) and e396bb2e26 (#37990) make direct pairing links send a DPoP proof and give such sessions a one-hour access token with a 30-day sliding renewal window (RENEWABLE_SESSION_WINDOW in EnvironmentAuth.ts, used by exchangeBootstrapCredentialForAccessToken and renewAccessToken), so a device idle for 30 days would have had to pair again. RENEWABLE_SESSION_WINDOW is now DEFAULT_SESSION_TTL. SessionStore keeps the window only as the session row's expires_at (issue writes issuedAt + renewalWindow, each renew writes now + renewalWindow through AuthSessions.extend, which refuses an expired or revoked row; the token carries only the rnw flag), so rows issued with 30 days move to ten years at their next successful renewal. EnvironmentAuth.test.ts: upstream's renewal case expects ten-year expiries, renews after 400 idle days and checks that a device idle for 3651 days pairs again (it fails with the 30-day window).
+
 Files:
 apps/server:
+- apps/server/src/auth/EnvironmentAuth.test.ts
+- apps/server/src/auth/EnvironmentAuth.ts
 - apps/server/src/auth/SessionStore.test.ts
 - apps/server/src/auth/SessionStore.ts
+docs:
+- docs/internals/environment-auth.md
+- docs/user/remote-access.md
 
 Tests:
 - apps/server/src/auth/EnvironmentAuth.test.ts
@@ -32,13 +41,83 @@ Tests:
 - vp run typecheck passed in apps/web, apps/desktop, apps/server, packages/contracts and scripts; vp lint and vp fmt --check passed on the 119 changed files.
 - Baseline: UsageService.test.ts on detached 965ddc1d6c fails the same 2 assertions (Pi /var versus /private/var path equality; Codex open-spy raw-path equality); no assertion was changed to hide them.
 - No installed-client or live remote/relay/tunnel pass: no development servers or installed app changes were authorized.
+- On b6ac2449f1: SessionStore.test.ts, EnvironmentAuth.test.ts and EnvironmentAuthAdmin.test.ts pass (56 tests); vp run typecheck passed in apps/server.
 
-Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
+Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code; renewal window on b6ac2449f1: Claude Opus 5.5 / Claude Code.
 ---
- apps/server/src/auth/SessionStore.test.ts | 4 ++++
- apps/server/src/auth/SessionStore.ts      | 2 +-
- 2 files changed, 5 insertions(+), 1 deletion(-)
+ apps/server/src/auth/EnvironmentAuth.test.ts | 19 +++++++++++++++----
+ apps/server/src/auth/EnvironmentAuth.ts      |  2 +-
+ apps/server/src/auth/SessionStore.test.ts    |  4 ++++
+ apps/server/src/auth/SessionStore.ts         |  2 +-
+ docs/internals/environment-auth.md           |  2 +-
+ docs/user/remote-access.md                   |  2 +-
+ 6 files changed, 23 insertions(+), 8 deletions(-)
 
+diff --git a/apps/server/src/auth/EnvironmentAuth.test.ts b/apps/server/src/auth/EnvironmentAuth.test.ts
+index 9a44e13633a1410a76e874e567527cab2282b703..c0504ec4247f77ee6ef6f4ffaca6a474da6d0629 100644
+--- a/apps/server/src/auth/EnvironmentAuth.test.ts
++++ b/apps/server/src/auth/EnvironmentAuth.test.ts
+@@ -451,8 +451,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
+         expect(paired.expires_in).toBe(60 * 60);
+         const { sessionId } = yield* sessions.verify(paired.access_token);
+         const pairedAt = (yield* DateTime.now).epochMilliseconds;
++        const days = (count: number) => count * 24 * 60 * 60 * 1000;
+         // Listed for the whole renewal window, so an idle device can still be revoked.
+-        expect(yield* sessionExpiry(sessionId)).toBe(pairedAt + 30 * 24 * 60 * 60 * 1000);
++        expect(yield* sessionExpiry(sessionId)).toBe(pairedAt + days(3650));
+ 
+         yield* TestClock.adjust("20 days");
+         const replay = new EnvironmentAuth.ServerAuthInvalidCredentialError({
+@@ -462,7 +463,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
+           .renewAccessToken(paired.access_token, key.thumbprint, Effect.fail(replay))
+           .pipe(Effect.flip);
+         expect(rejected).toBe(replay);
+-        expect(yield* sessionExpiry(sessionId)).toBe(pairedAt + 30 * 24 * 60 * 60 * 1000);
++        expect(yield* sessionExpiry(sessionId)).toBe(pairedAt + days(3650));
+ 
+         const renewed = yield* serverAuth.renewAccessToken(
+           paired.access_token,
+@@ -472,7 +473,17 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
+         expect(renewed.scope).toBe("orchestration:read");
+         const verified = yield* sessions.verify(renewed.access_token);
+         expect(verified.sessionId).toBe(sessionId);
+-        expect(yield* sessionExpiry(sessionId)).toBe(pairedAt + 50 * 24 * 60 * 60 * 1000);
++        expect(yield* sessionExpiry(sessionId)).toBe(pairedAt + days(20 + 3650));
++
++        yield* TestClock.adjust("400 days");
++        const afterIdle = yield* serverAuth.renewAccessToken(
++          renewed.access_token,
++          key.thumbprint,
++          Effect.void,
++        );
++        expect(afterIdle.expires_in).toBe(60 * 60);
++        expect((yield* sessions.verify(afterIdle.access_token)).sessionId).toBe(sessionId);
++        expect(yield* sessionExpiry(sessionId)).toBe(pairedAt + days(420 + 3650));
+ 
+         const refused = (token: string, thumbprint: string) =>
+           serverAuth
+@@ -515,7 +526,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
+ 
+         // Idle past the window, the device pairs again.
+         const idle = yield* pair(key.thumbprint);
+-        yield* TestClock.adjust("31 days");
++        yield* TestClock.adjust("3651 days");
+         expect(yield* refused(idle.access_token, key.thumbprint)).toBe(
+           "ServerAuthInvalidCredentialError",
+         );
+diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
+index 254cd09f18efafad725ef3349b46eadf9a3dd795..e99eb58a146c12685a11396c1ecbb4b87b3d4570 100644
+--- a/apps/server/src/auth/EnvironmentAuth.ts
++++ b/apps/server/src/auth/EnvironmentAuth.ts
+@@ -88,7 +88,7 @@ const MCP_CLIENT_SESSION_TTL = Duration.days(30);
+ // A device pairing with its DPoP key renews the session itself, so the token can be short and
+ // the device stays signed in while used. One idle for the whole window pairs again.
+ const RENEWABLE_ACCESS_TOKEN_TTL = Duration.hours(1);
+-const RENEWABLE_SESSION_WINDOW = Duration.days(30);
++const RENEWABLE_SESSION_WINDOW = SessionStore.DEFAULT_SESSION_TTL;
+ const PAIRING_LINK_SUBJECT = "one-time-token";
+ 
+ export interface McpClientSession {
 diff --git a/apps/server/src/auth/SessionStore.test.ts b/apps/server/src/auth/SessionStore.test.ts
 index 11b31894c23070c83b2eab559ee53042a26f6a79..26be18019e8eb4cab737e77031afc6f745d33329 100644
 --- a/apps/server/src/auth/SessionStore.test.ts
@@ -55,7 +134,7 @@ index 11b31894c23070c83b2eab559ee53042a26f6a79..26be18019e8eb4cab737e77031afc6f7
          true,
        );
 diff --git a/apps/server/src/auth/SessionStore.ts b/apps/server/src/auth/SessionStore.ts
-index e3af51958b80686b83692d0110789c3e021434a2..2c067528c7891913e578f079d1b363c96e40e9a4 100644
+index e3af51958b80686b83692d0110789c3e021434a2..dc79ec98ef90149ef68bd6ace4d210006ca003a3 100644
 --- a/apps/server/src/auth/SessionStore.ts
 +++ b/apps/server/src/auth/SessionStore.ts
 @@ -479,7 +479,7 @@ export class SessionStore extends Context.Service<
@@ -63,7 +142,33 @@ index e3af51958b80686b83692d0110789c3e021434a2..2c067528c7891913e578f079d1b363c9
  
  const SIGNING_SECRET_NAME = "server-signing-key";
 -const DEFAULT_SESSION_TTL = Duration.days(30);
-+const DEFAULT_SESSION_TTL = Duration.days(3650);
++export const DEFAULT_SESSION_TTL = Duration.days(3650);
  const DEFAULT_WEBSOCKET_TOKEN_TTL = Duration.minutes(5);
  
  const SessionClaims = Schema.Struct({
+diff --git a/docs/internals/environment-auth.md b/docs/internals/environment-auth.md
+index ed6be35c0c1eadd7f01b2a63145895b0d24fbfa5..301c40c5463674f450276deac57a45ae8b70a291 100644
+--- a/docs/internals/environment-auth.md
++++ b/docs/internals/environment-auth.md
+@@ -29,7 +29,7 @@ vocabulary gives these grants a familiar meaning.
+ 
+ A device that exchanges a plain pairing link with a DPoP proof gets a one-hour
+ token on a session that renews: presenting the token, even expired, with a
+-proof from the same key moves the session's expiry 30 days out and returns a
++proof from the same key moves the session's expiry ten years out and returns a
+ fresh token for the same session. The session itself must still be unexpired
+ and unrevoked, so a device idle past the window pairs again. Renewal stays in place rather than issuing a
+ successor, so live sockets keep their session, Sharing & access shows one row
+diff --git a/docs/user/remote-access.md b/docs/user/remote-access.md
+index eaebfdb811aceab958a8772f340c991f319f58a4..eba8fdbfe4539c0335b57ed687b7041e83fb0318 100644
+--- a/docs/user/remote-access.md
++++ b/docs/user/remote-access.md
+@@ -128,7 +128,7 @@ Android app then trusts it.
+ Pairing authorizes that device for future connections. Use a fresh one-time link
+ for each new device; you do not need the original token to reconnect. A device
+ stays signed in while you keep using it, until you revoke it in **Settings →
+-Sharing & access** on the host. One unused for 30 days, or paired with a host
++Sharing & access** on the host. One unused for ten years, or paired with a host
+ older than this release, has to pair again. Links
+ created in Settings can only be copied from the client that created them while
+ its Sharing & access page stays open. If you leave or reload that page, create
