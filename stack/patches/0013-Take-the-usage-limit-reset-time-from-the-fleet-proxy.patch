@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Mateusz Choma <chomamateusz@gmail.com>
-Date: Fri, 6 Nov 2026 13:09:19 +0100
+From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 02:07:34 +0100
 Subject: =?UTF-8?q?=F0=9F=9B=9F=20Take=20the=20usage-limit=20reset=20time?=
  =?UTF-8?q?=20from=20the=20fleet=20proxy=20when=20the=20CLI=20has=20none?=
 MIME-Version: 1.0
@@ -52,6 +52,8 @@ Port to ee4ef06469:
 Port to 6b7027b1f4:
 - ClaudeAdapterV2.ts: upstream #37165 (dcaedc9800) adds an onSessionInit hook to createClaudeAdapterV2's picked options; fleetProxyHttpClient stays next to it, and ClaudeDriver passes both. The usage-limit reset fallback is unchanged.
 
+Port to 29b42d409c: upstream #39018 (e8c4824b70) computes the turn status before finalizing, to hold a completed result while an unread steer is pending. ClaudeAdapterV2.ts now folds interruptedDuringLookup into that status, so a turn interrupted during the fleet proxy lookup still ends interrupted and is never held as a completed result.
+
 Files:
 apps/server:
 - apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
@@ -92,7 +94,7 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 apps/server/src/provider/fleetProxyLimits.ts
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index b5cd8624ecda47f427ac98c75bf379eb6057b9cd..6b0793dfe4f0a3502ab07c0582cb97a73008dc2a 100644
+index 0077d99f03f4ec69299337bb630983096567383c..50d765ff2c191c8df278307a90532afefe94511c 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -76,6 +76,7 @@ import * as Scope from "effect/Scope";
@@ -111,7 +113,7 @@ index b5cd8624ecda47f427ac98c75bf379eb6057b9cd..6b0793dfe4f0a3502ab07c0582cb97a7
  import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
  import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
-@@ -3571,6 +3573,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -3591,6 +3593,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      readonly offer?: (message: SDKUserMessage) => Effect.Effect<void>;
      readonly promptSuggestions?: boolean;
      readonly routeModelCatalog?: ClaudeAdapterV2.ClaudeAdapterV2Options["routeModelCatalog"];
@@ -119,7 +121,7 @@ index b5cd8624ecda47f427ac98c75bf379eb6057b9cd..6b0793dfe4f0a3502ab07c0582cb97a7
    }) =>
      Effect.gen(function* () {
        const fileSystem = yield* FileSystem.FileSystem;
-@@ -3637,6 +3640,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -3657,6 +3660,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
          idAllocator,
          ...(options?.onSessionInit ? { onSessionInit: options.onSessionInit } : {}),
          ...(options?.routeModelCatalog ? { routeModelCatalog: options.routeModelCatalog } : {}),
@@ -129,7 +131,7 @@ index b5cd8624ecda47f427ac98c75bf379eb6057b9cd..6b0793dfe4f0a3502ab07c0582cb97a7
          continuationRequests: {
            offer: (request) =>
              Effect.sync(() => {
-@@ -9666,6 +9672,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -9889,6 +9895,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      ),
    );
  
@@ -303,7 +305,7 @@ index b5cd8624ecda47f427ac98c75bf379eb6057b9cd..6b0793dfe4f0a3502ab07c0582cb97a7
      Effect.gen(function* () {
        const harness = yield* makeWakeHarness;
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index 1941620cd8b01a044229b2b21d832416275945c6..6c64103379a8c72903e37c334c3689345b224cd1 100644
+index 3e1178912bf8068c7a33c7ab58159896726bdff5..e2d5e62842e337f60cc8b51d26b5bcdd83294aef 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -36,6 +36,7 @@ import {
@@ -322,7 +324,7 @@ index 1941620cd8b01a044229b2b21d832416275945c6..6c64103379a8c72903e37c334c368934
  
  import { resolveAttachmentPath } from "../../attachmentStore.ts";
  import { snapshotMcpApp } from "../../mcpApps/McpAppSnapshot.ts";
-@@ -5574,6 +5576,7 @@ export interface ClaudeAdapterV2Options {
+@@ -5684,6 +5686,7 @@ export interface ClaudeAdapterV2Options {
      cwd: string | null,
      launchSettings?: ClaudeSdkSettings,
    ) => Effect.Effect<ClaudeModelCatalog>;
@@ -330,7 +332,7 @@ index 1941620cd8b01a044229b2b21d832416275945c6..6c64103379a8c72903e37c334c368934
    readonly continuationRequests?: {
      readonly offer: (
        request: ProviderContinuationRequests.ProviderContinuationRequest,
-@@ -11971,17 +11974,41 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12139,15 +12142,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                resetTimes.length > 0 && resetTimes.every((time) => time !== null)
                  ? resetTimes.reduce((latest, time) => (time! > latest ? time! : latest), "")
                  : null;
@@ -364,23 +366,21 @@ index 1941620cd8b01a044229b2b21d832416275945c6..6c64103379a8c72903e37c334c368934
 +              : resultFailure?.class === "usage_limit"
 +                ? { ...resultFailure, resetAt: usageLimitResetAt }
                  : resultFailure;
-             yield* finalizeActiveTurn({
-               context,
--              status: interrupted
--                ? "interrupted"
--                : limitedCompaction !== null
--                  ? "failed"
--                  : terminalStatusFromResult(message, failureHint),
-+              status:
-+                interrupted || interruptedDuringLookup
-+                  ? "interrupted"
-+                  : limitedCompaction !== null
-+                    ? "failed"
-+                    : terminalStatusFromResult(message, failureHint),
-               completedAt,
-               result: message,
-               ...(terminalFailure === null ? {} : { failure: terminalFailure }),
-@@ -14670,7 +14697,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+-            const status = interrupted
+-              ? "interrupted"
+-              : limitedCompaction !== null
+-                ? "failed"
+-                : terminalStatusFromResult(message, failureHint);
++            const status =
++              interrupted || interruptedDuringLookup
++                ? "interrupted"
++                : limitedCompaction !== null
++                  ? "failed"
++                  : terminalStatusFromResult(message, failureHint);
+             // Claude answers a steer it has not read yet as the next native turn, which echoes
+             // the steer. A result without echoes cannot prove that turn will come.
+             if (
+@@ -14860,7 +14887,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
      input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
      hooks: Pick<
        ClaudeAdapterV2Options,

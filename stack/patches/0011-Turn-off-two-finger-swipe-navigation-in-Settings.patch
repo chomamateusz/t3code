@@ -227,10 +227,10 @@ index c08c266adc0b34174279d499ae2df48be752acf5..958bf7f748258be18da672fe8956ea65
      }),
    );
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 556853a6cc5f80c96613908807cef67e661e9518..b7f4126e37f7694eb13cca8aad750fe25a71dc93 100644
+index 741e03b79b3c29cc0ff39c3a1ea870b10dbb9026..c4bb0f98cbbcf43a71333f13572644ee913221e5 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
-@@ -835,9 +835,27 @@ export const make = Effect.gen(function* () {
+@@ -851,9 +851,27 @@ export const make = Effect.gen(function* () {
      if (environment.platform === "darwin") {
        // Mouse drivers can deliver Back/Forward as macOS swipe gestures instead of buttons.
        window.on("swipe", (_event, direction) => {
@@ -351,10 +351,10 @@ index c97ea5e6412aa03730e1c7eeec996e57b18359d3..9807024a6a1cf078d241bd524a760c55
 +  );
 +});
 diff --git a/apps/web/src/components/AppSidebarLayout.tsx b/apps/web/src/components/AppSidebarLayout.tsx
-index 4b7a6d36a98cdcb7d10d9e2f507a46ed834df534..03dcd7f9663dd20e52dcdc57971c0b2168346e62 100644
+index c7515485662ac76f9dbbcb957d59b03d631d5e1f..8f184ccee524cac8f9639624747c8161d19c6b69 100644
 --- a/apps/web/src/components/AppSidebarLayout.tsx
 +++ b/apps/web/src/components/AppSidebarLayout.tsx
-@@ -32,7 +32,7 @@ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
+@@ -33,7 +33,7 @@ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
  import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
  import { cn, isMacPlatform } from "../lib/utils";
  import { primaryServerKeybindingsAtom } from "../state/server";
@@ -363,7 +363,7 @@ index 4b7a6d36a98cdcb7d10d9e2f507a46ed834df534..03dcd7f9663dd20e52dcdc57971c0b21
  import {
    PanelAnimationSuppressionProvider,
    usePanelAnimationSettings,
-@@ -422,6 +422,7 @@ export function AppSidebarLayout({
+@@ -425,6 +425,7 @@ export function AppSidebarLayout({
    showSidebar?: boolean;
  }) {
    const gt = useGT();
@@ -371,7 +371,7 @@ index 4b7a6d36a98cdcb7d10d9e2f507a46ed834df534..03dcd7f9663dd20e52dcdc57971c0b21
    const sidebarArea = workspaceAreaProps("sidebar", 0, gt("Threads"));
    const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
      observedKey: null,
-@@ -499,7 +500,7 @@ export function AppSidebarLayout({
+@@ -502,7 +503,7 @@ export function AppSidebarLayout({
          {children}
          <BackgroundThreadAnnouncer />
          <SidebarControl showSidebar={showSidebar} />
@@ -454,7 +454,7 @@ index 52dadd9c8fb2950a5b26dbd75bd645d29e70a247..fc682f6fcbcdda29dd1464c53585354e
      expect(searchSettings("wsl")).toEqual([]);
      expect(searchSettings("update track")).toEqual([]);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 4b7467805b28bfd72a9a08ee5473a3db45a22583..f91b7a912d5761a4ca8c62d54623bd28be1ad565 100644
+index 18f02e622ba1a4181437520613fa0645ae5a9fed..1162512c6d902dc7a21c2078bdc68d2373affffc 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -919,6 +919,15 @@ export const SETTINGS_SEARCH_ITEMS = [
@@ -498,7 +498,7 @@ index 9dc56d7a6a02d95c0b3c89882cbbc4dff1739bd6..771e102d2b25467839ce623f83e76d90
    it("resolves instance enabled state with explicit false winning", () => {
      const grok = ProviderDriverKind.make("grok");
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 78a5004e339064b4a71115f13bccd009ece52089..ceeaa060e1fe45a1eed556376b7d17242eba0c9d 100644
+index f9fcac21a9e767ab0ed9a36b728c41b1c0896688..7d3f52cd2233193766078c80d1c9d5755d45559b 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -468,6 +468,7 @@ export const ClientSettingsSchema = Schema.Struct({
@@ -509,7 +509,7 @@ index 78a5004e339064b4a71115f13bccd009ece52089..ceeaa060e1fe45a1eed556376b7d1724
    confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
    confirmTerminalClose: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
    confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-@@ -2069,6 +2070,7 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2072,6 +2073,7 @@ export const ClientSettingsPatch = Schema.Struct({
    browserProfiles: Schema.optionalKey(Schema.Array(BrowserProfile)),
    browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),
    confirmQuit: Schema.optionalKey(QuitConfirmationMode),

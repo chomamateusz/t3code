@@ -175,7 +175,7 @@ index 0493e3a9d1e1ab0fa44cb8a5c7c6ef6553bade41..2445cdc80b5083a9839d7d630c94b28d
 +  });
 +});
 diff --git a/apps/web/src/components/Sidebar.drag.browser.test.tsx b/apps/web/src/components/Sidebar.drag.browser.test.tsx
-index 7cb1fabb5ccd27609c21dc51a83f4cb42758fdff..4c8d98453fbc39b4faae7bd817aa5cab573d7f6f 100644
+index ca5b128aa4624eb3dea5d7e99e163ac3c758fac6..6908d7bdeb5e867e03c074e699c2d382cce7c489 100644
 --- a/apps/web/src/components/Sidebar.drag.browser.test.tsx
 +++ b/apps/web/src/components/Sidebar.drag.browser.test.tsx
 @@ -56,7 +56,7 @@ it("shows the titled preview inside and outside search results from a collapsed
@@ -188,7 +188,7 @@ index 7cb1fabb5ccd27609c21dc51a83f4cb42758fdff..4c8d98453fbc39b4faae7bd817aa5cab
    // The shift guard drops pointer presses on a row that appeared under 500ms ago; keys pass.
    folder.element().focus();
 diff --git a/apps/web/src/components/Sidebar.logic.test.ts b/apps/web/src/components/Sidebar.logic.test.ts
-index d86ae940b250314476532c856e45b1470f2a3594..9487506836361f33d57af92c77366acd748ad102 100644
+index dcf03effe1090ae98739a9e4c93da8512e9970ad..d74ce9947cdd8bc3c0add3ffd4e37788962e788e 100644
 --- a/apps/web/src/components/Sidebar.logic.test.ts
 +++ b/apps/web/src/components/Sidebar.logic.test.ts
 @@ -18,6 +18,8 @@ import {
@@ -210,7 +210,7 @@ index d86ae940b250314476532c856e45b1470f2a3594..9487506836361f33d57af92c77366acd
  } from "./Sidebar.logic";
  import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
  import {
-@@ -1659,6 +1661,53 @@ describe("sidebarFolderExpansionKeys", () => {
+@@ -1681,6 +1683,53 @@ describe("sidebarFolderExpansionKeys", () => {
      expect(resolveProjectExpanded({ [cwdKey]: false }, keys)).toBe(false);
      expect(resolveProjectExpanded({ [keys[0]!]: true, [cwdKey]: false }, keys)).toBe(true);
    });
@@ -264,7 +264,7 @@ index d86ae940b250314476532c856e45b1470f2a3594..9487506836361f33d57af92c77366acd
  });
  
  describe("groupSidebarThreadsByProject", () => {
-@@ -1717,43 +1766,6 @@ describe("groupSidebarThreadsByProject", () => {
+@@ -1739,43 +1788,6 @@ describe("groupSidebarThreadsByProject", () => {
    });
  });
  
@@ -308,7 +308,7 @@ index d86ae940b250314476532c856e45b1470f2a3594..9487506836361f33d57af92c77366acd
  describe("shouldCreateNewThreadInCurrentProject", () => {
    it("opens the picker when several projects are open, or only archived ones exist", () => {
      expect(shouldCreateNewThreadInCurrentProject(false, 2, 3)).toBe(false);
-@@ -1877,6 +1889,38 @@ describe("sidebar project thread badges", () => {
+@@ -1899,6 +1911,38 @@ describe("sidebar project thread badges", () => {
      expect(summarizeSidebarProjectBadge(many[1]!.counts)).toBeNull();
    });
  
@@ -347,7 +347,7 @@ index d86ae940b250314476532c856e45b1470f2a3594..9487506836361f33d57af92c77366acd
    it("excludes settled, archived, deleted and still-snoozed threads but counts early wakes", () => {
      const thread = baseThread();
      const badges = buildSidebarProjectBadges(
-@@ -2028,6 +2072,13 @@ describe("sidebar project thread badges", () => {
+@@ -2050,6 +2094,13 @@ describe("sidebar project thread badges", () => {
        buildSidebarProjectBadges(groups, [legacyThread], { ...defaults, localLastVisitedAtById })[0]!
          .counts.woke,
      ).toBe(0);
@@ -362,7 +362,7 @@ index d86ae940b250314476532c856e45b1470f2a3594..9487506836361f33d57af92c77366acd
  
    it.each([
 diff --git a/apps/web/src/components/Sidebar.logic.ts b/apps/web/src/components/Sidebar.logic.ts
-index a09b827fea2d8c6d6034afbaf293f9ad018488c4..c0026ea21fd8c14d68613939bd9e12bf930349f8 100644
+index 729b9a07004d7f934ca03ccf189dafff67c33df7..9dce417a57aaea32ec2f6536424d22e659723194 100644
 --- a/apps/web/src/components/Sidebar.logic.ts
 +++ b/apps/web/src/components/Sidebar.logic.ts
 @@ -47,7 +47,7 @@ import { THREAD_STATUS_TEXT } from "@t3tools/client-runtime/state/thread-activit
@@ -508,7 +508,7 @@ index a09b827fea2d8c6d6034afbaf293f9ad018488c4..c0026ea21fd8c14d68613939bd9e12bf
   * Boring sidebar folders. Folders follow `groups` order and threads keep their
   * input order. A project with no threads gets a folder only when `keepEmpty` says so.
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 959d9d29f54f84683fc324f5b95f6f3a028fca91..0795eb60eaaa5e27f740700ca3ccc16bf874928a 100644
+index b3cd8e7c2671140a29f8e0ece166bbb5a3239c20..1b6fd2de92aa5729572d8f37c5c0ed231cce95dc 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -123,12 +123,18 @@ import {
@@ -683,7 +683,7 @@ index 959d9d29f54f84683fc324f5b95f6f3a028fca91..0795eb60eaaa5e27f740700ca3ccc16b
            ...visibleProjectGroups.filter((project) => project.archived),
          ]
        : null,
-@@ -3325,13 +3363,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3344,13 +3382,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                          const threadKey = scopedThreadKey(
                            scopeThreadRef(thread.environmentId, thread.id),
                          );
@@ -699,7 +699,7 @@ index 959d9d29f54f84683fc324f5b95f6f3a028fca91..0795eb60eaaa5e27f740700ca3ccc16b
                              ? "card"
                              : "slim";
                          return (
-@@ -3346,6 +3379,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3365,6 +3398,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              }
                              thread={thread}
                              variant={rowVariant}
@@ -707,7 +707,7 @@ index 959d9d29f54f84683fc324f5b95f6f3a028fca91..0795eb60eaaa5e27f740700ca3ccc16b
                              navigationParent={
                                folderRow ??
                                (section === "working" ||
-@@ -3465,6 +3499,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3484,6 +3518,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                  group={folder.group}
                                  collapsed={folder.collapsed}
                                  hiddenThreads={folder.hiddenThreads}
@@ -776,7 +776,7 @@ index fb68c2fc20217b17885373a74b72ddaba4c3443b..ec5f9440e952f33ea1826afbacb2d7dc
  function GuestLinksRowWithSignIn() {
    const searchableSetting = useSearchableSetting();
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index f91b7a912d5761a4ca8c62d54623bd28be1ad565..3eb3e3022ae0242e88f153585363420b3df766e8 100644
+index 1162512c6d902dc7a21c2078bdc68d2373affffc..7dded9b41895ee8267a7f60168a7bd3e4e1889cb 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -493,21 +493,13 @@ export const SETTINGS_SEARCH_ITEMS = [
@@ -1206,7 +1206,7 @@ index 0000000000000000000000000000000000000000..db439e67964e4dea091c47376eead71c
 +    previous.badge?.description === next.badge?.description,
 +);
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index c958f846bf44f22cb0429440a4fb32b36224b199..005f858a949f650c97e0f7401828991e2a02c0a2 100644
+index 53f01c3314e4661151f14cc37bb40a6396ecfdd2..1849f8513eacaa435fb289002a1ed8fd38d76017 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -577,6 +577,7 @@ type SidebarThreadRowProps = {
@@ -1217,7 +1217,7 @@ index c958f846bf44f22cb0429440a4fb32b36224b199..005f858a949f650c97e0f7401828991e
    variantAction: SidebarSweepAction;
    settlementSupported: boolean;
    snoozeSupported: boolean;
-@@ -1525,6 +1526,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1524,6 +1525,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
        className={cn(
          "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
          metaLineEmpty && "[contain-intrinsic-size:auto_60px]",
@@ -1240,7 +1240,7 @@ index 05541d3970d1aad77b906204987a202d5f09e360..9eec4f9448141552decc58bc47f0f642
    --command-content-inset: 1rem;
    --floating-content-inset: 0.75rem;
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 82ebba5f75775a832496ac277e03249708aadb00..4b4c0ec27da565967896a020504c6ce9c03ddece 100644
+index 13e0be12cf09bfed3833858c6f9e402b579c452b..129087e747669c9e1dcfcf4d14d6853754172101 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -220,11 +220,15 @@ selections so the thread can appear, while keeping selections for unavailable pr

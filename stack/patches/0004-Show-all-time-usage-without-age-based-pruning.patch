@@ -120,10 +120,10 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code;
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
 diff --git a/apps/server/src/serverSettings.test.ts b/apps/server/src/serverSettings.test.ts
-index 10d0b3fe6c1e6854f08b8f95c92e20bb262ef9bf..dd20538877e092a470923da98c803b07bd3db178 100644
+index f837fd8ca97222bff714181ade6311ec65a128e2..73d9cc96fdcce8789cde6b87a22a648130edb8ae 100644
 --- a/apps/server/src/serverSettings.test.ts
 +++ b/apps/server/src/serverSettings.test.ts
-@@ -649,7 +649,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -650,7 +650,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
            storageCleanup: { worktreeSettledAfterDays: 0, worktreeKeepWhen: "any-local-files" },
          });
          assert.deepStrictEqual(updated.usageLimitSources, saved.usageLimitSources);
@@ -1356,10 +1356,10 @@ index 5160becc21567016fa0770d658113c405185eace..f09d22e6d26b71b43045b9ee356dbb63
  Press `Escape` to return to the previous page. Customize these shortcuts in
  **Settings → Keybindings**.
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 678f58294c66aeecb1c4310e7fb23697b353ecf3..78a5004e339064b4a71115f13bccd009ece52089 100644
+index 378b8af0e466f81d71e1c4efc130b41641edebf0..f9fcac21a9e767ab0ed9a36b728c41b1c0896688 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -1590,7 +1590,7 @@ export const ServerSettings = Schema.Struct({
+@@ -1592,7 +1592,7 @@ export const ServerSettings = Schema.Struct({
    ),
  
    usageHistoryRetentionDays: UsageHistoryRetentionDays.pipe(

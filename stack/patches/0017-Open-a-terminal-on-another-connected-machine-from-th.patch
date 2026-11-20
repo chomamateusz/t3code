@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: imqdee <qdqdqdqdqd@protonmail.com>
-Date: Tue, 10 Nov 2026 19:30:24 +0100
+From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 02:11:08 +0100
 Subject: =?UTF-8?q?=F0=9F=92=BB=20Open=20a=20terminal=20on=20another=20con?=
  =?UTF-8?q?nected=20machine=20from=20the=20thread's=20terminal=20drawer?=
 MIME-Version: 1.0
@@ -69,6 +69,8 @@ Port to 6b7027b1f4:
 - Manager.ts: upstream #37088 (e101cae1b9) adds startupError to the terminal session state and its creation; originEnvironmentId sits next to it in both places.
 
 Port to b6ac2449f1: the drawer keeps this commit's remote-terminal permission split under upstream's translated labels (055b44919e: gt(), getTerminalLabel(id, m)); its empty-state text is <T>; the machine menu uses gt() and <T> for its label, group heading, This thread and unavailable reasons, and passes useMessages to resolveEnvironmentOptionLabel.
+
+Port to 29b42d409c: upstream #38998 (17c401ddc0) moved drawer reconciliation into the terminal UI store, which now records the server's terminal ids per metadata snapshot and closes only ids it saw before, and #39260 (80cf4f7945) forgets an observed id when this client places it again. PersistentThreadTerminals.tsx reads upstream's useTerminalDrawerSessions and passes drawerServerTerminalIds' list with the snapshot id to the new reconcileTerminalIds, so remote tabs stay as before. terminalUiStateStore.ts: clearTerminalUiState is upstream's removeTerminalUiState, which also drops the thread's remote terminals; updateTerminal compares and returns server observations and remote terminals together; reconcileTerminalIds no longer runs through updateTerminal, so it keeps only the remote terminals the thread still shows itself; orphan cleanup and persistence carry both. terminalUiStateStore.test.ts: the remote-terminal case reconciles twice with the same snapshot, since a terminal now leaves through reconcile only after the server listed it once.
 
 Files:
 packages/contracts:
@@ -149,10 +151,10 @@ Tests:
  apps/server/src/terminal/Manager.test.ts      |  29 +++
  apps/server/src/terminal/Manager.ts           |   6 +
  .../PersistentThreadTerminals.logic.test.ts   |  21 +++
- .../PersistentThreadTerminals.logic.ts        |  20 +++
+ .../PersistentThreadTerminals.logic.ts        |  20 ++
  .../components/PersistentThreadTerminals.tsx  |  97 ++++++++--
  .../ThreadTerminalDrawer.browser.test.tsx     |   1 +
- .../src/components/ThreadTerminalDrawer.tsx   | 131 ++++++++++----
+ .../src/components/ThreadTerminalDrawer.tsx   | 131 +++++++++----
  .../components/chat/useChatTerminalActions.ts |  51 ++++--
  .../ProjectSettingsPanel.browser.test.tsx     |  23 ++-
  .../settings/ProjectSettingsPanel.tsx         |   4 +
@@ -168,11 +170,11 @@ Tests:
  apps/web/src/routes/__root.tsx                |   2 +
  apps/web/src/state/terminalSessions.test.ts   |   9 +
  apps/web/src/state/terminalSessions.ts        |   6 +-
- apps/web/src/terminalUiStateStore.test.ts     |  30 ++++
- apps/web/src/terminalUiStateStore.ts          | 167 +++++++++++++++---
+ apps/web/src/terminalUiStateStore.test.ts     |  32 ++++
+ apps/web/src/terminalUiStateStore.ts          | 173 +++++++++++++++---
  docs/user/terminal.md                         |  14 ++
  packages/contracts/src/terminal.ts            |   6 +-
- 26 files changed, 984 insertions(+), 88 deletions(-)
+ 26 files changed, 991 insertions(+), 89 deletions(-)
  create mode 100644 apps/web/src/components/PersistentThreadTerminals.logic.test.ts
  create mode 100644 apps/web/src/components/PersistentThreadTerminals.logic.ts
  create mode 100644 apps/web/src/components/terminal/NewTerminalMachineMenu.tsx
@@ -181,7 +183,7 @@ Tests:
  create mode 100644 apps/web/src/components/terminal/remoteTerminalClose.ts
 
 diff --git a/apps/server/src/terminal/Manager.test.ts b/apps/server/src/terminal/Manager.test.ts
-index 74814a0880542e6d9e65ff0ef622cb7bdf498862..5d0ab56a3a7c5e1084ee770d64af2a8acf890fe6 100644
+index 154dd4a445d34e38e6f651bba84a851fc44f06f7..dcaeb345aa54037be2b381df47fb51e992fe38f6 100644
 --- a/apps/server/src/terminal/Manager.test.ts
 +++ b/apps/server/src/terminal/Manager.test.ts
 @@ -4,9 +4,11 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -231,7 +233,7 @@ index 74814a0880542e6d9e65ff0ef622cb7bdf498862..5d0ab56a3a7c5e1084ee770d64af2a8a
      Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) => fs.exists(filePath));
  
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index dc7e192119903a7b257fde932e45a8dfd873d2a9..dbabcc3def3a6ebb2e0f5f0f4644261292b33bd1 100644
+index a294ba7f1afe28eb83e0281e63221c9118589f20..c65d39ec0a8db72019d3f47799c0bb2e653a9424 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
 @@ -21,6 +21,7 @@ import {
@@ -260,7 +262,7 @@ index dc7e192119903a7b257fde932e45a8dfd873d2a9..dbabcc3def3a6ebb2e0f5f0f46442612
    };
  }
  
-@@ -3294,6 +3299,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+@@ -3306,6 +3311,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
          runtimeEnv: normalizedRuntimeEnv(input.env),
          stopOnSettle: input.stopOnSettle ?? false,
          startupError: null,
@@ -322,7 +324,7 @@ index 0000000000000000000000000000000000000000..1fe5972e3397baadb87421a8e8007791
 +  ];
 +}
 diff --git a/apps/web/src/components/PersistentThreadTerminals.tsx b/apps/web/src/components/PersistentThreadTerminals.tsx
-index 9aa1958adcf212661aa4b63ea562dca0f092074a..c4476c0c35decd92ff7382943ca45eff36e8492b 100644
+index f389dbd40f80d3ec3693d4553ed14497d879165c..73ad06e384c95995d89d002e02b843dad8518ae4 100644
 --- a/apps/web/src/components/PersistentThreadTerminals.tsx
 +++ b/apps/web/src/components/PersistentThreadTerminals.tsx
 @@ -22,10 +22,18 @@ import {
@@ -330,7 +332,7 @@ index 9aa1958adcf212661aa4b63ea562dca0f092074a..c4476c0c35decd92ff7382943ca45eff
  import { useProject, useQuietThreadShell } from "../state/entities";
  import { useEnvironmentScope } from "../state/session";
 +import { useEnvironments } from "../state/environments";
- import { useKnownTerminalSessions } from "../state/terminalSessions";
+ import { useKnownTerminalSessions, useTerminalDrawerSessions } from "../state/terminalSessions";
 -import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 +import {
 +  selectThreadRemoteTerminals,
@@ -346,7 +348,7 @@ index 9aa1958adcf212661aa4b63ea562dca0f092074a..c4476c0c35decd92ff7382943ca45eff
  import { resolveTerminalWorktreePath } from "./ChatView.logic";
  
  /** Where a drawer or panel opens new terminals when a script run overrides the thread's own. */
-@@ -71,7 +79,7 @@ function serverTerminalIdsStrictSubsetOfClient(
+@@ -37,7 +45,7 @@ export type PersistentTerminalLaunchContext = {
  interface TerminalLaunchLocationWithEnv {
    readonly cwd: string;
    readonly worktreePath: string | null;
@@ -355,7 +357,7 @@ index 9aa1958adcf212661aa4b63ea562dca0f092074a..c4476c0c35decd92ff7382943ca45eff
  }
  
  interface PersistentThreadTerminalDrawerProps {
-@@ -151,9 +159,33 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
+@@ -116,9 +124,33 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
        }),
      });
    }
@@ -391,7 +393,7 @@ index 9aa1958adcf212661aa4b63ea562dca0f092074a..c4476c0c35decd92ff7382943ca45eff
    const storeSetTerminalHeight = useTerminalUiStateStore((state) => state.setTerminalHeight);
    const storeSplitTerminal = useTerminalUiStateStore((state) => state.splitTerminal);
    const storeSplitTerminalVertical = useTerminalUiStateStore(
-@@ -207,11 +239,41 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
+@@ -165,11 +197,41 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
      if (visible) focusTerminal(threadRef, launched.terminalId);
      void launched.result;
    };
@@ -438,7 +440,7 @@ index 9aa1958adcf212661aa4b63ea562dca0f092074a..c4476c0c35decd92ff7382943ca45eff
    );
    const createNewTerminal = useStableCallback(() =>
      launchDrawerTerminal((terminalId) => storeNewTerminal(threadRef, terminalId)),
-@@ -223,7 +285,7 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
+@@ -181,7 +243,7 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
    };
  
    const closeTerminal = useStableCallback((terminalId: string) => {
@@ -447,7 +449,7 @@ index 9aa1958adcf212661aa4b63ea562dca0f092074a..c4476c0c35decd92ff7382943ca45eff
      terminalActions.closeTerminalSession(terminalId);
      storeCloseTerminal(threadRef, terminalId);
      if (visible) focusActiveDrawerTerminal(threadRef);
-@@ -279,6 +341,19 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
+@@ -237,6 +299,19 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
            onAddTerminalContext={handleAddTerminalContext}
            terminalLabelsById={terminalLabelsById}
            terminalLaunchLocationsById={terminalLaunchLocationsById}
@@ -1729,7 +1731,7 @@ index 2c39a36bec486ab1d5f09f8bedff8babca6c5c01..87f858f20a8d6cb97afceda73c7f016b
  });
  
 diff --git a/apps/web/src/state/terminalSessions.ts b/apps/web/src/state/terminalSessions.ts
-index 79dfdae7f705ed027e175ffbc291123d183df504..3c42edd208f5df6754a2606975ca3c77758cf0e5 100644
+index 8eaca1b774c859a49e28451ad7432d934f6b577f..d448b3a6fcd7c2ea8704c2b6437a56f2dd8f1f4f 100644
 --- a/apps/web/src/state/terminalSessions.ts
 +++ b/apps/web/src/state/terminalSessions.ts
 @@ -100,7 +100,11 @@ export function selectKnownTerminalSessions(
@@ -1746,7 +1748,7 @@ index 79dfdae7f705ed027e175ffbc291123d183df504..3c42edd208f5df6754a2606975ca3c77
  
    const anchor = summaries[0]!;
 diff --git a/apps/web/src/terminalUiStateStore.test.ts b/apps/web/src/terminalUiStateStore.test.ts
-index 1ad8ba86c06aef05769855139e9dba8f2e633ada..4e5aca282023c2e56736019b95ce650a31fe6dd6 100644
+index b4030d453b41a1c9fdc7d96f0a2487c7e274dd0f..b22ede2bf8688ad1efa16672241f58cf40ed5b7b 100644
 --- a/apps/web/src/terminalUiStateStore.test.ts
 +++ b/apps/web/src/terminalUiStateStore.test.ts
 @@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
@@ -1757,16 +1759,16 @@ index 1ad8ba86c06aef05769855139e9dba8f2e633ada..4e5aca282023c2e56736019b95ce650a
    selectThreadTerminalUiState,
    useTerminalUiStateStore,
  } from "./terminalUiStateStore";
-@@ -19,6 +20,8 @@ describe("terminalUiStateStore actions", () => {
-     useTerminalUiStateStore.setState({
+@@ -25,6 +26,8 @@ describe("terminalUiStateStore actions", () => {
        terminalUiStateByThreadKey: {},
+       serverObservationsByThreadKey: {},
        suppressedTerminalIdsByThreadKey: {},
 +      remoteTerminalsByThreadKey: {},
 +      pendingRemoteCloses: [],
      });
    });
  
-@@ -103,9 +106,36 @@ describe("terminalUiStateStore actions", () => {
+@@ -109,9 +112,38 @@ describe("terminalUiStateStore actions", () => {
            activeTerminalGroupId: "group-term-1",
          },
        },
@@ -1792,6 +1794,8 @@ index 1ad8ba86c06aef05769855139e9dba8f2e633ada..4e5aca282023c2e56736019b95ce650a
 +    store.closeTerminal(THREAD_REF, "term-split");
 +    expect(remoteTerminals()).toEqual({ "term-remote": remote });
 +
++    store.reconcileTerminalIds(THREAD_REF, [DEFAULT_THREAD_TERMINAL_ID, "term-remote", "term-2"]);
++    expect(remoteTerminals()).toEqual({ "term-remote": remote });
 +    store.reconcileTerminalIds(THREAD_REF, [DEFAULT_THREAD_TERMINAL_ID, "term-2"]);
 +    expect(remoteTerminals()).toEqual({});
 +
@@ -1804,7 +1808,7 @@ index 1ad8ba86c06aef05769855139e9dba8f2e633ada..4e5aca282023c2e56736019b95ce650a
      const store = useTerminalUiStateStore.getState();
      store.newTerminal(THREAD_REF, "terminal-only");
 diff --git a/apps/web/src/terminalUiStateStore.ts b/apps/web/src/terminalUiStateStore.ts
-index b442e855ca12d2d9a189b4b7bf8bc4b15e2b34d7..61b41110d171543b571d9fc033d1e085f18a2645 100644
+index 6bb939f7958463abf931cae011666fba9d1fa5cf..5effc733b86be6dc6a4d780c29bc59c174ba474b 100644
 --- a/apps/web/src/terminalUiStateStore.ts
 +++ b/apps/web/src/terminalUiStateStore.ts
 @@ -1,5 +1,5 @@
@@ -1869,7 +1873,7 @@ index b442e855ca12d2d9a189b4b7bf8bc4b15e2b34d7..61b41110d171543b571d9fc033d1e085
  }
  
  function createTerminalUiStateStorage() {
-@@ -517,6 +551,35 @@ function updateTerminalUiStateByThreadKey(
+@@ -522,6 +556,35 @@ function updateTerminalUiStateByThreadKey(
    };
  }
  
@@ -1905,8 +1909,8 @@ index b442e855ca12d2d9a189b4b7bf8bc4b15e2b34d7..61b41110d171543b571d9fc033d1e085
  function updateSuppressedTerminalId(
    suppressedTerminalIdsByThreadKey: Record<string, string[]>,
    threadRef: ScopedThreadRef,
-@@ -561,11 +624,19 @@ function removeRecordEntry<T>(record: Record<string, T>, key: string): Record<st
- interface TerminalUiStateStoreState {
+@@ -588,11 +651,19 @@ interface TerminalUiStateStoreState {
+   serverObservationsByThreadKey: Record<string, TerminalServerObservation>;
    terminalUiStateByThreadKey: Record<string, ThreadTerminalUiState>;
    suppressedTerminalIdsByThreadKey: Record<string, string[]>;
 +  remoteTerminalsByThreadKey: Record<string, ThreadRemoteTerminals>;
@@ -1928,47 +1932,69 @@ index b442e855ca12d2d9a189b4b7bf8bc4b15e2b34d7..61b41110d171543b571d9fc033d1e085
    ensureTerminal: (
      threadRef: ScopedThreadRef,
      terminalId: string,
-@@ -589,6 +660,7 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
-           suppressedTerminalIds: readonly string[],
-         ) => ThreadTerminalUiState,
+@@ -619,7 +690,8 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+           if (
+             state.terminalUiStateByThreadKey[threadKey] === undefined &&
+             state.suppressedTerminalIdsByThreadKey[threadKey] === undefined &&
+-            state.serverObservationsByThreadKey[threadKey] === undefined
++            state.serverObservationsByThreadKey[threadKey] === undefined &&
++            state.remoteTerminalsByThreadKey[threadKey] === undefined
+           ) {
+             return state;
+           }
+@@ -636,6 +708,10 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+               state.serverObservationsByThreadKey,
+               threadKey,
+             ),
++            remoteTerminalsByThreadKey: removeRecordEntry(
++              state.remoteTerminalsByThreadKey,
++              threadKey,
++            ),
+           };
+         });
+ 
+@@ -643,6 +719,7 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+         threadRef: ScopedThreadRef,
+         updater: (state: ThreadTerminalUiState) => ThreadTerminalUiState,
          suppression?: { terminalId: string; suppressed: boolean },
 +        remote?: RemoteTerminal,
        ) => {
          set((state) => {
-           const threadKey = terminalThreadKey(threadRef);
-@@ -598,6 +670,12 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+           const nextTerminalUiStateByThreadKey = updateTerminalUiStateByThreadKey(
+@@ -650,6 +727,12 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
              threadRef,
-             (terminalState) => updater(terminalState, suppressedTerminalIds),
+             updater,
            );
 +          const nextRemoteTerminalsByThreadKey = updateThreadRemoteTerminals(
 +            state.remoteTerminalsByThreadKey,
-+            threadKey,
++            terminalThreadKey(threadRef),
 +            selectThreadTerminalUiState(nextTerminalUiStateByThreadKey, threadRef).terminalIds,
 +            remote && suppression ? { terminalId: suppression.terminalId, remote } : undefined,
 +          );
            const nextSuppressedTerminalIdsByThreadKey = suppression
              ? updateSuppressedTerminalId(
                  state.suppressedTerminalIdsByThreadKey,
-@@ -608,13 +686,15 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
-             : state.suppressedTerminalIdsByThreadKey;
+@@ -676,7 +759,8 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
            if (
              nextTerminalUiStateByThreadKey === state.terminalUiStateByThreadKey &&
--            nextSuppressedTerminalIdsByThreadKey === state.suppressedTerminalIdsByThreadKey
-+            nextSuppressedTerminalIdsByThreadKey === state.suppressedTerminalIdsByThreadKey &&
+             nextSuppressedTerminalIdsByThreadKey === state.suppressedTerminalIdsByThreadKey &&
+-            nextServerObservationsByThreadKey === state.serverObservationsByThreadKey
++            nextServerObservationsByThreadKey === state.serverObservationsByThreadKey &&
 +            nextRemoteTerminalsByThreadKey === state.remoteTerminalsByThreadKey
            ) {
              return state;
            }
-           return {
+@@ -684,6 +768,7 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
              terminalUiStateByThreadKey: nextTerminalUiStateByThreadKey,
              suppressedTerminalIdsByThreadKey: nextSuppressedTerminalIdsByThreadKey,
+             serverObservationsByThreadKey: nextServerObservationsByThreadKey,
 +            remoteTerminalsByThreadKey: nextRemoteTerminalsByThreadKey,
            };
          });
        };
-@@ -622,6 +702,24 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
-       return {
+@@ -692,6 +777,24 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
          terminalUiStateByThreadKey: {},
+         serverObservationsByThreadKey: {},
          suppressedTerminalIdsByThreadKey: {},
 +        remoteTerminalsByThreadKey: {},
 +        pendingRemoteCloses: [],
@@ -1991,7 +2017,7 @@ index b442e855ca12d2d9a189b4b7bf8bc4b15e2b34d7..61b41110d171543b571d9fc033d1e085
          setTerminalOpen: (threadRef, open) => {
            const terminalState = selectThreadTerminalUiState(
              get().terminalUiStateByThreadKey,
-@@ -637,21 +735,27 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+@@ -707,21 +810,27 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
          },
          setTerminalHeight: (threadRef, height) =>
            updateTerminal(threadRef, (state) => setThreadTerminalHeight(state, height)),
@@ -2034,80 +2060,61 @@ index b442e855ca12d2d9a189b4b7bf8bc4b15e2b34d7..61b41110d171543b571d9fc033d1e085
          ensureTerminal: (threadRef, terminalId, options) =>
            updateTerminal(
              threadRef,
-@@ -705,9 +809,11 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
-             );
-             const hadSuppressedTerminalIds =
-               state.suppressedTerminalIdsByThreadKey[threadKey] !== undefined;
-+            const hadRemoteTerminals = state.remoteTerminalsByThreadKey[threadKey] !== undefined;
-             if (
-               nextTerminalUiStateByThreadKey === state.terminalUiStateByThreadKey &&
--              !hadSuppressedTerminalIds
-+              !hadSuppressedTerminalIds &&
-+              !hadRemoteTerminals
-             ) {
-               return state;
-             }
-@@ -717,6 +823,10 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
-                 state.suppressedTerminalIdsByThreadKey,
-                 threadKey,
-               ),
-+              remoteTerminalsByThreadKey: removeRecordEntry(
-+                state.remoteTerminalsByThreadKey,
-+                threadKey,
-+              ),
+@@ -789,11 +898,21 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+               [threadKey]: { ids: observedIds, snapshotId },
              };
-           }),
-         removeTerminalUiState: (threadRef) =>
-@@ -725,7 +835,8 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
-             const hadTerminalUiState = state.terminalUiStateByThreadKey[threadKey] !== undefined;
-             const hadSuppressedTerminalIds =
-               state.suppressedTerminalIdsByThreadKey[threadKey] !== undefined;
--            if (!hadTerminalUiState && !hadSuppressedTerminalIds) {
-+            const hadRemoteTerminals = state.remoteTerminalsByThreadKey[threadKey] !== undefined;
-+            if (!hadTerminalUiState && !hadSuppressedTerminalIds && !hadRemoteTerminals) {
-               return state;
-             }
-             return {
-@@ -737,6 +848,10 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
-                 state.suppressedTerminalIdsByThreadKey,
-                 threadKey,
-               ),
-+              remoteTerminalsByThreadKey: removeRecordEntry(
-+                state.remoteTerminalsByThreadKey,
-+                threadKey,
-+              ),
-             };
-           }),
-         removeOrphanedTerminalUiStates: (activeThreadKeys) =>
-@@ -745,6 +860,7 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
-               [
+           }
++          const remoteTerminalsByThreadKey = updateThreadRemoteTerminals(
++            state.remoteTerminalsByThreadKey,
++            threadKey,
++            selectThreadTerminalUiState(terminalUiStateByThreadKey, threadRef).terminalIds,
++          );
+           if (
+             terminalUiStateByThreadKey !== state.terminalUiStateByThreadKey ||
+-            serverObservationsByThreadKey !== state.serverObservationsByThreadKey
++            serverObservationsByThreadKey !== state.serverObservationsByThreadKey ||
++            remoteTerminalsByThreadKey !== state.remoteTerminalsByThreadKey
+           ) {
+-            set({ terminalUiStateByThreadKey, serverObservationsByThreadKey });
++            set({
++              terminalUiStateByThreadKey,
++              serverObservationsByThreadKey,
++              remoteTerminalsByThreadKey,
++            });
+           }
+         },
+         clearTerminalUiState: removeTerminalUiState,
+@@ -805,6 +924,7 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
                  ...Object.keys(state.terminalUiStateByThreadKey),
                  ...Object.keys(state.suppressedTerminalIdsByThreadKey),
+                 ...Object.keys(state.serverObservationsByThreadKey),
 +                ...Object.keys(state.remoteTerminalsByThreadKey),
                ].filter((key) => !activeThreadKeys.has(key)),
              );
              if (orphanedIds.size === 0) {
-@@ -754,13 +870,16 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
-             const nextSuppressedTerminalIdsByThreadKey = {
+@@ -815,15 +935,18 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
                ...state.suppressedTerminalIdsByThreadKey,
              };
+             const serverObservationsByThreadKey = { ...state.serverObservationsByThreadKey };
 +            const nextRemoteTerminalsByThreadKey = { ...state.remoteTerminalsByThreadKey };
              for (const id of orphanedIds) {
                delete nextTerminalUiStateByThreadKey[id];
                delete nextSuppressedTerminalIdsByThreadKey[id];
+               delete serverObservationsByThreadKey[id];
 +              delete nextRemoteTerminalsByThreadKey[id];
              }
              return {
                terminalUiStateByThreadKey: nextTerminalUiStateByThreadKey,
                suppressedTerminalIdsByThreadKey: nextSuppressedTerminalIdsByThreadKey,
+               serverObservationsByThreadKey,
 +              remoteTerminalsByThreadKey: nextRemoteTerminalsByThreadKey,
              };
            }),
        };
-@@ -772,6 +891,8 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
-       migrate: migratePersistedTerminalUiStateStoreState,
-       partialize: (state) => ({
-         terminalUiStateByThreadKey: state.terminalUiStateByThreadKey,
+@@ -840,6 +963,8 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
+             ([, observation]) => typeof observation.snapshotId === "string",
+           ),
+         ),
 +        remoteTerminalsByThreadKey: state.remoteTerminalsByThreadKey,
 +        pendingRemoteCloses: state.pendingRemoteCloses,
        }),
@@ -2139,7 +2146,7 @@ index a92ddc1ab6458799ee55554bf886a23f653292a0..44c93fd26e4dce8b6d15e071bfee4d78
  
  T3 Code starts fish with `no-query-term`, avoiding startup waits for terminal
 diff --git a/packages/contracts/src/terminal.ts b/packages/contracts/src/terminal.ts
-index fea5f216f80bd01552b6e3989828c10fad77cafc..f5e55f9a143fe125ed1c0beb727cedfde3e2ac64 100644
+index 09678600764b2efe7494d459518b94316fdd1cf5..26394c8eda568dcb0ed165863bf4d954c6cd8dfe 100644
 --- a/packages/contracts/src/terminal.ts
 +++ b/packages/contracts/src/terminal.ts
 @@ -1,5 +1,5 @@

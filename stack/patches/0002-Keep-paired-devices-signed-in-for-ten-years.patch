@@ -54,10 +54,10 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code;
  6 files changed, 23 insertions(+), 8 deletions(-)
 
 diff --git a/apps/server/src/auth/EnvironmentAuth.test.ts b/apps/server/src/auth/EnvironmentAuth.test.ts
-index 9a44e13633a1410a76e874e567527cab2282b703..c0504ec4247f77ee6ef6f4ffaca6a474da6d0629 100644
+index c452dde06403063a1844586567369bed7b88add9..3c53415f1f5c3afc6d4bf11dee6ecff84eb2555c 100644
 --- a/apps/server/src/auth/EnvironmentAuth.test.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.test.ts
-@@ -451,8 +451,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
+@@ -458,8 +458,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
          expect(paired.expires_in).toBe(60 * 60);
          const { sessionId } = yield* sessions.verify(paired.access_token);
          const pairedAt = (yield* DateTime.now).epochMilliseconds;
@@ -68,7 +68,7 @@ index 9a44e13633a1410a76e874e567527cab2282b703..c0504ec4247f77ee6ef6f4ffaca6a474
  
          yield* TestClock.adjust("20 days");
          const replay = new EnvironmentAuth.ServerAuthInvalidCredentialError({
-@@ -462,7 +463,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
+@@ -469,7 +470,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
            .renewAccessToken(paired.access_token, key.thumbprint, Effect.fail(replay))
            .pipe(Effect.flip);
          expect(rejected).toBe(replay);
@@ -77,7 +77,7 @@ index 9a44e13633a1410a76e874e567527cab2282b703..c0504ec4247f77ee6ef6f4ffaca6a474
  
          const renewed = yield* serverAuth.renewAccessToken(
            paired.access_token,
-@@ -472,7 +473,17 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
+@@ -479,7 +480,17 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
          expect(renewed.scope).toBe("orchestration:read");
          const verified = yield* sessions.verify(renewed.access_token);
          expect(verified.sessionId).toBe(sessionId);
@@ -96,7 +96,7 @@ index 9a44e13633a1410a76e874e567527cab2282b703..c0504ec4247f77ee6ef6f4ffaca6a474
  
          const refused = (token: string, thumbprint: string) =>
            serverAuth
-@@ -515,7 +526,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
+@@ -522,7 +533,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
  
          // Idle past the window, the device pairs again.
          const idle = yield* pair(key.thumbprint);
@@ -106,10 +106,10 @@ index 9a44e13633a1410a76e874e567527cab2282b703..c0504ec4247f77ee6ef6f4ffaca6a474
            "ServerAuthInvalidCredentialError",
          );
 diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
-index 254cd09f18efafad725ef3349b46eadf9a3dd795..e99eb58a146c12685a11396c1ecbb4b87b3d4570 100644
+index 39a09938e358ea75fe1be23bf8410669cdc5bfac..12ac3900bda0fe8dff38c8e1a2c32c30a84c3e8f 100644
 --- a/apps/server/src/auth/EnvironmentAuth.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.ts
-@@ -88,7 +88,7 @@ const MCP_CLIENT_SESSION_TTL = Duration.days(30);
+@@ -89,7 +89,7 @@ const MCP_CLIENT_SESSION_TTL = Duration.days(30);
  // A device pairing with its DPoP key renews the session itself, so the token can be short and
  // the device stays signed in while used. One idle for the whole window pairs again.
  const RENEWABLE_ACCESS_TOKEN_TTL = Duration.hours(1);
@@ -119,10 +119,10 @@ index 254cd09f18efafad725ef3349b46eadf9a3dd795..e99eb58a146c12685a11396c1ecbb4b8
  
  export interface McpClientSession {
 diff --git a/apps/server/src/auth/SessionStore.test.ts b/apps/server/src/auth/SessionStore.test.ts
-index 11b31894c23070c83b2eab559ee53042a26f6a79..26be18019e8eb4cab737e77031afc6f745d33329 100644
+index b8d944d5d04039a620c2b579fe20e06623acc7a2..efbf1a8f644bdcdb262fad74379365bd8e7d66b9 100644
 --- a/apps/server/src/auth/SessionStore.test.ts
 +++ b/apps/server/src/auth/SessionStore.test.ts
-@@ -593,6 +593,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("SessionStore.lay
+@@ -609,6 +609,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("SessionStore.lay
        );
  
        expect(beforeRevoke).toHaveLength(2);
@@ -134,10 +134,10 @@ index 11b31894c23070c83b2eab559ee53042a26f6a79..26be18019e8eb4cab737e77031afc6f7
          true,
        );
 diff --git a/apps/server/src/auth/SessionStore.ts b/apps/server/src/auth/SessionStore.ts
-index e3af51958b80686b83692d0110789c3e021434a2..dc79ec98ef90149ef68bd6ace4d210006ca003a3 100644
+index b8a33c391a6b0ae6eb39c0315316028d4ef58ea0..cc1e3dc5ebf9eb07615ab2b41c885be372f040e1 100644
 --- a/apps/server/src/auth/SessionStore.ts
 +++ b/apps/server/src/auth/SessionStore.ts
-@@ -479,7 +479,7 @@ export class SessionStore extends Context.Service<
+@@ -480,7 +480,7 @@ export class SessionStore extends Context.Service<
  >()("t3/auth/SessionStore") {}
  
  const SIGNING_SECRET_NAME = "server-signing-key";
@@ -160,7 +160,7 @@ index ed6be35c0c1eadd7f01b2a63145895b0d24fbfa5..301c40c5463674f450276deac57a45ae
  and unrevoked, so a device idle past the window pairs again. Renewal stays in place rather than issuing a
  successor, so live sockets keep their session, Sharing & access shows one row
 diff --git a/docs/user/remote-access.md b/docs/user/remote-access.md
-index eaebfdb811aceab958a8772f340c991f319f58a4..eba8fdbfe4539c0335b57ed687b7041e83fb0318 100644
+index 1b80179a3f3194ac726d5f354c849dbf15f80f34..1b57bfce1b85767f80b1279a7bcfeb7689d43391 100644
 --- a/docs/user/remote-access.md
 +++ b/docs/user/remote-access.md
 @@ -128,7 +128,7 @@ Android app then trusts it.

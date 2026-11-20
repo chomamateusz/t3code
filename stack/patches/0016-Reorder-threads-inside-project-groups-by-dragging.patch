@@ -344,7 +344,7 @@ index 76f2c9bf3a3ec8ad6c0167baafe812aad4d80368..ca5b2ed8f359adef9859e67e63acd3a7
        previous?.rects !== args.rects ||
        previous.activeIndex !== args.activeIndex ||
 diff --git a/apps/web/src/components/Sidebar.logic.test.ts b/apps/web/src/components/Sidebar.logic.test.ts
-index 37708e9bd90451fb930801c19d3cb7effe726925..6b6db57734059e717af9715dc0905666bfa55098 100644
+index e2ba699d6ca434575bde8aac88ea279bdbd9fd4d..2991ecd9a5b070be31c59287ea91e1e74fda305c 100644
 --- a/apps/web/src/components/Sidebar.logic.test.ts
 +++ b/apps/web/src/components/Sidebar.logic.test.ts
 @@ -32,6 +32,9 @@ import {
@@ -357,7 +357,7 @@ index 37708e9bd90451fb930801c19d3cb7effe726925..6b6db57734059e717af9715dc0905666
    planSidebarThreadDrop,
    resolveSidebarReorderableThreadKeys,
    sortPinnedThreadsForSidebar,
-@@ -1221,6 +1224,126 @@ describe("Working shelf (beta)", () => {
+@@ -1243,6 +1246,126 @@ describe("Working shelf (beta)", () => {
        expect(above.kind === "move-active" && above.assignments[0]!.orderKey < "m").toBe(true);
      });
  
@@ -485,7 +485,7 @@ index 37708e9bd90451fb930801c19d3cb7effe726925..6b6db57734059e717af9715dc0905666
        const onlineEnvironmentId = EnvironmentId.make("online");
        const offlineEnvironmentId = EnvironmentId.make("offline");
 diff --git a/apps/web/src/components/Sidebar.logic.ts b/apps/web/src/components/Sidebar.logic.ts
-index e829042708e68ced9493d8de042cbf7c252721f2..d0c6b4dcf70bbe6c711dac8e8fa26189f427b17e 100644
+index 7195a86b4e9f198cf3db125d5607b376b3be88d4..026d1d68f71cf37cff3ecea6b4853e4cce282388 100644
 --- a/apps/web/src/components/Sidebar.logic.ts
 +++ b/apps/web/src/components/Sidebar.logic.ts
 @@ -223,7 +223,12 @@ export function sidebarMarkerId(marker: SidebarListMarker): string {
@@ -569,7 +569,7 @@ index e829042708e68ced9493d8de042cbf7c252721f2..d0c6b4dcf70bbe6c711dac8e8fa26189
    T extends Pick<
      SidebarThreadSummary,
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 551eaccb8c34ee0fe2cf4b406f30a1a77e410fdf..0a142d36b22067f050b068afef09eb3f0f55fa88 100644
+index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de7337150be0 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -211,6 +211,8 @@ import {
@@ -781,7 +781,7 @@ index 551eaccb8c34ee0fe2cf4b406f30a1a77e410fdf..0a142d36b22067f050b068afef09eb3f
              ),
              plan.kind === "move-active"
                ? gt("Failed to reorder active threads")
-@@ -3483,7 +3490,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3502,7 +3509,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                            />
                          );
                        };
@@ -794,7 +794,7 @@ index 551eaccb8c34ee0fe2cf4b406f30a1a77e410fdf..0a142d36b22067f050b068afef09eb3f
                          <SidebarDraftBlock
                            key="draft-sessions"
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index e16a13b2d3fc1614388eac100a84b5aa56771b5f..8e4139d7657be2659fe1c93e4f4d39dbedb8066d 100644
+index 68fc2328d4560ce904200d0652add2a28fbf789a..ac2200eaa951518497aef78020cc84bd6787b60a 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -423,6 +423,7 @@ function SnoozeMenuButton(props: {
@@ -805,7 +805,7 @@ index e16a13b2d3fc1614388eac100a84b5aa56771b5f..8e4139d7657be2659fe1c93e4f4d39db
                    onDoubleClick={(event) => event.stopPropagation()}
                    className="inline-flex h-full cursor-pointer items-center gap-0.5 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
                  />
-@@ -1717,6 +1718,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1716,6 +1717,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                  type="button"
                                  aria-label={gt("Discard draft")}
                                  onClick={handleDiscardDraftClick}
@@ -814,7 +814,7 @@ index e16a13b2d3fc1614388eac100a84b5aa56771b5f..8e4139d7657be2659fe1c93e4f4d39db
                                />
                              }
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index b24de3a80c51f3047c1b8bf1cfdcc9d3c881a484..ffb98d03bfb018af296289a8f2913def37a10f4d 100644
+index 60fb08f46195fc98cfe0edc4dd8170128dc0c006..d747f3f0df89239f737e717aa957a36cba3f94b9 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -232,9 +232,11 @@ clicking, or press Alt+Enter on a focused folder, to close every folder when it

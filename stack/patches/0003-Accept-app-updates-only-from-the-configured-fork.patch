@@ -1624,7 +1624,7 @@ index 0000000000000000000000000000000000000000..a487da04636c707c54cf9c41f54f698b
 +  },
 +);
 diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
-index 3e6fd9531106bdfca01438e0cd2f7178bfd82bd5..8216a8fb620706237406df5b0c53f2eb3e528dce 100644
+index f4e04317e49246522b63a38979c7184a66b3fda0..d1fe8379180ef8552598230cbc9217cc53592ead 100644
 --- a/apps/desktop/vite.config.ts
 +++ b/apps/desktop/vite.config.ts
 @@ -21,6 +21,11 @@ const devElectronCommand =
@@ -1658,7 +1658,7 @@ index 770b26e0a686b75139c3c4e87f33e34e6a211f3d..7c6fb1b2348d5f20a8b737b401090fe8
      }
      await NodeFSP.writeFile(
 diff --git a/apps/web/src/components/desktopUpdate.logic.test.ts b/apps/web/src/components/desktopUpdate.logic.test.ts
-index eb5bacd37f828036a6bc70a10d3654bf61af428c..e2514504988334edf9ed4f2d5dacdd61d20b2cb5 100644
+index 29494789b6cff2f2039cf3cee040104df636f661..0c737edb3da5b6bc4fe9d5d640b3296dae548313 100644
 --- a/apps/web/src/components/desktopUpdate.logic.test.ts
 +++ b/apps/web/src/components/desktopUpdate.logic.test.ts
 @@ -1,9 +1,13 @@
@@ -1712,7 +1712,7 @@ index eb5bacd37f828036a6bc70a10d3654bf61af428c..e2514504988334edf9ed4f2d5dacdd61
    it("keeps retry action available after a download error", () => {
      const state: DesktopUpdateState = {
        ...baseState,
-@@ -80,6 +113,23 @@ describe("desktop update button state", () => {
+@@ -95,6 +128,23 @@ describe("desktop update button state", () => {
    });
  });
  
@@ -1737,12 +1737,12 @@ index eb5bacd37f828036a6bc70a10d3654bf61af428c..e2514504988334edf9ed4f2d5dacdd61
    it.each(["owner/repo/extra", "owner#notes/repo", "owner/repo?tab=notes"])(
      "falls back to upstream for an invalid configured repository: %s",
 diff --git a/apps/web/src/components/desktopUpdate.logic.ts b/apps/web/src/components/desktopUpdate.logic.ts
-index b6018a592c0ff621dd21c0cdbb3f3fdd3920c6df..816393a113cc908d65a7e85a8ceff494efd67a30 100644
+index b853c448a10bb07efa8af3bb44e6518d498b43b6..a43b4c479e90ddcfd0c27f04e3346e048c02a027 100644
 --- a/apps/web/src/components/desktopUpdate.logic.ts
 +++ b/apps/web/src/components/desktopUpdate.logic.ts
-@@ -3,50 +3,23 @@ import { msg } from "gt-react";
- 
+@@ -5,50 +5,23 @@ import { msg } from "gt-react";
  import { m, type MessageResolver } from "../i18n/messages";
+ import { channelSwitchLabel } from "./sidebar/updateEverything.logic";
  
 -export type DesktopUpdateButtonAction = "download" | "install" | "none";
 -
@@ -1798,7 +1798,7 @@ index b6018a592c0ff621dd21c0cdbb3f3fdd3920c6df..816393a113cc908d65a7e85a8ceff494
    if (
      state.downloadedVersion &&
      (state.status === "downloaded" ||
-@@ -71,7 +44,10 @@ export function shouldShowArm64IntelBuildWarning(state: DesktopUpdateState | nul
+@@ -73,7 +46,10 @@ export function shouldShowArm64IntelBuildWarning(state: DesktopUpdateState | nul
  }
  
  export function isDesktopUpdateButtonDisabled(state: DesktopUpdateState | null): boolean {
@@ -1810,7 +1810,7 @@ index b6018a592c0ff621dd21c0cdbb3f3fdd3920c6df..816393a113cc908d65a7e85a8ceff494
  }
  
  export function getArm64IntelBuildWarningDescription(
-@@ -108,6 +84,9 @@ export function getDesktopUpdateButtonTooltip(
+@@ -110,6 +86,9 @@ export function getDesktopUpdateButtonTooltip(
    state: DesktopUpdateState,
    resolve: MessageResolver = m,
  ): string {
@@ -1820,7 +1820,7 @@ index b6018a592c0ff621dd21c0cdbb3f3fdd3920c6df..816393a113cc908d65a7e85a8ceff494
    if (
      state.notAppliedVersion !== undefined &&
      (state.status === "available" || state.status === "downloaded") &&
-@@ -182,7 +161,8 @@ export function getDesktopUpdateInstallConfirmationMessage(
+@@ -197,7 +176,8 @@ export function getDesktopUpdateInstallConfirmationMessage(
  }
  
  export function getDesktopUpdateActionError(result: DesktopUpdateActionResult): string | null {
@@ -1945,7 +1945,7 @@ index 1a961de85c5c2c5edb1566caf9a911fbd4db2ae3..d79f3a305be595122a964eefca427b2c
    const found = local.downloadedVersion ?? local.availableVersion;
    if (
 diff --git a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
-index ce45fe8bf73a4ce5f5596213052e8eae55467c87..317d35436dea47991e5ed7450731da674ee616ef 100644
+index 71fce36f3ed4305e49f3252bbac18eca94a25308..1bc7a68cfaf3816ec938a9fc7f0661acf4680b0b 100644
 --- a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
 +++ b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
 @@ -177,16 +177,16 @@ export async function installLocalUpdate(
@@ -2270,10 +2270,10 @@ index 63f7cca9cbfc679ee82dee992176e51d0cbac8c8..ec4f10e8e9fd893062ae53c347efdbed
    readonly APP_VERSION: string;
  }
 diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
-index 1916d2dd54fc0f6ca78beef2b4daf2eb07ae97a5..61435cb807139381246f3e5343c3ce6dec8ccacc 100644
+index 073fca7943d3e0008739612e97f90647d039b3ed..7465929157e96c21c41cab686d8c017de4158440 100644
 --- a/apps/web/vite.config.ts
 +++ b/apps/web/vite.config.ts
-@@ -350,6 +350,11 @@ export default defineConfig(({ command }) => {
+@@ -351,6 +351,11 @@ export default defineConfig(({ command }) => {
        ],
      },
      define: {

@@ -429,10 +429,10 @@ index 0915ed9df3b538b26f34d39ae482a35d88f185bd..1fb68ef7272dc5513f1de35a9dd2151c
            void store.syncPersistedAttachments(target, [capture]);
          }
 diff --git a/apps/web/src/components/preview/PreviewView.tsx b/apps/web/src/components/preview/PreviewView.tsx
-index 4d7320272e40bec31211195f6e2df0b7ff7f69d3..37aa4a35dd5d57fea42b0269a9474df9d7441f00 100644
+index bb62228b937369f81c9ec05d829b3dfdf71b8ca0..9f15d29f37360626d93fed65e7e41734e16b3212 100644
 --- a/apps/web/src/components/preview/PreviewView.tsx
 +++ b/apps/web/src/components/preview/PreviewView.tsx
-@@ -866,7 +866,7 @@ export function PreviewView({
+@@ -877,7 +877,7 @@ export function PreviewView({
        const { annotation: picked, submission, screenshotFailed = false } = result;
        // Send annotations even if the optional crop fails or stalls; drop failed screenshots so prompts cannot
        // claim an attachment.
@@ -845,7 +845,7 @@ index 8f8b944e2fa1ce73444ca9f27e41d37da76b07af..fdd8b9af2e1ca40c29b5d3eb0885a10e
      return { status: "failed" };
    }
 diff --git a/docs/user/composer.md b/docs/user/composer.md
-index 7f27587971a2bc3e54c10a035673219099052513..e75c33876f798a344d6827eac3a2a094f9883e4b 100644
+index 9fc9b69ef22a62e3be7c39811c7de135b139e3b1..edd8e59aae2bf85c6b772c90cd95b8ff6eb7d14e 100644
 --- a/docs/user/composer.md
 +++ b/docs/user/composer.md
 @@ -58,6 +58,10 @@ also send files to T3 Code through another app's system share sheet.
