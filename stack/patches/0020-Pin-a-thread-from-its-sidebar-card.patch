@@ -1,0 +1,287 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mateusz Choma <chomamateusz@gmail.com>
+Date: Fri, 20 Nov 2026 19:41:12 +0100
+Subject: =?UTF-8?q?=F0=9F=93=8C=20Pin=20a=20thread=20from=20its=20sidebar?=
+ =?UTF-8?q?=20card?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Behaviours:
+- An unpinned thread card (the card variant of SidebarThreadRow: Active and Working cards in the ungrouped list and the cards inside project folders in the grouped sidebar) shows a Pin button in the pin slot, between the project favicon and the project name, where a pinned card shows its pin icon that turns into the Unpin button on hover.
+- The button is shown only when the thread is not pinned, pinning is supported (server config loaded), the user can operate the thread and the row is not being dragged. It appears while the row is hovered (the group-any-hover/sidebar-row variant the card's other hover controls use) and while the row or a control in it has keyboard focus; otherwise it is display: none and takes no space, so the project name sits where it does today and moves right by the icon's width plus the header gap (18px) only while the button shows. No animation is added; only the hover colour change the Unpin button already has.
+- It has the Unpin button's size, colour and hover colour (PinIcon size-3, text-muted-foreground/65, hover:text-foreground), with tooltip and aria-label "Pin thread" (gt() for the label, <T> for the tooltip, as the Unpin button does).
+- Clicking it pins the thread exactly as the context menu's Pin thread does: SidebarThreadRow gets an onPin prop, wired to Sidebar's existing attemptPin (pinThread plus the "Failed to pin thread" toast). The click calls preventDefault and stopPropagation so the row does not navigate; pointerdown stops propagation like the Snooze trigger and Discard draft, so pressing it never starts a row drag or the sweep gesture. A double-click on it does not start a rename, because the row ignores double-clicks on buttons.
+- The slim rows (Snoozed, Settled) and the folder and folder-multiline variants are unchanged; in the grouped sidebar a folder card is a card, so it shows the button and pinning it moves the thread from its folder to the pinned cards, as the menu does. Touch-only screens (no hover) keep pinning from the context menu.
+- The new <T>Pin thread</T> key (461acc49f173eb0b, the key gt generate produces) is added to every web locale with the translation the existing "Pin thread" menu key already has. Only that key is added: a full regenerate would also rewrite catalog drift the series carries from other patches.
+- The user guide's Pin and reorder threads section mentions the pin button that appears when you hover a card.
+
+Files:
+apps/web:
+- apps/web/src/components/Sidebar.tsx
+- apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
+- apps/web/src/components/sidebar/SidebarThreadRow.tsx
+- apps/web/src/i18n/translations/de.json
+- apps/web/src/i18n/translations/en.json
+- apps/web/src/i18n/translations/es.json
+- apps/web/src/i18n/translations/fr.json
+- apps/web/src/i18n/translations/ja.json
+- apps/web/src/i18n/translations/ko.json
+- apps/web/src/i18n/translations/pt-BR.json
+- apps/web/src/i18n/translations/ru.json
+- apps/web/src/i18n/translations/sv.json
+- apps/web/src/i18n/translations/zh.json
+docs:
+- docs/user/thread-sidebar.md
+
+Tests:
+- No new test: the change is callback wiring and markup (AGENTS.md); the existing SidebarThreadRow browser test only gets the new required onPin prop.
+- vp test run SidebarThreadRow.browser.test.tsx Sidebar.browser.test.tsx: 13 passed.
+- vp run check:changed HEAD (14 files): format, lint, knip 1/2 and 2/2, typecheck of 2 packages, tests (9 files, 215 passed plus the cross-file run) and the React compiler check passed.
+- node scripts/i18n-check.ts reports only drift that predates this commit; nothing about the new key.
+- No run in a real client yet.
+
+Model/harness: Claude Opus 5.5 / Claude Code
+---
+ apps/web/src/components/Sidebar.tsx           |  1 +
+ .../sidebar/SidebarThreadRow.browser.test.tsx |  1 +
+ .../components/sidebar/SidebarThreadRow.tsx   | 29 +++++++++++++++++++
+ apps/web/src/i18n/translations/de.json        |  1 +
+ apps/web/src/i18n/translations/en.json        |  1 +
+ apps/web/src/i18n/translations/es.json        |  1 +
+ apps/web/src/i18n/translations/fr.json        |  1 +
+ apps/web/src/i18n/translations/ja.json        |  1 +
+ apps/web/src/i18n/translations/ko.json        |  1 +
+ apps/web/src/i18n/translations/pt-BR.json     |  1 +
+ apps/web/src/i18n/translations/ru.json        |  1 +
+ apps/web/src/i18n/translations/sv.json        |  1 +
+ apps/web/src/i18n/translations/zh.json        |  1 +
+ docs/user/thread-sidebar.md                   |  3 +-
+ 14 files changed, 43 insertions(+), 1 deletion(-)
+
+diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
+index 456e7f80e055cc4aa233cf5f77355bb2b2559e15..c1d1d506a5dc581ecd48e88935b93dbad493a662 100644
+--- a/apps/web/src/components/Sidebar.tsx
++++ b/apps/web/src/components/Sidebar.tsx
+@@ -3511,6 +3511,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                             onUnsettle={attemptUnsettle}
+                             onSnooze={attemptSnooze}
+                             onUnsnooze={attemptUnsnooze}
++                            onPin={attemptPin}
+                             onUnpin={attemptUnpin}
+                             onAcknowledgeWoke={acknowledgeWoke}
+                             onReadAction={applyThreadReadAction}
+diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
+index d07a999df8093e0bdd58e8722953d426f08ceb74..ea781f6e5eb6e0c3d56817033c150f4d5ae18882 100644
+--- a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
++++ b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
+@@ -69,6 +69,7 @@ function Row(props: {
+         onUnsettle={noop}
+         onSnooze={noop}
+         onUnsnooze={noop}
++        onPin={noop}
+         onUnpin={noop}
+         onAcknowledgeWoke={noop}
+         onReadAction={noop}
+diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
+index ac2200eaa951518497aef78020cc84bd6787b60a..8d7b94aaaa04965163729a56fd592b1a815ab4f8 100644
+--- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
++++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
+@@ -666,6 +666,7 @@ type SidebarThreadRowProps = {
+   onUnsettle: (threadRef: ScopedThreadRef) => void;
+   onSnooze: (threadRef: ScopedThreadRef, preset: Pick<SnoozePreset, "snoozedUntil">) => void;
+   onUnsnooze: (threadRef: ScopedThreadRef) => void;
++  onPin: (threadRef: ScopedThreadRef) => void;
+   onUnpin: (threadRef: ScopedThreadRef) => void;
+   onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
+   onReadAction: (threadRef: ScopedThreadRef, action: SidebarThreadReadAction) => void;
+@@ -734,6 +735,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+     onThreadClick,
+     onUnsettle,
+     onUnsnooze,
++    onPin,
+     onUnpin,
+     readOpensPullRequestsInRightPanel,
+     renamingTitle,
+@@ -945,6 +947,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+     event.stopPropagation();
+     onUnsnooze(threadRef);
+   };
++  const handlePinClick = (event: ReactMouseEvent) => {
++    event.preventDefault();
++    event.stopPropagation();
++    onPin(threadRef);
++  };
+   const handleUnpinClick = (event: ReactMouseEvent) => {
+     event.preventDefault();
+     event.stopPropagation();
+@@ -1246,6 +1253,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+       />
+     )
+   ) : null;
++  const pinButton =
++    !props.isPinned && props.pinningSupported && canOperateThread && !sortable?.isDragging ? (
++      <Tooltip>
++        <TooltipTrigger
++          render={
++            <button
++              type="button"
++              aria-label={gt("Pin thread")}
++              onClick={handlePinClick}
++              onPointerDown={(event) => event.stopPropagation()}
++              className="hidden cursor-pointer items-center rounded-sm text-muted-foreground/65 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring group-any-hover/sidebar-row:inline-flex group-focus-visible/sidebar-row:inline-flex group-has-[:focus-visible]/sidebar-row:inline-flex"
++            />
++          }
++        >
++          <PinIcon aria-hidden className="size-3 shrink-0" />
++        </TooltipTrigger>
++        <TooltipPopup>
++          <T>Pin thread</T>
++        </TooltipPopup>
++      </Tooltip>
++    ) : null;
+ 
+   const remoteMachineIcon =
+     isRemote && !showsMachine ? (
+@@ -1613,6 +1641,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+               {/* Left of the status slot, the pin would slide when hover swaps the
+                 label for the wider row controls. */}
+               {pinIndicator}
++              {pinButton}
+               {props.projectDisplayName ? (
+                 <span
+                   className={cn("min-w-0 flex-1 truncate font-normal text-secondary-label text-xs")}
+diff --git a/apps/web/src/i18n/translations/de.json b/apps/web/src/i18n/translations/de.json
+index 03ea9dc2c19d593e2ecb185949d5025e6f725090..6dc930b9213562ed8831384e2cc154cd5a08f840 100644
+--- a/apps/web/src/i18n/translations/de.json
++++ b/apps/web/src/i18n/translations/de.json
+@@ -11736,6 +11736,7 @@
+   "5c3e33c17a1c7cf2": "Aufwecken",
+   "f8fec76a8dea38d4": "Nicht gesendeter Entwurf",
+   "b0b811c800c8af57": "Thread loslösen",
++  "461acc49f173eb0b": "Thread anheften",
+   "4fca00950ff1db87": "Titel wird neu generiert",
+   "6bf3499c98fc67f2": "Aufgeweckt",
+   "4851fe12e61ec84b": "Aufgeweckt-Hinweis schließen",
+diff --git a/apps/web/src/i18n/translations/en.json b/apps/web/src/i18n/translations/en.json
+index 097252361c5c06fdd89cefd657b20c086a3835b7..2d28d417095c3a8dec26447884a8ffc8676bf92c 100644
+--- a/apps/web/src/i18n/translations/en.json
++++ b/apps/web/src/i18n/translations/en.json
+@@ -11744,6 +11744,7 @@
+   "5c3e33c17a1c7cf2": "Wake",
+   "f8fec76a8dea38d4": "Unsent draft",
+   "b0b811c800c8af57": "Unpin thread",
++  "461acc49f173eb0b": "Pin thread",
+   "4fca00950ff1db87": "Regenerating title",
+   "6bf3499c98fc67f2": "Woke",
+   "4851fe12e61ec84b": "Dismiss Woke notification",
+diff --git a/apps/web/src/i18n/translations/es.json b/apps/web/src/i18n/translations/es.json
+index 753b950e9b86e6acb1a2f246e2300bc6b4065273..4be222aae74f2c0fa57cbeeb1e630d90a6441497 100644
+--- a/apps/web/src/i18n/translations/es.json
++++ b/apps/web/src/i18n/translations/es.json
+@@ -11729,6 +11729,7 @@
+   "5c3e33c17a1c7cf2": "Reactivar",
+   "f8fec76a8dea38d4": "Borrador sin enviar",
+   "b0b811c800c8af57": "Desfijar hilo",
++  "461acc49f173eb0b": "Fijar hilo",
+   "4fca00950ff1db87": "Regenerando título",
+   "6bf3499c98fc67f2": "Reactivado",
+   "4851fe12e61ec84b": "Descartar notificación de reactivación",
+diff --git a/apps/web/src/i18n/translations/fr.json b/apps/web/src/i18n/translations/fr.json
+index 8954f07a12b272fe95b1a262096888eccdbd6ce5..bdd50102a31c2c68b228c5f4c21f36fbbb819334 100644
+--- a/apps/web/src/i18n/translations/fr.json
++++ b/apps/web/src/i18n/translations/fr.json
+@@ -11734,6 +11734,7 @@
+   "5c3e33c17a1c7cf2": "Réveiller",
+   "f8fec76a8dea38d4": "Brouillon non envoyé",
+   "b0b811c800c8af57": "Désépingler le fil",
++  "461acc49f173eb0b": "Épingler le fil",
+   "4fca00950ff1db87": "Régénération du titre",
+   "6bf3499c98fc67f2": "Réveillé",
+   "4851fe12e61ec84b": "Ignorer la notification Réveillé",
+diff --git a/apps/web/src/i18n/translations/ja.json b/apps/web/src/i18n/translations/ja.json
+index 6c17747d9681377f4e112d92c77a5aa08d38810f..325f6c9d94975c069e97199d4ad79f34bd2a3722 100644
+--- a/apps/web/src/i18n/translations/ja.json
++++ b/apps/web/src/i18n/translations/ja.json
+@@ -11684,6 +11684,7 @@
+   "5c3e33c17a1c7cf2": "再開",
+   "f8fec76a8dea38d4": "未送信の下書き",
+   "b0b811c800c8af57": "スレッドのピン留めを解除",
++  "461acc49f173eb0b": "スレッドをピン留め",
+   "4fca00950ff1db87": "タイトルを再生成しています",
+   "6bf3499c98fc67f2": "再開",
+   "4851fe12e61ec84b": "再開の通知を閉じる",
+diff --git a/apps/web/src/i18n/translations/ko.json b/apps/web/src/i18n/translations/ko.json
+index 08e547fa64c84708186e28d916586c1a3b521a6e..7648271086b7a5536ce5040478fbc214954a2149 100644
+--- a/apps/web/src/i18n/translations/ko.json
++++ b/apps/web/src/i18n/translations/ko.json
+@@ -11681,6 +11681,7 @@
+   "5c3e33c17a1c7cf2": "깨우기",
+   "f8fec76a8dea38d4": "보내지 않은 초안",
+   "b0b811c800c8af57": "스레드 고정 해제",
++  "461acc49f173eb0b": "스레드 고정",
+   "4fca00950ff1db87": "제목 다시 생성 중",
+   "6bf3499c98fc67f2": "깨어남",
+   "4851fe12e61ec84b": "깨어남 알림 닫기",
+diff --git a/apps/web/src/i18n/translations/pt-BR.json b/apps/web/src/i18n/translations/pt-BR.json
+index 99594f480c0e2b9cf1ffc988a955922e4f874d86..3a0f729e3a28073f85318393d42c7ecf852ded0d 100644
+--- a/apps/web/src/i18n/translations/pt-BR.json
++++ b/apps/web/src/i18n/translations/pt-BR.json
+@@ -11733,6 +11733,7 @@
+   "5c3e33c17a1c7cf2": "Despertar",
+   "f8fec76a8dea38d4": "Rascunho não enviado",
+   "b0b811c800c8af57": "Desafixar thread",
++  "461acc49f173eb0b": "Fixar thread",
+   "4fca00950ff1db87": "Regenerando título",
+   "6bf3499c98fc67f2": "Despertou",
+   "4851fe12e61ec84b": "Dispensar notificação de despertar",
+diff --git a/apps/web/src/i18n/translations/ru.json b/apps/web/src/i18n/translations/ru.json
+index 9f12c818ddaf4436aa4f23e39869ad8709a1a9f0..6a341958ad8ebcd2626bc99945d1122bafc40567 100644
+--- a/apps/web/src/i18n/translations/ru.json
++++ b/apps/web/src/i18n/translations/ru.json
+@@ -11734,6 +11734,7 @@
+   "5c3e33c17a1c7cf2": "Разбудить",
+   "f8fec76a8dea38d4": "Неотправленный черновик",
+   "b0b811c800c8af57": "Открепить тред",
++  "461acc49f173eb0b": "Закрепить тред",
+   "4fca00950ff1db87": "Обновление заголовка",
+   "6bf3499c98fc67f2": "Проснулся",
+   "4851fe12e61ec84b": "Скрыть уведомление о пробуждении",
+diff --git a/apps/web/src/i18n/translations/sv.json b/apps/web/src/i18n/translations/sv.json
+index 7e52ef9c55d7bfcc748467d4fa1bf1af366a8e01..00712789ae432f5bc3a56b010879c2f0adf761e0 100644
+--- a/apps/web/src/i18n/translations/sv.json
++++ b/apps/web/src/i18n/translations/sv.json
+@@ -11742,6 +11742,7 @@
+   "5c3e33c17a1c7cf2": "Väck",
+   "f8fec76a8dea38d4": "Ej skickat utkast",
+   "b0b811c800c8af57": "Lossa tråd",
++  "461acc49f173eb0b": "Fäst tråd",
+   "4fca00950ff1db87": "Genererar om titeln",
+   "6bf3499c98fc67f2": "Väckt",
+   "4851fe12e61ec84b": "Stäng aviseringen Väckt",
+diff --git a/apps/web/src/i18n/translations/zh.json b/apps/web/src/i18n/translations/zh.json
+index c27a72f23af1b0080f4c8f1c88349505853a5fe2..14750328737d270abb9ed3b7021bddec22f757b4 100644
+--- a/apps/web/src/i18n/translations/zh.json
++++ b/apps/web/src/i18n/translations/zh.json
+@@ -11759,6 +11759,7 @@
+   "5c3e33c17a1c7cf2": "唤醒",
+   "f8fec76a8dea38d4": "未发送的草稿",
+   "b0b811c800c8af57": "取消置顶会话",
++  "461acc49f173eb0b": "置顶会话",
+   "4fca00950ff1db87": "正在重新生成标题",
+   "6bf3499c98fc67f2": "已唤醒",
+   "4851fe12e61ec84b": "忽略已唤醒通知",
+diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
+index a391b21a967918f96bbac670fd3fe2fafb88c158..68eeac8016b830327dffad396359a8121da2a67a 100644
+--- a/docs/user/thread-sidebar.md
++++ b/docs/user/thread-sidebar.md
+@@ -75,7 +75,8 @@ and worktree while you stay in the new thread composer. This requires a Git proj
+ 
+ ## Pin and reorder threads
+ 
+-Pin a thread from its menu to keep it above your active work.
++Pin a thread from its menu, or with the pin button that appears when you hover its card, to keep it
++above your active work.
+ 
+ On web and desktop, unpinning, settling, snoozing, and archiving a thread each show
+ a notification with **Undo** for five seconds. Undo restores the thread's previous
