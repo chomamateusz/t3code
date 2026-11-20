@@ -253,11 +253,15 @@ jobs:
         run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/monorepo' --filter '!@t3tools/web' test
 
   test_web:
-    name: Web tests
+    name: Web tests ${{ matrix.shard }}
     needs: [prepare]
     if: needs.prepare.outputs.skip == 'false'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     defaults:
       run:
         working-directory: source
@@ -298,13 +302,17 @@ jobs:
           fi
 
       - name: Test
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARD_TOTAL: ${{ strategy.job-total }}
         run: |
           pattern=$(node "$GITHUB_WORKSPACE/local-stack/stack/ci/test-exclusions.ts" @t3tools/web)
           args=()
           if [[ -n "$pattern" ]]; then args+=(--testNamePattern "$pattern"); fi
-          vp run --filter @t3tools/web test "${args[@]}"
+          vp run --filter @t3tools/web test --shard "$SHARD/$SHARD_TOTAL" "${args[@]}"
 
       - name: Boot the built web client
+        if: matrix.shard == 1
         run: |
           vp run --filter @t3tools/web build
           node apps/web/scripts/verify-built-boot.ts
