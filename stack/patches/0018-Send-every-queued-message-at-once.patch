@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
-Date: Wed, 18 Nov 2026 02:17:57 +0100
+Date: Sat, 21 Nov 2026 02:08:08 +0100
 Subject: =?UTF-8?q?=F0=9F=93=A4=20Send=20every=20queued=20message=20at=20o?=
  =?UTF-8?q?nce?=
 MIME-Version: 1.0
@@ -92,6 +92,8 @@ Port to 25875c11b2: Upstream #31283 (8753e4d36b) shows a toast with the server's
 
 Port to b6ac2449f1: the copy follows upstream's translation (055b44919e) with its English unchanged: the queue buttons, tooltips and blocked reasons use gt() and <T> (Show all keeps upstream's plural); deriveThreadQueueWorkflowState's reasons are msg() through upstream's resolver; packages/shared/src/queuedMessageMerge.ts names its reasons in QUEUED_MESSAGE_MERGE_REASONS and the new client-only packages/shared/src/queuedMessageMergeCopy.ts translates them, so the server keeps English as docs/internals/i18n.md requires; the keybinding label joins upstream's msg() table.
 
+Port to 1ed4f6a96f: upstream #38874 lets a run ask for a typed result (outputSchema) and refuses to steer such a run. Orchestrator.ts: dispatchQueuedRunEdit keeps upstream's check that an edited result request is not a command, then the shared emitQueuedMessageRewrite; the dispatch switch keeps run.output.submit next to queued-run.merge. queuedMessageMerge.ts refuses a part that asks for a result ("A message that asks for a result is sent on its own.", translated in queuedMessageMergeCopy.ts), so a merge never cancels or rewrites a result request; threadWorkflows.ts treats such a message as one that cannot join the running turn for Send one by one. runtimeLayer.test.ts and threadWorkflows.test.ts gain a row for it.
+
 Files:
 apps/server:
 - apps/server/src/orchestration-v2/GuestShare.test.ts
@@ -155,7 +157,7 @@ Tests:
 ---
  .../src/orchestration-v2/GuestShare.test.ts   |  33 +-
  .../src/orchestration-v2/Orchestrator.ts      | 177 +++++++---
- .../src/orchestration-v2/runtimeLayer.test.ts | 304 ++++++++++++++++++
+ .../src/orchestration-v2/runtimeLayer.test.ts | 309 ++++++++++++++++++
  .../testkit/OrchestratorScenario.ts           |   1 +
  apps/server/src/telemetry/FeatureUsage.ts     |   1 +
  apps/server/src/ws.ts                         |   1 +
@@ -168,16 +170,16 @@ Tests:
  docs/user/keybindings.md                      |   3 +-
  .../client-runtime/src/operations/commands.ts |  15 +
  .../src/state/threadCommands.ts               |   7 +
- .../src/state/threadWorkflows.test.ts         | 220 ++++++++++++-
- .../src/state/threadWorkflows.ts              | 128 ++++++--
+ .../src/state/threadWorkflows.test.ts         | 226 ++++++++++++-
+ .../src/state/threadWorkflows.ts              | 129 ++++++--
  packages/contracts/src/keybindings.ts         |   1 +
  packages/contracts/src/orchestrationV2.ts     |   7 +
  packages/contracts/src/server.ts              |   1 +
  packages/shared/package.json                  |   8 +
  packages/shared/src/model.ts                  |   9 +-
- packages/shared/src/queuedMessageMerge.ts     | 153 +++++++++
- packages/shared/src/queuedMessageMergeCopy.ts |  28 ++
- 24 files changed, 1398 insertions(+), 119 deletions(-)
+ packages/shared/src/queuedMessageMerge.ts     | 156 +++++++++
+ packages/shared/src/queuedMessageMergeCopy.ts |  29 ++
+ 24 files changed, 1414 insertions(+), 119 deletions(-)
  create mode 100644 packages/shared/src/queuedMessageMerge.ts
  create mode 100644 packages/shared/src/queuedMessageMergeCopy.ts
 
@@ -236,7 +238,7 @@ index 7ea6f95a7a5159dc636b48f8aa020f543ec653a8..646cee832d6d4372a0132985fe4811f7
  );
  
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index db04ce474f56f188952fcfcdf6a265423a759c53..c8da8bec19b2102b46e2142b517dac8021d5a5a9 100644
+index 7179e297b1c9cb72a87cc0e469a4ef1bce58268b..fd36fcf6b7ab59345e796d1d74ef62323a9ba37b 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -31,6 +31,7 @@ import {
@@ -247,15 +249,15 @@ index db04ce474f56f188952fcfcdf6a265423a759c53..c8da8bec19b2102b46e2142b517dac80
    type NodeId,
    type ModelSelection,
    OrchestrationV2Command,
-@@ -90,6 +91,7 @@ import { contextBoundaryOrdinal, isScheduledFreshRun } from "./contextBoundary.t
- import { isPlaceholderThreadTitle } from "./placeholderThreadTitle.ts";
+@@ -91,6 +92,7 @@ import { isPlaceholderThreadTitle } from "./placeholderThreadTitle.ts";
  import { combinePullRequestWatchWakes, type PullRequestWatchWake } from "./pullRequestWatch.ts";
+ import { outputRequestProblem } from "./runOutput.ts";
  import { recordThreadOpen } from "@t3tools/shared/paletteSearch";
 +import { mergeQueuedMessages } from "@t3tools/shared/queuedMessageMerge";
  import {
    backgroundWorkHoldsCompletion,
    derivePendingBackgroundWork,
-@@ -214,6 +216,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
+@@ -215,6 +217,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
  import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import * as ServerSettings from "../serverSettings.ts";
  
@@ -263,7 +265,7 @@ index db04ce474f56f188952fcfcdf6a265423a759c53..c8da8bec19b2102b46e2142b517dac80
  const isMessageQuestionAnswer = Schema.is(
    Schema.Union([TrimmedNonEmptyString, Schema.NonEmptyArray(TrimmedNonEmptyString)]),
  );
-@@ -681,6 +684,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
+@@ -683,6 +686,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
      case "queued-run.reorder":
      case "queued-run.cancel":
      case "queued-run.edit":
@@ -271,10 +273,10 @@ index db04ce474f56f188952fcfcdf6a265423a759c53..c8da8bec19b2102b46e2142b517dac80
      case "runtime-request.respond":
      case "runtime-request.delivery.fail":
      case "thread.user-input.dismiss":
-@@ -12143,46 +12147,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
-       { text: command.text, attachments: command.attachments ?? queuedMessage.attachments },
-       queuedRunModelSelection(projection, queuedRun).instanceId,
-     );
+@@ -12246,46 +12250,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         cause: editProblem,
+       });
+     }
 -    const queuedTurnItem = projection.turnItems.find(
 -      (candidate) => candidate.type === "user_message" && candidate.messageId === queuedMessage.id,
 -    );
@@ -327,7 +329,7 @@ index db04ce474f56f188952fcfcdf6a265423a759c53..c8da8bec19b2102b46e2142b517dac80
      // Thread deletion only cleans files the thread still references.
      const keptAttachmentIds = new Set(
        (command.attachments ?? queuedMessage.attachments).map((attachment) => attachment.id),
-@@ -12207,6 +12183,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12310,6 +12286,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
      }
    });
  
@@ -456,9 +458,9 @@ index db04ce474f56f188952fcfcdf6a265423a759c53..c8da8bec19b2102b46e2142b517dac80
    const subagentCount = (threadId: ThreadId) =>
      projectionStore
        .getSubagentCount(threadId)
-@@ -15797,6 +15895,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
-       case "queued-run.edit":
-         yield* dispatchQueuedRunEdit(command, events, effects);
+@@ -15903,6 +16001,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+       case "run.output.submit":
+         yield* dispatchRunOutputSubmit(command, events);
          break;
 +      case "queued-run.merge":
 +        yield* dispatchQueuedRunMerge(command, events);
@@ -466,7 +468,7 @@ index db04ce474f56f188952fcfcdf6a265423a759c53..c8da8bec19b2102b46e2142b517dac80
        case "checkpoint.rollback":
          yield* dispatchCheckpointRollback(command, events, effects);
          break;
-@@ -16034,7 +16135,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16140,7 +16241,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                ),
              );
            if (
@@ -476,7 +478,7 @@ index db04ce474f56f188952fcfcdf6a265423a759c53..c8da8bec19b2102b46e2142b517dac80
              cause._tag === "OrchestratorDispatchError"
            ) {
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index 9b928dceda591c71f5e263d0a4814483736e67c8..f373c3a6300daf6d080c2fe9a891068c0a634686 100644
+index f4859b7f8976748f434d20c66ea2f148168763d8..4b993b5cba48ecd2e4f04e47f290c29dcad8e664 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 @@ -10,6 +10,8 @@ import { assert, it } from "@effect/vitest";
@@ -496,7 +498,7 @@ index 9b928dceda591c71f5e263d0a4814483736e67c8..f373c3a6300daf6d080c2fe9a891068c
    type OrchestrationV2DomainEvent,
    type OrchestrationV2Run,
    type OrchestrationV2ShellSnapshot,
-@@ -11580,6 +11583,307 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -11582,6 +11585,312 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
        assert.equal(cancelAgainError._tag, "OrchestratorDispatchError");
      }),
    );
@@ -772,6 +774,11 @@ index 9b928dceda591c71f5e263d0a4814483736e67c8..f373c3a6300daf6d080c2fe9a891068c
 +      "A message that starts a fresh session is sent on its own.",
 +    ],
 +    [
++      "a request for a result",
++      { outputSchema: { type: "object" } },
++      "A message that asks for a result is sent on its own.",
++    ],
++    [
 +      "another model",
 +      { modelSelection: { ...modelSelection, model: "gpt-5.5" } },
 +      "Queued messages use different models.",
@@ -829,10 +836,10 @@ index 61fb57ada454ed0b1a9a309eb066ff03db841f86..33aa46863d0b7f36613f6f8b959933e7
    "thread.guest-message.dismiss": () => ({ feature: "guest_message.dismiss" }),
  };
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 9408127f5a2b324c9491911c1294cad3931a54d8..40a4bd43017c45b29285574ada7bb4b02d7f7a42 100644
+index 67c4b02d4fa86168b50de53baaa9b8c7b419b5ee..beefa2a9f6ca616e25cab3688a56c1fb09d3ddf9 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
-@@ -1905,6 +1905,7 @@ export const layerWsRpc = (
+@@ -1913,6 +1913,7 @@ export const layerWsRpc = (
            threadSnapshotPagination: true,
            threadFind: true,
            threadFindProgressive: true,
@@ -841,10 +848,10 @@ index 9408127f5a2b324c9491911c1294cad3931a54d8..40a4bd43017c45b29285574ada7bb4b0
            secretReferences: true,
            secretRequestReferences: true,
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 128f3b16d1ddeb1e82ddf85e2e6eea82036eb494..f6d186b03be3f9467f61d4eacf87a75454994c44 100644
+index 834584ba7a7f83a95e4b9c248296d0845f7a6274..a224440b0f2ecca2f1e945918659ca188e4070ec 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -2833,6 +2833,8 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2843,6 +2843,8 @@ export default function ChatView(props: ChatViewProps) {
          routeKind !== "draft" &&
          composerRef.current?.isCaretAtStart() === true &&
          queuedRunsControlRef.current?.editLatest(event.repeat) === true,
@@ -853,7 +860,7 @@ index 128f3b16d1ddeb1e82ddf85e2e6eea82036eb494..f6d186b03be3f9467f61d4eacf87a754
        "thread.stop": ({ event }) => {
          if (!canInterruptRunningThread) return false;
          if (!event.repeat) void onInterruptStable();
-@@ -3126,6 +3128,11 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3140,6 +3142,11 @@ export default function ChatView(props: ChatViewProps) {
            editShortcutLabel={shortcutLabelForCommand(keybindings, "thread.editQueuedMessage", {
              context: { composerFocus: true },
            })}
@@ -1476,7 +1483,7 @@ index 3c8f9051744eae6c67b3854066dd0ad68cd80dfa..78d53c1a1fb2750ebe68f03b2359f5b2
    function* (input: RetryWorkspacePreparationInput) {
      return yield* dispatch({
 diff --git a/packages/client-runtime/src/state/threadCommands.ts b/packages/client-runtime/src/state/threadCommands.ts
-index 9f2edf5cfad79e511fa9c3c4a2f538e1905863b4..364d298ce36448f1df35421ab086df048a7da143 100644
+index 98d88407b85b45775669a82c18cf57524766f6e7..2a39f39ef571fac4e93e5cfed94adb3d766411fd 100644
 --- a/packages/client-runtime/src/state/threadCommands.ts
 +++ b/packages/client-runtime/src/state/threadCommands.ts
 @@ -34,6 +34,7 @@ import {
@@ -1487,7 +1494,7 @@ index 9f2edf5cfad79e511fa9c3c4a2f538e1905863b4..364d298ce36448f1df35421ab086df04
    mergeThreadBack,
    promoteQueuedRun,
    resumeThreadQueue,
-@@ -407,6 +408,12 @@ export function createThreadEnvironmentAtoms<R, E>(
+@@ -438,6 +439,12 @@ export function createThreadEnvironmentAtoms<R, E>(
        scheduler,
        concurrency,
      }),
@@ -1501,7 +1508,7 @@ index 9f2edf5cfad79e511fa9c3c4a2f538e1905863b4..364d298ce36448f1df35421ab086df04
        label: "environment-data:commands:thread:retry-workspace-preparation",
        execute: retryWorkspacePreparation,
 diff --git a/packages/client-runtime/src/state/threadWorkflows.test.ts b/packages/client-runtime/src/state/threadWorkflows.test.ts
-index a4049c7169163077dfc940bb2e81b07ae4642449..9129796d28d9bfbb294a562640da48a0cea55ae4 100644
+index a4049c7169163077dfc940bb2e81b07ae4642449..b40661aa9ca37e3e9ca531beeaf7d0a361187c92 100644
 --- a/packages/client-runtime/src/state/threadWorkflows.test.ts
 +++ b/packages/client-runtime/src/state/threadWorkflows.test.ts
 @@ -13,6 +13,7 @@ const capabilities = (input?: {
@@ -1538,7 +1545,7 @@ index a4049c7169163077dfc940bb2e81b07ae4642449..9129796d28d9bfbb294a562640da48a0
          ],
          messages: [{ id: "message", text: "Queued" }],
          providerTurns: [
-@@ -367,6 +376,215 @@ describe("thread workflows", () => {
+@@ -367,6 +376,221 @@ describe("thread workflows", () => {
      },
    );
  
@@ -1637,6 +1644,12 @@ index a4049c7169163077dfc940bb2e81b07ae4642449..9129796d28d9bfbb294a562640da48a0
 +      secondRun: { sourcePlanRef: { threadId: "thread", planId: "plan" } },
 +      asOne: "Plan and continuation messages are sent on their own.",
 +      each: null,
++    },
++    {
++      name: "a request for a result",
++      secondRun: { outputSchema: { type: "object" } },
++      asOne: "A message that asks for a result is sent on its own.",
++      each: cannotJoin,
 +    },
 +    {
 +      name: "another model",
@@ -1755,7 +1768,7 @@ index a4049c7169163077dfc940bb2e81b07ae4642449..9129796d28d9bfbb294a562640da48a0
      const projectedItem = {
        item: { type: "assistant_message", runId: "run", status: "completed" },
 diff --git a/packages/client-runtime/src/state/threadWorkflows.ts b/packages/client-runtime/src/state/threadWorkflows.ts
-index 7dbbcf1e80c575f0de5e3d4f2f70a13916a17860..489e2f28c2819b3ce553dc9be3de67ae9259e6e1 100644
+index 7dbbcf1e80c575f0de5e3d4f2f70a13916a17860..40685fa22bc8c822d6ecbf63071b358971c41de1 100644
 --- a/packages/client-runtime/src/state/threadWorkflows.ts
 +++ b/packages/client-runtime/src/state/threadWorkflows.ts
 @@ -7,6 +7,9 @@ import {
@@ -1781,7 +1794,7 @@ index 7dbbcf1e80c575f0de5e3d4f2f70a13916a17860..489e2f28c2819b3ce553dc9be3de67ae
  export function resolveActiveThreadRun(projection: Pick<Projection, "runs">): Run | null {
    return projection.runs.findLast((run) => ACTIVE_RUN_STATUSES.has(run.status)) ?? null;
  }
-@@ -158,45 +165,114 @@ export function deriveThreadQueueWorkflowState(
+@@ -158,45 +165,115 @@ export function deriveThreadQueueWorkflowState(
      projection.providerTurns.some(
        (turn) => turn.runAttemptId === activeRun.activeAttemptId && turn.status === "running",
      );
@@ -1911,6 +1924,7 @@ index 7dbbcf1e80c575f0de5e3d4f2f70a13916a17860..489e2f28c2819b3ce553dc9be3de67ae
 +  }
 +  const joinsRunningTurn = ({ run, message, attachments }: QueuedThreadRun) =>
 +    run.freshContext !== true &&
++    run.outputSchema === undefined &&
 +    !isSlashCommandText(message?.text ?? "") &&
 +    modelSelectionsEqual(run.modelSelection, activeRun.modelSelection) &&
 +    (attachments.length === 0 || capabilities.activeSteeringAcceptsAttachments !== false);
@@ -1935,10 +1949,10 @@ index eda5138b760b9b3d028d89d9b4b7a0c0b7c8075b..56f521670e72594a00b8737a97486206
    "thread.next",
    "thread.copyReference",
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index 573607abc7e97450425bae03401b3030516b33c1..d1cf4317e9384f1aa507a1da143e1a75b4deafa7 100644
+index 4f61992999d43adfda4476ad38ad8d2940435eda..899e677bfa3bf095b74a091540c1d0f79b9cc0fe 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
-@@ -3550,6 +3550,13 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3601,6 +3601,13 @@ export const OrchestrationV2Command = Schema.Union([
      // Replaces all attachments; absent preserves them for older clients editing text.
      attachments: Schema.optional(Schema.Array(ChatAttachment)),
    }),
@@ -1953,7 +1967,7 @@ index 573607abc7e97450425bae03401b3030516b33c1..d1cf4317e9384f1aa507a1da143e1a75
      type: Schema.Literal("runtime-request.respond"),
      commandId: CommandId,
 diff --git a/packages/contracts/src/server.ts b/packages/contracts/src/server.ts
-index f074b8f6a3e4611ba19dd7339ab7e7438a6c1e85..59835bfa4e68019ab1da58eaafc8f3d041c32969 100644
+index afd870ef97cc76ad8048104d362be12c9c0b01de..0b340371aa412311a2189944aa6482aa6c4a3b8a 100644
 --- a/packages/contracts/src/server.ts
 +++ b/packages/contracts/src/server.ts
 @@ -737,6 +737,7 @@ export const ServerConfig = Schema.Struct({
@@ -1965,7 +1979,7 @@ index f074b8f6a3e4611ba19dd7339ab7e7438a6c1e85..59835bfa4e68019ab1da58eaafc8f3d0
    secretProviderSettings: Schema.optionalKey(Schema.Boolean),
    /** Secret settings may point at a secret provider; older servers drop the reference. */
 diff --git a/packages/shared/package.json b/packages/shared/package.json
-index 1a32540b920c8b22181ea4b9617fc8c224b567bb..34a76f3153d350ddd4a1db65a86e0e322773ed02 100644
+index e0529dbbdefa88ad00976a77d6c63f038ff3fe93..6c2650ae66eee47ba7db961486fd33d70e3115d8 100644
 --- a/packages/shared/package.json
 +++ b/packages/shared/package.json
 @@ -307,6 +307,14 @@
@@ -2012,10 +2026,10 @@ index babe1347cc056a3be1888bd40c74712fe096d77f..49f8863643415d9090c274c786022f7f
    if (trimmed.startsWith("Ultrathink:")) {
 diff --git a/packages/shared/src/queuedMessageMerge.ts b/packages/shared/src/queuedMessageMerge.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..c52be48659cac635c245ae19fb284b8846e9e332
+index 0000000000000000000000000000000000000000..b4c7b283032a3451b51a393f77bf563592a8ebd2
 --- /dev/null
 +++ b/packages/shared/src/queuedMessageMerge.ts
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,156 @@
 +import {
 +  type ChatAttachment,
 +  COMPOSER_CONTEXT_MAX_RECORDS,
@@ -2041,6 +2055,7 @@ index 0000000000000000000000000000000000000000..c52be48659cac635c245ae19fb284b88
 +    | "sourcePlanRef"
 +    | "restartContinuationOfRunId"
 +    | "usageLimitContinuationOfRunId"
++    | "outputSchema"
 +  >;
 +  readonly message?:
 +    | Pick<
@@ -2075,6 +2090,7 @@ index 0000000000000000000000000000000000000000..c52be48659cac635c245ae19fb284b88
 +  command: "Commands are sent on their own.",
 +  freshContext: "A message that starts a fresh session is sent on its own.",
 +  continuation: "Plan and continuation messages are sent on their own.",
++  outputSchema: "A message that asks for a result is sent on its own.",
 +  models: "Queued messages use different models.",
 +  tooFew: "Queue two or more messages to send them as one.",
 +  sharedAttachment: "Queued messages share an attachment.",
@@ -2115,6 +2131,7 @@ index 0000000000000000000000000000000000000000..c52be48659cac635c245ae19fb284b88
 +  ) {
 +    return QUEUED_MESSAGE_MERGE_REASONS.continuation;
 +  }
++  if (run.outputSchema !== undefined) return QUEUED_MESSAGE_MERGE_REASONS.outputSchema;
 +  if (!modelSelectionsEqual(run.modelSelection, first.run.modelSelection)) {
 +    return QUEUED_MESSAGE_MERGE_REASONS.models;
 +  }
@@ -2171,10 +2188,10 @@ index 0000000000000000000000000000000000000000..c52be48659cac635c245ae19fb284b88
 +}
 diff --git a/packages/shared/src/queuedMessageMergeCopy.ts b/packages/shared/src/queuedMessageMergeCopy.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..d1f959effb015f8cccd1dcfd808ea73939ba5d33
+index 0000000000000000000000000000000000000000..983c6c7c6012848e3d0681c8a48368e7d08781ca
 --- /dev/null
 +++ b/packages/shared/src/queuedMessageMergeCopy.ts
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,29 @@
 +import { mFallback, msg } from "gt-i18n";
 +import type { MFunctionType } from "gt-i18n/types";
 +
@@ -2187,6 +2204,7 @@ index 0000000000000000000000000000000000000000..d1f959effb015f8cccd1dcfd808ea739
 +  command: msg("Commands are sent on their own."),
 +  freshContext: msg("A message that starts a fresh session is sent on its own."),
 +  continuation: msg("Plan and continuation messages are sent on their own."),
++  outputSchema: msg("A message that asks for a result is sent on its own."),
 +  models: msg("Queued messages use different models."),
 +  tooFew: msg("Queue two or more messages to send them as one."),
 +  sharedAttachment: msg("Queued messages share an attachment."),

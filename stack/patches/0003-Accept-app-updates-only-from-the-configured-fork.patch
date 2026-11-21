@@ -157,7 +157,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 scripts/verify-fork-update-feed.ts
 
 diff --git a/.github/workflows/release-desktop.yml b/.github/workflows/release-desktop.yml
-index 4252cb46e7a057883d28728f79fc2b9ccc17b076..843488c48580d76ebd3a21565ba8d76fb66545ab 100644
+index 2d3a38168c79eef782889f22e48034dc235cf8ea..cf0d6687a7dac8a51e75f5d040c3335239fd00f4 100644
 --- a/.github/workflows/release-desktop.yml
 +++ b/.github/workflows/release-desktop.yml
 @@ -139,6 +139,9 @@ jobs:
@@ -961,7 +961,7 @@ index ce2f23ab3e781e724be26ae1f9fec05770d72e94..b1d31456e37d20885db7f9f005f6ef13
              yield* publishReport(state, { outcome: "up-to-date" }, request.requestId);
              return;
 diff --git a/apps/desktop/src/updates/DesktopUpdates.ts b/apps/desktop/src/updates/DesktopUpdates.ts
-index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff27d832938 100644
+index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb467de3090 100644
 --- a/apps/desktop/src/updates/DesktopUpdates.ts
 +++ b/apps/desktop/src/updates/DesktopUpdates.ts
 @@ -285,9 +285,21 @@ export function describeUpdateErrorCause(cause: unknown): string {
@@ -987,7 +987,7 @@ index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff2
      const match = line.match(/^(\w+):\s*(.+)$/);
      if (match?.[1] && match[2]) {
        entries[match[1]] = match[2].trim();
-@@ -387,6 +399,32 @@ export const make = Effect.gen(function* () {
+@@ -394,6 +406,32 @@ export const make = Effect.gen(function* () {
    // Any user can set the mock flag, so it never replaces an administrator's update source.
    const mockUpdates = config.mockUpdates && policy.message === null;
  
@@ -1020,7 +1020,7 @@ index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff2
    const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
    const activeUpdateActionRef = yield* Ref.make<Option.Option<UpdateAction>>(Option.none());
    const installRunningBackendsRef = yield* Ref.make<
-@@ -448,7 +486,7 @@ export const make = Effect.gen(function* () {
+@@ -455,7 +493,7 @@ export const make = Effect.gen(function* () {
      Effect.flatMap(
        Option.match({
          onNone: () => Effect.succeed(Option.none<AppUpdateYmlConfig>()),
@@ -1029,7 +1029,7 @@ index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff2
        }),
      ),
    );
-@@ -471,7 +509,32 @@ export const make = Effect.gen(function* () {
+@@ -478,7 +516,32 @@ export const make = Effect.gen(function* () {
      ),
    );
  
@@ -1062,7 +1062,7 @@ index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff2
      const hasFeedConfig = yield* hasUpdateFeedConfig;
      return Option.fromNullishOr(
        getAutoUpdateDisabledReason({
-@@ -543,6 +606,7 @@ export const make = Effect.gen(function* () {
+@@ -570,6 +633,7 @@ export const make = Effect.gen(function* () {
      channel: DesktopUpdateChannel,
    ) {
      yield* Effect.annotateCurrentSpan({ channel });
@@ -1070,7 +1070,7 @@ index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff2
      const allowsPrerelease = channel === "nightly";
      yield* electronUpdater.setChannel(channel);
      yield* electronUpdater.setAllowPrerelease(allowsPrerelease);
-@@ -576,6 +640,7 @@ export const make = Effect.gen(function* () {
+@@ -603,6 +667,7 @@ export const make = Effect.gen(function* () {
      yield* Effect.annotateCurrentSpan({ reason });
      if (yield* Ref.get(desktopState.quitting)) return false;
      if (!(yield* Ref.get(updaterConfiguredRef))) return false;
@@ -1078,7 +1078,7 @@ index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff2
  
      const state = yield* Ref.get(updateStateRef);
      // A configured updater is disabled only by a channel the managed policy blocks.
-@@ -630,6 +695,7 @@ export const make = Effect.gen(function* () {
+@@ -657,6 +722,7 @@ export const make = Effect.gen(function* () {
    const downloadAvailableUpdate = Effect.fn("desktop.updates.downloadAvailableUpdate")(function* (
      refresh: boolean,
    ) {
@@ -1086,7 +1086,7 @@ index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff2
      const admission = yield* Effect.scoped(
        admitAfterCheck(
          Effect.gen(function* () {
-@@ -681,6 +747,7 @@ export const make = Effect.gen(function* () {
+@@ -708,6 +774,7 @@ export const make = Effect.gen(function* () {
          isArm64HostRunningIntelBuild(environment.runtimeInfo),
        );
        yield* logUpdaterInfo("downloading update");
@@ -1094,7 +1094,7 @@ index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff2
        yield* electronUpdater.downloadUpdate;
        return { accepted: true, completed: true };
      }).pipe(
-@@ -867,6 +934,7 @@ export const make = Effect.gen(function* () {
+@@ -894,6 +961,7 @@ export const make = Effect.gen(function* () {
    const installDownloadedUpdate = (expectedVersion?: string) =>
      Effect.scoped(
        Effect.gen(function* () {
@@ -1102,7 +1102,7 @@ index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff2
          const admission = yield* admitAfterCheck(
            Effect.gen(function* () {
              const state = yield* Ref.get(updateStateRef);
-@@ -900,6 +968,10 @@ export const make = Effect.gen(function* () {
+@@ -927,6 +995,10 @@ export const make = Effect.gen(function* () {
            return { accepted: false, completed: false, failed: false };
          }
  
@@ -1113,7 +1113,7 @@ index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff2
          yield* Ref.set(desktopState.quitting, true);
          yield* Ref.set(installRunningBackendsRef, []);
  
-@@ -927,6 +999,12 @@ export const make = Effect.gen(function* () {
+@@ -954,6 +1026,12 @@ export const make = Effect.gen(function* () {
              ],
              { concurrency: "unbounded" },
            );
@@ -1126,7 +1126,7 @@ index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff2
            yield* electronUpdater.quitAndInstall({
              isSilent: true,
              isForceRunAfter: true,
-@@ -1272,7 +1350,7 @@ export const make = Effect.gen(function* () {
+@@ -1299,7 +1377,7 @@ export const make = Effect.gen(function* () {
          });
        }
  
@@ -1135,7 +1135,7 @@ index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff2
          yield* electronUpdater.setFeedURL({
            provider: "generic",
            url: `http://localhost:${config.mockUpdateServerPort}`,
-@@ -1289,10 +1367,11 @@ export const make = Effect.gen(function* () {
+@@ -1316,10 +1394,11 @@ export const make = Effect.gen(function* () {
        const disabledReason = yield* resolveDisabledReason;
        // A blocked nightly channel still lets the user switch back to stable, so it stays updatable.
        yield* Ref.set(desktopState.canInstallUpdates, Option.isNone(disabledReason));
@@ -1149,7 +1149,7 @@ index 775a9ff6b04ffedb57c6a5c0f426e17cf32eb404..6d5a8347155a504f2a2b55dc3a995ff2
          ),
        );
        if (Option.isSome(disabledReason)) {
-@@ -1342,6 +1421,9 @@ export const make = Effect.gen(function* () {
+@@ -1369,6 +1448,9 @@ export const make = Effect.gen(function* () {
        nextChannel: DesktopUpdateChannel,
        options?: { readonly minimumVersion?: string | undefined },
      ) {
@@ -1737,10 +1737,10 @@ index 29494789b6cff2f2039cf3cee040104df636f661..0c737edb3da5b6bc4fe9d5d640b3296d
    it.each(["owner/repo/extra", "owner#notes/repo", "owner/repo?tab=notes"])(
      "falls back to upstream for an invalid configured repository: %s",
 diff --git a/apps/web/src/components/desktopUpdate.logic.ts b/apps/web/src/components/desktopUpdate.logic.ts
-index b853c448a10bb07efa8af3bb44e6518d498b43b6..a43b4c479e90ddcfd0c27f04e3346e048c02a027 100644
+index d3d4f618c8268ef5495830b74d5a7a1de8579ecb..785d31c74770b8c8880f949003d1b9396b640147 100644
 --- a/apps/web/src/components/desktopUpdate.logic.ts
 +++ b/apps/web/src/components/desktopUpdate.logic.ts
-@@ -5,50 +5,23 @@ import { msg } from "gt-react";
+@@ -6,50 +6,23 @@ import { msg } from "gt-react";
  import { m, type MessageResolver } from "../i18n/messages";
  import { channelSwitchLabel } from "./sidebar/updateEverything.logic";
  
@@ -1798,7 +1798,7 @@ index b853c448a10bb07efa8af3bb44e6518d498b43b6..a43b4c479e90ddcfd0c27f04e3346e04
    if (
      state.downloadedVersion &&
      (state.status === "downloaded" ||
-@@ -73,7 +46,10 @@ export function shouldShowArm64IntelBuildWarning(state: DesktopUpdateState | nul
+@@ -74,7 +47,10 @@ export function shouldShowArm64IntelBuildWarning(state: DesktopUpdateState | nul
  }
  
  export function isDesktopUpdateButtonDisabled(state: DesktopUpdateState | null): boolean {
@@ -1810,7 +1810,7 @@ index b853c448a10bb07efa8af3bb44e6518d498b43b6..a43b4c479e90ddcfd0c27f04e3346e04
  }
  
  export function getArm64IntelBuildWarningDescription(
-@@ -110,6 +86,9 @@ export function getDesktopUpdateButtonTooltip(
+@@ -111,6 +87,9 @@ export function getDesktopUpdateButtonTooltip(
    state: DesktopUpdateState,
    resolve: MessageResolver = m,
  ): string {
@@ -1820,7 +1820,7 @@ index b853c448a10bb07efa8af3bb44e6518d498b43b6..a43b4c479e90ddcfd0c27f04e3346e04
    if (
      state.notAppliedVersion !== undefined &&
      (state.status === "available" || state.status === "downloaded") &&
-@@ -197,7 +176,8 @@ export function getDesktopUpdateInstallConfirmationMessage(
+@@ -206,7 +185,8 @@ export function getDesktopUpdateInstallConfirmationMessage(
  }
  
  export function getDesktopUpdateActionError(result: DesktopUpdateActionResult): string | null {
@@ -1831,7 +1831,7 @@ index b853c448a10bb07efa8af3bb44e6518d498b43b6..a43b4c479e90ddcfd0c27f04e3346e04
    const message = result.state.message.trim();
    return message.length > 0 ? message : null;
 diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
-index e0a12417848fa097a20dd7309b5e3c8467a95bf5..25664036163153971d3c095e95057cce61216afa 100644
+index 493d8a1e7956537c9aa88c2a26ed99b1655cecd5..0ef89029e34cacfb5aad12c9406152e0b510d139 100644
 --- a/apps/web/src/components/settings/SettingsPanels.tsx
 +++ b/apps/web/src/components/settings/SettingsPanels.tsx
 @@ -42,6 +42,7 @@ import { CliCommandSettingsRow } from "./CliCommandSettingsRow";

@@ -1356,10 +1356,10 @@ index 5160becc21567016fa0770d658113c405185eace..f09d22e6d26b71b43045b9ee356dbb63
  Press `Escape` to return to the previous page. Customize these shortcuts in
  **Settings → Keybindings**.
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 378b8af0e466f81d71e1c4efc130b41641edebf0..f9fcac21a9e767ab0ed9a36b728c41b1c0896688 100644
+index b0726b07174c9b7bd74d13711ea5a08c0ee412ff..111aaf4e8fa1418508ed31291b7dcd4d9f7cfd78 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -1592,7 +1592,7 @@ export const ServerSettings = Schema.Struct({
+@@ -1602,7 +1602,7 @@ export const ServerSettings = Schema.Struct({
    ),
  
    usageHistoryRetentionDays: UsageHistoryRetentionDays.pipe(

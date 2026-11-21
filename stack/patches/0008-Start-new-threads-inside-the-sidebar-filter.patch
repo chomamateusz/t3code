@@ -2952,7 +2952,7 @@ index a5aeeeefbd638a5ca6ad28dcb805038ccdfed9cc..942fef9980667716e370703581779143
        "preview.toggle": (event) => {
          claim(event);
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index e95d132160b9c7edbe36332a8fc056bb4efb3051..13e0be12cf09bfed3833858c6f9e402b579c452b 100644
+index 26b96bc669026823cef9bacd25fcfc1be81d8935..f7d291be26faca6644523e7cbe53b01c039292ea 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -5,12 +5,27 @@ need a separate branch and working directory.

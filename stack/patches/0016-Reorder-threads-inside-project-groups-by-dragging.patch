@@ -19,6 +19,8 @@ Behaviours:
 - The Snooze trigger and the Discard draft button in a card's action cluster stop propagation of pointerdown, like Mark read / unread and Settle, so a press on them never reaches the row's drag sensor. Neither starts the sweep gesture.
 - The user guide says that folders keep the saved active order, that a thread can be dragged within its folder and is saved like an ungrouped reorder, and that it cannot be dragged into another folder or section.
 
+It also reorders pinned cards above the folders in grouped mode: a pinned card moves among the pinned cards the way a folder card moves within its folder, through the unchanged reorder-pinned plan, writes and failure toast of an ungrouped pinned reorder; there is still no pin or unpin by drag. The list item names its reorder group dragGroup (a folder card's project key, or SIDEBAR_PINNED_DRAG_GROUP for grouped pinned rows); the ungrouped list sets none.
+
 Files:
 apps/web:
 - apps/web/src/components/Sidebar.browser.test.tsx
@@ -41,15 +43,15 @@ Tests:
 
 Model/harness: Claude Opus 5.5 / Claude Code
 ---
- .../src/components/Sidebar.browser.test.tsx   |  27 +++-
- apps/web/src/components/Sidebar.drag.test.ts  | 134 ++++++++++++++++++
- apps/web/src/components/Sidebar.drag.ts       |  49 ++++++-
- apps/web/src/components/Sidebar.logic.test.ts | 123 ++++++++++++++++
- apps/web/src/components/Sidebar.logic.ts      |  59 +++++++-
- apps/web/src/components/Sidebar.tsx           |  88 +++++++-----
+ .../src/components/Sidebar.browser.test.tsx   |  27 ++-
+ apps/web/src/components/Sidebar.drag.test.ts  | 167 ++++++++++++++++++
+ apps/web/src/components/Sidebar.drag.ts       |  47 ++++-
+ apps/web/src/components/Sidebar.logic.test.ts | 151 ++++++++++++++++
+ apps/web/src/components/Sidebar.logic.ts      |  67 ++++++-
+ apps/web/src/components/Sidebar.tsx           | 101 ++++++-----
  .../components/sidebar/SidebarThreadRow.tsx   |   2 +
- docs/user/thread-sidebar.md                   |   8 +-
- 8 files changed, 440 insertions(+), 50 deletions(-)
+ docs/user/thread-sidebar.md                   |   9 +-
+ 8 files changed, 519 insertions(+), 52 deletions(-)
 
 diff --git a/apps/web/src/components/Sidebar.browser.test.tsx b/apps/web/src/components/Sidebar.browser.test.tsx
 index 2445cdc80b5083a9839d7d630c94b28dfd8eab59..b60b7c234fd2a51f4cb7659e3a94cefef1ae0980 100644
@@ -108,30 +110,39 @@ index 2445cdc80b5083a9839d7d630c94b28dfd8eab59..b60b7c234fd2a51f4cb7659e3a94cefe
          card.closest("li")?.previousElementSibling?.matches("[data-testid=sidebar-project-folder]"),
        ).toBe(true);
 diff --git a/apps/web/src/components/Sidebar.drag.test.ts b/apps/web/src/components/Sidebar.drag.test.ts
-index e1febcd68d53300e66bc4e046e8a7f59ad6573bc..7535bf8bc640aab89dc5e7682f743b34b980ddee 100644
+index e1febcd68d53300e66bc4e046e8a7f59ad6573bc..5583467f127ab4c916fe74a3c3e3bc6d142357f3 100644
 --- a/apps/web/src/components/Sidebar.drag.test.ts
 +++ b/apps/web/src/components/Sidebar.drag.test.ts
-@@ -8,6 +8,7 @@ import {
+@@ -8,6 +8,8 @@ import {
  } from "./Sidebar.drag";
  import {
    resolveSidebarDropTarget,
-+  resolveSidebarFolderDropTarget,
++  resolveSidebarGroupedDropTarget,
++  SIDEBAR_PINNED_DRAG_GROUP,
    sidebarListItemId,
    sidebarMarkerId,
    type SidebarListItem,
-@@ -205,6 +206,81 @@ describe("sidebar collision detection", () => {
+@@ -205,6 +207,100 @@ describe("sidebar collision detection", () => {
      },
    );
  
-+  it("finds a grouped target only while the pointer is over the dragged card's own folder", () => {
-+    const inFolder = (key: string, projectFolder: string): SidebarListItem => ({
++  it("finds a grouped target only while the pointer is over the dragged card's own group", () => {
++    const inFolder = (key: string, dragGroup: string): SidebarListItem => ({
 +      kind: "thread",
 +      key,
 +      section: "active",
-+      projectFolder,
++      dragGroup,
++    });
++    const pinnedCard = (key: string): SidebarListItem => ({
++      kind: "thread",
++      key,
++      section: "pinned",
++      dragGroup: SIDEBAR_PINNED_DRAG_GROUP,
 +    });
 +    const items = [
 +      pinnedHeader,
++      pinnedCard("p1"),
++      pinnedCard("p2"),
 +      divider,
 +      marker("active-placeholder"),
 +      inFolder("b1", "beta"),
@@ -156,12 +167,16 @@ index e1febcd68d53300e66bc4e046e8a7f59ad6573bc..7535bf8bc640aab89dc5e7682f743b34
 +    }
 +    const rectOf = (id: string) =>
 +      rects[items.findIndex((item) => sidebarListItemId(item) === id)]!;
-+    const detector = createSidebarCollisionDetection(
-+      (id) => resolveSidebarFolderDropTarget(items, "a1", id, ["b1", "a1", "a2", "c1"]) !== null,
-+      { items },
-+    );
-+    const overAt = (y: number, grabOffset = rectOf("a1").height / 2) => {
-+      const source = rectOf("a1");
++    const detectorFor = (activeId: string) =>
++      createSidebarCollisionDetection(
++        (id) =>
++          resolveSidebarGroupedDropTarget(items, activeId, id, ["b1", "a1", "a2", "c1"]) !== null,
++        { items },
++      );
++    let detector = detectorFor("a1");
++    let activeId = "a1";
++    const overAt = (y: number, grabOffset = rectOf(activeId).height / 2) => {
++      const source = rectOf(activeId);
 +      const collisionRect = {
 +        ...source,
 +        top: y - grabOffset,
@@ -169,7 +184,7 @@ index e1febcd68d53300e66bc4e046e8a7f59ad6573bc..7535bf8bc640aab89dc5e7682f743b34
 +      };
 +      return detector({
 +        active: {
-+          id: "a1",
++          id: activeId,
 +          data: { current: {} },
 +          rect: { current: { initial: source, translated: collisionRect } },
 +        },
@@ -196,25 +211,40 @@ index e1febcd68d53300e66bc4e046e8a7f59ad6573bc..7535bf8bc640aab89dc5e7682f743b34
 +    expect(overAt(ownLast.bottom + 2)).toBeUndefined();
 +    expect(overAt(collapsedFolderHeaderY)).toBeUndefined();
 +    expect(overAt(rectOf("a1").top - 17)).toBeUndefined();
++
++    activeId = "p2";
++    detector = detectorFor("p2");
++    expect(overAt(rectOf("p1").top + 10)).toBe("p1");
++    expect(overAt(rectOf("p2").bottom - 2, 2)).toBe("p2");
++    expect(overAt(rectOf("p2").bottom + 2)).toBeUndefined();
++    expect(overAt(rectOf("b1").top + 10)).toBeUndefined();
 +  });
 +
    it("returns no collision if an unsupported target has no source fallback", () => {
      const args = collisionArgs();
      const detector = createSidebarCollisionDetection(() => false);
-@@ -530,6 +606,64 @@ describe("sidebar drag projection", () => {
+@@ -530,6 +626,77 @@ describe("sidebar drag projection", () => {
      expect(byTime.get("w")).toEqual(stationary);
    });
  
-+  it("opens room only among the dragged card's own project folder", () => {
-+    const inFolder = (key: string, projectFolder: string): SidebarListItem => ({
++  it("opens room only among the dragged card's own project folder or the pinned cards", () => {
++    const inFolder = (key: string, dragGroup: string): SidebarListItem => ({
 +      kind: "thread",
 +      key,
 +      section: "active",
-+      projectFolder,
++      dragGroup,
++    });
++    const pinnedCard = (key: string): SidebarListItem => ({
++      kind: "thread",
++      key,
++      section: "pinned",
++      dragGroup: SIDEBAR_PINNED_DRAG_GROUP,
 +    });
 +    const items = [
 +      pinnedHeader,
-+      thread("p", "pinned"),
++      pinnedCard("p"),
++      pinnedCard("q"),
++      pinnedCard("r"),
 +      divider,
 +      marker("active-placeholder"),
 +      inFolder("b1", "beta"),
@@ -261,24 +291,27 @@ index e1febcd68d53300e66bc4e046e8a7f59ad6573bc..7535bf8bc640aab89dc5e7682f743b34
 +    for (const over of ["b1", "p", "s", sidebarMarkerId("pinned-divider")]) {
 +      expect(peerOffsets("a2", over)).toEqual(unmoved("a2"));
 +    }
++    expect(peerOffsets("r", "p")).toEqual({ ...unmoved("r"), p: 83, q: 83 });
++    expect(peerOffsets("p", "q")).toEqual({ ...unmoved("p"), q: -83 });
++    for (const over of ["a1", "s", sidebarMarkerId("pinned-divider")]) {
++      expect(peerOffsets("q", over)).toEqual(unmoved("q"));
++    }
 +  });
 +
    it("updates the projection when the target or measured geometry changes", () => {
      const strategy = createSidebarSortingStrategy({
        items: pinned,
 diff --git a/apps/web/src/components/Sidebar.drag.ts b/apps/web/src/components/Sidebar.drag.ts
-index 76f2c9bf3a3ec8ad6c0167baafe812aad4d80368..ca5b2ed8f359adef9859e67e63acd3a7c4d0f60a 100644
+index 76f2c9bf3a3ec8ad6c0167baafe812aad4d80368..74570b265b8482f864f2b3c67821103a37c0ca58 100644
 --- a/apps/web/src/components/Sidebar.drag.ts
 +++ b/apps/web/src/components/Sidebar.drag.ts
-@@ -28,6 +28,30 @@ export function restrictBelowSidebarLabel(
+@@ -28,6 +28,28 @@ export function restrictBelowSidebarLabel(
    return transform.y < minimumY ? { ...transform, y: minimumY } : transform;
  }
  
-+function folderCardKeys(items: readonly SidebarListItem[], folder: string) {
++function groupCardKeys(items: readonly SidebarListItem[], group: string) {
 +  return new Set(
-+    items.flatMap((item) =>
-+      item.kind === "thread" && item.projectFolder === folder ? [item.key] : [],
-+    ),
++    items.flatMap((item) => (item.kind === "thread" && item.dragGroup === group ? [item.key] : [])),
 +  );
 +}
 +
@@ -301,7 +334,7 @@ index 76f2c9bf3a3ec8ad6c0167baafe812aad4d80368..ca5b2ed8f359adef9859e67e63acd3a7
  export function createSidebarCollisionDetection(
    isValidTarget: (id: string) => boolean,
    options: {
-@@ -40,10 +64,26 @@ export function createSidebarCollisionDetection(
+@@ -40,10 +62,26 @@ export function createSidebarCollisionDetection(
    let previousPointerY = options.activationY;
    let boundarySection: "pinned" | "active" | undefined;
    return (args) => {
@@ -309,19 +342,19 @@ index 76f2c9bf3a3ec8ad6c0167baafe812aad4d80368..ca5b2ed8f359adef9859e67e63acd3a7
      const pointer = args.pointerCoordinates;
      const items = options.items;
      const source = items?.find((item) => item.kind === "thread" && item.key === args.active.id);
-+    const folderCards =
-+      items && pointer && source?.kind === "thread" && source.projectFolder !== undefined
-+        ? folderCardKeys(items, source.projectFolder)
++    const groupCards =
++      items && pointer && source?.kind === "thread" && source.dragGroup !== undefined
++        ? groupCardKeys(items, source.dragGroup)
 +        : undefined;
-+    if (folderCards && pointer && !isWithinCards(pointer.y, folderCards, args.droppableRects)) {
++    if (groupCards && pointer && !isWithinCards(pointer.y, groupCards, args.droppableRects)) {
 +      return [];
 +    }
 +    let collisions = closestCenter(
-+      folderCards
++      groupCards
 +        ? {
 +            ...args,
 +            droppableContainers: args.droppableContainers.filter((container) =>
-+              folderCards.has(String(container.id)),
++              groupCards.has(String(container.id)),
 +            ),
 +          }
 +        : args,
@@ -329,14 +362,14 @@ index 76f2c9bf3a3ec8ad6c0167baafe812aad4d80368..ca5b2ed8f359adef9859e67e63acd3a7
      const boundary = args.droppableContainers
        .find((container) => container.id === sidebarMarkerId("pinned-divider"))
        ?.node.current?.querySelector(".sidebar-drag-boundary-label")
-@@ -236,6 +276,13 @@ export function createSidebarSortingStrategy(input: {
+@@ -236,6 +274,13 @@ export function createSidebarSortingStrategy(input: {
    }
  
    return (args) => {
 +    const dragged = items[args.activeIndex];
-+    if (dragged?.kind === "thread" && dragged.projectFolder !== undefined) {
++    if (dragged?.kind === "thread" && dragged.dragGroup !== undefined) {
 +      const over = items[args.overIndex];
-+      return over?.kind === "thread" && over.projectFolder === dragged.projectFolder
++      return over?.kind === "thread" && over.dragGroup === dragged.dragGroup
 +        ? verticalListSortingStrategy(args)
 +        : stationary;
 +    }
@@ -344,24 +377,25 @@ index 76f2c9bf3a3ec8ad6c0167baafe812aad4d80368..ca5b2ed8f359adef9859e67e63acd3a7
        previous?.rects !== args.rects ||
        previous.activeIndex !== args.activeIndex ||
 diff --git a/apps/web/src/components/Sidebar.logic.test.ts b/apps/web/src/components/Sidebar.logic.test.ts
-index e2ba699d6ca434575bde8aac88ea279bdbd9fd4d..2991ecd9a5b070be31c59287ea91e1e74fda305c 100644
+index e2ba699d6ca434575bde8aac88ea279bdbd9fd4d..30e729bdb061edad76ad10bd7826b3fd3b7f635a 100644
 --- a/apps/web/src/components/Sidebar.logic.test.ts
 +++ b/apps/web/src/components/Sidebar.logic.test.ts
-@@ -32,6 +32,9 @@ import {
+@@ -32,6 +32,10 @@ import {
    shouldRecedeSidebarThread,
    sortInboxThreadsByReturn,
    resolveSidebarDropTarget,
-+  resolveSidebarFolderDropTarget,
++  resolveSidebarGroupedDropTarget,
 +  resolveSidebarDropWrites,
++  SIDEBAR_PINNED_DRAG_GROUP,
 +  sidebarMarkerId,
    planSidebarThreadDrop,
    resolveSidebarReorderableThreadKeys,
    sortPinnedThreadsForSidebar,
-@@ -1243,6 +1246,126 @@ describe("Working shelf (beta)", () => {
+@@ -1243,6 +1247,153 @@ describe("Working shelf (beta)", () => {
        expect(above.kind === "move-active" && above.assignments[0]!.orderKey < "m").toBe(true);
      });
  
-+    it("reorders a grouped card only within its folder, as the ungrouped list would store it", () => {
++    it("reorders a grouped card only within its folder or the pinned cards, as the ungrouped list would store it", () => {
 +      const activeOrder = ["a1", "b1", "a2", "hidden", "b2", "a3"];
 +      const activeKeysById = new Map([
 +        ["a1", "c"],
@@ -371,15 +405,26 @@ index e2ba699d6ca434575bde8aac88ea279bdbd9fd4d..2991ecd9a5b070be31c59287ea91e1e7
 +        ["b2", "k"],
 +        ["a3", "m"],
 +      ]);
-+      const inFolder = (key: string, projectFolder: string): SidebarListItem => ({
++      const pinnedOrder = ["p1", "p2", "p3"];
++      const pinnedKeysById = new Map([
++        ["p1", "c"],
++        ["p2", "f"],
++        ["p3", "m"],
++      ]);
++      const inFolder = (key: string, dragGroup: string): SidebarListItem => ({
 +        kind: "thread",
 +        key,
 +        section: "active",
-+        projectFolder,
++        dragGroup,
 +      });
 +      const grouped: readonly SidebarListItem[] = [
 +        marker("pinned-header"),
-+        row("p1", "pinned"),
++        ...pinnedOrder.map((key): SidebarListItem => ({
++          kind: "thread",
++          key,
++          section: "pinned",
++          dragGroup: SIDEBAR_PINNED_DRAG_GROUP,
++        })),
 +        marker("pinned-divider"),
 +        marker("active-placeholder"),
 +        inFolder("b1", "beta"),
@@ -392,7 +437,7 @@ index e2ba699d6ca434575bde8aac88ea279bdbd9fd4d..2991ecd9a5b070be31c59287ea91e1e7
 +      ];
 +      const flat: readonly SidebarListItem[] = [
 +        marker("pinned-header"),
-+        row("p1", "pinned"),
++        ...pinnedOrder.map((key) => row(key, "pinned")),
 +        marker("pinned-divider"),
 +        marker("active-placeholder"),
 +        ...activeOrder.map((key) => row(key, "active")),
@@ -405,16 +450,17 @@ index e2ba699d6ca434575bde8aac88ea279bdbd9fd4d..2991ecd9a5b070be31c59287ea91e1e7
 +      ) =>
 +        planSidebarThreadDrop({
 +          activeKey,
-+          activeSection: "active",
++          activeSection: activeKey.startsWith("p") ? "pinned" : "active",
 +          target,
-+          pinnedOrder: ["p1"],
-+          pinnedKeysById: new Map([["p1", "m"]]),
++          pinnedOrder,
++          pinnedKeysById,
++          reorderableKeys: new Set(pinnedOrder),
 +          activeOrder,
 +          activeKeysById,
 +          activeReorderableKeys: new Set(activeOrder),
 +        });
 +      const folderDrop = (activeKey: string, overId: string) =>
-+        resolveSidebarFolderDropTarget(grouped, activeKey, overId, activeOrder);
++        resolveSidebarGroupedDropTarget(grouped, activeKey, overId, activeOrder);
 +
 +      for (const [activeKey, groupedOver, flatOver] of [
 +        ["a3", "a1", "a1"],
@@ -432,6 +478,19 @@ index e2ba699d6ca434575bde8aac88ea279bdbd9fd4d..2991ecd9a5b070be31c59287ea91e1e7
 +        order: ["a3", "a1", "b1", "a2", "hidden", "b2"],
 +        assignments: [{ id: "a3", orderKey: expect.any(String) }],
 +      });
++      for (const [activeKey, overId] of [
++        ["p3", "p1"],
++        ["p1", "p2"],
++        ["p1", "p3"],
++      ] as const) {
++        const pinnedPlan = plan(activeKey, folderDrop(activeKey, overId)!);
++        expect(pinnedPlan.kind).toBe("reorder-pinned");
++        expect(pinnedPlan).toEqual(
++          plan(activeKey, resolveSidebarDropTarget(flat, activeKey, overId)!),
++        );
++      }
++      expect(plan("p3", folderDrop("p3", "p1")!)).toMatchObject({ order: ["p3", "p1", "p2"] });
++      expect(plan("p2", folderDrop("p2", "p2")!)).toEqual({ kind: "none" });
 +
 +      expect(plan("a2", folderDrop("a2", "a2")!)).toEqual({ kind: "none" });
 +      for (const overId of [
@@ -446,6 +505,8 @@ index e2ba699d6ca434575bde8aac88ea279bdbd9fd4d..2991ecd9a5b070be31c59287ea91e1e7
 +        expect(folderDrop("a2", overId)).toBeNull();
 +      }
 +      expect(folderDrop("p1", "a1")).toBeNull();
++      expect(folderDrop("p1", "s1")).toBeNull();
++      expect(folderDrop("p1", sidebarMarkerId("pinned-divider"))).toBeNull();
 +      expect(folderDrop("s1", "a1")).toBeNull();
 +    });
 +
@@ -455,15 +516,15 @@ index e2ba699d6ca434575bde8aac88ea279bdbd9fd4d..2991ecd9a5b070be31c59287ea91e1e7
 +        marker("pinned-header"),
 +        marker("pinned-divider"),
 +        marker("active-placeholder"),
-+        { kind: "thread", key: "a1", section: "active", projectFolder: "alpha" },
-+        { kind: "thread", key: "a2", section: "active", projectFolder: "alpha" },
++        { kind: "thread", key: "a1", section: "active", dragGroup: "alpha" },
++        { kind: "thread", key: "a2", section: "active", dragGroup: "alpha" },
 +        marker("settled-header"),
 +        marker("settled-placeholder"),
 +      ];
 +      const plan = planSidebarThreadDrop({
 +        activeKey: "a2",
 +        activeSection: "active",
-+        target: resolveSidebarFolderDropTarget(grouped, "a2", "a1", activeOrder)!,
++        target: resolveSidebarGroupedDropTarget(grouped, "a2", "a1", activeOrder)!,
 +        pinnedOrder: [],
 +        pinnedKeysById: new Map(),
 +        activeOrder,
@@ -485,10 +546,10 @@ index e2ba699d6ca434575bde8aac88ea279bdbd9fd4d..2991ecd9a5b070be31c59287ea91e1e7
        const onlineEnvironmentId = EnvironmentId.make("online");
        const offlineEnvironmentId = EnvironmentId.make("offline");
 diff --git a/apps/web/src/components/Sidebar.logic.ts b/apps/web/src/components/Sidebar.logic.ts
-index 7195a86b4e9f198cf3db125d5607b376b3be88d4..026d1d68f71cf37cff3ecea6b4853e4cce282388 100644
+index 7195a86b4e9f198cf3db125d5607b376b3be88d4..c5110ddda250711a81fc7f02bdfd8d02036dc9f1 100644
 --- a/apps/web/src/components/Sidebar.logic.ts
 +++ b/apps/web/src/components/Sidebar.logic.ts
-@@ -223,7 +223,12 @@ export function sidebarMarkerId(marker: SidebarListMarker): string {
+@@ -223,9 +223,17 @@ export function sidebarMarkerId(marker: SidebarListMarker): string {
  }
  
  export type SidebarListItem =
@@ -497,39 +558,49 @@ index 7195a86b4e9f198cf3db125d5607b376b3be88d4..026d1d68f71cf37cff3ecea6b4853e4c
 +      readonly kind: "thread";
 +      readonly key: string;
 +      readonly section: SidebarSection;
-+      readonly projectFolder?: string;
++      /** Grouped mode: the row reorders only among rows with the same group. */
++      readonly dragGroup?: string;
 +    }
    | { readonly kind: "marker"; readonly marker: SidebarListMarker };
  
++export const SIDEBAR_PINNED_DRAG_GROUP = `${SIDEBAR_MARKER_PREFIX}pinned`;
++
  export function sidebarListItemId(item: SidebarListItem): string {
-@@ -279,6 +284,38 @@ export function resolveSidebarDropTarget(
+   return item.kind === "thread" ? item.key : sidebarMarkerId(item.marker);
+ }
+@@ -279,6 +287,43 @@ export function resolveSidebarDropTarget(
    return { section, pinnedOrder, activeOrder };
  }
  
 +/**
-+ * Maps a drop within the dragged card's own folder onto the whole active order, next to the
-+ * card it was dropped on. `activeOrder` also holds threads no folder shows.
++ * Maps a drop within the dragged card's own group. A folder drop lands next to the card it was
++ * dropped on in the whole active order, which also holds threads no folder shows.
 + */
-+export function resolveSidebarFolderDropTarget(
++export function resolveSidebarGroupedDropTarget(
 +  items: readonly SidebarListItem[],
 +  activeKey: string,
 +  overId: string,
 +  activeOrder: readonly string[],
 +): SidebarDropTarget | null {
-+  const folderOf = (id: string) => {
++  const groupOf = (id: string) => {
 +    const item = items.find((candidate) => sidebarListItemId(candidate) === id);
-+    return item?.kind === "thread" ? item.projectFolder : undefined;
++    return item?.kind === "thread" ? item.dragGroup : undefined;
 +  };
-+  const folder = folderOf(activeKey);
-+  if (folder === undefined || folderOf(overId) !== folder) return null;
-+  const folderKeys = items.flatMap((item) =>
-+    item.kind === "thread" && item.projectFolder === folder ? [item.key] : [],
-+  );
++  const group = groupOf(activeKey);
++  if (group === undefined || groupOf(overId) !== group) return null;
 +  const pinnedOrder = items.flatMap((item) =>
 +    item.kind === "thread" && item.section === "pinned" ? [item.key] : [],
 +  );
-+  const from = folderKeys.indexOf(activeKey);
-+  const to = folderKeys.indexOf(overId);
++  if (group === SIDEBAR_PINNED_DRAG_GROUP) {
++    const order = pinnedOrder.filter((key) => key !== activeKey);
++    order.splice(pinnedOrder.indexOf(overId), 0, activeKey);
++    return { section: "pinned", pinnedOrder: order, activeOrder };
++  }
++  const groupKeys = items.flatMap((item) =>
++    item.kind === "thread" && item.dragGroup === group ? [item.key] : [],
++  );
++  const from = groupKeys.indexOf(activeKey);
++  const to = groupKeys.indexOf(overId);
 +  if (from === to) return { section: "active", pinnedOrder, activeOrder };
 +  const order = activeOrder.filter((key) => key !== activeKey);
 +  const overIndex = order.indexOf(overId);
@@ -541,7 +612,7 @@ index 7195a86b4e9f198cf3db125d5607b376b3be88d4..026d1d68f71cf37cff3ecea6b4853e4c
  type SidebarThreadDropPlan =
    | { readonly kind: "none" }
    | {
-@@ -495,6 +532,26 @@ export function planSidebarThreadDrop(input: {
+@@ -495,6 +540,26 @@ export function planSidebarThreadDrop(input: {
    }
  }
  
@@ -569,19 +640,26 @@ index 7195a86b4e9f198cf3db125d5607b376b3be88d4..026d1d68f71cf37cff3ecea6b4853e4c
    T extends Pick<
      SidebarThreadSummary,
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de7337150be0 100644
+index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2b2559e15 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -211,6 +211,8 @@ import {
+@@ -211,12 +211,15 @@ import {
    resolveAdjacentThreadId,
    resolveSidebarSweepKeys,
    resolveSidebarDropTarget,
-+  resolveSidebarFolderDropTarget,
++  resolveSidebarGroupedDropTarget,
 +  resolveSidebarDropWrites,
    resolveSidebarDropVerb,
    resolveSidebarThreadSection,
    resolveSidebarReorderableThreadKeys,
-@@ -366,8 +368,6 @@ interface SidebarThreadPartitionInput {
+   resolveSidebarThreadShelfState,
+   searchSidebarThreads,
+   shouldNavigateAfterThreadPark,
++  SIDEBAR_PINNED_DRAG_GROUP,
+   sidebarBadgeWakeClock,
+   sidebarListItemId,
+   sidebarThreadKeyAtY,
+@@ -366,8 +369,6 @@ interface SidebarThreadPartitionInput {
    readonly connectedEnvironmentIds: readonly EnvironmentId[];
    readonly optimisticDrop: SidebarOptimisticDrop | null;
    readonly workingShelfEnabled: boolean;
@@ -590,7 +668,7 @@ index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de73
    // Snooze wakes, the queued-turn grace and the Working shelf's exit grace depend
    // on the clock, so the minute tick, the precise snooze-wake tick and the inbox
    // tracker's expiry version are inputs: a new key repartitions.
-@@ -508,7 +508,6 @@ function useSidebarThreads(input: {
+@@ -508,7 +509,6 @@ function useSidebarThreads(input: {
      connectedEnvironmentIds,
      optimisticDrop,
      workingShelfEnabled,
@@ -598,7 +676,7 @@ index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de73
      clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
    });
  
-@@ -601,17 +600,18 @@ function useSidebarThreads(input: {
+@@ -601,17 +601,18 @@ function useSidebarThreads(input: {
    ] as const) {
      for (const thread of list) sectionByThreadKey.set(threadShellKey(thread), section);
    }
@@ -624,7 +702,7 @@ index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de73
      settledVisibleCount,
      settledCount,
      olderSettledShelf,
-@@ -637,6 +637,9 @@ function useSidebarThreads(input: {
+@@ -637,6 +638,9 @@ function useSidebarThreads(input: {
      visibleWorkingThreads,
      orderedThreadKeys: orderedThreads.map(threadShellKey),
      threadByKey: new Map(orderedThreads.map((thread) => [threadShellKey(thread), thread] as const)),
@@ -634,7 +712,7 @@ index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de73
      settledThreadKeys: new Set(settledThreads.map(threadShellKey)),
      snoozedThreadKeys: new Set(snoozedThreads.map(threadShellKey)),
      sectionByThreadKey,
-@@ -660,7 +663,6 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
+@@ -660,7 +664,6 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
      serverConfigs,
      optimisticDrop,
      workingShelfEnabled,
@@ -642,7 +720,7 @@ index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de73
    } = input;
    const preciseNow = new Date().toISOString();
    const visible = filterSidebarV2VisibleThreads(
-@@ -722,11 +724,9 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
+@@ -722,11 +725,9 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
    }
    // Availability gates dragging only; sorting must stay consistent across clients.
    const sortedPinned = sortPinnedThreadsForSidebar(pinned);
@@ -657,7 +735,7 @@ index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de73
    return {
      pinnedThreads:
        optimisticDrop?.section !== "pinned" || optimisticDrop.order === null
-@@ -1477,6 +1477,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1477,6 +1478,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      visibleWorkingThreads,
      orderedThreadKeys,
      threadByKey,
@@ -665,21 +743,44 @@ index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de73
      settledThreadKeys,
      snoozedThreadKeys,
      sectionByThreadKey,
-@@ -1880,9 +1881,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1880,9 +1882,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      };
    };
  
 -  // Folder rows only drag out to the composer; folders own their order, so nothing drops in the list.
-+  // Grouped, only folder cards reorder, within their folder; other rows only drag out to the composer.
++  // Grouped, cards reorder only within their folder or among the pinned cards, so there is no pin or
++  // unpin by drag; other rows only drag out to the composer.
    const isContextDrag =
 -    projectFolders !== null ||
-+    (projectFolders !== null && dragState?.activeSection !== "active") ||
++    (projectFolders !== null &&
++      dragState?.activeSection !== "active" &&
++      dragState?.activeSection !== "pinned") ||
      dragState?.contextDrag === true ||
      dragState?.activeSection === "working";
    const dragTargetSection = isContextDrag ? null : (dragState?.targetSection ?? null);
-@@ -2117,7 +2118,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2076,8 +2081,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+     if (list && header) {
+       const listRect = list.getBoundingClientRect();
+       const scale = list.offsetWidth > 0 ? listRect.width / list.offsetWidth : 1;
++      // Grouped drags never open the boundary label, so the first pinned card starts at the header.
+       dragLabelOffsetRef.current =
+-        header.getBoundingClientRect().top - listRect.top + SIDEBAR_DRAG_LABEL_HEIGHT * scale;
++        header.getBoundingClientRect().top -
++        listRect.top +
++        (projectFolders === null ? SIDEBAR_DRAG_LABEL_HEIGHT * scale : 0);
+     } else {
+       dragLabelOffsetRef.current = 0;
+     }
+@@ -2115,9 +2123,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+     }
+     const items: SidebarListItem[] = [{ kind: "marker", marker: "pinned-header" }];
      const pinnedRows = rowsOf(pinnedThreads, "pinned");
-     items.push(...pinnedRows);
+-    items.push(...pinnedRows);
++    items.push(
++      ...(projectFolders === null
++        ? pinnedRows
++        : pinnedRows.map((item) => ({ ...item, dragGroup: SIDEBAR_PINNED_DRAG_GROUP }))),
++    );
      items.push({ kind: "marker", marker: "pinned-divider" });
 -    const activeRows = rowsOf(activeThreads, "active");
 +    const activeRows =
@@ -688,33 +789,31 @@ index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de73
 +        : projectFolders.flatMap((folder) =>
 +            rowsOf(folder.threads, "active").map((item) => ({
 +              ...item,
-+              projectFolder: folder.group.projectKey,
++              dragGroup: folder.group.projectKey,
 +            })),
 +          );
      items.push({ kind: "marker", marker: "active-placeholder" });
      items.push(...activeRows);
      if (workingThreads.length > 0) {
-@@ -2136,7 +2145,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2136,7 +2156,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    })();
    // Preserve the list while streamed updates leave order unchanged to retain row memoization.
    const sidebarListItemsKey = sidebarListItemsFresh
 -    .map((item) => (item.kind === "thread" ? item.section + ":" + item.key : item.marker))
 +    .map((item) =>
-+      item.kind === "thread"
-+        ? `${item.section}:${item.projectFolder ?? ""}:${item.key}`
-+        : item.marker,
++      item.kind === "thread" ? `${item.section}:${item.dragGroup ?? ""}:${item.key}` : item.marker,
 +    )
      .join("\n");
    const [sidebarListItemsState, setSidebarListItems] = useState(sidebarListItemsFresh);
    const [sidebarListItemsKeyState, setSidebarListItemsKeyState] = useState(sidebarListItemsKey);
-@@ -2181,9 +2194,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2181,9 +2203,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      previousShelfExpansionKeyRef.current = shelfExpansionKey;
      listMotionRef.current?.update(listMotionPass.animate && shelvesUnchanged);
    }, [listMotionPass, shelfExpansionKey]);
 +  const resolveDropTarget = (activeKey: string, overId: string) =>
 +    projectFolders === null
 +      ? resolveSidebarDropTarget(sidebarListItems, activeKey, overId)
-+      : resolveSidebarFolderDropTarget(sidebarListItems, activeKey, overId, activeKeys);
++      : resolveSidebarGroupedDropTarget(sidebarListItems, activeKey, overId, activeKeys);
    const handleThreadDragOver = (event: DragOverEvent) => {
      const target = event.over
 -      ? resolveSidebarDropTarget(sidebarListItems, String(event.active.id), String(event.over.id))
@@ -722,7 +821,7 @@ index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de73
        : null;
      setDragState((current) =>
        current === null || current.activeKey !== String(event.active.id)
-@@ -2224,7 +2241,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2224,7 +2250,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      if (source === undefined) return createSidebarCollisionDetection(() => false);
      return createSidebarCollisionDetection(
        (id) => {
@@ -731,7 +830,7 @@ index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de73
          if (target === null) return false;
          return (
            planSidebarThreadDrop({
-@@ -2251,13 +2268,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2251,13 +2277,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      );
    })();
    const handleThreadDragEnd = (event: DragEndEvent) => {
@@ -746,7 +845,7 @@ index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de73
      const activeThread = threadByKey.get(activeKey);
      if (activeSection === undefined || target === null || activeThread === undefined) return;
      const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
-@@ -2287,13 +2300,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2287,13 +2309,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
          : plan.kind === "reorder-pinned" || plan.kind === "move-active"
            ? plan.assignments
            : [];
@@ -763,7 +862,7 @@ index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de73
      )
        return;
      const drop = {
-@@ -2373,15 +2383,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2373,15 +2392,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
          case "reorder-pinned":
            break;
        }
@@ -781,7 +880,7 @@ index 54490f618097b437d7141125a8f9f63748645994..1ce52f9c86b54e8190f3a1607292de73
              ),
              plan.kind === "move-active"
                ? gt("Failed to reorder active threads")
-@@ -3502,7 +3509,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3502,7 +3518,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                            />
                          );
                        };
@@ -814,10 +913,10 @@ index 68fc2328d4560ce904200d0652add2a28fbf789a..ac2200eaa951518497aef78020cc84bd
                                />
                              }
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 60fb08f46195fc98cfe0edc4dd8170128dc0c006..d747f3f0df89239f737e717aa957a36cba3f94b9 100644
+index fd0bb18ddf165c23d349d2758dadf9cddfea7ffc..d00f04f6bf3f963ce48e7f88badea09f5a122477 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -232,9 +232,11 @@ clicking, or press Alt+Enter on a focused folder, to close every folder when it
+@@ -232,9 +232,12 @@ clicking, or press Alt+Enter on a focused folder, to close every folder when it
  every folder when it is closed. A closed folder shows how many threads it holds and the same
  badge as its project icon for the hidden threads. Use the pen button on a folder, or right-click
  it, to start a thread in that project.
@@ -826,9 +925,10 @@ index 60fb08f46195fc98cfe0edc4dd8170128dc0c006..d747f3f0df89239f737e717aa957a36c
 -section is off. Each device keeps its own choice.
 +Pinned threads stay above the folders, and Snoozed and Settled stay below them. Threads in a
 +folder keep your saved active order, so thread activity does not move them. Drag a thread within
-+its folder to change that order; it is saved like a reorder in the ungrouped list. In this mode a
-+thread cannot be dragged into another folder or section, but you can drag it onto the composer to
-+mention it. The Working section is off. Each device keeps its own choice.
++its folder to change that order; it is saved like a reorder in the ungrouped list. Pinned threads
++can be dragged to reorder among themselves, but not into a folder. In this mode a thread cannot be
++dragged into another folder or section, but you can drag it onto the composer to mention it. The
++Working section is off. Each device keeps its own choice.
  
  ## Settle finished work
  

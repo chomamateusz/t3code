@@ -637,7 +637,7 @@ index 2a591127044d129955e6e44b00f55da81c001cc4..c4528d2813e1a86614bd6d2fa3ae182b
      turnThreadIntoProject: (target: ScopedThreadRef) =>
        createProjectFromThread({
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 129087e747669c9e1dcfcf4d14d6853754172101..60fb08f46195fc98cfe0edc4dd8170128dc0c006 100644
+index 12d8e3ee47640e85b0c3d18a8ec92b8c6b3dd47b..fd0bb18ddf165c23d349d2758dadf9cddfea7ffc 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -84,6 +84,9 @@ viewing. Discarding an unsent draft from the sidebar works the same way: Undo br

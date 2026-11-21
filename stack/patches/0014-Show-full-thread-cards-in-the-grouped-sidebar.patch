@@ -776,7 +776,7 @@ index fb68c2fc20217b17885373a74b72ddaba4c3443b..ec5f9440e952f33ea1826afbacb2d7dc
  function GuestLinksRowWithSignIn() {
    const searchableSetting = useSearchableSetting();
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 1162512c6d902dc7a21c2078bdc68d2373affffc..7dded9b41895ee8267a7f60168a7bd3e4e1889cb 100644
+index 83186c0cee4fd655999038ffe0b2317cfed406a0..63b1a2b30edd68c28aba67c26f48e860363d05f6 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -493,21 +493,13 @@ export const SETTINGS_SEARCH_ITEMS = [
@@ -1240,7 +1240,7 @@ index 05541d3970d1aad77b906204987a202d5f09e360..9eec4f9448141552decc58bc47f0f642
    --command-content-inset: 1rem;
    --floating-content-inset: 0.75rem;
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 13e0be12cf09bfed3833858c6f9e402b579c452b..129087e747669c9e1dcfcf4d14d6853754172101 100644
+index f7d291be26faca6644523e7cbe53b01c039292ea..12d8e3ee47640e85b0c3d18a8ec92b8c6b3dd47b 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -220,11 +220,15 @@ selections so the thread can appear, while keeping selections for unavailable pr

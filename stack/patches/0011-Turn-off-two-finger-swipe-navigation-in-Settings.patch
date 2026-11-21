@@ -381,10 +381,10 @@ index c7515485662ac76f9dbbcb957d59b03d631d5e1f..8f184ccee524cac8f9639624747c8161
      </PanelAnimationSuppressionProvider>
    );
 diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
-index 25664036163153971d3c095e95057cce61216afa..48f61b65de9905cd5e9a537c68295c76c1fa639d 100644
+index 0ef89029e34cacfb5aad12c9406152e0b510d139..155ec5358a538bda672b079d5311bdd848179e8a 100644
 --- a/apps/web/src/components/settings/SettingsPanels.tsx
 +++ b/apps/web/src/components/settings/SettingsPanels.tsx
-@@ -640,6 +640,9 @@ export function useSettingsRestore(onRestored?: () => void) {
+@@ -643,6 +643,9 @@ export function useSettingsRestore(onRestored?: () => void) {
        ? [gt("Delete confirmation")]
        : []),
      ...(settings.confirmQuit !== DEFAULT_UNIFIED_SETTINGS.confirmQuit ? [gt("Quit shortcut")] : []),
@@ -394,7 +394,7 @@ index 25664036163153971d3c095e95057cce61216afa..48f61b65de9905cd5e9a537c68295c76
      ...(isTextGenerationModelDirty ? [gt("Text generation model")] : []),
      ...(settings.threadTitleInstructions !== DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions
        ? [gt("Thread title instructions")]
-@@ -754,6 +757,7 @@ export function useSettingsRestore(onRestored?: () => void) {
+@@ -758,6 +761,7 @@ export function useSettingsRestore(onRestored?: () => void) {
        confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
        confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
        confirmQuit: DEFAULT_UNIFIED_SETTINGS.confirmQuit,
@@ -402,7 +402,7 @@ index 25664036163153971d3c095e95057cce61216afa..48f61b65de9905cd5e9a537c68295c76
        textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
        threadTitleInstructions: DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions,
        fontFamilySans: DEFAULT_UNIFIED_SETTINGS.fontFamilySans,
-@@ -979,6 +983,37 @@ export function GeneralSettingsPanel() {
+@@ -983,6 +987,37 @@ export function GeneralSettingsPanel() {
          />
        </SettingsSection>
  
@@ -441,10 +441,10 @@ index 25664036163153971d3c095e95057cce61216afa..48f61b65de9905cd5e9a537c68295c76
          <SettingsRow
            {...setting("unpin-confirmation")}
 diff --git a/apps/web/src/components/settings/settingsSearch.test.ts b/apps/web/src/components/settings/settingsSearch.test.ts
-index 52dadd9c8fb2950a5b26dbd75bd645d29e70a247..fc682f6fcbcdda29dd1464c53585354ee28bdc16 100644
+index 3949a9109190f5e87bb0787f112bf070ab3af619..89ef32eb2670124ba1da2dd7df2557e668a43eb2 100644
 --- a/apps/web/src/components/settings/settingsSearch.test.ts
 +++ b/apps/web/src/components/settings/settingsSearch.test.ts
-@@ -116,6 +116,8 @@ describe("searchSettings", () => {
+@@ -122,6 +122,8 @@ describe("searchSettings", () => {
  
    it("hides desktop-only settings from browser search", () => {
      expect(SETTINGS_SEARCH_ITEMS.some((item) => item.id === "quit-confirmation")).toBe(true);
@@ -454,10 +454,10 @@ index 52dadd9c8fb2950a5b26dbd75bd645d29e70a247..fc682f6fcbcdda29dd1464c53585354e
      expect(searchSettings("wsl")).toEqual([]);
      expect(searchSettings("update track")).toEqual([]);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 18f02e622ba1a4181437520613fa0645ae5a9fed..1162512c6d902dc7a21c2078bdc68d2373affffc 100644
+index dbb62fb6fa05dbc50e84062d4ef3b7f267570690..83186c0cee4fd655999038ffe0b2317cfed406a0 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -919,6 +919,15 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -929,6 +929,15 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: [msg("confirmation desktop app exit direct hold double click press twice")],
      desktopOnly: true,
    },
@@ -498,10 +498,10 @@ index 9dc56d7a6a02d95c0b3c89882cbbc4dff1739bd6..771e102d2b25467839ce623f83e76d90
    it("resolves instance enabled state with explicit false winning", () => {
      const grok = ProviderDriverKind.make("grok");
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index f9fcac21a9e767ab0ed9a36b728c41b1c0896688..7d3f52cd2233193766078c80d1c9d5755d45559b 100644
+index 111aaf4e8fa1418508ed31291b7dcd4d9f7cfd78..aa64dc1d2e0dadf1c763408a05ad41d33bee8651 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -468,6 +468,7 @@ export const ClientSettingsSchema = Schema.Struct({
+@@ -475,6 +475,7 @@ export const ClientSettingsSchema = Schema.Struct({
    confirmQuit: QuitConfirmationModeSetting.pipe(
      Schema.withDecodingDefault(Effect.succeed(DEFAULT_QUIT_CONFIRMATION_MODE)),
    ),
@@ -509,7 +509,7 @@ index f9fcac21a9e767ab0ed9a36b728c41b1c0896688..7d3f52cd2233193766078c80d1c9d575
    confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
    confirmTerminalClose: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
    confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-@@ -2072,6 +2073,7 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2082,6 +2083,7 @@ export const ClientSettingsPatch = Schema.Struct({
    browserProfiles: Schema.optionalKey(Schema.Array(BrowserProfile)),
    browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),
    confirmQuit: Schema.optionalKey(QuitConfirmationMode),

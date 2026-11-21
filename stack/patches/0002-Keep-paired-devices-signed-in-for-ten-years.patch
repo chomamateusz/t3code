@@ -54,7 +54,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code;
  6 files changed, 23 insertions(+), 8 deletions(-)
 
 diff --git a/apps/server/src/auth/EnvironmentAuth.test.ts b/apps/server/src/auth/EnvironmentAuth.test.ts
-index c452dde06403063a1844586567369bed7b88add9..3c53415f1f5c3afc6d4bf11dee6ecff84eb2555c 100644
+index 6eceb824a8cba8b1766848cfa279446db5871dc5..513eb65433cc729c85e479203444da3c5a4a9919 100644
 --- a/apps/server/src/auth/EnvironmentAuth.test.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.test.ts
 @@ -458,8 +458,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
@@ -106,10 +106,10 @@ index c452dde06403063a1844586567369bed7b88add9..3c53415f1f5c3afc6d4bf11dee6ecff8
            "ServerAuthInvalidCredentialError",
          );
 diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
-index 39a09938e358ea75fe1be23bf8410669cdc5bfac..12ac3900bda0fe8dff38c8e1a2c32c30a84c3e8f 100644
+index 202ca25310d132cd66519a2677dc63d3de165ddc..1de7fd2fcfb56b393c705f52a4bbc06efec5895e 100644
 --- a/apps/server/src/auth/EnvironmentAuth.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.ts
-@@ -89,7 +89,7 @@ const MCP_CLIENT_SESSION_TTL = Duration.days(30);
+@@ -92,7 +92,7 @@ const PEER_LINK_RENEWAL_STEP = Duration.days(1);
  // A device pairing with its DPoP key renews the session itself, so the token can be short and
  // the device stays signed in while used. One idle for the whole window pairs again.
  const RENEWABLE_ACCESS_TOKEN_TTL = Duration.hours(1);
@@ -119,10 +119,10 @@ index 39a09938e358ea75fe1be23bf8410669cdc5bfac..12ac3900bda0fe8dff38c8e1a2c32c30
  
  export interface McpClientSession {
 diff --git a/apps/server/src/auth/SessionStore.test.ts b/apps/server/src/auth/SessionStore.test.ts
-index b8d944d5d04039a620c2b579fe20e06623acc7a2..efbf1a8f644bdcdb262fad74379365bd8e7d66b9 100644
+index ac1e346e26971f6693270224580f3156e9db16d3..bba209ba4b48d147e43d995d79e66954a65aa7d8 100644
 --- a/apps/server/src/auth/SessionStore.test.ts
 +++ b/apps/server/src/auth/SessionStore.test.ts
-@@ -609,6 +609,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("SessionStore.lay
+@@ -655,6 +655,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("SessionStore.lay
        );
  
        expect(beforeRevoke).toHaveLength(2);
@@ -134,10 +134,10 @@ index b8d944d5d04039a620c2b579fe20e06623acc7a2..efbf1a8f644bdcdb262fad74379365bd
          true,
        );
 diff --git a/apps/server/src/auth/SessionStore.ts b/apps/server/src/auth/SessionStore.ts
-index b8a33c391a6b0ae6eb39c0315316028d4ef58ea0..cc1e3dc5ebf9eb07615ab2b41c885be372f040e1 100644
+index 4057cbdb4540c3d2672b9ff56145873131bba9fa..3f454241cafb0c89c265cb4cba7cbc25416ac031 100644
 --- a/apps/server/src/auth/SessionStore.ts
 +++ b/apps/server/src/auth/SessionStore.ts
-@@ -480,7 +480,7 @@ export class SessionStore extends Context.Service<
+@@ -489,7 +489,7 @@ export class SessionStore extends Context.Service<
  >()("t3/auth/SessionStore") {}
  
  const SIGNING_SECRET_NAME = "server-signing-key";
@@ -147,7 +147,7 @@ index b8a33c391a6b0ae6eb39c0315316028d4ef58ea0..cc1e3dc5ebf9eb07615ab2b41c885be3
  
  const SessionClaims = Schema.Struct({
 diff --git a/docs/internals/environment-auth.md b/docs/internals/environment-auth.md
-index ed6be35c0c1eadd7f01b2a63145895b0d24fbfa5..301c40c5463674f450276deac57a45ae8b70a291 100644
+index ea64b8523541bf76f94d648ad31211c02fff5fb5..1483e9501067479720a7380c5cc4e4a77ef61f23 100644
 --- a/docs/internals/environment-auth.md
 +++ b/docs/internals/environment-auth.md
 @@ -29,7 +29,7 @@ vocabulary gives these grants a familiar meaning.
@@ -160,7 +160,7 @@ index ed6be35c0c1eadd7f01b2a63145895b0d24fbfa5..301c40c5463674f450276deac57a45ae
  and unrevoked, so a device idle past the window pairs again. Renewal stays in place rather than issuing a
  successor, so live sockets keep their session, Sharing & access shows one row
 diff --git a/docs/user/remote-access.md b/docs/user/remote-access.md
-index 1b80179a3f3194ac726d5f354c849dbf15f80f34..1b57bfce1b85767f80b1279a7bcfeb7689d43391 100644
+index 7c9e98af6dd2605ecea8e696b93560a5c815ede1..ba1e2c446686a70198ddcd5f0e526d2c8a5d0a65 100644
 --- a/docs/user/remote-access.md
 +++ b/docs/user/remote-access.md
 @@ -128,7 +128,7 @@ Android app then trusts it.

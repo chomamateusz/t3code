@@ -152,10 +152,10 @@ index ac2200eaa951518497aef78020cc84bd6787b60a..8d7b94aaaa04965163729a56fd592b1a
                  <span
                    className={cn("min-w-0 flex-1 truncate font-normal text-secondary-label text-xs")}
 diff --git a/apps/web/src/i18n/translations/de.json b/apps/web/src/i18n/translations/de.json
-index 03ea9dc2c19d593e2ecb185949d5025e6f725090..6dc930b9213562ed8831384e2cc154cd5a08f840 100644
+index 730949ecfc300d9ab4aecf6c0677ca96e2d1efd7..b6f630680ec62d5e9b82602fdbb4746ca460580f 100644
 --- a/apps/web/src/i18n/translations/de.json
 +++ b/apps/web/src/i18n/translations/de.json
-@@ -11736,6 +11736,7 @@
+@@ -11940,6 +11940,7 @@
    "5c3e33c17a1c7cf2": "Aufwecken",
    "f8fec76a8dea38d4": "Nicht gesendeter Entwurf",
    "b0b811c800c8af57": "Thread loslösen",
@@ -164,10 +164,10 @@ index 03ea9dc2c19d593e2ecb185949d5025e6f725090..6dc930b9213562ed8831384e2cc154cd
    "6bf3499c98fc67f2": "Aufgeweckt",
    "4851fe12e61ec84b": "Aufgeweckt-Hinweis schließen",
 diff --git a/apps/web/src/i18n/translations/en.json b/apps/web/src/i18n/translations/en.json
-index 097252361c5c06fdd89cefd657b20c086a3835b7..2d28d417095c3a8dec26447884a8ffc8676bf92c 100644
+index 64482e18216ae78baca9846e2e4847022ade8c71..e68365f2552ba4965961e6cea2586560dc698bc3 100644
 --- a/apps/web/src/i18n/translations/en.json
 +++ b/apps/web/src/i18n/translations/en.json
-@@ -11744,6 +11744,7 @@
+@@ -11948,6 +11948,7 @@
    "5c3e33c17a1c7cf2": "Wake",
    "f8fec76a8dea38d4": "Unsent draft",
    "b0b811c800c8af57": "Unpin thread",
@@ -176,10 +176,10 @@ index 097252361c5c06fdd89cefd657b20c086a3835b7..2d28d417095c3a8dec26447884a8ffc8
    "6bf3499c98fc67f2": "Woke",
    "4851fe12e61ec84b": "Dismiss Woke notification",
 diff --git a/apps/web/src/i18n/translations/es.json b/apps/web/src/i18n/translations/es.json
-index 753b950e9b86e6acb1a2f246e2300bc6b4065273..4be222aae74f2c0fa57cbeeb1e630d90a6441497 100644
+index 8c3bd00183ec65e761dde5a6e2ce59328c4297c4..c3f18427b9a4888efcc0cd40242de3b7aaf99965 100644
 --- a/apps/web/src/i18n/translations/es.json
 +++ b/apps/web/src/i18n/translations/es.json
-@@ -11729,6 +11729,7 @@
+@@ -11933,6 +11933,7 @@
    "5c3e33c17a1c7cf2": "Reactivar",
    "f8fec76a8dea38d4": "Borrador sin enviar",
    "b0b811c800c8af57": "Desfijar hilo",
@@ -188,10 +188,10 @@ index 753b950e9b86e6acb1a2f246e2300bc6b4065273..4be222aae74f2c0fa57cbeeb1e630d90
    "6bf3499c98fc67f2": "Reactivado",
    "4851fe12e61ec84b": "Descartar notificación de reactivación",
 diff --git a/apps/web/src/i18n/translations/fr.json b/apps/web/src/i18n/translations/fr.json
-index 8954f07a12b272fe95b1a262096888eccdbd6ce5..bdd50102a31c2c68b228c5f4c21f36fbbb819334 100644
+index 17258a83acd78b5a51cbe681b5ba14fab3607af0..8b664552597ba3ec0dda29d40923dd1fe495767b 100644
 --- a/apps/web/src/i18n/translations/fr.json
 +++ b/apps/web/src/i18n/translations/fr.json
-@@ -11734,6 +11734,7 @@
+@@ -11938,6 +11938,7 @@
    "5c3e33c17a1c7cf2": "Réveiller",
    "f8fec76a8dea38d4": "Brouillon non envoyé",
    "b0b811c800c8af57": "Désépingler le fil",
@@ -200,10 +200,10 @@ index 8954f07a12b272fe95b1a262096888eccdbd6ce5..bdd50102a31c2c68b228c5f4c21f36fb
    "6bf3499c98fc67f2": "Réveillé",
    "4851fe12e61ec84b": "Ignorer la notification Réveillé",
 diff --git a/apps/web/src/i18n/translations/ja.json b/apps/web/src/i18n/translations/ja.json
-index 6c17747d9681377f4e112d92c77a5aa08d38810f..325f6c9d94975c069e97199d4ad79f34bd2a3722 100644
+index 66eaf036ed903e658c2d68237f0fe33510ad0412..298816e6efc80bba0be459b0621d4a9fdafe0e3d 100644
 --- a/apps/web/src/i18n/translations/ja.json
 +++ b/apps/web/src/i18n/translations/ja.json
-@@ -11684,6 +11684,7 @@
+@@ -11888,6 +11888,7 @@
    "5c3e33c17a1c7cf2": "再開",
    "f8fec76a8dea38d4": "未送信の下書き",
    "b0b811c800c8af57": "スレッドのピン留めを解除",
@@ -212,10 +212,10 @@ index 6c17747d9681377f4e112d92c77a5aa08d38810f..325f6c9d94975c069e97199d4ad79f34
    "6bf3499c98fc67f2": "再開",
    "4851fe12e61ec84b": "再開の通知を閉じる",
 diff --git a/apps/web/src/i18n/translations/ko.json b/apps/web/src/i18n/translations/ko.json
-index 08e547fa64c84708186e28d916586c1a3b521a6e..7648271086b7a5536ce5040478fbc214954a2149 100644
+index 8a36bcc967f6bd8e54bd660bd2dc05892b20b983..e0b8c3efb504d7ca523a8fa9f0f7d43912fcc541 100644
 --- a/apps/web/src/i18n/translations/ko.json
 +++ b/apps/web/src/i18n/translations/ko.json
-@@ -11681,6 +11681,7 @@
+@@ -11885,6 +11885,7 @@
    "5c3e33c17a1c7cf2": "깨우기",
    "f8fec76a8dea38d4": "보내지 않은 초안",
    "b0b811c800c8af57": "스레드 고정 해제",
@@ -224,10 +224,10 @@ index 08e547fa64c84708186e28d916586c1a3b521a6e..7648271086b7a5536ce5040478fbc214
    "6bf3499c98fc67f2": "깨어남",
    "4851fe12e61ec84b": "깨어남 알림 닫기",
 diff --git a/apps/web/src/i18n/translations/pt-BR.json b/apps/web/src/i18n/translations/pt-BR.json
-index 99594f480c0e2b9cf1ffc988a955922e4f874d86..3a0f729e3a28073f85318393d42c7ecf852ded0d 100644
+index 277a77ccf3d9845a71b1719df246fb6c55ecb1fe..cf725fc6f4e302e0316a14f0d7345ad2f4f8a212 100644
 --- a/apps/web/src/i18n/translations/pt-BR.json
 +++ b/apps/web/src/i18n/translations/pt-BR.json
-@@ -11733,6 +11733,7 @@
+@@ -11937,6 +11937,7 @@
    "5c3e33c17a1c7cf2": "Despertar",
    "f8fec76a8dea38d4": "Rascunho não enviado",
    "b0b811c800c8af57": "Desafixar thread",
@@ -236,10 +236,10 @@ index 99594f480c0e2b9cf1ffc988a955922e4f874d86..3a0f729e3a28073f85318393d42c7ecf
    "6bf3499c98fc67f2": "Despertou",
    "4851fe12e61ec84b": "Dispensar notificação de despertar",
 diff --git a/apps/web/src/i18n/translations/ru.json b/apps/web/src/i18n/translations/ru.json
-index 9f12c818ddaf4436aa4f23e39869ad8709a1a9f0..6a341958ad8ebcd2626bc99945d1122bafc40567 100644
+index ac9dde8934f3e5d5bebe1da4d3e43fa0bda2c82b..5e6779157fbc945b9945ca5be6ba9a1e4376c885 100644
 --- a/apps/web/src/i18n/translations/ru.json
 +++ b/apps/web/src/i18n/translations/ru.json
-@@ -11734,6 +11734,7 @@
+@@ -11938,6 +11938,7 @@
    "5c3e33c17a1c7cf2": "Разбудить",
    "f8fec76a8dea38d4": "Неотправленный черновик",
    "b0b811c800c8af57": "Открепить тред",
@@ -248,10 +248,10 @@ index 9f12c818ddaf4436aa4f23e39869ad8709a1a9f0..6a341958ad8ebcd2626bc99945d1122b
    "6bf3499c98fc67f2": "Проснулся",
    "4851fe12e61ec84b": "Скрыть уведомление о пробуждении",
 diff --git a/apps/web/src/i18n/translations/sv.json b/apps/web/src/i18n/translations/sv.json
-index 7e52ef9c55d7bfcc748467d4fa1bf1af366a8e01..00712789ae432f5bc3a56b010879c2f0adf761e0 100644
+index 05bbe8c0c976d320451f773c4e17d3901c69ba9f..2b3cb47bd6157068d70064d57ee71201a26764a4 100644
 --- a/apps/web/src/i18n/translations/sv.json
 +++ b/apps/web/src/i18n/translations/sv.json
-@@ -11742,6 +11742,7 @@
+@@ -11946,6 +11946,7 @@
    "5c3e33c17a1c7cf2": "Väck",
    "f8fec76a8dea38d4": "Ej skickat utkast",
    "b0b811c800c8af57": "Lossa tråd",
@@ -260,10 +260,10 @@ index 7e52ef9c55d7bfcc748467d4fa1bf1af366a8e01..00712789ae432f5bc3a56b010879c2f0
    "6bf3499c98fc67f2": "Väckt",
    "4851fe12e61ec84b": "Stäng aviseringen Väckt",
 diff --git a/apps/web/src/i18n/translations/zh.json b/apps/web/src/i18n/translations/zh.json
-index c27a72f23af1b0080f4c8f1c88349505853a5fe2..14750328737d270abb9ed3b7021bddec22f757b4 100644
+index 0685e33f23a8741019ec9164e3af8c56bb9c1757..8926ca66a57bcc3af87abd4ef8f4b9b8bbe400ad 100644
 --- a/apps/web/src/i18n/translations/zh.json
 +++ b/apps/web/src/i18n/translations/zh.json
-@@ -11759,6 +11759,7 @@
+@@ -11963,6 +11963,7 @@
    "5c3e33c17a1c7cf2": "唤醒",
    "f8fec76a8dea38d4": "未发送的草稿",
    "b0b811c800c8af57": "取消置顶会话",
@@ -272,7 +272,7 @@ index c27a72f23af1b0080f4c8f1c88349505853a5fe2..14750328737d270abb9ed3b7021bddec
    "6bf3499c98fc67f2": "已唤醒",
    "4851fe12e61ec84b": "忽略已唤醒通知",
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index a391b21a967918f96bbac670fd3fe2fafb88c158..68eeac8016b830327dffad396359a8121da2a67a 100644
+index d00f04f6bf3f963ce48e7f88badea09f5a122477..a9a7ab4ef53515d656edd0278b52601393b3e033 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -75,7 +75,8 @@ and worktree while you stay in the new thread composer. This requires a Git proj

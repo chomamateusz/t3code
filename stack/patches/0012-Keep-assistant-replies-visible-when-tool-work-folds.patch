@@ -56,7 +56,7 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  3 files changed, 405 insertions(+), 36 deletions(-)
 
 diff --git a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
-index 7dc87ff67cfc766237ee74a41c859e42ba13bb79..3b8e6e9aea1ee52c61511da64ec17896a39b341a 100644
+index c61c8f66f28a264886eae510206c76a50751985f..8c31c7f9a32425b28e5a46272d19eb91db0e71a1 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
 +++ b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
 @@ -301,9 +301,79 @@ describe("MessagesTimeline work rows", () => {
@@ -649,10 +649,10 @@ index 0a703a675f0ac515efdd3ca55a494cfcd04ee052..25ba4a475d5e4e73d93d161f1f5e374c
      ]);
    });
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index 2192c3b7e6ae0b0d13847a3f10440f8894fd91d2..7f0de33edc2cd1b4d2dc8449a8a98004a1f204b2 100644
+index 124062303e0cfc68155fc9620402e87126c5cc53..99953339c898a060b7c2af122c5822307a016438 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-@@ -844,6 +844,30 @@ function retainedAssistantReplyEntryIds(
+@@ -845,6 +845,30 @@ function retainedAssistantReplyEntryIds(
    return replyEntryIds;
  }
  
@@ -683,7 +683,7 @@ index 2192c3b7e6ae0b0d13847a3f10440f8894fd91d2..7f0de33edc2cd1b4d2dc8449a8a98004
  function deriveSupersededAttemptFolds(
    timelineEntries: ReadonlyArray<TimelineEntry>,
    unfoldedRunIds: ReadonlySet<RunId>,
-@@ -855,11 +879,13 @@ function deriveSupersededAttemptFolds(
+@@ -856,11 +880,13 @@ function deriveSupersededAttemptFolds(
        entry.attempt !== undefined && retainedReplyEntryIds.has(entry.id) ? [entry.attempt.id] : [],
      ),
    );
@@ -697,7 +697,7 @@ index 2192c3b7e6ae0b0d13847a3f10440f8894fd91d2..7f0de33edc2cd1b4d2dc8449a8a98004
        unfoldedRunIds.has(entry.attempt.runId) ||
        (entry.kind === "message" && entry.message.role === "user") ||
        (entry.kind === "event" && entry.projectedItem.item.type === "handoff") ||
-@@ -1195,7 +1221,7 @@ function deriveTurnFolds(input: {
+@@ -1196,7 +1222,7 @@ function deriveTurnFolds(input: {
      // Folded dividers lose their place in the turn, so only the latest stays visible.
      const visibleCompactionId = group.entries.findLast(timelineEntryIsCompaction)?.id;
      for (const [index, entry] of group.entries.entries()) {
