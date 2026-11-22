@@ -183,7 +183,7 @@ Tests:
  create mode 100644 apps/web/src/components/terminal/remoteTerminalClose.ts
 
 diff --git a/apps/server/src/terminal/Manager.test.ts b/apps/server/src/terminal/Manager.test.ts
-index dea7d3f31a3f07109966ad485468936cef527d3a..646d8bc1eb4733cecdbbf327ee032d3e51b35cd6 100644
+index 8af803db1fd8c29b14c319a8b8451f2f380c5c5a..f4e7cb7f5d480a18aeeb2dc0adf8dc52e30ad842 100644
 --- a/apps/server/src/terminal/Manager.test.ts
 +++ b/apps/server/src/terminal/Manager.test.ts
 @@ -4,9 +4,11 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -198,7 +198,7 @@ index dea7d3f31a3f07109966ad485468936cef527d3a..646d8bc1eb4733cecdbbf327ee032d3e
    type TerminalAttachStreamEvent,
    type TerminalEvent,
    type TerminalOpenInput,
-@@ -877,6 +879,33 @@ it.layer(
+@@ -879,6 +881,33 @@ it.layer(
      }),
    );
  
@@ -233,7 +233,7 @@ index dea7d3f31a3f07109966ad485468936cef527d3a..646d8bc1eb4733cecdbbf327ee032d3e
      Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) => fs.exists(filePath));
  
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index dd578d2c27fb0633d666ce856ac7dbc2790900de..b4b9daac5aa1f5fa1fc485982b84f3c29e787e89 100644
+index fb19b6c7ad1d677d93df5ddddab8564f7ef852b8..6ef772875517087a438f37be43abf8c34d66a251 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
 @@ -21,6 +21,7 @@ import {
@@ -262,7 +262,7 @@ index dd578d2c27fb0633d666ce856ac7dbc2790900de..b4b9daac5aa1f5fa1fc485982b84f3c2
    };
  }
  
-@@ -3308,6 +3313,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+@@ -3333,6 +3338,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
          runtimeEnv: normalizedRuntimeEnv(input.env),
          stopOnSettle: input.stopOnSettle ?? false,
          startupError: null,
@@ -953,7 +953,7 @@ index 6b48d3f19e4593d15bd8ff903e4f983e219238be..7793d3a9b002817081bf65cc28f2f7a9
      },
      "terminal.new": ({ terminalFocusOwner }) => {
 diff --git a/apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx b/apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx
-index 8c542294f4abbbc61be807051da11fe8074711d6..8a7f628ad8477ade7af6b86777c9450772ba7ea3 100644
+index 2ed861eba045a4891dda8580aa5b39c5b70ce02f..3af6aaf4d92210580aaa04443ff1bdb2a9578a36 100644
 --- a/apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx
 +++ b/apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx
 @@ -1,4 +1,5 @@
@@ -1034,7 +1034,7 @@ index 8c542294f4abbbc61be807051da11fe8074711d6..8a7f628ad8477ade7af6b86777c94507
    });
  
 diff --git a/apps/web/src/components/settings/ProjectSettingsPanel.tsx b/apps/web/src/components/settings/ProjectSettingsPanel.tsx
-index 3a2ab9ad62418ef83fd001f207b6f21f9507ce86..69d2c1378b1eb2fedc3fffc968f2fd21b8f2a114 100644
+index c4ed6e4ff33b1914a94b7b0df1b477604b47ce89..fa977091ca4afd211d07743de2f2075b87665dfd 100644
 --- a/apps/web/src/components/settings/ProjectSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/ProjectSettingsPanel.tsx
 @@ -35,6 +35,7 @@ import { useThreadShells, waitForProjectRemoval } from "../../state/entities";
@@ -1045,7 +1045,7 @@ index 3a2ab9ad62418ef83fd001f207b6f21f9507ce86..69d2c1378b1eb2fedc3fffc968f2fd21
  import { Alert, AlertDescription } from "../ui/alert";
  import { Button } from "../ui/button";
  import { Input } from "../ui/input";
-@@ -404,6 +405,9 @@ function ProjectDetail({
+@@ -405,6 +406,9 @@ function ProjectDetail({
        }
        const projectRef = scopeProjectRef(member.environmentId, member.id);
        await waitForProjectRemoval(projectRef);

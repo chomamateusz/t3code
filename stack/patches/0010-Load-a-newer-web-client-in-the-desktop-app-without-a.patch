@@ -53,10 +53,10 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  3 files changed, 169 insertions(+), 4 deletions(-)
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index c152865aa98afc1b3af1fe2f1149996d3a44ce3d..1da1dd7bbe91202911e3f936feb8e4bcb1a3dec3 100644
+index f7c077f8a9b02f5df0cbde8c877cb6b340229fb7..698818e0f1f6abd990cb80050b276fdbcab997c2 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
-@@ -202,7 +202,11 @@ const startLocalBackend = Effect.gen(function* () {
+@@ -228,7 +228,11 @@ const startLocalBackend = Effect.gen(function* () {
      scheme: ElectronProtocol.getDesktopScheme(environment.isDevelopment),
      ...(environment.isDevelopment
        ? { targetOrigin: Option.getOrThrow(environment.devServerUrl) }

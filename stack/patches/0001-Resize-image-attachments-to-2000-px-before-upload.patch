@@ -41,6 +41,8 @@ Port to 25875c11b2: Applied without conflicts. An image copied from another thre
 
 Port to b6ac2449f1: upstream 055b44919e wraps imageCompression.ts's read errors in m(msg()) and imports gt-react beside the header-dimension import this commit removes; the import block keeps gt-react and still drops the header read. Upstream ad77fd88e2 (Enter during image compression sends once it finishes) tracks pending images in preparingComposerImages around the intake and keeps compressImageToByteLimit as the compressor, so the 2000 px resize, the HEIC over-cap re-encode and the resizeSnapShotSource scaling are unchanged on top of it; 733bc8f1d0 changes docs/user/composer.md elsewhere.
 
+Port to 047fb5b162: upstream 227ac64b74 (#40501, downscaled attachments keep Display P3 colours) reads each image's colour space before decoding and draws on a canvas in that space. reencodeWithinBudget keeps upstream's readImageColorSpace ahead of the bitmap this commit decodes once and reuses, and closes that reused bitmap when the colour read fails; fitImageToMaxEdge keeps upstream's colour space for its 2000 px canvas. Upstream's new imageCompression.browser.test.ts colour cases run unchanged on top of the 2000 px resize.
+
 Files:
 apps/web:
 - apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
@@ -74,11 +76,11 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .../SnapShotCoordinator.browser.test.ts       |  20 ++-
  .../src/components/preview/PreviewView.tsx    |   2 +-
  apps/web/src/lib/imageCompression.test.ts     | 160 ++++++++++++++++--
- apps/web/src/lib/imageCompression.ts          |  46 ++---
+ apps/web/src/lib/imageCompression.ts          |  47 ++---
  apps/web/src/lib/previewAnnotation.test.ts    |  50 +++++-
  apps/web/src/lib/previewAnnotation.ts         |  15 +-
  docs/user/composer.md                         |   4 +
- 9 files changed, 427 insertions(+), 60 deletions(-)
+ 9 files changed, 428 insertions(+), 60 deletions(-)
 
 diff --git a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
 index d48e965895ddd40377c2836ffc39435e889af34a..32111a881eee54403248d3da956e194082b6d448 100644
@@ -632,7 +634,7 @@ index e40c3968bc850e77a2e0e96b762da9f75ffbdbb1..7ecec677c0486af0b59d1cd273433b4f
  });
  
 diff --git a/apps/web/src/lib/imageCompression.ts b/apps/web/src/lib/imageCompression.ts
-index b876ceff6a44ab2ea383f48add71c909bc7b4880..350bf973e64ca56874cec444cad69ad56035e0f5 100644
+index 7e5485cabcee9bc3ae12aa8ae69e1f44bfd79784..fd9f94b295ff42eb816bcfe955fe4e2ba7042282 100644
 --- a/apps/web/src/lib/imageCompression.ts
 +++ b/apps/web/src/lib/imageCompression.ts
 @@ -3,10 +3,6 @@ import {
@@ -646,7 +648,7 @@ index b876ceff6a44ab2ea383f48add71c909bc7b4880..350bf973e64ca56874cec444cad69ad5
  import { msg } from "gt-react";
  
  import { m } from "../i18n/messages";
-@@ -327,14 +323,16 @@ async function reencodeWithinBudget(
+@@ -497,8 +493,10 @@ async function reencodeWithinBudget(
    file: File,
    budgetChars: number,
    preferredMimeType?: "image/jpeg",
@@ -657,14 +659,18 @@ index b876ceff6a44ab2ea383f48add71c909bc7b4880..350bf973e64ca56874cec444cad69ad5
      return { ok: false, reason: "too-large" };
    }
  
-   let bitmap: ImageBitmap;
+@@ -506,8 +504,9 @@ async function reencodeWithinBudget(
+   let colorSpace: PredefinedColorSpace;
    try {
+     colorSpace = await readImageColorSpace(file);
 -    bitmap = await createImageBitmap(file);
 +    bitmap = decodedBitmap ?? (await createImageBitmap(file));
    } catch {
++    decodedBitmap?.close();
      return { ok: false, reason: "unreadable" };
    }
-@@ -403,16 +401,13 @@ export async function compressImageForStash(
+ 
+@@ -581,16 +580,13 @@ export async function compressImageForStash(
    }
  }
  
@@ -685,8 +691,8 @@ index b876ceff6a44ab2ea383f48add71c909bc7b4880..350bf973e64ca56874cec444cad69ad5
 -    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
      const imageSize = fitImageAttachmentSize(bitmap);
      if (!imageSize) return null;
-     const target = createCanvas(imageSize.width, imageSize.height);
-@@ -427,8 +422,6 @@ async function fitImageToMaxEdge(file: File): Promise<{ file: File; imageSize: I
+     const target = createCanvas(imageSize.width, imageSize.height, await readImageColorSpace(file));
+@@ -605,8 +601,6 @@ async function fitImageToMaxEdge(file: File): Promise<{ file: File; imageSize: I
      };
    } catch {
      return null;
@@ -695,7 +701,7 @@ index b876ceff6a44ab2ea383f48add71c909bc7b4880..350bf973e64ca56874cec444cad69ad5
    }
  }
  
-@@ -437,21 +430,30 @@ export async function compressImageToByteLimit(
+@@ -615,21 +609,30 @@ export async function compressImageToByteLimit(
    maxBytes: number,
    options?: { preferredMimeType?: "image/jpeg"; sourceSizeBytes?: number },
  ): Promise<CompressImageFileResult> {
@@ -845,7 +851,7 @@ index 8f8b944e2fa1ce73444ca9f27e41d37da76b07af..fdd8b9af2e1ca40c29b5d3eb0885a10e
      return { status: "failed" };
    }
 diff --git a/docs/user/composer.md b/docs/user/composer.md
-index 9fc9b69ef22a62e3be7c39811c7de135b139e3b1..edd8e59aae2bf85c6b772c90cd95b8ff6eb7d14e 100644
+index 53017052a2a0177d650435a0e1f10fa286498ef9..2e2047452b2dafc2055fa760e9bc7c299581f278 100644
 --- a/docs/user/composer.md
 +++ b/docs/user/composer.md
 @@ -58,6 +58,10 @@ also send files to T3 Code through another app's system share sheet.

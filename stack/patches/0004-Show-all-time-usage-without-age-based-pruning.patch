@@ -993,10 +993,10 @@ index 843b414b97f32872cba0ad85fee3516a15d37551..18cd2915ab568654eecc4d1ef8dd1466
    // Snapshot now: the encoding runs later, while the file is written.
    return (cache, extra) => encode([...cache], extra);
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index e90f58d7566beb358a6befbfe08984f91067fb4d..7cc865cb973557c12c0cb48cf2b774d354673d04 100644
+index 99ff61182d626559bcb56fd3b52e79f25b9e8fb8..d78189290e65e1c147e103af2dd28a19e4d2f66b 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-@@ -23,7 +23,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
+@@ -29,7 +29,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
  const usageCommandOrder = new Map<KeybindingCommand, number>(
    [
      "usage.open" as const,
@@ -1007,7 +1007,7 @@ index e90f58d7566beb358a6befbfe08984f91067fb4d..7cc865cb973557c12c0cb48cf2b774d3
    ].map((command, index) => [command, index]),
  );
  
-@@ -470,7 +472,9 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+@@ -499,7 +501,9 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
  
  // Whole labels: search titles keep the encoded message, which cannot nest another one.
  const USAGE_COMMAND_LABELS: Record<
@@ -1315,7 +1315,7 @@ index 64a81e20a53e4c097382dcb3e75b948cf038f61c..0348b19cf5a64eedb542b361ea15c571
  export function resolveUsageShortcut(
    event: ShortcutEventLike & { target: EventTarget | null },
 diff --git a/docs/user/usage.md b/docs/user/usage.md
-index 5160becc21567016fa0770d658113c405185eace..f09d22e6d26b71b43045b9ee356dbb63da4fd47c 100644
+index 43f4c94a19328be71934d655617849c609298754..71b56f04e81d22c312b9ef528b7c6ba4d71630d1 100644
 --- a/docs/user/usage.md
 +++ b/docs/user/usage.md
 @@ -20,12 +20,12 @@ record are missing from the totals.
@@ -1346,7 +1346,7 @@ index 5160becc21567016fa0770d658113c405185eace..f09d22e6d26b71b43045b9ee356dbb63
  If recent work is missing or a new model shows no cost, refresh to rescan session history and
  update model pricing.
  
-@@ -203,6 +205,7 @@ Session, Weekly, or both for each provider. Reopen T3 to refresh expired reading
+@@ -205,6 +207,7 @@ Session, Weekly, or both for each provider. Reopen T3 to refresh expired reading
  On web and desktop, open Usage from the command palette. While on Usage,
  press `C`, `T`, or `L` for Cost, Tokens, or Limits while not typing in a field.
  Use `Ctrl+Shift+1/2/3/4` (`Cmd+Shift+1/2/3/4` on macOS) for the past

@@ -103,7 +103,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  9 files changed, 206 insertions(+), 18 deletions(-)
 
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index c08c266adc0b34174279d499ae2df48be752acf5..958bf7f748258be18da672fe8956ea65ad3a590c 100644
+index 689ffb39f259ed3948c86bafddc88dddec2bc38d..d3b72f36bb862fd63471e7d3a3178f007dd16713 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
 @@ -1,7 +1,7 @@
@@ -115,7 +115,7 @@ index c08c266adc0b34174279d499ae2df48be752acf5..958bf7f748258be18da672fe8956ea65
  import * as Effect from "effect/Effect";
  import * as Exit from "effect/Exit";
  import * as Fiber from "effect/Fiber";
-@@ -69,7 +69,7 @@ const environmentInput = {
+@@ -70,7 +70,7 @@ const environmentInput = {
  } satisfies DesktopEnvironment.MakeDesktopEnvironmentInput;
  
  function makeFakeBrowserWindow() {
@@ -124,7 +124,7 @@ index c08c266adc0b34174279d499ae2df48be752acf5..958bf7f748258be18da672fe8956ea65
    const webContentsListeners = new Map<string, (...args: readonly unknown[]) => void>();
    let zoomLevel = 0;
    const webContents = {
-@@ -232,6 +232,7 @@ function layerTest(input: {
+@@ -233,6 +233,7 @@ function layerTest(input: {
    readonly mainWindow: Ref.Ref<Option.Option<Electron.BrowserWindow>>;
    readonly createdWindowOptions?: Electron.BrowserWindowConstructorOptions[];
    readonly desktopSettings?: DesktopAppSettings.DesktopSettings;
@@ -132,7 +132,7 @@ index c08c266adc0b34174279d499ae2df48be752acf5..958bf7f748258be18da672fe8956ea65
    readonly mainWindowBoundsUpdates?: DesktopAppSettings.DesktopWindowBounds[];
    readonly mainWindowMaximizedUpdates?: boolean[];
    readonly beforeMainWindowBoundsUpdate?: (
-@@ -337,7 +338,9 @@ function layerTest(input: {
+@@ -338,7 +339,9 @@ function layerTest(input: {
            ? layerDesktopEnvironment
            : layerDesktopEnvironmentFor(input.platform),
          layerDesktopAppSettings,
@@ -143,7 +143,7 @@ index c08c266adc0b34174279d499ae2df48be752acf5..958bf7f748258be18da672fe8956ea65
          layerDesktopServerExposure,
          DesktopState.layer,
          layerElectronApp,
-@@ -1361,7 +1364,17 @@ describe("DesktopWindow", () => {
+@@ -1437,7 +1440,17 @@ describe("DesktopWindow", () => {
        const fakeWindow = makeFakeBrowserWindow();
        const createCount = yield* Ref.make(0);
        const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
@@ -162,7 +162,7 @@ index c08c266adc0b34174279d499ae2df48be752acf5..958bf7f748258be18da672fe8956ea65
  
        yield* Effect.gen(function* () {
          const desktopWindow = yield* DesktopWindow.DesktopWindow;
-@@ -1369,22 +1382,55 @@ describe("DesktopWindow", () => {
+@@ -1445,22 +1458,55 @@ describe("DesktopWindow", () => {
          const swipe = fakeWindow.windowListeners.get("swipe");
          assert.isDefined(swipe);
          if (!swipe) return;
@@ -227,10 +227,10 @@ index c08c266adc0b34174279d499ae2df48be752acf5..958bf7f748258be18da672fe8956ea65
      }),
    );
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 741e03b79b3c29cc0ff39c3a1ea870b10dbb9026..c4bb0f98cbbcf43a71333f13572644ee913221e5 100644
+index 880b9dfef4ab904413d6864944753ec9860b66d3..1187edb0aa378bdd7a80b15eb72f295461f8af15 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
-@@ -851,9 +851,27 @@ export const make = Effect.gen(function* () {
+@@ -864,9 +864,27 @@ export const make = Effect.gen(function* () {
      if (environment.platform === "darwin") {
        // Mouse drivers can deliver Back/Forward as macOS swipe gestures instead of buttons.
        window.on("swipe", (_event, direction) => {
@@ -441,10 +441,10 @@ index 0ef89029e34cacfb5aad12c9406152e0b510d139..155ec5358a538bda672b079d5311bdd8
          <SettingsRow
            {...setting("unpin-confirmation")}
 diff --git a/apps/web/src/components/settings/settingsSearch.test.ts b/apps/web/src/components/settings/settingsSearch.test.ts
-index 3949a9109190f5e87bb0787f112bf070ab3af619..89ef32eb2670124ba1da2dd7df2557e668a43eb2 100644
+index 4bc2c2a6317e5c549008901c264a49d957e0cef5..434438ee33dd58dc38f2db977481841253898988 100644
 --- a/apps/web/src/components/settings/settingsSearch.test.ts
 +++ b/apps/web/src/components/settings/settingsSearch.test.ts
-@@ -122,6 +122,8 @@ describe("searchSettings", () => {
+@@ -135,6 +135,8 @@ describe("searchSettings", () => {
  
    it("hides desktop-only settings from browser search", () => {
      expect(SETTINGS_SEARCH_ITEMS.some((item) => item.id === "quit-confirmation")).toBe(true);
@@ -454,10 +454,10 @@ index 3949a9109190f5e87bb0787f112bf070ab3af619..89ef32eb2670124ba1da2dd7df2557e6
      expect(searchSettings("wsl")).toEqual([]);
      expect(searchSettings("update track")).toEqual([]);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index dbb62fb6fa05dbc50e84062d4ef3b7f267570690..83186c0cee4fd655999038ffe0b2317cfed406a0 100644
+index b1aca3cea5628b459a1df29f12281d596c18b002..f6dedaf58da5ae0d49209b2ea8ebb8ed266669dd 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -929,6 +929,15 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -940,6 +940,15 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: [msg("confirmation desktop app exit direct hold double click press twice")],
      desktopOnly: true,
    },

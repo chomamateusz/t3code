@@ -14,7 +14,7 @@ Behaviours:
 - A grouped folder reorder writes every order key the plan assigns, including keys for threads that are not rendered (threads in collapsed folders, projects without a folder). The writes resolve their threads from every thread in the Pinned, Active, Working, Snoozed and Settled sections, not from the rendered rows, and the operate-permission check covers every written thread. With keyless active threads [a1, b1, a2], folder A open and folder B collapsed, dragging a2 above a1 stores [a2, a1, b1], and the optimistic drop is released when those writes land, as after an ungrouped reorder. If a planned write has no thread to resolve, the drop does nothing instead of writing part of the order; the ungrouped list never reaches this, because its plans only assign rendered rows.
 - A drop on a card of another folder, a pinned, snoozed or settled row, a section marker or nowhere does nothing, and a drop back on the card's own place plans nothing. Project headers are not drop targets. The collision filter rejects such targets while dragging, so no card makes room for them.
 - A dragged folder card has a drop target only while the pointer is between the top of its folder's first card and the bottom of its last card. Inside that extent the collision detection ranks only that folder's cards by distance to the dragged card's centre, so a card of a neighbouring folder can never be the nearest centre, a target inside the folder always exists and the folder's first and last positions are reachable. Over a project header, another folder's cards, a shelf or empty space nothing is targeted, no card makes room, and a release does nothing. Rows without a project folder (the ungrouped list) and drags without pointer coordinates keep the unfiltered closest-centre ranking, so the ungrouped list's collision detection is unchanged.
-- Every other grouped-mode drag behaves as before: pinned, snoozed and settled rows only drag out as composer context, there is no pin, unpin, settle, un-settle or wake by drag, and the Pinned and Active boundary labels and section hints stay hidden. Dragging a card out of the sidebar onto the composer still mentions it. Grouped folder drags now auto-scroll the sidebar like ungrouped drags.
+- Besides folder cards, only pinned cards reorder in grouped mode, among themselves (see the last paragraph). Snoozed and settled rows only drag out as composer context, there is no pin, unpin, settle, un-settle or wake by drag, and the Pinned and Active boundary labels and section hints stay hidden. Dragging a card out of the sidebar onto the composer still mentions it. Grouped folder and pinned drags now auto-scroll the sidebar like ungrouped drags.
 - The draggable cards are the same as in the ungrouped list (connected environment, loaded server config, not being renamed, no optimistic drop pending, operate permission). The ungrouped list's drag behaviour is unchanged. The web sidebar has no keyboard reorder, so none is added.
 - The Snooze trigger and the Discard draft button in a card's action cluster stop propagation of pointerdown, like Mark read / unread and Settle, so a press on them never reaches the row's drag sensor. Neither starts the sweep gesture.
 - The user guide says that folders keep the saved active order, that a thread can be dragged within its folder and is saved like an ungrouped reorder, and that it cannot be dragged into another folder or section.
@@ -34,10 +34,10 @@ docs:
 - docs/user/thread-sidebar.md
 
 Tests:
-- apps/web/src/components/Sidebar.logic.test.ts: a dragging case plans four folder reorders (up, down, to the folder's end, in a second folder) with exactly the plan the equivalent ungrouped drop gets, checks the stored order keeps other folders' and hidden threads' places, plans nothing for a drop on the card's own place, and resolves no target for another folder's card, a pinned or settled row, a hidden thread, section markers, or a pinned or settled source. A second case plans a grouped drop over keyless [a1, b1, a2] with only folder alpha rendered, expects the stored order [a2, a1, b1] with assignments for a1, a2 and b1, a write for every assignment when all threads resolve, and no writes when b1 does not resolve; it fails if missing threads are skipped.
+- apps/web/src/components/Sidebar.logic.test.ts: a dragging case plans four folder reorders (up, down, to the folder's end, in a second folder) with exactly the plan the equivalent ungrouped drop gets, checks the stored order keeps other folders' and hidden threads' places, plans three pinned reorders with exactly the plan the equivalent ungrouped pinned drop gets, plans nothing for a drop on the card's own place (folder or pinned), and resolves no target for a folder card over another folder's card, a pinned or settled row, a hidden thread or section markers, for a pinned card over a folder card, a settled row or a section marker, or for a settled source. A second case plans a grouped drop over keyless [a1, b1, a2] with only folder alpha rendered, expects the stored order [a2, a1, b1] with assignments for a1, a2 and b1, a write for every assignment when all threads resolve, and no writes when b1 does not resolve; it fails if missing threads are skipped.
 - apps/web/src/components/Sidebar.drag.test.ts: a projection case shows that only the dragged card's own folder rows shift by the card height plus gap, and that hovering another folder, a pinned or settled row or a marker moves nothing. A collision case selects a2 with the pointer inside the dragged card's own folder, selects a2 when a1 is grabbed 2px below its top edge and the pointer is 2px above a2's bottom edge with a folder gamma card below, and selects nothing with the pointer just below that folder's last card, over a collapsed folder's header below it, or over the folder's own header. It fails without the pointer bound and without the folder-restricted ranking.
 - apps/web/src/components/Sidebar.browser.test.tsx: the grouped sidebar case gives one folder two threads whose order keys and last sends disagree and asserts the order-key order; it fails with the previous send ordering.
-- Focused run of Sidebar.logic.test.ts and Sidebar.drag.test.ts: 177 tests passed; Sidebar.browser.test.tsx and SidebarThreadRow.browser.test.tsx: 8 tests passed; apps/web typecheck passed; lint and format of the changed files passed.
+- Focused run on 047fb5b162 with the whole series applied: Sidebar.logic.test.ts and Sidebar.drag.test.ts 191 tests passed; Sidebar.browser.test.tsx and SidebarThreadRow.browser.test.tsx 14 tests passed; apps/web typecheck passed; lint and format of the changed files passed.
 - Changed-files gate (node scripts/check-changed.ts HEAD) over the feature's files and over each follow-up's files: format, lint, knip 1/2 and 2/2, typecheck of 2 packages, the focused tests, the cross-file test run and the React compiler check all passed.
 - No browser-level drag test (no existing harness drives sidebar drags), no test for the pointerdown wiring, and no run in a real client.
 
@@ -54,10 +54,10 @@ Model/harness: Claude Opus 5.5 / Claude Code
  8 files changed, 519 insertions(+), 52 deletions(-)
 
 diff --git a/apps/web/src/components/Sidebar.browser.test.tsx b/apps/web/src/components/Sidebar.browser.test.tsx
-index 2445cdc80b5083a9839d7d630c94b28dfd8eab59..b60b7c234fd2a51f4cb7659e3a94cefef1ae0980 100644
+index c1e6cc75a471ab1d6f4353332b697f4f516eeac3..042bbb09ebb337760c009f7d47c4d7d8f6d13a63 100644
 --- a/apps/web/src/components/Sidebar.browser.test.tsx
 +++ b/apps/web/src/components/Sidebar.browser.test.tsx
-@@ -427,16 +427,26 @@ describe("grouped sidebar", () => {
+@@ -492,16 +492,26 @@ describe("grouped sidebar", () => {
      );
      vi.mocked(useProjects).mockReturnValue(projects);
      vi.mocked(readProjects).mockReturnValue(projects);
@@ -87,7 +87,7 @@ index 2445cdc80b5083a9839d7d630c94b28dfd8eab59..b60b7c234fd2a51f4cb7659e3a94cefe
      vi.mocked(useHandleNewThread).mockReturnValue({
        activeDraftThread: null,
        activeThread: null,
-@@ -454,13 +464,18 @@ describe("grouped sidebar", () => {
+@@ -519,13 +529,18 @@ describe("grouped sidebar", () => {
      const alpha = screen.getByRole("button", { name: /^alpha/ });
      const beta = screen.getByRole("button", { name: /^beta/ });
  
@@ -377,10 +377,10 @@ index 76f2c9bf3a3ec8ad6c0167baafe812aad4d80368..74570b265b8482f864f2b3c67821103a
        previous?.rects !== args.rects ||
        previous.activeIndex !== args.activeIndex ||
 diff --git a/apps/web/src/components/Sidebar.logic.test.ts b/apps/web/src/components/Sidebar.logic.test.ts
-index e2ba699d6ca434575bde8aac88ea279bdbd9fd4d..30e729bdb061edad76ad10bd7826b3fd3b7f635a 100644
+index 4c89fb436e099dab3ad2d285729883e9345b1339..82a7b8aff86c1a4f22ea58f104b013b95c1b2c9e 100644
 --- a/apps/web/src/components/Sidebar.logic.test.ts
 +++ b/apps/web/src/components/Sidebar.logic.test.ts
-@@ -32,6 +32,10 @@ import {
+@@ -33,6 +33,10 @@ import {
    shouldRecedeSidebarThread,
    sortInboxThreadsByReturn,
    resolveSidebarDropTarget,
@@ -391,7 +391,7 @@ index e2ba699d6ca434575bde8aac88ea279bdbd9fd4d..30e729bdb061edad76ad10bd7826b3fd
    planSidebarThreadDrop,
    resolveSidebarReorderableThreadKeys,
    sortPinnedThreadsForSidebar,
-@@ -1243,6 +1247,153 @@ describe("Working shelf (beta)", () => {
+@@ -1287,6 +1291,153 @@ describe("Working shelf (beta)", () => {
        expect(above.kind === "move-active" && above.assignments[0]!.orderKey < "m").toBe(true);
      });
  
@@ -546,10 +546,10 @@ index e2ba699d6ca434575bde8aac88ea279bdbd9fd4d..30e729bdb061edad76ad10bd7826b3fd
        const onlineEnvironmentId = EnvironmentId.make("online");
        const offlineEnvironmentId = EnvironmentId.make("offline");
 diff --git a/apps/web/src/components/Sidebar.logic.ts b/apps/web/src/components/Sidebar.logic.ts
-index 7195a86b4e9f198cf3db125d5607b376b3be88d4..c5110ddda250711a81fc7f02bdfd8d02036dc9f1 100644
+index dd7f082c6612d14953a7b103001ed1ba1324346b..f4e5acd9a00a7c6ccc486d0c016c11bf6ff74136 100644
 --- a/apps/web/src/components/Sidebar.logic.ts
 +++ b/apps/web/src/components/Sidebar.logic.ts
-@@ -223,9 +223,17 @@ export function sidebarMarkerId(marker: SidebarListMarker): string {
+@@ -230,9 +230,17 @@ export function sidebarMarkerId(marker: SidebarListMarker): string {
  }
  
  export type SidebarListItem =
@@ -568,7 +568,7 @@ index 7195a86b4e9f198cf3db125d5607b376b3be88d4..c5110ddda250711a81fc7f02bdfd8d02
  export function sidebarListItemId(item: SidebarListItem): string {
    return item.kind === "thread" ? item.key : sidebarMarkerId(item.marker);
  }
-@@ -279,6 +287,43 @@ export function resolveSidebarDropTarget(
+@@ -286,6 +294,43 @@ export function resolveSidebarDropTarget(
    return { section, pinnedOrder, activeOrder };
  }
  
@@ -612,7 +612,7 @@ index 7195a86b4e9f198cf3db125d5607b376b3be88d4..c5110ddda250711a81fc7f02bdfd8d02
  type SidebarThreadDropPlan =
    | { readonly kind: "none" }
    | {
-@@ -495,6 +540,26 @@ export function planSidebarThreadDrop(input: {
+@@ -502,6 +547,26 @@ export function planSidebarThreadDrop(input: {
    }
  }
  
@@ -640,7 +640,7 @@ index 7195a86b4e9f198cf3db125d5607b376b3be88d4..c5110ddda250711a81fc7f02bdfd8d02
    T extends Pick<
      SidebarThreadSummary,
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2b2559e15 100644
+index d32af52f20c51c16f519360dc6247761ac78365f..255982c6bf63648b7840f98dac87383549f14b01 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -211,12 +211,15 @@ import {
@@ -659,7 +659,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
    sidebarBadgeWakeClock,
    sidebarListItemId,
    sidebarThreadKeyAtY,
-@@ -366,8 +369,6 @@ interface SidebarThreadPartitionInput {
+@@ -367,8 +370,6 @@ interface SidebarThreadPartitionInput {
    readonly connectedEnvironmentIds: readonly EnvironmentId[];
    readonly optimisticDrop: SidebarOptimisticDrop | null;
    readonly workingShelfEnabled: boolean;
@@ -668,7 +668,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
    // Snooze wakes, the queued-turn grace and the Working shelf's exit grace depend
    // on the clock, so the minute tick, the precise snooze-wake tick and the inbox
    // tracker's expiry version are inputs: a new key repartitions.
-@@ -508,7 +509,6 @@ function useSidebarThreads(input: {
+@@ -509,7 +510,6 @@ function useSidebarThreads(input: {
      connectedEnvironmentIds,
      optimisticDrop,
      workingShelfEnabled,
@@ -676,7 +676,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
      clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
    });
  
-@@ -601,17 +601,18 @@ function useSidebarThreads(input: {
+@@ -602,17 +602,18 @@ function useSidebarThreads(input: {
    ] as const) {
      for (const thread of list) sectionByThreadKey.set(threadShellKey(thread), section);
    }
@@ -702,7 +702,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
      settledVisibleCount,
      settledCount,
      olderSettledShelf,
-@@ -637,6 +638,9 @@ function useSidebarThreads(input: {
+@@ -638,6 +639,9 @@ function useSidebarThreads(input: {
      visibleWorkingThreads,
      orderedThreadKeys: orderedThreads.map(threadShellKey),
      threadByKey: new Map(orderedThreads.map((thread) => [threadShellKey(thread), thread] as const)),
@@ -712,7 +712,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
      settledThreadKeys: new Set(settledThreads.map(threadShellKey)),
      snoozedThreadKeys: new Set(snoozedThreads.map(threadShellKey)),
      sectionByThreadKey,
-@@ -660,7 +664,6 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
+@@ -661,7 +665,6 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
      serverConfigs,
      optimisticDrop,
      workingShelfEnabled,
@@ -720,7 +720,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
    } = input;
    const preciseNow = new Date().toISOString();
    const visible = filterSidebarV2VisibleThreads(
-@@ -722,11 +725,9 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
+@@ -723,11 +726,9 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
    }
    // Availability gates dragging only; sorting must stay consistent across clients.
    const sortedPinned = sortPinnedThreadsForSidebar(pinned);
@@ -735,7 +735,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
    return {
      pinnedThreads:
        optimisticDrop?.section !== "pinned" || optimisticDrop.order === null
-@@ -1477,6 +1478,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1478,6 +1479,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      visibleWorkingThreads,
      orderedThreadKeys,
      threadByKey,
@@ -743,7 +743,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
      settledThreadKeys,
      snoozedThreadKeys,
      sectionByThreadKey,
-@@ -1880,9 +1882,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1894,9 +1896,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      };
    };
  
@@ -758,7 +758,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
      dragState?.contextDrag === true ||
      dragState?.activeSection === "working";
    const dragTargetSection = isContextDrag ? null : (dragState?.targetSection ?? null);
-@@ -2076,8 +2081,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2090,8 +2095,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      if (list && header) {
        const listRect = list.getBoundingClientRect();
        const scale = list.offsetWidth > 0 ? listRect.width / list.offsetWidth : 1;
@@ -771,7 +771,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
      } else {
        dragLabelOffsetRef.current = 0;
      }
-@@ -2115,9 +2123,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2129,9 +2137,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      }
      const items: SidebarListItem[] = [{ kind: "marker", marker: "pinned-header" }];
      const pinnedRows = rowsOf(pinnedThreads, "pinned");
@@ -795,7 +795,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
      items.push({ kind: "marker", marker: "active-placeholder" });
      items.push(...activeRows);
      if (workingThreads.length > 0) {
-@@ -2136,7 +2156,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2150,7 +2170,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    })();
    // Preserve the list while streamed updates leave order unchanged to retain row memoization.
    const sidebarListItemsKey = sidebarListItemsFresh
@@ -806,7 +806,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
      .join("\n");
    const [sidebarListItemsState, setSidebarListItems] = useState(sidebarListItemsFresh);
    const [sidebarListItemsKeyState, setSidebarListItemsKeyState] = useState(sidebarListItemsKey);
-@@ -2181,9 +2203,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2195,9 +2217,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      previousShelfExpansionKeyRef.current = shelfExpansionKey;
      listMotionRef.current?.update(listMotionPass.animate && shelvesUnchanged);
    }, [listMotionPass, shelfExpansionKey]);
@@ -821,7 +821,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
        : null;
      setDragState((current) =>
        current === null || current.activeKey !== String(event.active.id)
-@@ -2224,7 +2250,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2238,7 +2264,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      if (source === undefined) return createSidebarCollisionDetection(() => false);
      return createSidebarCollisionDetection(
        (id) => {
@@ -830,7 +830,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
          if (target === null) return false;
          return (
            planSidebarThreadDrop({
-@@ -2251,13 +2277,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2265,13 +2291,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      );
    })();
    const handleThreadDragEnd = (event: DragEndEvent) => {
@@ -845,7 +845,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
      const activeThread = threadByKey.get(activeKey);
      if (activeSection === undefined || target === null || activeThread === undefined) return;
      const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
-@@ -2287,13 +2309,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2301,13 +2323,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
          : plan.kind === "reorder-pinned" || plan.kind === "move-active"
            ? plan.assignments
            : [];
@@ -862,7 +862,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
      )
        return;
      const drop = {
-@@ -2373,15 +2392,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2387,15 +2406,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
          case "reorder-pinned":
            break;
        }
@@ -880,7 +880,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
              ),
              plan.kind === "move-active"
                ? gt("Failed to reorder active threads")
-@@ -3502,7 +3518,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3529,7 +3545,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                            />
                          );
                        };
@@ -893,7 +893,7 @@ index 54490f618097b437d7141125a8f9f63748645994..456e7f80e055cc4aa233cf5f77355bb2
                          <SidebarDraftBlock
                            key="draft-sessions"
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 68fc2328d4560ce904200d0652add2a28fbf789a..ac2200eaa951518497aef78020cc84bd6787b60a 100644
+index c332374f87f56be7ba56d475a73b392bc82d7924..96370112da7fa06557ff1daebb966ce2a917ac8b 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -423,6 +423,7 @@ function SnoozeMenuButton(props: {

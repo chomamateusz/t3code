@@ -33,6 +33,6 @@
     { "name": "new terminal machine menu", "pattern": "New terminal on" },
     { "name": "send all queued as one", "pattern": "Send all as one" },
     { "name": "reorder pinned in grouped sidebar", "pattern": "sidebar-marker-pinned" },
-    { "name": "pin from sidebar card", "pattern": "\"461acc49f173eb0b\":`Pin thread`" }
+    { "name": "pin from sidebar card", "pattern": "group-has-\\[:focus-visible\\]/sidebar-row:inline-flex" }
   ]
 }

@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
-Date: Fri, 20 Nov 2026 02:06:47 +0100
+Date: Sun, 22 Nov 2026 02:10:06 +0100
 Subject: =?UTF-8?q?=E2=9C=A8=20Start=20new=20threads=20inside=20the=20side?=
  =?UTF-8?q?bar=20filter?=
 MIME-Version: 1.0
@@ -39,6 +39,9 @@ Port to 25875c11b2: Upstream #31174 (e514c36f3c) numbers the project picker's ju
 Port to b6ac2449f1: the copy follows upstream's translation (055b44919e) with its English unchanged: newThreadTarget's titles, notes, tooltips and unknown-machine label are whole msg() sentences behind a resolver (the header passes useMessages), the header's current-project tooltip and the palette's Projects and All projects… labels use gt(), and an offline project location is gt("{machine} (Offline)"). Upstream 6927cfe2ad (#38722) returns the draft another opener showed meanwhile; with exactProject that lookup reads the exact project's draft through readStoredDraft. Its test registers the draft with its projectId, and the test store keeps both registerDraft and addDraft.
 
 Port to 29b42d409c: CommandPalette.tsx keeps upstream #39393's port-forward views after this commit's restricted and palette-root New thread in views, and upstream #38984's open-copy choice for the contextual project in the full list. chatRouteCommands.ts keeps upstream #39207's isBrowserSurfaceFocused import. CommandPalette.browser.test.tsx: upstream #38984's activeThread fixture moves into this commit's hoisted mocks object and setup, and its archived-copy case asserts on mocks.handleNewThread.
+
+Port to 047fb5b162: upstream 46ee2fc7ff (#35185) makes the sidebar's New thread start directly in the one project the sidebar is filtered to (resolveScopedNewThreadProjectRef, the viewed thread's environment first, not in the folder sidebar). This commit's startNewThreadInSidebarFilter already starts directly for one reachable member and offers the restricted picker when the filtered project has several reachable members, so handleNewThreadClick keeps this commit's flow and no longer calls upstream's helper; resolveScopedNewThreadProjectRef and its Sidebar.logic.test.ts cases stay in Sidebar.logic.ts unused by the sidebar. docs/user/thread-sidebar.md: upstream's one-project sentence is replaced by this commit's filtered-start paragraphs, which cover it.
+chatRouteCommands.ts: upstream c5dc20f9f5 (#37191, new threads from a grouped repository start in its root checkout) passes selectProjectGroupingSettings(getClientSettings()) to resolveDefaultProjectRef, so this commit keeps those two imports when it removes readProjectGroups.
 
 Files:
 apps/web:
@@ -103,7 +106,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  apps/web/src/components/CommandPalette.tsx    | 170 ++++--
  .../components/CommandPaletteProjectItems.tsx |  16 +-
  .../src/components/Sidebar.browser.test.tsx   |  15 +-
- apps/web/src/components/Sidebar.tsx           |  33 +-
+ apps/web/src/components/Sidebar.tsx           |  45 +-
  .../SidebarThreadHeader.browser.test.tsx      |  87 +++
  .../sidebar/SidebarThreadHeader.tsx           |  37 +-
  apps/web/src/hooks/useHandleNewThread.test.ts | 233 +++++++-
@@ -115,9 +118,9 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  apps/web/src/newThreadTarget.ts               | 280 ++++++++++
  apps/web/src/newThreadTargetState.ts          | 107 ++++
  .../src/shortcuts/chatRouteCommands.test.ts   |   5 +-
- apps/web/src/shortcuts/chatRouteCommands.ts   |  32 +-
- docs/user/thread-sidebar.md                   |  31 +-
- 21 files changed, 1979 insertions(+), 145 deletions(-)
+ apps/web/src/shortcuts/chatRouteCommands.ts   |  30 +-
+ docs/user/thread-sidebar.md                   |  33 +-
+ 21 files changed, 1979 insertions(+), 157 deletions(-)
  create mode 100644 apps/web/src/components/sidebar/SidebarThreadHeader.browser.test.tsx
  create mode 100644 apps/web/src/newThreadActions.ts
  create mode 100644 apps/web/src/newThreadTarget.test.ts
@@ -498,7 +501,7 @@ index f29feada58e0a4cb348a895da125ba854dd3a430..af51db255847054730c501ace4a46d83
 +  });
  });
 diff --git a/apps/web/src/components/CommandPalette.composition.browser.test.tsx b/apps/web/src/components/CommandPalette.composition.browser.test.tsx
-index e1f69d72e3b417c7c69509f40b8c9aeb855a9b46..01e8e204468ef051458e853d8280557741255870 100644
+index ad54ca29e96f925fb15ace041f4e6c1f4f1b19c5..705d81cddacd9b89bdbc0fb5cede1e48c2a8da4a 100644
 --- a/apps/web/src/components/CommandPalette.composition.browser.test.tsx
 +++ b/apps/web/src/components/CommandPalette.composition.browser.test.tsx
 @@ -53,6 +53,7 @@ vi.mock("../hooks/useSettings", async (original) => ({
@@ -885,10 +888,10 @@ index 1e2f9824a4b471001c74af724300328241be452d..f734137654ae67fa2d329f83617a8d3f
        <CommandPaletteMetaDot />
        <span className="min-w-0 flex-1 truncate">{props.workspaceRoot}</span>
 diff --git a/apps/web/src/components/Sidebar.browser.test.tsx b/apps/web/src/components/Sidebar.browser.test.tsx
-index b99591c92b1127071d98f8d60d1f61d0fbce4904..0493e3a9d1e1ab0fa44cb8a5c7c6ef6553bade41 100644
+index 1a0b4c588d64ce351a3cc7f9d2bed44f8c56e420..6da644ed1e1d16f836333a00a0cde380d2a8fcde 100644
 --- a/apps/web/src/components/Sidebar.browser.test.tsx
 +++ b/apps/web/src/components/Sidebar.browser.test.tsx
-@@ -22,12 +22,18 @@ import { useHandleNewThread } from "../hooks/useHandleNewThread";
+@@ -24,12 +24,18 @@ import { useHandleNewThread } from "../hooks/useHandleNewThread";
  import { useNowMinute } from "../hooks/useNowMinute";
  import { __setClientSettingsForTests, getClientSettings } from "../hooks/useSettings";
  import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
@@ -908,7 +911,7 @@ index b99591c92b1127071d98f8d60d1f61d0fbce4904..0493e3a9d1e1ab0fa44cb8a5c7c6ef65
  import Sidebar from "./Sidebar";
  import { THREAD_JUMP_HINT_SHOW_DELAY_MS } from "./Sidebar.logic";
  import { SortableThreadRow } from "./sidebar/SidebarThreadRow";
-@@ -86,6 +92,7 @@ describe("sidebar header new thread", () => {
+@@ -89,6 +95,7 @@ describe("sidebar header new thread", () => {
      { mode: "boring", count: 1, shift: false, picker: false },
    ] as const)("$mode sidebar, $count projects, shift=$shift: picker=$picker", async (scenario) => {
      using stack = new DisposableStack();
@@ -916,7 +919,7 @@ index b99591c92b1127071d98f8d60d1f61d0fbce4904..0493e3a9d1e1ab0fa44cb8a5c7c6ef65
      const previousSettings = getClientSettings();
      stack.defer(() => __setClientSettingsForTests(previousSettings));
      __setClientSettingsForTests({
-@@ -99,6 +106,7 @@ describe("sidebar header new thread", () => {
+@@ -102,6 +109,7 @@ describe("sidebar header new thread", () => {
      };
      const startThread = vi.fn().mockResolvedValue(null);
      vi.mocked(useProjects).mockReturnValue(projects);
@@ -924,7 +927,7 @@ index b99591c92b1127071d98f8d60d1f61d0fbce4904..0493e3a9d1e1ab0fa44cb8a5c7c6ef65
      vi.mocked(useHandleNewThread).mockReturnValue({
        activeDraftThread: null,
        activeThread: null,
-@@ -120,7 +128,10 @@ describe("sidebar header new thread", () => {
+@@ -123,7 +131,10 @@ describe("sidebar header new thread", () => {
      });
  
      if (scenario.picker) {
@@ -937,7 +940,7 @@ index b99591c92b1127071d98f8d60d1f61d0fbce4904..0493e3a9d1e1ab0fa44cb8a5c7c6ef65
      } else {
        expect(openCommandPalette).not.toHaveBeenCalled();
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index acfd1e96b76664706ec772aea148276041f5101d..b3cd8e7c2671140a29f8e0ece166bbb5a3239c20 100644
+index cd9de69f65350b7663ea5c2c48053a24a0740e43..a683ded2846a762b1bff5fa5ccd8387566ec104d 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -127,6 +127,7 @@ import {
@@ -956,18 +959,30 @@ index acfd1e96b76664706ec772aea148276041f5101d..b3cd8e7c2671140a29f8e0ece166bbb5
    orderItemsByPreferredIds,
    planSidebarThreadDrop,
    resolveAdjacentThreadId,
-@@ -206,7 +208,6 @@ import {
+@@ -206,8 +208,6 @@ import {
    resolveSidebarReorderableThreadKeys,
    resolveSidebarThreadShelfState,
    searchSidebarThreads,
 -  shouldCreateNewThreadInCurrentProject,
+-  resolveScopedNewThreadProjectRef,
    shouldNavigateAfterThreadPark,
    sidebarListItemId,
    sidebarThreadKeyAtY,
-@@ -3067,13 +3068,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
-   const showJumpHints = useThreadJumpHintsVisible(keybindings, routeThreadRef);
+@@ -3095,24 +3095,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+     : null;
  
    const handleNewThreadClick = (event?: ReactMouseEvent) => {
+-    const scopedProjectRef = resolveScopedNewThreadProjectRef({
+-      shiftKey: event?.shiftKey ?? false,
+-      // The folder sidebar's header button always opens the picker.
+-      scopedProjectGroups: boringSidebarEnabled ? [] : scopedProjectGroups,
+-      viewed: newThreadContext.activeThread ?? newThreadContext.activeDraftThread,
+-    });
+-    if (scopedProjectRef) {
+-      if (isMobile) setOpenMobile(false);
+-      void handleNewThread(scopedProjectRef);
+-      return;
+-    }
 -    if (
 -      shouldCreateNewThreadInCurrentProject(
 -        event?.shiftKey ?? false,
@@ -979,7 +994,7 @@ index acfd1e96b76664706ec772aea148276041f5101d..b3cd8e7c2671140a29f8e0ece166bbb5
        if (isMobile) setOpenMobile(false);
        // With no current or open project, such as when every project is archived, pick one.
        void startNewThreadFromContext({
-@@ -3087,7 +3082,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3126,7 +3109,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
        return;
      }
      if (isMobile) setOpenMobile(false);
@@ -995,7 +1010,7 @@ index acfd1e96b76664706ec772aea148276041f5101d..b3cd8e7c2671140a29f8e0ece166bbb5
    };
  
    const newThreadShortcutLabel =
-@@ -3133,16 +3135,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3172,16 +3162,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                }
                onNewProject={openAddProjectCommandPalette}
                onNewThread={handleNewThreadClick}
@@ -1566,7 +1581,7 @@ index 7c64d0077cc2bcb2cf20da2296b3b77bda1ac0d4..8627b4098492d76160f514ca94320b21
        threadId: "thread-raced",
      };
 diff --git a/apps/web/src/hooks/useHandleNewThread.ts b/apps/web/src/hooks/useHandleNewThread.ts
-index 49e8812628b1b451ec332db28e846ff980fc0fb1..029a4239ace9427b02c16f28d50d106b0ca3b206 100644
+index 1be24bd9a3489f8767a4ad2589df7fd582236c98..71c427415567e6d34673641f1081138bee00e421 100644
 --- a/apps/web/src/hooks/useHandleNewThread.ts
 +++ b/apps/web/src/hooks/useHandleNewThread.ts
 @@ -8,7 +8,7 @@ import { type AnyRouter, useRouter } from "@tanstack/react-router";
@@ -1578,7 +1593,7 @@ index 49e8812628b1b451ec332db28e846ff980fc0fb1..029a4239ace9427b02c16f28d50d106b
    type DraftThreadEnvMode,
    type DraftThreadState,
    useComposerDraftStore,
-@@ -100,6 +100,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -102,6 +102,7 @@ export function createNewThreadHandler(router: AnyRouter) {
        envMode?: DraftThreadEnvMode;
        startFromOrigin?: boolean;
        replace?: boolean;
@@ -1586,7 +1601,7 @@ index 49e8812628b1b451ec332db28e846ff980fc0fb1..029a4239ace9427b02c16f28d50d106b
        /** Composer text for the draft, set before it shows. A draft with user text keeps it. */
        prompt?: string;
      },
-@@ -233,10 +234,13 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -235,10 +236,13 @@ export function createNewThreadHandler(router: AnyRouter) {
      const logicalProjectKey = project
        ? deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings)
        : scopedProjectKey(projectRef);
@@ -1601,7 +1616,7 @@ index 49e8812628b1b451ec332db28e846ff980fc0fb1..029a4239ace9427b02c16f28d50d106b
        if (draft === null || draft.promotedTo != null || readProject(projectRef) === null) {
          return null;
        }
-@@ -252,7 +256,25 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -254,7 +258,25 @@ export function createNewThreadHandler(router: AnyRouter) {
      const hasWorktreePathOption = options?.worktreePath !== undefined;
      const hasEnvModeOption = options?.envMode !== undefined;
      const hasStartFromOriginOption = options?.startFromOrigin !== undefined;
@@ -1628,7 +1643,7 @@ index 49e8812628b1b451ec332db28e846ff980fc0fb1..029a4239ace9427b02c16f28d50d106b
      const storedDraftThreadRef = storedDraftThread
        ? scopeThreadRef(storedDraftThread.environmentId, storedDraftThread.threadId)
        : null;
-@@ -298,9 +320,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -300,9 +322,7 @@ export function createNewThreadHandler(router: AnyRouter) {
              routeTargetNow.draftId === emptyStoredDraftThread.draftId;
            const promotedMeanwhile =
              storedDraftThreadRef !== null && readThreadShell(storedDraftThreadRef) !== null;
@@ -1639,7 +1654,7 @@ index 49e8812628b1b451ec332db28e846ff980fc0fb1..029a4239ace9427b02c16f28d50d106b
            const investedMeanwhile = composerDraftHasUserContent(
              getComposerDraft(emptyStoredDraftThread.draftId),
            );
-@@ -343,6 +363,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -345,6 +365,7 @@ export function createNewThreadHandler(router: AnyRouter) {
            projectRef,
            emptyStoredDraftThread.draftId,
            {
@@ -1647,7 +1662,7 @@ index 49e8812628b1b451ec332db28e846ff980fc0fb1..029a4239ace9427b02c16f28d50d106b
              threadId: emptyStoredDraftThread.threadId,
              ...workspaceContext,
              ...(!isDraftAlreadyOpen ? { runtimeMode: defaultRuntimeMode } : {}),
-@@ -374,6 +395,9 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -376,6 +397,9 @@ export function createNewThreadHandler(router: AnyRouter) {
        latestActiveDraftThread &&
        currentRouteTarget?.kind === "draft" &&
        latestActiveDraftThread.logicalProjectKey === logicalProjectKey &&
@@ -1657,7 +1672,7 @@ index 49e8812628b1b451ec332db28e846ff980fc0fb1..029a4239ace9427b02c16f28d50d106b
        latestActiveDraftThread.promotedTo == null &&
        !composerDraftHasUserContent(getComposerDraft(currentRouteTarget.draftId))
      ) {
-@@ -386,6 +410,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -388,6 +412,7 @@ export function createNewThreadHandler(router: AnyRouter) {
          setDraftThreadContext(currentRouteTarget.draftId, pickExplicitWorkspaceOptions(options));
        }
        setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, currentRouteTarget.draftId, {
@@ -1665,7 +1680,7 @@ index 49e8812628b1b451ec332db28e846ff980fc0fb1..029a4239ace9427b02c16f28d50d106b
          threadId: latestActiveDraftThread.threadId,
          createdAt: latestActiveDraftThread.createdAt,
          runtimeMode: latestActiveDraftThread.runtimeMode,
-@@ -408,13 +433,14 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -410,13 +435,14 @@ export function createNewThreadHandler(router: AnyRouter) {
          return resultIfAbandoned();
        }
        // Reuse drafts registered while awaiting so their pending navigation cannot lose them.
@@ -1681,7 +1696,7 @@ index 49e8812628b1b451ec332db28e846ff980fc0fb1..029a4239ace9427b02c16f28d50d106b
            threadId: racedDraft.threadId,
            createdAt: racedDraft.createdAt,
            runtimeMode: racedDraft.runtimeMode,
-@@ -430,6 +456,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -432,6 +458,7 @@ export function createNewThreadHandler(router: AnyRouter) {
          return { draftId: racedDraft.draftId, threadId: racedDraft.threadId };
        }
        setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
@@ -1836,10 +1851,10 @@ index fb6f719bb2346b575753443bf3bf1cadf78e30e3..d3367cd4ff44e805808d6d77047cbe58
    it("runs the active environment's script shortcut instead of the primary environment's", () => {
      const primary = compile([{ shortcut: modShortcut("r"), command: "script.setup.run" }]);
 diff --git a/apps/web/src/keybindings.ts b/apps/web/src/keybindings.ts
-index 88a30f76b675d85d8fa3b6652fcdfa349319f2d0..14dc4e0c35ddfb5ddc4dae3ad87320639a5537a5 100644
+index f05067a2e53bcd2f9c9ea45ca7cf5cbb7885ea53..d8a78bdbc017e111e89b1fd50a14826f24a6de54 100644
 --- a/apps/web/src/keybindings.ts
 +++ b/apps/web/src/keybindings.ts
-@@ -176,7 +176,7 @@ function matchesCommandShortcut(
+@@ -179,7 +179,7 @@ function matchesCommandShortcut(
    return resolveShortcutCommand(event, keybindings, options) === command;
  }
  
@@ -1848,7 +1863,7 @@ index 88a30f76b675d85d8fa3b6652fcdfa349319f2d0..14dc4e0c35ddfb5ddc4dae3ad8732063
    event: ShortcutEventLike,
    keybindings: ResolvedKeybindingsConfig,
    options?: ShortcutMatchOptions,
-@@ -197,6 +197,31 @@ export function resolveShortcutCommand(
+@@ -200,6 +200,31 @@ export function resolveShortcutCommand(
    return null;
  }
  
@@ -2886,10 +2901,10 @@ index 3979368ff90321f40cf1aece3c4ca77f9f3610a7..5b16c7bb7a0b162093d348827cd84dce
      } else {
        expect(openPicker).not.toHaveBeenCalled();
 diff --git a/apps/web/src/shortcuts/chatRouteCommands.ts b/apps/web/src/shortcuts/chatRouteCommands.ts
-index a5aeeeefbd638a5ca6ad28dcb805038ccdfed9cc..942fef9980667716e3707035817791431da03920 100644
+index 7cca45fbd81db6f35188ab04be1cba3dd2df7dbc..125482f36ed7ccb16d343b2d5cd9f56c2f43ea85 100644
 --- a/apps/web/src/shortcuts/chatRouteCommands.ts
 +++ b/apps/web/src/shortcuts/chatRouteCommands.ts
-@@ -10,19 +10,16 @@ import { useComposerDraftStore } from "../composerDraftStore";
+@@ -10,7 +10,6 @@ import { useComposerDraftStore } from "../composerDraftStore";
  import { dispatchPreviewAction, type PreviewAction } from "../components/preview/previewActionBus";
  import { isAppModalPage } from "../components/sidebar/mainAppLocation";
  import { isBrowserSurfaceFocused } from "../lib/previewFocus";
@@ -2897,12 +2912,10 @@ index a5aeeeefbd638a5ca6ad28dcb805038ccdfed9cc..942fef9980667716e370703581779143
  import {
    createNewThreadHandler,
    readLastUsedProjectKey,
-   resolveDefaultProjectRef,
- } from "../hooks/useHandleNewThread";
- import { createScratchProjectActions } from "../hooks/useScratchProject";
--import { getClientSettings } from "../hooks/useSettings";
+@@ -20,9 +19,9 @@ import { createScratchProjectActions } from "../hooks/useScratchProject";
+ import { getClientSettings } from "../hooks/useSettings";
  import { startNewThreadFromContext } from "../lib/chatThreadActions";
--import { selectProjectGroupingSettings } from "@t3tools/client-runtime/state/project-grouping";
+ import { selectProjectGroupingSettings } from "@t3tools/client-runtime/state/project-grouping";
 +import { startNewThreadInSidebarFilter } from "../newThreadActions";
  import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
  import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -2910,7 +2923,7 @@ index a5aeeeefbd638a5ca6ad28dcb805038ccdfed9cc..942fef9980667716e370703581779143
  import { readProjects, readThreadShell } from "../state/entities";
  import { defaultProjectFallbackReadyAtom } from "../state/projects";
  import { environmentPresentations } from "../state/presentation";
-@@ -95,15 +92,6 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
+@@ -96,15 +95,6 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
        handleNewThread,
      };
    };
@@ -2926,7 +2939,7 @@ index a5aeeeefbd638a5ca6ad28dcb805038ccdfed9cc..942fef9980667716e370703581779143
    const canOperatePreview = (environmentId: EnvironmentId) =>
      readEnvironmentScope(environmentId, AuthPreviewOperateScope);
  
-@@ -148,19 +136,11 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
+@@ -149,19 +139,11 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
          void scratch.startScratchThread(environmentId);
        },
        "chat.new": (event) => {
@@ -2952,10 +2965,10 @@ index a5aeeeefbd638a5ca6ad28dcb805038ccdfed9cc..942fef9980667716e370703581779143
        "preview.toggle": (event) => {
          claim(event);
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 26b96bc669026823cef9bacd25fcfc1be81d8935..f7d291be26faca6644523e7cbe53b01c039292ea 100644
+index 9e5d4c1a7a14534332332f35ac3ef406b561c270..f7d291be26faca6644523e7cbe53b01c039292ea 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -5,12 +5,27 @@ need a separate branch and working directory.
+@@ -5,14 +5,27 @@ need a separate branch and working directory.
  
  ## Start a thread
  
@@ -2965,6 +2978,8 @@ index 26b96bc669026823cef9bacd25fcfc1be81d8935..f7d291be26faca6644523e7cbe53b01c
 -your model and mode selections, unless the destination project has its own model default.
 -Its branch and workspace mode come from your configured defaults. To continue in
 -an existing worktree, use **New thread in this worktree** from the branch toolbar.
+-While the sidebar is filtered to one project, the sidebar's **New thread** button
+-starts the thread in that project instead of asking which project to use.
 +On web and desktop, including a mobile browser, **New thread** and its keyboard
 +shortcut follow the sidebar's machine and project filters. With one reachable
 +project on one machine, the thread opens there directly. When several machines
@@ -2989,7 +3004,7 @@ index 26b96bc669026823cef9bacd25fcfc1be81d8935..f7d291be26faca6644523e7cbe53b01c
  
  On mobile, **New thread** starts in the current thread's project, or else in the
  project the thread list is filtered to, or else in the last project you opened
-@@ -27,8 +42,8 @@ if that project exists there. Otherwise it selects an environment that has it.
+@@ -29,8 +42,8 @@ if that project exists there. Otherwise it selects an environment that has it.
  A thread does not need a project. To start one without a project, click **or
  start without a project** under a new thread's heading, pick **No project** from
  the project menu in that heading or from **New thread in...** in the command

@@ -49,6 +49,8 @@ Port to 6b134a7add:
 
 Port to b6ac2449f1: the web copy this commit adds follows upstream's translation (055b44919e) with its English unchanged: the configured-repository track-switch and release-check messages use gt() and resolve(msg()), the disabled-updates tooltip resolve(msg()), the About and sidebar install errors gt() and m(msg()), and the missing-track refusal in updateTrackSwitch.logic.ts m(msg()). installLocalUpdate still reports a refused install before the not-accepted branch. Upstream's desktopUpdate.logic.ts now imports GT, so the release-link helpers move to the GT-free apps/web/src/lib/desktopReleaseLinks.ts (re-exported from desktopUpdate.logic.ts) and the renderer boot-failure page imports them from there; bundledDev.test.ts copies that module into its bootstrap bundle. Desktop main-process refusal messages stay English, like upstream's own DesktopUpdates messages. Upstream 3ce2145864 (#29399) updates the fx provider CLI only and adds no T3 Code update path.
 
+Port to 047fb5b162: vite-env.d.ts: upstream 10586f9e31 (#40594, one T3CODE_FEATURE_FLAGS service) drops T3CODE_FEATURE_SECRETS from ImportMetaEnv; this commit's T3CODE_RELEASE_REPOSITORY declaration stays beside T3CODE_DESKTOP_UPDATE_REPOSITORY. No update guard changed.
+
 Files:
 .github:
 - .github/workflows/release-desktop.yml
@@ -1624,7 +1626,7 @@ index 0000000000000000000000000000000000000000..a487da04636c707c54cf9c41f54f698b
 +  },
 +);
 diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
-index f4e04317e49246522b63a38979c7184a66b3fda0..d1fe8379180ef8552598230cbc9217cc53592ead 100644
+index 6ded8e851ddbbf5c9be5dffa1c09a7a246b555f6..d6262e10736062002975685a98ada3f94cb1bab9 100644
 --- a/apps/desktop/vite.config.ts
 +++ b/apps/desktop/vite.config.ts
 @@ -21,6 +21,11 @@ const devElectronCommand =
@@ -2258,7 +2260,7 @@ index 0cf2327d9c6f7331c2b1b9c0954ceb7f306c5391..f5191609482e0d96635585c1bbf6e6c6
      // With the desktop's local server turned off there is no primary, so a connected server answers.
      const candidates =
 diff --git a/apps/web/src/vite-env.d.ts b/apps/web/src/vite-env.d.ts
-index 63f7cca9cbfc679ee82dee992176e51d0cbac8c8..ec4f10e8e9fd893062ae53c347efdbed9f0ad011 100644
+index 307b9c5d8284dc07a5c257dfe6c3d91f6ff5219a..54e9b8fbfa89c89d8f1cf88fdf8f86936d4f182a 100644
 --- a/apps/web/src/vite-env.d.ts
 +++ b/apps/web/src/vite-env.d.ts
 @@ -15,6 +15,7 @@ interface ImportMetaEnv {
@@ -2266,14 +2268,14 @@ index 63f7cca9cbfc679ee82dee992176e51d0cbac8c8..ec4f10e8e9fd893062ae53c347efdbed
    readonly VITE_RELAY_OTLP_TRACES_TOKEN: string;
    readonly T3CODE_DESKTOP_UPDATE_REPOSITORY: string;
 +  readonly T3CODE_RELEASE_REPOSITORY: string;
-   readonly T3CODE_FEATURE_SECRETS: string;
    readonly APP_VERSION: string;
  }
+ 
 diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
-index 073fca7943d3e0008739612e97f90647d039b3ed..7465929157e96c21c41cab686d8c017de4158440 100644
+index 005e828202bdae5996f25fa3f695da31e8c47917..575259ff74ee1962abca80a696ceae12fcad4d14 100644
 --- a/apps/web/vite.config.ts
 +++ b/apps/web/vite.config.ts
-@@ -351,6 +351,11 @@ export default defineConfig(({ command }) => {
+@@ -350,6 +350,11 @@ export default defineConfig(({ command }) => {
        ],
      },
      define: {
@@ -2358,10 +2360,10 @@ index c9180ec3d3ae63cc35e80c368765424a5f23b5c1..04c9caf5832ade144cbe8301df45dfb7
 +  }).pipe(Effect.provide(NodeServices.layer)),
 +);
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 9d34e2412b327f03f20f88385ee835209ffa3b6b..4835e6a578f86fbde8df8a5ba0f504e339ac84b5 100644
+index 746ac826005b3383c8cb359c6613a7e16f99cadd..4390c1e1777057af7e77f640e394619632459704 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
-@@ -2696,6 +2696,13 @@ export function resolveDesktopRuntimeDependencies(
+@@ -2726,6 +2726,13 @@ export function resolveDesktopRuntimeDependencies(
    );
  }
  
@@ -2375,7 +2377,7 @@ index 9d34e2412b327f03f20f88385ee835209ffa3b6b..4835e6a578f86fbde8df8a5ba0f504e3
  export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig")(function* (
    updateChannel: "latest" | "nightly",
  ) {
-@@ -2707,7 +2714,9 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
+@@ -2737,7 +2744,9 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
      Option.getOrUndefined(env.updateRepository)?.trim() ||
      Option.getOrUndefined(env.githubRepository)?.trim() ||
      ""
@@ -2386,7 +2388,7 @@ index 9d34e2412b327f03f20f88385ee835209ffa3b6b..4835e6a578f86fbde8df8a5ba0f504e3
    if (!rawRepo) return undefined;
  
    const [owner, repo, ...rest] = rawRepo.split("/");
-@@ -2816,6 +2825,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2847,6 +2856,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
        ...(platform === "win" && wslRuntimeBundled ? WSL_RUNTIME_EXTRA_RESOURCES : []),
      ],
    };

@@ -13,7 +13,7 @@ Behaviours:
 - It has the Unpin button's size, colour and hover colour (PinIcon size-3, text-muted-foreground/65, hover:text-foreground), with tooltip and aria-label "Pin thread" (gt() for the label, <T> for the tooltip, as the Unpin button does).
 - Clicking it pins the thread exactly as the context menu's Pin thread does: SidebarThreadRow gets an onPin prop, wired to Sidebar's existing attemptPin (pinThread plus the "Failed to pin thread" toast). The click calls preventDefault and stopPropagation so the row does not navigate; pointerdown stops propagation like the Snooze trigger and Discard draft, so pressing it never starts a row drag or the sweep gesture. A double-click on it does not start a rename, because the row ignores double-clicks on buttons.
 - The slim rows (Snoozed, Settled) and the folder and folder-multiline variants are unchanged; in the grouped sidebar a folder card is a card, so it shows the button and pinning it moves the thread from its folder to the pinned cards, as the menu does. Touch-only screens (no hover) keep pinning from the context menu.
-- The new <T>Pin thread</T> key (461acc49f173eb0b, the key gt generate produces) is added to every web locale with the translation the existing "Pin thread" menu key already has. Only that key is added: a full regenerate would also rewrite catalog drift the series carries from other patches.
+- The new copy is wrapped for gt-react (docs/internals/i18n.md) with its English text byte-identical; the translation catalogs are not changed, so the missing <T>Pin thread</T> key renders the English source.
 - The user guide's Pin and reorder threads section mentions the pin button that appears when you hover a card.
 
 Files:
@@ -21,24 +21,12 @@ apps/web:
 - apps/web/src/components/Sidebar.tsx
 - apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
 - apps/web/src/components/sidebar/SidebarThreadRow.tsx
-- apps/web/src/i18n/translations/de.json
-- apps/web/src/i18n/translations/en.json
-- apps/web/src/i18n/translations/es.json
-- apps/web/src/i18n/translations/fr.json
-- apps/web/src/i18n/translations/ja.json
-- apps/web/src/i18n/translations/ko.json
-- apps/web/src/i18n/translations/pt-BR.json
-- apps/web/src/i18n/translations/ru.json
-- apps/web/src/i18n/translations/sv.json
-- apps/web/src/i18n/translations/zh.json
 docs:
 - docs/user/thread-sidebar.md
 
 Tests:
 - No new test: the change is callback wiring and markup (AGENTS.md); the existing SidebarThreadRow browser test only gets the new required onPin prop.
-- vp test run SidebarThreadRow.browser.test.tsx Sidebar.browser.test.tsx: 13 passed.
-- vp run check:changed HEAD (14 files): format, lint, knip 1/2 and 2/2, typecheck of 2 packages, tests (9 files, 215 passed plus the cross-file run) and the React compiler check passed.
-- node scripts/i18n-check.ts reports only drift that predates this commit; nothing about the new key.
+- vp test run SidebarThreadRow.browser.test.tsx Sidebar.browser.test.tsx on 047fb5b162 with the whole series applied: 14 passed; apps/web typecheck, vp lint and vp fmt --check of the changed files passed.
 - No run in a real client yet.
 
 Model/harness: Claude Opus 5.5 / Claude Code
@@ -46,24 +34,14 @@ Model/harness: Claude Opus 5.5 / Claude Code
  apps/web/src/components/Sidebar.tsx           |  1 +
  .../sidebar/SidebarThreadRow.browser.test.tsx |  1 +
  .../components/sidebar/SidebarThreadRow.tsx   | 29 +++++++++++++++++++
- apps/web/src/i18n/translations/de.json        |  1 +
- apps/web/src/i18n/translations/en.json        |  1 +
- apps/web/src/i18n/translations/es.json        |  1 +
- apps/web/src/i18n/translations/fr.json        |  1 +
- apps/web/src/i18n/translations/ja.json        |  1 +
- apps/web/src/i18n/translations/ko.json        |  1 +
- apps/web/src/i18n/translations/pt-BR.json     |  1 +
- apps/web/src/i18n/translations/ru.json        |  1 +
- apps/web/src/i18n/translations/sv.json        |  1 +
- apps/web/src/i18n/translations/zh.json        |  1 +
  docs/user/thread-sidebar.md                   |  3 +-
- 14 files changed, 43 insertions(+), 1 deletion(-)
+ 4 files changed, 33 insertions(+), 1 deletion(-)
 
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 456e7f80e055cc4aa233cf5f77355bb2b2559e15..c1d1d506a5dc581ecd48e88935b93dbad493a662 100644
+index 255982c6bf63648b7840f98dac87383549f14b01..503ab3ca01c98f9067d8750b7134abb714a857e2 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -3511,6 +3511,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3538,6 +3538,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              onUnsettle={attemptUnsettle}
                              onSnooze={attemptSnooze}
                              onUnsnooze={attemptUnsnooze}
@@ -84,7 +62,7 @@ index d07a999df8093e0bdd58e8722953d426f08ceb74..ea781f6e5eb6e0c3d56817033c150f4d
          onAcknowledgeWoke={noop}
          onReadAction={noop}
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index ac2200eaa951518497aef78020cc84bd6787b60a..8d7b94aaaa04965163729a56fd592b1a815ab4f8 100644
+index 96370112da7fa06557ff1daebb966ce2a917ac8b..8dcf4e1e691f010927ef4ec355b5aaa080d0270f 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -666,6 +666,7 @@ type SidebarThreadRowProps = {
@@ -151,126 +129,6 @@ index ac2200eaa951518497aef78020cc84bd6787b60a..8d7b94aaaa04965163729a56fd592b1a
                {props.projectDisplayName ? (
                  <span
                    className={cn("min-w-0 flex-1 truncate font-normal text-secondary-label text-xs")}
-diff --git a/apps/web/src/i18n/translations/de.json b/apps/web/src/i18n/translations/de.json
-index 730949ecfc300d9ab4aecf6c0677ca96e2d1efd7..b6f630680ec62d5e9b82602fdbb4746ca460580f 100644
---- a/apps/web/src/i18n/translations/de.json
-+++ b/apps/web/src/i18n/translations/de.json
-@@ -11940,6 +11940,7 @@
-   "5c3e33c17a1c7cf2": "Aufwecken",
-   "f8fec76a8dea38d4": "Nicht gesendeter Entwurf",
-   "b0b811c800c8af57": "Thread loslösen",
-+  "461acc49f173eb0b": "Thread anheften",
-   "4fca00950ff1db87": "Titel wird neu generiert",
-   "6bf3499c98fc67f2": "Aufgeweckt",
-   "4851fe12e61ec84b": "Aufgeweckt-Hinweis schließen",
-diff --git a/apps/web/src/i18n/translations/en.json b/apps/web/src/i18n/translations/en.json
-index 64482e18216ae78baca9846e2e4847022ade8c71..e68365f2552ba4965961e6cea2586560dc698bc3 100644
---- a/apps/web/src/i18n/translations/en.json
-+++ b/apps/web/src/i18n/translations/en.json
-@@ -11948,6 +11948,7 @@
-   "5c3e33c17a1c7cf2": "Wake",
-   "f8fec76a8dea38d4": "Unsent draft",
-   "b0b811c800c8af57": "Unpin thread",
-+  "461acc49f173eb0b": "Pin thread",
-   "4fca00950ff1db87": "Regenerating title",
-   "6bf3499c98fc67f2": "Woke",
-   "4851fe12e61ec84b": "Dismiss Woke notification",
-diff --git a/apps/web/src/i18n/translations/es.json b/apps/web/src/i18n/translations/es.json
-index 8c3bd00183ec65e761dde5a6e2ce59328c4297c4..c3f18427b9a4888efcc0cd40242de3b7aaf99965 100644
---- a/apps/web/src/i18n/translations/es.json
-+++ b/apps/web/src/i18n/translations/es.json
-@@ -11933,6 +11933,7 @@
-   "5c3e33c17a1c7cf2": "Reactivar",
-   "f8fec76a8dea38d4": "Borrador sin enviar",
-   "b0b811c800c8af57": "Desfijar hilo",
-+  "461acc49f173eb0b": "Fijar hilo",
-   "4fca00950ff1db87": "Regenerando título",
-   "6bf3499c98fc67f2": "Reactivado",
-   "4851fe12e61ec84b": "Descartar notificación de reactivación",
-diff --git a/apps/web/src/i18n/translations/fr.json b/apps/web/src/i18n/translations/fr.json
-index 17258a83acd78b5a51cbe681b5ba14fab3607af0..8b664552597ba3ec0dda29d40923dd1fe495767b 100644
---- a/apps/web/src/i18n/translations/fr.json
-+++ b/apps/web/src/i18n/translations/fr.json
-@@ -11938,6 +11938,7 @@
-   "5c3e33c17a1c7cf2": "Réveiller",
-   "f8fec76a8dea38d4": "Brouillon non envoyé",
-   "b0b811c800c8af57": "Désépingler le fil",
-+  "461acc49f173eb0b": "Épingler le fil",
-   "4fca00950ff1db87": "Régénération du titre",
-   "6bf3499c98fc67f2": "Réveillé",
-   "4851fe12e61ec84b": "Ignorer la notification Réveillé",
-diff --git a/apps/web/src/i18n/translations/ja.json b/apps/web/src/i18n/translations/ja.json
-index 66eaf036ed903e658c2d68237f0fe33510ad0412..298816e6efc80bba0be459b0621d4a9fdafe0e3d 100644
---- a/apps/web/src/i18n/translations/ja.json
-+++ b/apps/web/src/i18n/translations/ja.json
-@@ -11888,6 +11888,7 @@
-   "5c3e33c17a1c7cf2": "再開",
-   "f8fec76a8dea38d4": "未送信の下書き",
-   "b0b811c800c8af57": "スレッドのピン留めを解除",
-+  "461acc49f173eb0b": "スレッドをピン留め",
-   "4fca00950ff1db87": "タイトルを再生成しています",
-   "6bf3499c98fc67f2": "再開",
-   "4851fe12e61ec84b": "再開の通知を閉じる",
-diff --git a/apps/web/src/i18n/translations/ko.json b/apps/web/src/i18n/translations/ko.json
-index 8a36bcc967f6bd8e54bd660bd2dc05892b20b983..e0b8c3efb504d7ca523a8fa9f0f7d43912fcc541 100644
---- a/apps/web/src/i18n/translations/ko.json
-+++ b/apps/web/src/i18n/translations/ko.json
-@@ -11885,6 +11885,7 @@
-   "5c3e33c17a1c7cf2": "깨우기",
-   "f8fec76a8dea38d4": "보내지 않은 초안",
-   "b0b811c800c8af57": "스레드 고정 해제",
-+  "461acc49f173eb0b": "스레드 고정",
-   "4fca00950ff1db87": "제목 다시 생성 중",
-   "6bf3499c98fc67f2": "깨어남",
-   "4851fe12e61ec84b": "깨어남 알림 닫기",
-diff --git a/apps/web/src/i18n/translations/pt-BR.json b/apps/web/src/i18n/translations/pt-BR.json
-index 277a77ccf3d9845a71b1719df246fb6c55ecb1fe..cf725fc6f4e302e0316a14f0d7345ad2f4f8a212 100644
---- a/apps/web/src/i18n/translations/pt-BR.json
-+++ b/apps/web/src/i18n/translations/pt-BR.json
-@@ -11937,6 +11937,7 @@
-   "5c3e33c17a1c7cf2": "Despertar",
-   "f8fec76a8dea38d4": "Rascunho não enviado",
-   "b0b811c800c8af57": "Desafixar thread",
-+  "461acc49f173eb0b": "Fixar thread",
-   "4fca00950ff1db87": "Regenerando título",
-   "6bf3499c98fc67f2": "Despertou",
-   "4851fe12e61ec84b": "Dispensar notificação de despertar",
-diff --git a/apps/web/src/i18n/translations/ru.json b/apps/web/src/i18n/translations/ru.json
-index ac9dde8934f3e5d5bebe1da4d3e43fa0bda2c82b..5e6779157fbc945b9945ca5be6ba9a1e4376c885 100644
---- a/apps/web/src/i18n/translations/ru.json
-+++ b/apps/web/src/i18n/translations/ru.json
-@@ -11938,6 +11938,7 @@
-   "5c3e33c17a1c7cf2": "Разбудить",
-   "f8fec76a8dea38d4": "Неотправленный черновик",
-   "b0b811c800c8af57": "Открепить тред",
-+  "461acc49f173eb0b": "Закрепить тред",
-   "4fca00950ff1db87": "Обновление заголовка",
-   "6bf3499c98fc67f2": "Проснулся",
-   "4851fe12e61ec84b": "Скрыть уведомление о пробуждении",
-diff --git a/apps/web/src/i18n/translations/sv.json b/apps/web/src/i18n/translations/sv.json
-index 05bbe8c0c976d320451f773c4e17d3901c69ba9f..2b3cb47bd6157068d70064d57ee71201a26764a4 100644
---- a/apps/web/src/i18n/translations/sv.json
-+++ b/apps/web/src/i18n/translations/sv.json
-@@ -11946,6 +11946,7 @@
-   "5c3e33c17a1c7cf2": "Väck",
-   "f8fec76a8dea38d4": "Ej skickat utkast",
-   "b0b811c800c8af57": "Lossa tråd",
-+  "461acc49f173eb0b": "Fäst tråd",
-   "4fca00950ff1db87": "Genererar om titeln",
-   "6bf3499c98fc67f2": "Väckt",
-   "4851fe12e61ec84b": "Stäng aviseringen Väckt",
-diff --git a/apps/web/src/i18n/translations/zh.json b/apps/web/src/i18n/translations/zh.json
-index 0685e33f23a8741019ec9164e3af8c56bb9c1757..8926ca66a57bcc3af87abd4ef8f4b9b8bbe400ad 100644
---- a/apps/web/src/i18n/translations/zh.json
-+++ b/apps/web/src/i18n/translations/zh.json
-@@ -11963,6 +11963,7 @@
-   "5c3e33c17a1c7cf2": "唤醒",
-   "f8fec76a8dea38d4": "未发送的草稿",
-   "b0b811c800c8af57": "取消置顶会话",
-+  "461acc49f173eb0b": "置顶会话",
-   "4fca00950ff1db87": "正在重新生成标题",
-   "6bf3499c98fc67f2": "已唤醒",
-   "4851fe12e61ec84b": "忽略已唤醒通知",
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
 index d00f04f6bf3f963ce48e7f88badea09f5a122477..a9a7ab4ef53515d656edd0278b52601393b3e033 100644
 --- a/docs/user/thread-sidebar.md
