@@ -6,5 +6,21 @@
     "reason": "git 2.56.0 on the ubuntu-24.04 runner reports a gitfile pointing at a removed repository as \"gitfile does not point to a valid repository\"; storageCleanup.ts only recognises \"not a git repository\", so the cleanup reports failed instead of kept. Upstream CI on git 2.55.0 passes.",
     "evidence": "https://github.com/chomamateusz/t3code/actions/runs/42898839136",
     "removeWhen": "storageCleanup.ts recognises the git 2.56 message, or the test passes on the ubuntu-24.04 runner without this entry."
+  },
+  {
+    "package": "@t3tools/web",
+    "name": "keeps overlapping visits from independent documents",
+    "file": "apps/web/src/browserHistoryStore.browser.test.ts",
+    "reason": "Upstream browser test that resets the shared browser-history IndexedDB. In the fork's web shard 2/2 it runs beside upstream browser test files that open the same database (RightPanelTabs, ServerBrowserSurface; no file the series changes), so the reset waits and the test times out, leaving the next test with an empty store. It passes alone on the stack tip and in upstream CI on the same upstream commit (pingdotgg/t3code run 45150991680 on d63b9c4c76).",
+    "evidence": "https://github.com/chomamateusz/t3code/actions/runs/45154378048 (attempts 1 and 2)",
+    "removeWhen": "The test isolates its IndexedDB from other test files, or the fork's web shard 2/2 passes without this entry."
+  },
+  {
+    "package": "@t3tools/web",
+    "name": "keeps visits saved while IndexedDB could not open",
+    "file": "apps/web/src/browserHistoryStore.browser.test.ts",
+    "reason": "Upstream browser test that resets the shared browser-history IndexedDB. In the fork's web shard 2/2 it runs beside upstream browser test files that open the same database (RightPanelTabs, ServerBrowserSurface; no file the series changes), so the reset waits and the test times out, leaving the next test with an empty store. It passes alone on the stack tip and in upstream CI on the same upstream commit (pingdotgg/t3code run 45150991680 on d63b9c4c76).",
+    "evidence": "https://github.com/chomamateusz/t3code/actions/runs/45154378048 (attempts 1 and 2)",
+    "removeWhen": "The test isolates its IndexedDB from other test files, or the fork's web shard 2/2 passes without this entry."
   }
 ]
