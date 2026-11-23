@@ -38,10 +38,10 @@ Model/harness: Claude Opus 5.5 / Claude Code
  4 files changed, 33 insertions(+), 1 deletion(-)
 
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 7a2f46e8c75ef917de3b9121c3f04090b624c787..8882e92b6a40293eae44b6c250dc25e82ee4113c 100644
+index 49cf8a603f1c46eb8ae864f0daf964ff1428cd21..79a19c7b0ae93b54aef2c803ff34821730cb9a56 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -3568,6 +3568,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3569,6 +3569,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              onUnsettle={attemptUnsettle}
                              onSnooze={attemptSnooze}
                              onUnsnooze={attemptUnsnooze}
@@ -130,7 +130,7 @@ index 10a2fb6dd76225ca47547084a59c736ac0a79a22..a23be6bd239d9b1ffe575db503f93f19
                  <span
                    className={cn("min-w-0 flex-1 truncate font-normal text-secondary-label text-xs")}
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 7214eab94bcc51971ce10e723e7c78457f765723..c64dc00fa426202255bfeed5ce1e7eba5ed9e171 100644
+index f4a60439e5dc336d23f1885b87885c88a0e7d3dc..95f1cbc02785a45a112ec186b1241834dc95e413 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -76,7 +76,8 @@ and worktree while you stay in the new thread composer. This requires a Git proj

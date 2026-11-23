@@ -272,7 +272,7 @@ index 0771ea2e33d5d12fede4b834b9ca54cf6ead1dd9..e1732d642fcc84a127d97ecb86790f68
  }
  
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index e9d45a5c1fd848683b6ae72502f97c5a3820df32..e8de3759ddfdaa2cc4ff99f177cac214de7c2843 100644
+index 2a8dcdff50d86606145fc69c35c72e9d82baf172..0c4b3372eb233a9dacb10bfd4af32929d6aefed4 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -119,6 +119,14 @@ import {
@@ -667,7 +667,7 @@ index e9d45a5c1fd848683b6ae72502f97c5a3820df32..e8de3759ddfdaa2cc4ff99f177cac214
      routeDraftIdForRows,
      draftTerminalLabels,
    );
-@@ -3060,6 +3146,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3061,6 +3147,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            <SidebarGroup className="z-[1]">
              <SidebarThreadHeader
                hasProjects={projectGroups.length > 0}
@@ -683,7 +683,7 @@ index e9d45a5c1fd848683b6ae72502f97c5a3820df32..e8de3759ddfdaa2cc4ff99f177cac214
                projectScope={
                  <Combobox
                    items={projectScopeItems}
-@@ -3420,17 +3515,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3421,17 +3516,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                ) : scopedProjectGroups.length > 0 ? (
                  <>
                    <span>
@@ -713,7 +713,7 @@ index e9d45a5c1fd848683b6ae72502f97c5a3820df32..e8de3759ddfdaa2cc4ff99f177cac214
                    </span>
                    <button
                      type="button"
-@@ -3441,7 +3537,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3442,7 +3538,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    </button>
                  </>
                ) : (
@@ -725,7 +725,7 @@ index e9d45a5c1fd848683b6ae72502f97c5a3820df32..e8de3759ddfdaa2cc4ff99f177cac214
                )}
              </div>
            ) : null}
-@@ -3563,6 +3662,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3564,6 +3663,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              environmentMachine={
                                environmentMachineById.get(thread.environmentId) ?? "server"
                              }

@@ -198,7 +198,7 @@ index b0cf4823126e24156b7220d79efc36004afea913..b24c8b2a01486cb89f063c986747e630
      }).pipe(Effect.provide(Layer.merge(layerProtocol, NodeServices.layer))),
    );
 diff --git a/apps/desktop/src/electron/ElectronProtocol.ts b/apps/desktop/src/electron/ElectronProtocol.ts
-index 7563898f43efc48596c2e2513067149b6de5ec59..34c59a8a71a8a59f1a7030fbcd4c0ca823fad5e3 100644
+index 43208638f12d81d2a4b26f33ea46aa24777fdaba..e075cdcdba8df9e3614c537581ef374e9739077c 100644
 --- a/apps/desktop/src/electron/ElectronProtocol.ts
 +++ b/apps/desktop/src/electron/ElectronProtocol.ts
 @@ -28,6 +28,10 @@ export function getDesktopUrl(isDevelopment: boolean): string {
@@ -460,10 +460,10 @@ index bb704b949ee81d95945e50adbd2878398076b08a..9cbd73efc3291d1419ded15f845af019
            setServerExposureMode: () => Effect.die("unexpected server exposure update"),
            setTailscaleServe: () => Effect.die("unexpected Tailscale Serve update"),
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index f2b655b1b69d83106dac0355eed8f6035b051e2e..689ffb39f259ed3948c86bafddc88dddec2bc38d 100644
+index e4e426b1975ae67b0563b25cef926361945f228f..90325012a811f10f35a454f4ec326a51943fa6a2 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
-@@ -260,6 +260,7 @@ function layerTest(input: {
+@@ -266,6 +266,7 @@ function layerTest(input: {
    const layerDesktopAppSettings = Layer.succeed(DesktopAppSettings.DesktopAppSettings, {
      get: Effect.sync(() => desktopSettings),
      load: Effect.sync(() => desktopSettings),

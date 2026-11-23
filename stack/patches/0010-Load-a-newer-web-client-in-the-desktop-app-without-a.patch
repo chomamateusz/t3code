@@ -194,7 +194,7 @@ index b24c8b2a01486cb89f063c986747e63081bea15b..970dadfe4e7c3a21c399a125cc6a23e6
      Effect.gen(function* () {
        let handler: ((request: Request) => Promise<Response>) | undefined;
 diff --git a/apps/desktop/src/electron/ElectronProtocol.ts b/apps/desktop/src/electron/ElectronProtocol.ts
-index 34c59a8a71a8a59f1a7030fbcd4c0ca823fad5e3..7e616e0675a77f5fc0a2de3517b706b15b1e5894 100644
+index e075cdcdba8df9e3614c537581ef374e9739077c..4f6561201f3c4a71861d7640b31bec8a8bd0f4aa 100644
 --- a/apps/desktop/src/electron/ElectronProtocol.ts
 +++ b/apps/desktop/src/electron/ElectronProtocol.ts
 @@ -70,7 +70,10 @@ export class ElectronProtocolUnregistrationError extends Schema.TaggedError<Elec

@@ -103,7 +103,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  9 files changed, 206 insertions(+), 18 deletions(-)
 
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index 689ffb39f259ed3948c86bafddc88dddec2bc38d..d3b72f36bb862fd63471e7d3a3178f007dd16713 100644
+index 90325012a811f10f35a454f4ec326a51943fa6a2..e1c884adc9765a59141ac43475acca01911401f4 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
 @@ -1,7 +1,7 @@
@@ -124,7 +124,7 @@ index 689ffb39f259ed3948c86bafddc88dddec2bc38d..d3b72f36bb862fd63471e7d3a3178f00
    const webContentsListeners = new Map<string, (...args: readonly unknown[]) => void>();
    let zoomLevel = 0;
    const webContents = {
-@@ -233,6 +233,7 @@ function layerTest(input: {
+@@ -239,6 +239,7 @@ function layerTest(input: {
    readonly mainWindow: Ref.Ref<Option.Option<Electron.BrowserWindow>>;
    readonly createdWindowOptions?: Electron.BrowserWindowConstructorOptions[];
    readonly desktopSettings?: DesktopAppSettings.DesktopSettings;
@@ -132,7 +132,7 @@ index 689ffb39f259ed3948c86bafddc88dddec2bc38d..d3b72f36bb862fd63471e7d3a3178f00
    readonly mainWindowBoundsUpdates?: DesktopAppSettings.DesktopWindowBounds[];
    readonly mainWindowMaximizedUpdates?: boolean[];
    readonly beforeMainWindowBoundsUpdate?: (
-@@ -338,7 +339,9 @@ function layerTest(input: {
+@@ -344,7 +345,9 @@ function layerTest(input: {
            ? layerDesktopEnvironment
            : layerDesktopEnvironmentFor(input.platform),
          layerDesktopAppSettings,
@@ -143,7 +143,7 @@ index 689ffb39f259ed3948c86bafddc88dddec2bc38d..d3b72f36bb862fd63471e7d3a3178f00
          layerDesktopServerExposure,
          DesktopState.layer,
          layerElectronApp,
-@@ -1437,7 +1440,17 @@ describe("DesktopWindow", () => {
+@@ -1443,7 +1446,17 @@ describe("DesktopWindow", () => {
        const fakeWindow = makeFakeBrowserWindow();
        const createCount = yield* Ref.make(0);
        const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
@@ -162,7 +162,7 @@ index 689ffb39f259ed3948c86bafddc88dddec2bc38d..d3b72f36bb862fd63471e7d3a3178f00
  
        yield* Effect.gen(function* () {
          const desktopWindow = yield* DesktopWindow.DesktopWindow;
-@@ -1445,22 +1458,55 @@ describe("DesktopWindow", () => {
+@@ -1451,22 +1464,55 @@ describe("DesktopWindow", () => {
          const swipe = fakeWindow.windowListeners.get("swipe");
          assert.isDefined(swipe);
          if (!swipe) return;
@@ -227,10 +227,10 @@ index 689ffb39f259ed3948c86bafddc88dddec2bc38d..d3b72f36bb862fd63471e7d3a3178f00
      }),
    );
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 880b9dfef4ab904413d6864944753ec9860b66d3..1187edb0aa378bdd7a80b15eb72f295461f8af15 100644
+index c99fbb52c49e2effbf8bf4948743ff718a279076..c96a6d9078b901432048ea00c6bcff24cf8f2697 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
-@@ -864,9 +864,27 @@ export const make = Effect.gen(function* () {
+@@ -867,9 +867,27 @@ export const make = Effect.gen(function* () {
      if (environment.platform === "darwin") {
        // Mouse drivers can deliver Back/Forward as macOS swipe gestures instead of buttons.
        window.on("swipe", (_event, direction) => {
@@ -381,7 +381,7 @@ index c7515485662ac76f9dbbcb957d59b03d631d5e1f..8f184ccee524cac8f9639624747c8161
      </PanelAnimationSuppressionProvider>
    );
 diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
-index 0ef89029e34cacfb5aad12c9406152e0b510d139..155ec5358a538bda672b079d5311bdd848179e8a 100644
+index 97b278a463e9effac8760d4cd3624b43c21562e3..a420fdbe0c2ef644fc453b9f3b3131e3390a342c 100644
 --- a/apps/web/src/components/settings/SettingsPanels.tsx
 +++ b/apps/web/src/components/settings/SettingsPanels.tsx
 @@ -643,6 +643,9 @@ export function useSettingsRestore(onRestored?: () => void) {
@@ -454,10 +454,10 @@ index 3249b6762423440d5fb22feca52d5e2ef92aef61..efcf6e4559622a12ce9ce6c0af726497
      expect(searchSettings("wsl")).toEqual([]);
      expect(searchSettings("update track")).toEqual([]);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 0a79fa56cdfed8c98741f2c5931edb377ba9ef31..e09d667b20868d72c38d33fc64f5e9047304b111 100644
+index de20205cac180f46217e696d9727fff42fa8a0a5..251f1fe54e7b5e2db2bff00198b92d13ae17e1f5 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -943,6 +943,15 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -950,6 +950,15 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: [msg("confirmation desktop app exit direct hold double click press twice")],
      desktopOnly: true,
    },
@@ -498,7 +498,7 @@ index 9dc56d7a6a02d95c0b3c89882cbbc4dff1739bd6..771e102d2b25467839ce623f83e76d90
    it("resolves instance enabled state with explicit false winning", () => {
      const grok = ProviderDriverKind.make("grok");
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index f239577770c7e5e32ec5e47e47d59652e45f1aed..b4459a6f4128e82bf56d0dff07fd174c8d5d7247 100644
+index c63b05b14ef75ea21fada975601ff93d0bceedb1..e09345e859909de8880af623e766063a871f51a3 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -475,6 +475,7 @@ export const ClientSettingsSchema = Schema.Struct({
@@ -509,7 +509,7 @@ index f239577770c7e5e32ec5e47e47d59652e45f1aed..b4459a6f4128e82bf56d0dff07fd174c
    confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
    confirmTerminalClose: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
    confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-@@ -2090,6 +2091,7 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2093,6 +2094,7 @@ export const ClientSettingsPatch = Schema.Struct({
    browserProfiles: Schema.optionalKey(Schema.Array(BrowserProfile)),
    browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),
    confirmQuit: Schema.optionalKey(QuitConfirmationMode),

@@ -1043,7 +1043,7 @@ index e1732d642fcc84a127d97ecb86790f682a071742..a2b1d06a850333b97d1a3c3ac42cb01f
    thread: Pick<SidebarThreadSummary, "latestRun" | "runtime">,
  ): string | null {
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index e8de3759ddfdaa2cc4ff99f177cac214de7c2843..37fa83bdcb58088187208e295fe9a5a1fea228c0 100644
+index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5d8dcf9d2 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -68,18 +68,10 @@ import {
@@ -1543,7 +1543,7 @@ index e8de3759ddfdaa2cc4ff99f177cac214de7c2843..37fa83bdcb58088187208e295fe9a5a1
        : null,
      keepEmptyFolders: (group) =>
        scopedProjectGroups.length > 0 || (group.pinned && !group.archived),
-@@ -2784,12 +2810,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2785,12 +2811,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                  AuthOrchestrationOperateScope,
                ),
                branch: thread.branch ?? null,
@@ -1559,7 +1559,7 @@ index e8de3759ddfdaa2cc4ff99f177cac214de7c2843..37fa83bdcb58088187208e295fe9a5a1
                      }
                    : null,
                isPinned,
-@@ -2836,9 +2863,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2837,9 +2864,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            case "filter-by-project":
              if (threadProjectGroup) {
                setProjectScopeKeys(
@@ -1575,7 +1575,7 @@ index e8de3759ddfdaa2cc4ff99f177cac214de7c2843..37fa83bdcb58088187208e295fe9a5a1
                );
              }
              return;
-@@ -3155,228 +3185,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3156,228 +3186,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    onChange={setEnvironmentScopeKeys}
                  />
                }
@@ -1820,7 +1820,7 @@ index e8de3759ddfdaa2cc4ff99f177cac214de7c2843..37fa83bdcb58088187208e295fe9a5a1
                onNewThread={handleNewThreadClick}
                newThreadDisabled={projects.length === 0}
                newThreadShortcutLabel={newThreadShortcutLabel}
-@@ -3530,7 +3355,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3531,7 +3356,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    </span>
                    <button
                      type="button"
@@ -1829,7 +1829,7 @@ index e8de3759ddfdaa2cc4ff99f177cac214de7c2843..37fa83bdcb58088187208e295fe9a5a1
                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
                    >
                      <T>Show all projects</T>
-@@ -3538,7 +3363,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3539,7 +3364,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                  </>
                ) : (
                  sidebarEmptyThreadsLabel(
@@ -1843,7 +1843,7 @@ index e8de3759ddfdaa2cc4ff99f177cac214de7c2843..37fa83bdcb58088187208e295fe9a5a1
                  )
                )}
 diff --git a/apps/web/src/components/settings/LabsSettingsPanel.tsx b/apps/web/src/components/settings/LabsSettingsPanel.tsx
-index e2e33fec8fd7525da7a46674a97cbe02a90130cf..83c6c5667a831f02809825ea38e603d80b921b27 100644
+index f6354fb880ea066c3b5b25f509b36abfd9f02cdc..9fc233e2c476f1a8ff36c649a709f8feb2ad7e26 100644
 --- a/apps/web/src/components/settings/LabsSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/LabsSettingsPanel.tsx
 @@ -7,11 +7,23 @@ import { T, useGT, useMessages } from "gt-react";
@@ -1879,7 +1879,7 @@ index e2e33fec8fd7525da7a46674a97cbe02a90130cf..83c6c5667a831f02809825ea38e603d8
          {/* Clerk is only mounted when this build has T3 Connect. */}
          {hasCloudPublicConfig() ? <GuestLinksRowWithSignIn /> : <GuestLinksRow />}
          <LinkedEnvironmentsRow />
-@@ -68,6 +81,57 @@ function BoringSidebarRow() {
+@@ -69,6 +82,57 @@ function BoringSidebarRow() {
    );
  }
  
@@ -2150,7 +2150,7 @@ index 0000000000000000000000000000000000000000..f42e64664c68627a6a28849a12a22d53
 +  );
 +}
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 4f57b8d730842dfce3b9898c4a1635fa7c2163b1..0a79fa56cdfed8c98741f2c5931edb377ba9ef31 100644
+index 1f38ed958d36867732b14e9c46cd2717faac6e1d..de20205cac180f46217e696d9727fff42fa8a0a5 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -515,6 +515,16 @@ export const SETTINGS_SEARCH_ITEMS = [
@@ -6302,7 +6302,7 @@ index abfccf45a9673cd64436ee024eacbd0854a8fbfb..798d0663716845ee0ac2a05e6fc3cecf
      await screen.getByRole("combobox").fill("https://github.com/pingdotgg/t3code.git");
      const submit = screen.getByRole("button", "Continue (Enter)");
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 9bbf3194a9d59dbd18f883fd0cdb27fa9c1622da..865dbb02457b6f89b2889fd25b3f9ad646ccf628 100644
+index 6c63f1b9c342d2f95d11b7b3365c7282caa3cadb..980063f1f5fe7c78efa7d159c5b50dfce82629a8 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -151,6 +151,60 @@ choice.

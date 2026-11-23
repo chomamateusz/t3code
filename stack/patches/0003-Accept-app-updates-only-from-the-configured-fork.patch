@@ -53,6 +53,8 @@ Port to 047fb5b162: vite-env.d.ts: upstream 10586f9e31 (#40594, one T3CODE_FEATU
 
 Port to def64e3a54: bundledDev.test.ts conflicted only in its copied-file list: upstream 91d2d90f46 (#26451, a failed main chunk load reloads once) adds src/lib/chunkReloadGuard.ts to the bootstrap bundle beside this commit's src/lib/desktopReleaseLinks.ts; both are copied. No update guard changed.
 
+Port to 21b52875ea: upstream 10765a4e47 (#41262, a refused desktop install shows as failed) routes the About and sidebar installs through installDesktopUpdate, which waits for a later errorContext "install" state after an accepted install. SettingsPanels.tsx: upstream's About install now shows "Could not install update" with getDesktopUpdateActionError itself, so this commit no longer changes that file. SidebarUpdatePill.tsx: installLocalUpdate calls installDesktopUpdate and still reports a refused install before the not-accepted branch. A fork-feed refusal at install returns accepted false, which installDesktopUpdate passes on at once, and the disabled tooltip still comes before upstream's install-failed tooltip. desktopUpdate.logic.test.ts: upstream now imports getDesktopUpdateActionError itself, so this commit no longer adds that import. No update guard changed.
+
 release-fork.yml: the macOS arm64 desktop job runs on macos-26, because upstream packaging runs stageAppleSpeech (scripts/build-desktop-artifact.ts) and apps/desktop/scripts/build-apple-speech.mjs needs Xcode 26. Upstream's release workflows select no Xcode version, so none is selected here; the macOS verification job, which builds nothing, stays on macos-15.
 
 Files:
@@ -136,9 +138,8 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  apps/desktop/vite.config.test.ts              |  30 ++
  apps/desktop/vite.config.ts                   |   5 +
  apps/web/src/bundledDev.test.ts               |   1 +
- .../components/desktopUpdate.logic.test.ts    |  52 ++-
+ .../components/desktopUpdate.logic.test.ts    |  51 +-
  .../web/src/components/desktopUpdate.logic.ts |  52 +--
- .../components/settings/SettingsPanels.tsx    |  12 +
  .../settings/UpdateTrackSwitchDialog.tsx      |  16 +-
  .../settings/updateTrackSwitch.logic.test.ts  |   8 +-
  .../settings/updateTrackSwitch.logic.ts       |   6 +
@@ -153,7 +154,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  scripts/build-desktop-artifact.ts             |  15 +-
  scripts/verify-fork-update-feed.test.ts       |  37 ++
  scripts/verify-fork-update-feed.ts            |  36 ++
- 33 files changed, 1582 insertions(+), 79 deletions(-)
+ 32 files changed, 1569 insertions(+), 79 deletions(-)
  create mode 100644 .github/workflows/release-fork.yml
  create mode 100644 apps/desktop/src/updates/forkFeedPolicy.test.ts
  create mode 100644 apps/desktop/src/updates/forkUpdateProvider.test.ts
@@ -1658,25 +1659,24 @@ index 5517910d754db6b7bc05905f7343feb5bbfc3be3..30b91bf0d489aad68cd7924f7148ef0b
        await NodeFSP.copyFile(new URL(`../${file}`, import.meta.url), NodePath.join(root, file));
      }
 diff --git a/apps/web/src/components/desktopUpdate.logic.test.ts b/apps/web/src/components/desktopUpdate.logic.test.ts
-index 29494789b6cff2f2039cf3cee040104df636f661..0c737edb3da5b6bc4fe9d5d640b3296dae548313 100644
+index 601527e51a2015c8436edc021da81bbf4adf5bf4..3aa050c0ae45f31ac83ec7df45a8054e741bb99c 100644
 --- a/apps/web/src/components/desktopUpdate.logic.test.ts
 +++ b/apps/web/src/components/desktopUpdate.logic.test.ts
-@@ -1,9 +1,13 @@
+@@ -1,9 +1,12 @@
  import { describe, expect, it } from "vite-plus/test";
 -import type { DesktopUpdateState } from "@t3tools/contracts";
 +import type { DesktopUpdateActionResult, DesktopUpdateState } from "@t3tools/contracts";
  
  import {
    canCheckForUpdate,
-+  getDesktopUpdateActionError,
 +  isDesktopUpdateButtonDisabled,
 +  shouldToastDesktopUpdateActionResult,
    getDesktopUpdateButtonTooltip,
 +  getDesktopUpdateDownloadUrl,
    getDesktopUpdateReleaseHistoryUrl,
+   getDesktopUpdateActionError,
    getDesktopUpdateReleaseUrl,
-   resolveDesktopUpdateButtonAction,
-@@ -29,6 +33,35 @@ const baseState: DesktopUpdateState = {
+@@ -31,6 +34,35 @@ const baseState: DesktopUpdateState = {
  };
  
  describe("desktop update button state", () => {
@@ -1712,7 +1712,7 @@ index 29494789b6cff2f2039cf3cee040104df636f661..0c737edb3da5b6bc4fe9d5d640b3296d
    it("keeps retry action available after a download error", () => {
      const state: DesktopUpdateState = {
        ...baseState,
-@@ -95,6 +128,23 @@ describe("desktop update button state", () => {
+@@ -151,6 +183,23 @@ describe("desktop update button state", () => {
    });
  });
  
@@ -1737,10 +1737,10 @@ index 29494789b6cff2f2039cf3cee040104df636f661..0c737edb3da5b6bc4fe9d5d640b3296d
    it.each(["owner/repo/extra", "owner#notes/repo", "owner/repo?tab=notes"])(
      "falls back to upstream for an invalid configured repository: %s",
 diff --git a/apps/web/src/components/desktopUpdate.logic.ts b/apps/web/src/components/desktopUpdate.logic.ts
-index d3d4f618c8268ef5495830b74d5a7a1de8579ecb..785d31c74770b8c8880f949003d1b9396b640147 100644
+index 4922ee3b524b7b9fbe42a9983a3193efb2000f3a..9e125d8cf076792f5ee935e418fb114252ac005e 100644
 --- a/apps/web/src/components/desktopUpdate.logic.ts
 +++ b/apps/web/src/components/desktopUpdate.logic.ts
-@@ -6,50 +6,23 @@ import { msg } from "gt-react";
+@@ -10,50 +10,23 @@ import { msg } from "gt-react";
  import { m, type MessageResolver } from "../i18n/messages";
  import { channelSwitchLabel } from "./sidebar/updateEverything.logic";
  
@@ -1798,7 +1798,7 @@ index d3d4f618c8268ef5495830b74d5a7a1de8579ecb..785d31c74770b8c8880f949003d1b939
    if (
      state.downloadedVersion &&
      (state.status === "downloaded" ||
-@@ -74,7 +47,10 @@ export function shouldShowArm64IntelBuildWarning(state: DesktopUpdateState | nul
+@@ -78,7 +51,10 @@ export function shouldShowArm64IntelBuildWarning(state: DesktopUpdateState | nul
  }
  
  export function isDesktopUpdateButtonDisabled(state: DesktopUpdateState | null): boolean {
@@ -1810,7 +1810,7 @@ index d3d4f618c8268ef5495830b74d5a7a1de8579ecb..785d31c74770b8c8880f949003d1b939
  }
  
  export function getArm64IntelBuildWarningDescription(
-@@ -111,6 +87,9 @@ export function getDesktopUpdateButtonTooltip(
+@@ -115,6 +91,9 @@ export function getDesktopUpdateButtonTooltip(
    state: DesktopUpdateState,
    resolve: MessageResolver = m,
  ): string {
@@ -1820,7 +1820,7 @@ index d3d4f618c8268ef5495830b74d5a7a1de8579ecb..785d31c74770b8c8880f949003d1b939
    if (
      state.notAppliedVersion !== undefined &&
      (state.status === "available" || state.status === "downloaded") &&
-@@ -206,7 +185,8 @@ export function getDesktopUpdateInstallConfirmationMessage(
+@@ -215,7 +194,8 @@ export function getDesktopUpdateInstallConfirmationMessage(
  }
  
  export function getDesktopUpdateActionError(result: DesktopUpdateActionResult): string | null {
@@ -1830,36 +1830,6 @@ index d3d4f618c8268ef5495830b74d5a7a1de8579ecb..785d31c74770b8c8880f949003d1b939
    if (typeof result.state.message !== "string") return null;
    const message = result.state.message.trim();
    return message.length > 0 ? message : null;
-diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
-index 493d8a1e7956537c9aa88c2a26ed99b1655cecd5..0ef89029e34cacfb5aad12c9406152e0b510d139 100644
---- a/apps/web/src/components/settings/SettingsPanels.tsx
-+++ b/apps/web/src/components/settings/SettingsPanels.tsx
-@@ -42,6 +42,7 @@ import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
- import { MobileAppSettingsRow } from "./MobileAppSettingsRow";
- import {
-   canCheckForUpdate,
-+  getDesktopUpdateActionError,
-   getDesktopUpdateButtonTooltip,
-   getDesktopUpdateDisabledReason,
-   getDesktopUpdateInstallConfirmationMessage,
-@@ -257,6 +258,17 @@ function AboutVersionSection() {
-       }
-       void bridge
-         .installUpdate()
-+        .then((result) => {
-+          const message = getDesktopUpdateActionError(result);
-+          if (message)
-+            toastManager.add(
-+              stackedThreadToast({
-+                type: "error",
-+                title: gt("Could not install update"),
-+                description: message,
-+              }),
-+            );
-+        })
-         .catch((error: unknown) => {
-           toastManager.add(
-             stackedThreadToast({
 diff --git a/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx b/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx
 index fd844977b81f5c9e1ed191152c6cb5fc5b784f0c..b2e211c6a45ace0a59ba9af0e2b47de6b11c2ea4 100644
 --- a/apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx
@@ -1945,13 +1915,13 @@ index 1a961de85c5c2c5edb1566caf9a911fbd4db2ae3..d79f3a305be595122a964eefca427b2c
    const found = local.downloadedVersion ?? local.availableVersion;
    if (
 diff --git a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
-index 71fce36f3ed4305e49f3252bbac18eca94a25308..1bc7a68cfaf3816ec938a9fc7f0661acf4680b0b 100644
+index 156e89364670c9f6c955d4f18a1c973976adf682..38dca254fc4ec93ad75851274155568b9e575af1 100644
 --- a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
 +++ b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
-@@ -177,16 +177,16 @@ export async function installLocalUpdate(
+@@ -178,16 +178,16 @@ export async function installLocalUpdate(
  ): Promise<boolean> {
    try {
-     const result = await bridge.installUpdate(expectedVersion);
+     const result = await installDesktopUpdate(bridge, expectedVersion);
 +    const actionError = getDesktopUpdateActionError(result);
 +    if (actionError) {
 +      reportError(m(msg("Could not install update")), actionError);

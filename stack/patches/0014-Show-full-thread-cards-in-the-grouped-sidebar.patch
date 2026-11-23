@@ -95,7 +95,7 @@ Model/harness: Claude Opus 5.5 / Claude Code (implementation and fix waves); rev
  create mode 100644 apps/web/src/components/sidebar/SidebarThreadBadge.tsx
 
 diff --git a/apps/web/src/components/Sidebar.browser.test.tsx b/apps/web/src/components/Sidebar.browser.test.tsx
-index 6da644ed1e1d16f836333a00a0cde380d2a8fcde..c1e6cc75a471ab1d6f4353332b697f4f516eeac3 100644
+index c35e12e4f3c2285bf9ee07c74ad6950b10665edc..e01076f77f6e8974b4b2259aebf4ff6ae2739fc0 100644
 --- a/apps/web/src/components/Sidebar.browser.test.tsx
 +++ b/apps/web/src/components/Sidebar.browser.test.tsx
 @@ -4,6 +4,7 @@ import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environ
@@ -106,7 +106,7 @@ index 6da644ed1e1d16f836333a00a0cde380d2a8fcde..c1e6cc75a471ab1d6f4353332b697f4f
  import {
    DEFAULT_CLIENT_SETTINGS,
    EnvironmentId,
-@@ -473,3 +474,71 @@ describe("sidebar settled pagination", () => {
+@@ -524,3 +525,71 @@ describe("sidebar settled pagination", () => {
      expect(screen.container.querySelectorAll("[data-thread-item]")).toHaveLength(loadedRows);
    });
  });
@@ -513,7 +513,7 @@ index a2b1d06a850333b97d1a3c3ac42cb01f772ec65e..d31d96c9517b384b0ccf6a18b110a3a1
   * Boring sidebar folders. Folders follow `groups` order and threads keep their
   * input order. A project with no threads gets a folder only when `keepEmpty` says so.
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 018ee814fc9462f575d03279704c2065bbb5634a..e2bdc6b9cf3bf716c292f919d8bef9575a2f1b7b 100644
+index f9f1353f78705b54564563038a66c57f0fdd0cc6..649ac6a1c62158d04266e97980aadb2f21666336 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -123,12 +123,18 @@ import {
@@ -688,7 +688,7 @@ index 018ee814fc9462f575d03279704c2065bbb5634a..e2bdc6b9cf3bf716c292f919d8bef957
            ...visibleProjectGroups.filter((project) => project.archived),
          ]
        : null,
-@@ -3402,13 +3440,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3403,13 +3441,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                          const threadKey = scopedThreadKey(
                            scopeThreadRef(thread.environmentId, thread.id),
                          );
@@ -704,7 +704,7 @@ index 018ee814fc9462f575d03279704c2065bbb5634a..e2bdc6b9cf3bf716c292f919d8bef957
                              ? "card"
                              : "slim";
                          return (
-@@ -3423,6 +3456,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3424,6 +3457,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              }
                              thread={thread}
                              variant={rowVariant}
@@ -712,7 +712,7 @@ index 018ee814fc9462f575d03279704c2065bbb5634a..e2bdc6b9cf3bf716c292f919d8bef957
                              navigationParent={
                                folderRow ??
                                (section === "working" ||
-@@ -3543,6 +3577,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3544,6 +3578,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                  group={folder.group}
                                  collapsed={folder.collapsed}
                                  hiddenThreads={folder.hiddenThreads}
@@ -721,10 +721,10 @@ index 018ee814fc9462f575d03279704c2065bbb5634a..e2bdc6b9cf3bf716c292f919d8bef957
                                  onNewThread={startThreadInProjectFolder}
                                  onContextMenu={handleProjectFolderContextMenu}
 diff --git a/apps/web/src/components/settings/LabsSettingsPanel.tsx b/apps/web/src/components/settings/LabsSettingsPanel.tsx
-index 83c6c5667a831f02809825ea38e603d80b921b27..61190c2cb22907ee3de0fe20827b1929854bb5c1 100644
+index 9fc233e2c476f1a8ff36c649a709f8feb2ad7e26..e0cbc4a3dba088a2253878142f7e277d6a79b579 100644
 --- a/apps/web/src/components/settings/LabsSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/LabsSettingsPanel.tsx
-@@ -71,13 +71,7 @@ function BoringSidebarRow() {
+@@ -72,13 +72,7 @@ function BoringSidebarRow() {
            aria-label={gt("Boring sidebar (group by project)")}
          />
        }
@@ -739,7 +739,7 @@ index 83c6c5667a831f02809825ea38e603d80b921b27..61190c2cb22907ee3de0fe20827b1929
    );
  }
  
-@@ -97,7 +91,7 @@ function ProjectIconOrderRow() {
+@@ -98,7 +92,7 @@ function ProjectIconOrderRow() {
      <SettingsRow
        {...searchableSetting("project-icon-order")}
        description={gt(
@@ -748,7 +748,7 @@ index 83c6c5667a831f02809825ea38e603d80b921b27..61190c2cb22907ee3de0fe20827b1929
        )}
        resetAction={
          order === "name" ? null : (
-@@ -132,31 +126,6 @@ function ProjectIconOrderRow() {
+@@ -133,31 +127,6 @@ function ProjectIconOrderRow() {
    );
  }
  
@@ -781,7 +781,7 @@ index 83c6c5667a831f02809825ea38e603d80b921b27..61190c2cb22907ee3de0fe20827b1929
  function GuestLinksRowWithSignIn() {
    const searchableSetting = useSearchableSetting();
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index e09d667b20868d72c38d33fc64f5e9047304b111..dd9bd9cf0d799648cb3be5cb5bd4b5d0a0f43d6e 100644
+index 251f1fe54e7b5e2db2bff00198b92d13ae17e1f5..a38c930eb5d1a95759397e667ce08689170c047d 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -506,22 +506,13 @@ export const SETTINGS_SEARCH_ITEMS = [
@@ -1232,7 +1232,7 @@ index 073d2cb64c75d4c79bc48c4e0e19054026780f62..e5d0ff49d2dbc00a3a6653385066e5e4
        )}
      >
 diff --git a/apps/web/src/index.css b/apps/web/src/index.css
-index 2b19b90cc28e38fe67199b551512e45ea1ccf9a4..4acdd5b3117c1a666fd94f9377d2dffc633cd8e9 100644
+index 15380512f4060bd15eb5552c206a33f526fe58ff..5e57dee2ba5a5101f99132fb9e9f9a94851413e8 100644
 --- a/apps/web/src/index.css
 +++ b/apps/web/src/index.css
 @@ -109,6 +109,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
@@ -1246,7 +1246,7 @@ index 2b19b90cc28e38fe67199b551512e45ea1ccf9a4..4acdd5b3117c1a666fd94f9377d2dffc
    --command-content-inset: 1rem;
    --floating-content-inset: 0.75rem;
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 988ebbda4eac8d545deeaeb0710dbea3509b9227..f00db93127957bfb687ba46d13abc1218df21d5d 100644
+index aff10fe8986ec5623b7616c4ae9abe8be82389b6..5783a5cfcd11c6e6be2649955db49fe2c1153ae8 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -221,11 +221,15 @@ selections so the thread can appear, while keeping selections for unavailable pr

@@ -60,6 +60,8 @@ Port to b6ac2449f1: upstream 52f0f8afb8 (#38567) makes CursorUsageAccounts.refre
 - Cached Cursor records are pruned only below the floor, where Cursor has none. An existing cache whose sinceMs is 0 counts as complete (0 is before the floor), its next top-up keeps every record and records the floor as its sinceMs.
 - UsageService.test.ts: upstream's "loads Cursor history that cannot be read in one request within the deadline" is pinned to usageHistoryRetentionDays 92. Its fake read fails above 12 hours and its loop allows 10 refreshes, enough to halve down from 92 days but not from the 2023 floor (about 12 halvings, then thousands of reads at the narrowed span), so under the fork default it would test the all-time depth instead of the piecewise read. The new "loads all-time Cursor history too large for one read down to its start" keeps the default setting, fails reads wider than 100 days, and requires all three records, an ok source, the earliest read at the floor and fewer than 30 reads; without the floor it reads down to epoch zero. The Cursor cutoff table expects the floor for the default, unlimited and 36500-day rows, the shared-refresh widening case expects its older read to start at the floor, and the all-time Cursor case reads from the floor.
 
+Port to 21b52875ea: UsageService.ts: upstream 2808e878de (#41157, skipped-record warnings count only the selected dates) filters each directory's retained files to the requested window and turns malformedRecords into timestamps. The window filter now runs inside this commit's loop that yields every 1,000 items, on the files pushed per directory, so retained deleted-transcript records are kept and all-time queries still see them.
+
 Files:
 packages/contracts:
 - packages/contracts/src/settings.ts
@@ -101,7 +103,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code;
 ---
  apps/server/src/serverSettings.test.ts        |   2 +
  apps/server/src/usage/UsageService.test.ts    | 357 +++++++++++++++---
- apps/server/src/usage/UsageService.ts         | 112 +++++-
+ apps/server/src/usage/UsageService.ts         | 132 +++++--
  apps/server/src/usage/usageScanCache.test.ts  |  36 +-
  apps/server/src/usage/usageScanCache.ts       |  42 ++-
  .../settings/KeybindingsSettings.logic.ts     |   8 +-
@@ -115,7 +117,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code;
  packages/contracts/src/settings.ts            |   2 +-
  .../src/server/CursorUsageAccounts.ts         |   3 +-
  .../src/server/accountCache.ts                |   3 +
- 16 files changed, 613 insertions(+), 118 deletions(-)
+ 16 files changed, 624 insertions(+), 127 deletions(-)
  create mode 100644 apps/web/src/components/usage/usageRange.test.ts
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
@@ -134,7 +136,7 @@ index 5d46c916c3990400ca3c442506509d9f09b44c02..9e83aac3e598cfcd527aba0c41056f3e
          assert.deepStrictEqual(persisted.usageModelAliases, usageModelAliases);
          assert.deepStrictEqual(persisted.usageLimitSources, usageLimitSources);
 diff --git a/apps/server/src/usage/UsageService.test.ts b/apps/server/src/usage/UsageService.test.ts
-index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6d0b6324a 100644
+index d2bc0c296fbc111a2a1f3ce342288cf3fb94a8cd..9c5d5542efbad3446947c99f3f785b0a2fbef0f5 100644
 --- a/apps/server/src/usage/UsageService.test.ts
 +++ b/apps/server/src/usage/UsageService.test.ts
 @@ -138,6 +138,11 @@ const WINDOW: UsageSummaryInput = {
@@ -285,7 +287,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6
    it.effect("keeps a new Cursor key's refresh visible beside a failing key", () =>
      Effect.gen(function* () {
        const { settings, home } = yield* setup;
-@@ -3354,7 +3449,7 @@ describe("UsageService", () => {
+@@ -3479,7 +3574,7 @@ describe("UsageService", () => {
    );
  
    it.effect.each([4, 5, 6, 7, 8, 10, 11, 12, 13, 14])(
@@ -294,7 +296,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6
      (version) =>
        Effect.gen(function* () {
          yield* TestClock.setTime(Date.parse("2026-08-02T12:00:00Z"));
-@@ -3400,12 +3495,27 @@ describe("UsageService", () => {
+@@ -3525,12 +3620,27 @@ describe("UsageService", () => {
              stateDir,
              version === 4 ? "usage-scan-cache.json" : `usage-scan-cache-v${version}.json`,
            );
@@ -323,7 +325,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6
              const document = decodeUnknownJsonString(await NodeFSP.readFile(cachePath, "utf8")) as {
                files: Record<string, { r: unknown[][]; mr: number; cs: Record<string, unknown> }>;
              };
-@@ -3440,6 +3550,11 @@ describe("UsageService", () => {
+@@ -3565,6 +3675,11 @@ describe("UsageService", () => {
                    encodeUnknownJsonString({ ...document, version: olderVersion, files: {} }),
                  );
                }
@@ -335,7 +337,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6
              }
              await NodeFSP.rm(deleted);
              await NodeFSP.mkdir(`${cachePath}.stale`);
-@@ -3456,12 +3571,24 @@ describe("UsageService", () => {
+@@ -3581,12 +3696,24 @@ describe("UsageService", () => {
            );
            yield* upgraded.awaitPersisted;
            assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v17.json");
@@ -366,7 +368,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6
          }).pipe(
            Effect.provide(
              layerService({
-@@ -3584,7 +3711,7 @@ describe("UsageService", () => {
+@@ -3709,7 +3836,7 @@ describe("UsageService", () => {
      }),
    );
  
@@ -375,7 +377,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6
      Effect.gen(function* () {
        const { transcript, settings, home } = yield* setup;
        const alias = NodePath.join(home, "claude-alias");
-@@ -3592,26 +3719,38 @@ describe("UsageService", () => {
+@@ -3717,26 +3844,38 @@ describe("UsageService", () => {
          NodeFSP.symlink(NodePath.join(home, "claude"), alias, "junction"),
        );
        const content = claudeLine(1, 5);
@@ -419,7 +421,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6
          assert.deepStrictEqual(moved.buckets, first.buckets);
          assert.strictEqual(moved.sources[0]?.distinctSessions, 1);
          yield* restarted.awaitPersisted;
-@@ -3622,7 +3761,7 @@ describe("UsageService", () => {
+@@ -3747,7 +3886,7 @@ describe("UsageService", () => {
            NodeFSP.rm(NodePath.join(home, "claude", "projects"), { recursive: true }),
          );
          const afterRootCleanup = yield* UsageService.make;
@@ -428,7 +430,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6
          assert.deepStrictEqual(missingRoot.buckets, first.buckets);
          assert.strictEqual(missingRoot.sources[0]?.distinctSessions, 1);
          assert.strictEqual(missingRoot.sources[0]?.status, "ok");
-@@ -3632,7 +3771,7 @@ describe("UsageService", () => {
+@@ -3757,7 +3896,7 @@ describe("UsageService", () => {
            await NodeFSP.rename(replacementProjects, projects);
            await NodeFSP.writeFile(NodePath.join(projects, "new.jsonl"), claudeLine(2, 7));
          });
@@ -437,7 +439,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6
          assert.strictEqual(totalOutputTokens(recreated), 12);
          assert.deepStrictEqual(recreated.sources[0]?.fingerprint, first.sources[0]?.fingerprint);
  
-@@ -3656,11 +3795,109 @@ describe("UsageService", () => {
+@@ -3781,11 +3920,109 @@ describe("UsageService", () => {
          assert.strictEqual(merged.costUsd, recreated.buckets[0]?.costUsd);
  
          const outsideWindow = yield* restarted.readSummary({
@@ -548,7 +550,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6
        }).pipe(
          Effect.scoped,
          Effect.provide(
-@@ -3686,7 +3923,8 @@ describe("UsageService", () => {
+@@ -3811,7 +4048,8 @@ describe("UsageService", () => {
    );
  
    it.effect.each([
@@ -558,7 +560,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6
      { label: "unlimited", retention: "unlimited" as const, expected: 15 },
    ])(
      "retains deleted transcripts according to $label across restart and settings changes",
-@@ -3791,7 +4029,15 @@ describe("UsageService", () => {
+@@ -3916,7 +4154,15 @@ describe("UsageService", () => {
          yield* service.awaitPersisted;
          const restarted = yield* UsageService.make;
          assert.strictEqual(totalOutputTokens(yield* restarted.readSummary(window)), 11);
@@ -575,7 +577,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6
      }),
    );
  
-@@ -3967,38 +4213,41 @@ describe("UsageService", () => {
+@@ -4118,38 +4364,41 @@ describe("UsageService", () => {
        }),
    );
  
@@ -648,7 +650,7 @@ index 0a9b9611eea06982be96dd35315ffcce828ae178..9fe7868cae34d696d1569c2a7c5c82c6
  
    it.effect("does not share an in-flight scan after custom prices change", () =>
 diff --git a/apps/server/src/usage/UsageService.ts b/apps/server/src/usage/UsageService.ts
-index 30edc903a580fa74ac7b5dc7830a199ca803f35c..8a33a0b01a7c4e51d0a0cb1e21dee082ffe17914 100644
+index 3ff200426665150fa150e11202fb8ed94fa034e2..3e848ba52a9e639317905eecb1d670b3566a72e9 100644
 --- a/apps/server/src/usage/UsageService.ts
 +++ b/apps/server/src/usage/UsageService.ts
 @@ -23,6 +23,8 @@ import * as FileSystem from "effect/FileSystem";
@@ -660,7 +662,7 @@ index 30edc903a580fa74ac7b5dc7830a199ca803f35c..8a33a0b01a7c4e51d0a0cb1e21dee082
  import * as Schema from "effect/Schema";
  import * as Semaphore from "effect/Semaphore";
  import { HttpClient, HttpClientResponse } from "effect/http";
-@@ -60,6 +62,7 @@ import {
+@@ -65,6 +67,7 @@ import {
    makeScanCacheWriter,
    pruneScanCache,
    SCAN_CACHE_FILE_NAME,
@@ -668,7 +670,7 @@ index 30edc903a580fa74ac7b5dc7830a199ca803f35c..8a33a0b01a7c4e51d0a0cb1e21dee082
    type CachedFile,
    type ScanCache,
  } from "./usageScanCache.ts";
-@@ -78,6 +81,7 @@ const MTIME_SLACK_MS = 36 * 60 * 60 * 1000;
+@@ -83,6 +86,7 @@ const MTIME_SLACK_MS = 36 * 60 * 60 * 1000;
  const MAX_HOURLY_WINDOW_MS = 24 * 60 * 60 * 1000;
  
  const STALE_TEMP_DIRECTORY_MS = 60 * 60 * 1000;
@@ -676,7 +678,7 @@ index 30edc903a580fa74ac7b5dc7830a199ca803f35c..8a33a0b01a7c4e51d0a0cb1e21dee082
  
  const TRANSCRIPT_READ_CONCURRENCY = 4;
  
-@@ -115,6 +119,14 @@ const RatesCacheFile = Schema.Struct({
+@@ -120,6 +124,14 @@ const RatesCacheFile = Schema.Struct({
  const decodeRatesCache = Schema.decodeUnknownEffect(Schema.fromJsonString(RatesCacheFile));
  const encodeRatesCache = Schema.encodeEffect(Schema.fromJsonString(RatesCacheFile));
  
@@ -691,7 +693,7 @@ index 30edc903a580fa74ac7b5dc7830a199ca803f35c..8a33a0b01a7c4e51d0a0cb1e21dee082
  const ScanCacheJson = Schema.fromJsonString(Schema.Unknown);
  const decodeScanCacheFile = Schema.decodeUnknownEffect(ScanCacheJson);
  const encodeUsageRecordKey = Schema.encodeSync(ScanCacheJson);
-@@ -208,6 +220,10 @@ export const make = Effect.gen(function* () {
+@@ -213,6 +225,10 @@ export const make = Effect.gen(function* () {
      coveredSince.set(coverageKey(source), windowStartMs);
      cacheDirty = true;
    };
@@ -702,7 +704,7 @@ index 30edc903a580fa74ac7b5dc7830a199ca803f35c..8a33a0b01a7c4e51d0a0cb1e21dee082
    const isWithinDirectory = (filePath: string, dir: string) => {
      const relative = path.relative(dir, filePath);
      return relative !== ".." && !relative.startsWith(".." + path.sep) && !path.isAbsolute(relative);
-@@ -447,19 +463,72 @@ export const make = Effect.gen(function* () {
+@@ -453,19 +469,72 @@ export const make = Effect.gen(function* () {
      return { dirs, pending };
    });
  
@@ -779,7 +781,7 @@ index 30edc903a580fa74ac7b5dc7830a199ca803f35c..8a33a0b01a7c4e51d0a0cb1e21dee082
          cacheDirty = document !== null;
        }
        if (document === null) return;
-@@ -485,13 +554,10 @@ export const make = Effect.gen(function* () {
+@@ -491,13 +560,10 @@ export const make = Effect.gen(function* () {
    // Serialize writes so concurrently finished window scans cannot overwrite newer snapshots.
    const persistLock = yield* Semaphore.make(1);
  
@@ -794,7 +796,7 @@ index 30edc903a580fa74ac7b5dc7830a199ca803f35c..8a33a0b01a7c4e51d0a0cb1e21dee082
      const tempPrefixes = [SCAN_CACHE_FILE_NAME, ...LEGACY_SCAN_CACHE_FILE_NAMES].map(
        (fileName) => `${fileName}.`,
      );
-@@ -513,7 +579,7 @@ export const make = Effect.gen(function* () {
+@@ -519,7 +585,7 @@ export const make = Effect.gen(function* () {
  
    // Clear dirty before encoding to retain concurrent changes; restore it on failure for retry.
    const persistCaches = Effect.gen(function* () {
@@ -803,7 +805,7 @@ index 30edc903a580fa74ac7b5dc7830a199ca803f35c..8a33a0b01a7c4e51d0a0cb1e21dee082
        cacheDirty = false;
        yield* Effect.sync(() =>
          writeScanCache(fileCache, {
-@@ -529,9 +595,15 @@ export const make = Effect.gen(function* () {
+@@ -535,9 +601,15 @@ export const make = Effect.gen(function* () {
              return removeSupersededCacheFiles;
            }),
          ),
@@ -821,7 +823,7 @@ index 30edc903a580fa74ac7b5dc7830a199ca803f35c..8a33a0b01a7c4e51d0a0cb1e21dee082
            }),
          ),
        );
-@@ -930,11 +1002,18 @@ export const make = Effect.gen(function* () {
+@@ -941,11 +1013,18 @@ export const make = Effect.gen(function* () {
          return within;
        };
      };
@@ -841,18 +843,38 @@ index 30edc903a580fa74ac7b5dc7830a199ca803f35c..8a33a0b01a7c4e51d0a0cb1e21dee082
          if (
            entry.provider !== provider ||
            entry.mtimeMs < retainedSinceMs ||
-@@ -951,8 +1030,8 @@ export const make = Effect.gen(function* () {
+@@ -962,17 +1041,19 @@ export const make = Effect.gen(function* () {
            malformedRecords: entry.malformedRecords,
          });
        }
--      return retainedFiles;
+-      return retainedFiles.flatMap((file) => {
+-        // A keyed copy outside the window still claims its key, so a later copy is not counted.
+-        const records = file.records.filter(
+-          (record) => record.dedupeKey !== null || inWindow(record.timestampMs),
+-        );
+-        const malformedRecords = file.malformedRecords.filter(inWindow);
+-        return records.length === 0 && malformedRecords.length === 0
+-          ? []
+-          : [{ ...file, records, malformedRecords }];
+-      });
 -    });
-+      filesByDir.push(retainedFiles);
++      filesByDir.push(
++        retainedFiles.flatMap((file) => {
++          // A keyed copy outside the window still claims its key, so a later copy is not counted.
++          const records = file.records.filter(
++            (record) => record.dedupeKey !== null || inWindow(record.timestampMs),
++          );
++          const malformedRecords = file.malformedRecords.filter(inWindow);
++          return records.length === 0 && malformedRecords.length === 0
++            ? []
++            : [{ ...file, records, malformedRecords }];
++        }),
++      );
 +    }
      // Usage two transcripts share counts in the first one, so saved files take the order an exact
      // scan reads them in: walked files in walk order, then the directory's deleted files.
      for (const { provider, dir, walked } of fromMemory ? [] : scannedDirs) {
-@@ -1085,6 +1164,11 @@ export const make = Effect.gen(function* () {
+@@ -1102,6 +1183,11 @@ export const make = Effect.gen(function* () {
          scannedFiles += 1;
          const eventOccurrences = new Map<string, number>();
          for (const rawRecord of file.records) {
@@ -865,7 +887,7 @@ index 30edc903a580fa74ac7b5dc7830a199ca803f35c..8a33a0b01a7c4e51d0a0cb1e21dee082
            let usageRecord = record;
            if (
 diff --git a/apps/server/src/usage/usageScanCache.test.ts b/apps/server/src/usage/usageScanCache.test.ts
-index 36864768eb525ef0afcbab7360b5d25249779e0f..1d4ae32c23193b411e1b082037f0a4e137472813 100644
+index 6acc49e0657cfeadae0b40fc781938becf33761e..f33f6e756099ddf8fb90bf6adcae0adb7acf9597 100644
 --- a/apps/server/src/usage/usageScanCache.test.ts
 +++ b/apps/server/src/usage/usageScanCache.test.ts
 @@ -1,7 +1,15 @@
@@ -885,7 +907,7 @@ index 36864768eb525ef0afcbab7360b5d25249779e0f..1d4ae32c23193b411e1b082037f0a4e1
    makeScanCacheWriter,
    type CachedFile,
    type ScanCache,
-@@ -383,6 +391,32 @@ describe("scan cache round trip", () => {
+@@ -393,6 +401,32 @@ describe("scan cache round trip", () => {
      expect(document.sources).toEqual(sources);
    });
  
@@ -919,7 +941,7 @@ index 36864768eb525ef0afcbab7360b5d25249779e0f..1d4ae32c23193b411e1b082037f0a4e1
      expect(decodeScanCache(null, TEST_FORMAT_MAP).size).toBe(0);
      expect(decodeScanCache("nonsense", TEST_FORMAT_MAP).size).toBe(0);
 diff --git a/apps/server/src/usage/usageScanCache.ts b/apps/server/src/usage/usageScanCache.ts
-index 843b414b97f32872cba0ad85fee3516a15d37551..18cd2915ab568654eecc4d1ef8dd14664aecef83 100644
+index cc6068b72f164eca21f8bb29ba3587da1ca7d3ba..466638aaa010d61c54300d39f6387258f9846bde 100644
 --- a/apps/server/src/usage/usageScanCache.ts
 +++ b/apps/server/src/usage/usageScanCache.ts
 @@ -1,3 +1,5 @@
@@ -937,7 +959,7 @@ index 843b414b97f32872cba0ad85fee3516a15d37551..18cd2915ab568654eecc4d1ef8dd1466
   */
  export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v17.json";
  export const LEGACY_SCAN_CACHE_FILE_NAMES = [
-@@ -144,16 +146,38 @@ function serializeFile(entry: CachedFile, tables: InternTables): SerializedFile
+@@ -146,16 +148,38 @@ function serializeFile(entry: CachedFile, tables: InternTables): SerializedFile
    };
  }
  
@@ -983,7 +1005,7 @@ index 843b414b97f32872cba0ad85fee3516a15d37551..18cd2915ab568654eecc4d1ef8dd1466
      }
      // Encoded after the files, which may have added to the intern tables.
      const tail = JSON.stringify({
-@@ -162,7 +186,7 @@ export function makeScanCacheWriter(): (
+@@ -164,7 +188,7 @@ export function makeScanCacheWriter(): (
        models: tables.models,
        sessions: tables.sessions,
      });
@@ -993,7 +1015,7 @@ index 843b414b97f32872cba0ad85fee3516a15d37551..18cd2915ab568654eecc4d1ef8dd1466
    // Snapshot now: the encoding runs later, while the file is written.
    return (cache, extra) => encode([...cache], extra);
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index 55d4278b0fe161c389784f056592c4f744cb2321..36b789cbc953bd7d0eb0d627520dbf9fdb37aa20 100644
+index 9d03b7ab72e4871e06f865682771a2dc62ff8225..eb7d19f90f03a1bd05b45c0f067e6a0a41c864f3 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 @@ -29,7 +29,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
@@ -1356,10 +1378,10 @@ index 43f4c94a19328be71934d655617849c609298754..71b56f04e81d22c312b9ef528b7c6ba4
  Press `Escape` to return to the previous page. Customize these shortcuts in
  **Settings → Keybindings**.
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 4538065ee5c50c2681008ebc842caab2cdc8893b..f239577770c7e5e32ec5e47e47d59652e45f1aed 100644
+index e7887f88f0369f34ce857ef0a663cc13f9d4e32a..c63b05b14ef75ea21fada975601ff93d0bceedb1 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -1609,7 +1609,7 @@ export const ServerSettings = Schema.Struct({
+@@ -1611,7 +1611,7 @@ export const ServerSettings = Schema.Struct({
    ),
  
    usageHistoryRetentionDays: UsageHistoryRetentionDays.pipe(

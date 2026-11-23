@@ -94,10 +94,10 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 apps/server/src/provider/fleetProxyLimits.ts
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index 3d017de3925fa7bbc24c29ee2b0d9ac4387143ad..57834f24e6b3cf6585635f9dfb39379017712a04 100644
+index f753075022d0daa759eaff431dad84afe356c45a..6c143b52e29910f6a621ddfd16dfb1bc6fd5d9ce 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-@@ -77,6 +77,7 @@ import * as Scope from "effect/Scope";
+@@ -79,6 +79,7 @@ import * as Scope from "effect/Scope";
  import * as Stream from "effect/Stream";
  import * as TestClock from "effect/testing/TestClock";
  import { Tool } from "effect/ai";
@@ -105,7 +105,7 @@ index 3d017de3925fa7bbc24c29ee2b0d9ac4387143ad..57834f24e6b3cf6585635f9dfb393790
  import { formatClaudeResumeCompactionQuestion } from "@t3tools/shared/claudeCompaction";
  import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
  import * as HostProcess from "@t3tools/shared/HostProcess";
-@@ -112,6 +113,7 @@ import {
+@@ -114,6 +115,7 @@ import {
    resolveClaudeModelSettingsKey,
  } from "../../provider/ClaudeCodeModelRoutes.ts";
  import { resolveProviderCatalog } from "../../provider/ModelManifest.ts";
@@ -113,7 +113,7 @@ index 3d017de3925fa7bbc24c29ee2b0d9ac4387143ad..57834f24e6b3cf6585635f9dfb393790
  import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
  import { AGENT_FEEDBACK_INSTRUCTIONS } from "@t3tools/provider-core/server/runtimeInstructions";
  import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-@@ -3851,6 +3853,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -3856,6 +3858,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      readonly offer?: (message: SDKUserMessage) => Effect.Effect<void>;
      readonly promptSuggestions?: boolean;
      readonly routeModelCatalog?: ClaudeAdapterV2.ClaudeAdapterV2Options["routeModelCatalog"];
@@ -121,7 +121,7 @@ index 3d017de3925fa7bbc24c29ee2b0d9ac4387143ad..57834f24e6b3cf6585635f9dfb393790
    }) =>
      Effect.gen(function* () {
        const fileSystem = yield* FileSystem.FileSystem;
-@@ -3917,6 +3920,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -3922,6 +3925,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
          idAllocator,
          ...(options?.onSessionInit ? { onSessionInit: options.onSessionInit } : {}),
          ...(options?.routeModelCatalog ? { routeModelCatalog: options.routeModelCatalog } : {}),
@@ -131,7 +131,7 @@ index 3d017de3925fa7bbc24c29ee2b0d9ac4387143ad..57834f24e6b3cf6585635f9dfb393790
          continuationRequests: {
            offer: (request) =>
              Effect.sync(() => {
-@@ -10485,6 +10491,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -10490,6 +10496,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      ),
    );
  
@@ -305,7 +305,7 @@ index 3d017de3925fa7bbc24c29ee2b0d9ac4387143ad..57834f24e6b3cf6585635f9dfb393790
      Effect.gen(function* () {
        const harness = yield* makeWakeHarness;
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index 370b6b6c4c3f6cf5e3f1133ac652a0e20774c0fc..eff3895a5badfa9a723848f6285cd9b5d186c5cc 100644
+index d3c017a54679a12618f3f1f08c58d581d3ffe794..0d57ca34fe305fd26a8a7f25028125f4f95bdca3 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -37,6 +37,7 @@ import {
@@ -324,7 +324,7 @@ index 370b6b6c4c3f6cf5e3f1133ac652a0e20774c0fc..eff3895a5badfa9a723848f6285cd9b5
  
  import { resolveAttachmentPath } from "../../attachmentStore.ts";
  import { snapshotMcpApp } from "../../mcpApps/McpAppSnapshot.ts";
-@@ -5785,6 +5787,7 @@ export interface ClaudeAdapterV2Options {
+@@ -5876,6 +5878,7 @@ export interface ClaudeAdapterV2Options {
      cwd: string | null,
      launchSettings?: ClaudeSdkSettings,
    ) => Effect.Effect<ClaudeModelCatalog>;
@@ -332,7 +332,7 @@ index 370b6b6c4c3f6cf5e3f1133ac652a0e20774c0fc..eff3895a5badfa9a723848f6285cd9b5
    readonly continuationRequests?: {
      readonly offer: (
        request: ProviderContinuationRequests.ProviderContinuationRequest,
-@@ -12364,15 +12367,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12462,15 +12465,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                resetTimes.length > 0 && resetTimes.every((time) => time !== null)
                  ? resetTimes.reduce((latest, time) => (time! > latest ? time! : latest), "")
                  : null;
@@ -380,7 +380,7 @@ index 370b6b6c4c3f6cf5e3f1133ac652a0e20774c0fc..eff3895a5badfa9a723848f6285cd9b5
              // Claude answers a steer it has not read yet as the next native turn, which echoes
              // the steer. A result without echoes cannot prove that turn will come.
              if (
-@@ -15193,7 +15220,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+@@ -15290,7 +15317,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
      input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
      hooks: Pick<
        ClaudeAdapterV2Options,

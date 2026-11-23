@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
-Date: Mon, 23 Nov 2026 04:35:32 +0100
+Date: Mon, 23 Nov 2026 07:41:26 +0100
 Subject: =?UTF-8?q?=F0=9F=94=97=20Ask-only=20links:=20a=20linked=20machine?=
  =?UTF-8?q?=20may=20ask=20opted-in=20threads=20and=20read=20the=20answers?=
 MIME-Version: 1.0
@@ -87,6 +87,8 @@ Behaviours:
 Not covered: the mobile settings screen has no row for the cap; t3_ask_list
 and t3_ask_wait have no rate limit of their own; the evals cases added under
 evals/mcp-tool-use were not run against a model.
+
+Port to 21b52875ea: upstream e414cfd4be (#38882, durable workflows) adds the workflowsEnabled setting next to linkedEnvironmentsInboundMaxAccess in settings.ts (both kept), the t3_workflow tool, workflow milestone event types and a Workflows mock in the MCP tool test layer. t3_workflow is declared through McpToolAccess.toLayer, so the default deny refuses it to an ask link, and layerAskLinkVisibility hides it and the workflow event types from ask discovery. McpToolAccess.testkit.ts's toolHandlerServices gains upstream's Workflows mock, AgentContextBudget.test.ts keeps using it, mcpToolListJsonBytes is 62922 (upstream's 61724 plus the same 1198 bytes the ask tools added before), MilestoneEvents.test.ts serves upstream's workflow settings with linked environments on and keeps the host-token and ask-token cases, and ThreadManagementService.test.ts keeps upstream's workflowRun provenance assertion beside the forged ask question.
 
 Files:
 - apps/mobile:
@@ -235,7 +237,7 @@ Tests:
  apps/server/src/mcp/McpHttpServer.ts          |  35 +-
  apps/server/src/mcp/McpInvocationContext.ts   |  10 +-
  apps/server/src/mcp/McpToolAccess.test.ts     |  17 +
- apps/server/src/mcp/McpToolAccess.testkit.ts  |  89 +++
+ apps/server/src/mcp/McpToolAccess.testkit.ts  |  91 +++
  apps/server/src/mcp/McpToolAccess.ts          |  53 +-
  apps/server/src/mcp/linkOrigin.test.ts        | 536 +++++++++++++++++-
  apps/server/src/mcp/toolkits/ask/handlers.ts  |  34 ++
@@ -281,7 +283,7 @@ Tests:
  apps/server/src/peer/inboundCap.ts            |  89 +++
  apps/server/src/peer/linkThreadHttp.ts        |  34 +-
  apps/server/src/policy/ManagedPolicy.test.ts  |   4 +-
- .../src/provider/AgentContextBudget.test.ts   |  89 +--
+ .../src/provider/AgentContextBudget.test.ts   |  91 +--
  .../src/provider/ProviderRegistry.test.ts     |   1 +
  .../src/provider/agentContextBudget.json      |   2 +-
  apps/server/src/relay/AgentAwarenessRelay.ts  |   1 +
@@ -341,7 +343,7 @@ Tests:
  packages/contracts/src/settings.ts            |  12 +-
  .../src/server/ProviderAdapter.ts             |   2 +
  .../shared/src/orchestrationV2ThreadError.ts  |  39 ++
- 146 files changed, 4784 insertions(+), 390 deletions(-)
+ 146 files changed, 4786 insertions(+), 392 deletions(-)
  create mode 100644 apps/server/src/mcp/toolkits/ask/handlers.ts
  create mode 100644 apps/server/src/mcp/toolkits/ask/tools.ts
  create mode 100644 apps/server/src/orchestration-v2/linkedQuestionFailures.ts
@@ -522,10 +524,10 @@ index 1ee34663431b81e5fd1379b0e6ba32426bf7e886..a77a55661ab15e7b0d24f652e89cd77e
          )}
          {error !== null ? (
 diff --git a/apps/mobile/src/features/threads/ThreadFeed.tsx b/apps/mobile/src/features/threads/ThreadFeed.tsx
-index a809dc8ea8f3ecaceb5e325e04a552eae73e7725..a9f5c6e2fa85b42279cb22032414a3b07156dff3 100644
+index 005a6fb8f30c158195681fc1f727f963f5b35d7b..0eed7d15cffc5fb9311b9b038bde73ba6bed74e5 100644
 --- a/apps/mobile/src/features/threads/ThreadFeed.tsx
 +++ b/apps/mobile/src/features/threads/ThreadFeed.tsx
-@@ -2399,6 +2399,11 @@ function renderFeedEntry(
+@@ -2400,6 +2400,11 @@ function renderFeedEntry(
            {presentation.guestName !== undefined ? (
              <GuestMessageName name={presentation.guestName} />
            ) : null}
@@ -829,10 +831,10 @@ index 50a004d679003439f65b0730423fbc522ced6594..53b2d27537e49b8065ffedce6982e380
      dismissAccessibilityLabel: REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL,
      // Editing and sending keep the original text so quoted citations stay linked.
 diff --git a/apps/mobile/src/i18n/translations/de.json b/apps/mobile/src/i18n/translations/de.json
-index 2ec3b8270dc9b82a67a7843b72e92cff85962b70..6a8c712e18f25379d7bbbc4da2f6e2ae6ea331f0 100644
+index 1116dd8895c6e226a2aff42129711482aa93e8d6..a262224e3acd3bc02cbdf96ae565a08c0f4a013c 100644
 --- a/apps/mobile/src/i18n/translations/de.json
 +++ b/apps/mobile/src/i18n/translations/de.json
-@@ -2367,6 +2367,7 @@
+@@ -2398,6 +2398,7 @@
    "940f8b95cf1c9bd6": "Automatisches Erledigen konnte nicht aktualisiert werden",
    "1343cf9e3a6caa44": "Der Server dieser Umgebung unterstützt das Abschalten des automatischen Erledigens pro Thread noch nicht. Aktualisiere den Server, um es zu nutzen.",
    "656ae8b4f8621a40": "Die Einstellung für automatisches Erledigen konnte nicht geändert werden.",
@@ -840,7 +842,7 @@ index 2ec3b8270dc9b82a67a7843b72e92cff85962b70..6a8c712e18f25379d7bbbc4da2f6e2ae
    "569c7df7859c9116": "Titel konnte nicht neu generiert werden",
    "89e2726358798289": "Der Server dieser Umgebung unterstützt das Neugenerieren von Titeln noch nicht. Aktualisiere den Server, um Thread-Titel neu zu generieren.",
    "eb49fd6eb5b0e8c5": "Der Thread-Titel konnte nicht neu generiert werden.",
-@@ -4190,6 +4191,8 @@
+@@ -4221,6 +4222,8 @@
    "ce591b4de647ecda": "{title} öffnen",
    "4a9a6f6111329b54": "{title} neu laden",
    "12f0890f800baa7a": "Seite nicht verfügbar",
@@ -849,7 +851,7 @@ index 2ec3b8270dc9b82a67a7843b72e92cff85962b70..6a8c712e18f25379d7bbbc4da2f6e2ae
    "9c5a2e144cefdf2f": "Nur lesen",
    "12d03e02951725b0": "Projekte und Threads lesen. Kann nichts starten, keine Nachrichten senden und nichts ändern.",
    "63fd02d55f0e4417": "Einen Rechner mit dieser Umgebung verknüpfen",
-@@ -4883,6 +4886,7 @@
+@@ -4914,6 +4917,7 @@
    "fcf482cda9bf739f": "Verhalten beim automatischen Erledigen",
    "39eb35d54cacd314": "Einstellungen folgen",
    "73c02fecfe6d6050": "Nie",
@@ -858,10 +860,10 @@ index 2ec3b8270dc9b82a67a7843b72e92cff85962b70..6a8c712e18f25379d7bbbc4da2f6e2ae
    "dffd2e20f7ff5aa1": "Als ungelesen markieren",
    "1385e2d8bd696370": "In Projekt umwandeln",
 diff --git a/apps/mobile/src/i18n/translations/en.json b/apps/mobile/src/i18n/translations/en.json
-index a2878b32b1b95a76dbcf4d25f941af52cfda8f49..ef5d95f327273ab7600d795400da0802532950f9 100644
+index d9c7d08df765b34509d471926fcf5e7e5951e3cc..0f88d03ae80ef5710b8841f8e4ef8808525eed9e 100644
 --- a/apps/mobile/src/i18n/translations/en.json
 +++ b/apps/mobile/src/i18n/translations/en.json
-@@ -2367,6 +2367,7 @@
+@@ -2398,6 +2398,7 @@
    "940f8b95cf1c9bd6": "Could not update auto-settle",
    "1343cf9e3a6caa44": "This environment's server does not support turning auto-settle off per thread yet. Update the server to use it.",
    "656ae8b4f8621a40": "The auto-settle setting could not be changed.",
@@ -869,7 +871,7 @@ index a2878b32b1b95a76dbcf4d25f941af52cfda8f49..ef5d95f327273ab7600d795400da0802
    "569c7df7859c9116": "Could not regenerate title",
    "89e2726358798289": "This environment's server does not support title regeneration yet. Update the server to regenerate thread titles.",
    "eb49fd6eb5b0e8c5": "The thread title could not be regenerated.",
-@@ -4192,6 +4193,8 @@
+@@ -4223,6 +4224,8 @@
    "ce591b4de647ecda": "Open {title}",
    "4a9a6f6111329b54": "Reload {title}",
    "12f0890f800baa7a": "Page unavailable",
@@ -878,7 +880,7 @@ index a2878b32b1b95a76dbcf4d25f941af52cfda8f49..ef5d95f327273ab7600d795400da0802
    "9c5a2e144cefdf2f": "Read only",
    "12d03e02951725b0": "Read projects and threads. Cannot start, message or change anything.",
    "63fd02d55f0e4417": "Link a machine to this environment",
-@@ -4885,6 +4888,7 @@
+@@ -4916,6 +4919,7 @@
    "fcf482cda9bf739f": "Auto-settle behavior",
    "39eb35d54cacd314": "Follow settings",
    "73c02fecfe6d6050": "Never",
@@ -887,10 +889,10 @@ index a2878b32b1b95a76dbcf4d25f941af52cfda8f49..ef5d95f327273ab7600d795400da0802
    "dffd2e20f7ff5aa1": "Mark unread",
    "1385e2d8bd696370": "Turn into project",
 diff --git a/apps/mobile/src/i18n/translations/es.json b/apps/mobile/src/i18n/translations/es.json
-index 5e1f41bab75ab5eb20f2a414e3564d1b0c560fd5..21aa7d014c2218478790a3d3fef335629feda98c 100644
+index 8ceac2b26a7220316ec0ccc772aa2707b3086188..bf19fdb001af689af6c85161121c1cb7e02dc925 100644
 --- a/apps/mobile/src/i18n/translations/es.json
 +++ b/apps/mobile/src/i18n/translations/es.json
-@@ -2367,6 +2367,7 @@
+@@ -2398,6 +2398,7 @@
    "940f8b95cf1c9bd6": "No se pudo actualizar la resolución automática",
    "1343cf9e3a6caa44": "El servidor de este entorno aún no permite desactivar la resolución automática por hilo. Actualiza el servidor para usarlo.",
    "656ae8b4f8621a40": "No se pudo cambiar el ajuste de resolución automática.",
@@ -898,7 +900,7 @@ index 5e1f41bab75ab5eb20f2a414e3564d1b0c560fd5..21aa7d014c2218478790a3d3fef33562
    "569c7df7859c9116": "No se pudo regenerar el título",
    "89e2726358798289": "El servidor de este entorno aún no admite regenerar títulos. Actualiza el servidor para regenerar los títulos de los hilos.",
    "eb49fd6eb5b0e8c5": "No se pudo regenerar el título del hilo.",
-@@ -4185,6 +4186,8 @@
+@@ -4216,6 +4217,8 @@
    "ce591b4de647ecda": "Abrir {title}",
    "4a9a6f6111329b54": "Recargar {title}",
    "12f0890f800baa7a": "Página no disponible",
@@ -907,7 +909,7 @@ index 5e1f41bab75ab5eb20f2a414e3564d1b0c560fd5..21aa7d014c2218478790a3d3fef33562
    "9c5a2e144cefdf2f": "Solo lectura",
    "12d03e02951725b0": "Leer proyectos e hilos. No puede iniciar, enviar mensajes ni cambiar nada.",
    "63fd02d55f0e4417": "Vincular una máquina a este entorno",
-@@ -4876,6 +4879,7 @@
+@@ -4907,6 +4910,7 @@
    "fcf482cda9bf739f": "Resolución automática",
    "39eb35d54cacd314": "Según los ajustes",
    "73c02fecfe6d6050": "Nunca",
@@ -916,10 +918,10 @@ index 5e1f41bab75ab5eb20f2a414e3564d1b0c560fd5..21aa7d014c2218478790a3d3fef33562
    "dffd2e20f7ff5aa1": "Marcar como no leído",
    "1385e2d8bd696370": "Convertir en proyecto",
 diff --git a/apps/mobile/src/i18n/translations/fr.json b/apps/mobile/src/i18n/translations/fr.json
-index 5771cf3fcfa4dd867826055cc9d1e3441e22589b..58830d6fd75e18fbe95a68485c66627052a214fc 100644
+index a6904b69d7f734e57b4efa149fc530bb07e01557..cdc17584be3a9ceeb498c10bebfcc632cf76758d 100644
 --- a/apps/mobile/src/i18n/translations/fr.json
 +++ b/apps/mobile/src/i18n/translations/fr.json
-@@ -2367,6 +2367,7 @@
+@@ -2398,6 +2398,7 @@
    "940f8b95cf1c9bd6": "Impossible de mettre à jour la clôture automatique",
    "1343cf9e3a6caa44": "Le serveur de cet environnement ne permet pas encore de désactiver la clôture automatique par fil. Mettez à jour le serveur pour l’utiliser.",
    "656ae8b4f8621a40": "Le paramètre de clôture automatique n’a pas pu être modifié.",
@@ -927,7 +929,7 @@ index 5771cf3fcfa4dd867826055cc9d1e3441e22589b..58830d6fd75e18fbe95a68485c666270
    "569c7df7859c9116": "Impossible de régénérer le titre",
    "89e2726358798289": "Le serveur de cet environnement ne prend pas encore en charge la régénération des titres. Mettez à jour le serveur pour régénérer les titres des fils.",
    "eb49fd6eb5b0e8c5": "Le titre du fil n’a pas pu être régénéré.",
-@@ -4185,6 +4186,8 @@
+@@ -4216,6 +4217,8 @@
    "ce591b4de647ecda": "Ouvrir {title}",
    "4a9a6f6111329b54": "Recharger {title}",
    "12f0890f800baa7a": "Page indisponible",
@@ -936,7 +938,7 @@ index 5771cf3fcfa4dd867826055cc9d1e3441e22589b..58830d6fd75e18fbe95a68485c666270
    "9c5a2e144cefdf2f": "Lecture seule",
    "12d03e02951725b0": "Lire les projets et les fils. Ne peut rien démarrer, envoyer ni modifier.",
    "63fd02d55f0e4417": "Associer une machine à cet environnement",
-@@ -4877,6 +4880,7 @@
+@@ -4908,6 +4911,7 @@
    "fcf482cda9bf739f": "Comportement de la clôture automatique",
    "39eb35d54cacd314": "Suivre les paramètres",
    "73c02fecfe6d6050": "Jamais",
@@ -945,10 +947,10 @@ index 5771cf3fcfa4dd867826055cc9d1e3441e22589b..58830d6fd75e18fbe95a68485c666270
    "dffd2e20f7ff5aa1": "Marquer comme non lu",
    "1385e2d8bd696370": "Transformer en projet",
 diff --git a/apps/mobile/src/i18n/translations/ja.json b/apps/mobile/src/i18n/translations/ja.json
-index 3a42a5e2af31a918a952d94b51a6627c6fd53574..72b239a50f16a9d99c62022e8a959020b2aab7a9 100644
+index 3ce3515fae73b11bcb3ba89cb7111118aab87406..219b12ec3cbff70b5896bdc9cb33643b6fc4d3f8 100644
 --- a/apps/mobile/src/i18n/translations/ja.json
 +++ b/apps/mobile/src/i18n/translations/ja.json
-@@ -2366,6 +2366,7 @@
+@@ -2397,6 +2397,7 @@
    "940f8b95cf1c9bd6": "自動で対応済みにする設定を更新できませんでした",
    "1343cf9e3a6caa44": "この環境のサーバーは、スレッドごとの自動対応済みのオフにまだ対応していません。使用するにはサーバーを更新してください。",
    "656ae8b4f8621a40": "自動で対応済みにする設定を変更できませんでした。",
@@ -956,7 +958,7 @@ index 3a42a5e2af31a918a952d94b51a6627c6fd53574..72b239a50f16a9d99c62022e8a959020
    "569c7df7859c9116": "タイトルを再生成できませんでした",
    "89e2726358798289": "この環境のサーバーはまだタイトルの再生成に対応していません。スレッドのタイトルを再生成するにはサーバーを更新してください。",
    "eb49fd6eb5b0e8c5": "スレッドのタイトルを再生成できませんでした。",
-@@ -4181,6 +4182,8 @@
+@@ -4212,6 +4213,8 @@
    "ce591b4de647ecda": "{title} を開く",
    "4a9a6f6111329b54": "{title} を再読み込み",
    "12f0890f800baa7a": "ページを利用できません",
@@ -965,7 +967,7 @@ index 3a42a5e2af31a918a952d94b51a6627c6fd53574..72b239a50f16a9d99c62022e8a959020
    "9c5a2e144cefdf2f": "読み取り専用",
    "12d03e02951725b0": "プロジェクトとスレッドを読み取ります。開始、メッセージ送信、変更はできません。",
    "63fd02d55f0e4417": "この環境にマシンをリンク",
-@@ -4857,6 +4860,7 @@
+@@ -4888,6 +4891,7 @@
    "fcf482cda9bf739f": "自動対応済みの動作",
    "39eb35d54cacd314": "設定に従う",
    "73c02fecfe6d6050": "しない",
@@ -974,10 +976,10 @@ index 3a42a5e2af31a918a952d94b51a6627c6fd53574..72b239a50f16a9d99c62022e8a959020
    "dffd2e20f7ff5aa1": "未読にする",
    "1385e2d8bd696370": "プロジェクトに変換",
 diff --git a/apps/mobile/src/i18n/translations/ko.json b/apps/mobile/src/i18n/translations/ko.json
-index 173122458795eabfb009776d1c92ce3e5998e73b..a387fd5bcaf92c0ddd0b81c8db59ebdb5408258f 100644
+index 484ab67231b2eba4b5a7c7f56d261a325b89914d..822eef8c3c5a6a6d6aaebe34ef3280b65a222cad 100644
 --- a/apps/mobile/src/i18n/translations/ko.json
 +++ b/apps/mobile/src/i18n/translations/ko.json
-@@ -2368,6 +2368,7 @@
+@@ -2399,6 +2399,7 @@
    "940f8b95cf1c9bd6": "자동 정리를 업데이트할 수 없습니다",
    "1343cf9e3a6caa44": "이 환경의 서버는 아직 스레드별 자동 정리 끄기를 지원하지 않습니다. 사용하려면 서버를 업데이트하세요.",
    "656ae8b4f8621a40": "자동 정리 설정을 변경할 수 없습니다.",
@@ -985,7 +987,7 @@ index 173122458795eabfb009776d1c92ce3e5998e73b..a387fd5bcaf92c0ddd0b81c8db59ebdb
    "569c7df7859c9116": "제목을 다시 생성할 수 없습니다",
    "89e2726358798289": "이 환경의 서버는 아직 제목 다시 생성을 지원하지 않습니다. 스레드 제목을 다시 생성하려면 서버를 업데이트하세요.",
    "eb49fd6eb5b0e8c5": "스레드 제목을 다시 생성할 수 없습니다.",
-@@ -4185,6 +4186,8 @@
+@@ -4216,6 +4217,8 @@
    "ce591b4de647ecda": "{title} 열기",
    "4a9a6f6111329b54": "{title} 다시 불러오기",
    "12f0890f800baa7a": "페이지를 사용할 수 없음",
@@ -994,7 +996,7 @@ index 173122458795eabfb009776d1c92ce3e5998e73b..a387fd5bcaf92c0ddd0b81c8db59ebdb
    "9c5a2e144cefdf2f": "읽기 전용",
    "12d03e02951725b0": "프로젝트와 스레드를 읽습니다. 시작, 메시지 전송, 변경은 할 수 없습니다.",
    "63fd02d55f0e4417": "이 환경에 머신 연결",
-@@ -4862,6 +4865,7 @@
+@@ -4893,6 +4896,7 @@
    "fcf482cda9bf739f": "자동 정리 동작",
    "39eb35d54cacd314": "설정 따르기",
    "73c02fecfe6d6050": "안 함",
@@ -1003,10 +1005,10 @@ index 173122458795eabfb009776d1c92ce3e5998e73b..a387fd5bcaf92c0ddd0b81c8db59ebdb
    "dffd2e20f7ff5aa1": "읽지 않음으로 표시",
    "1385e2d8bd696370": "프로젝트로 전환",
 diff --git a/apps/mobile/src/i18n/translations/pt-BR.json b/apps/mobile/src/i18n/translations/pt-BR.json
-index 2a3b7f5a57d0a8056a47934d705e316d5f3bf734..6f0ef596562b38506931922653267b5efc7c3a28 100644
+index 4959be9c365b1dac43a80da5001c197ae998b7bd..42da4a8a81a9047a63bc853fb4a6d6218f71ea9f 100644
 --- a/apps/mobile/src/i18n/translations/pt-BR.json
 +++ b/apps/mobile/src/i18n/translations/pt-BR.json
-@@ -2367,6 +2367,7 @@
+@@ -2398,6 +2398,7 @@
    "940f8b95cf1c9bd6": "Não foi possível atualizar a conclusão automática",
    "1343cf9e3a6caa44": "O servidor deste ambiente ainda não permite desativar a conclusão automática por thread. Atualize o servidor para usar este recurso.",
    "656ae8b4f8621a40": "Não foi possível alterar a configuração de conclusão automática.",
@@ -1014,7 +1016,7 @@ index 2a3b7f5a57d0a8056a47934d705e316d5f3bf734..6f0ef596562b38506931922653267b5e
    "569c7df7859c9116": "Não foi possível regenerar o título",
    "89e2726358798289": "O servidor deste ambiente ainda não suporta regenerar títulos. Atualize o servidor para regenerar títulos de threads.",
    "eb49fd6eb5b0e8c5": "Não foi possível regenerar o título da thread.",
-@@ -4185,6 +4186,8 @@
+@@ -4216,6 +4217,8 @@
    "ce591b4de647ecda": "Abrir {title}",
    "4a9a6f6111329b54": "Recarregar {title}",
    "12f0890f800baa7a": "Página indisponível",
@@ -1023,7 +1025,7 @@ index 2a3b7f5a57d0a8056a47934d705e316d5f3bf734..6f0ef596562b38506931922653267b5e
    "9c5a2e144cefdf2f": "Somente leitura",
    "12d03e02951725b0": "Lê projetos e threads. Não pode iniciar, enviar mensagens nem alterar nada.",
    "63fd02d55f0e4417": "Vincular uma máquina a este ambiente",
-@@ -4877,6 +4880,7 @@
+@@ -4908,6 +4911,7 @@
    "fcf482cda9bf739f": "Comportamento da conclusão automática",
    "39eb35d54cacd314": "Seguir as configurações",
    "73c02fecfe6d6050": "Nunca",
@@ -1032,10 +1034,10 @@ index 2a3b7f5a57d0a8056a47934d705e316d5f3bf734..6f0ef596562b38506931922653267b5e
    "dffd2e20f7ff5aa1": "Marcar como não lida",
    "1385e2d8bd696370": "Transformar em projeto",
 diff --git a/apps/mobile/src/i18n/translations/ru.json b/apps/mobile/src/i18n/translations/ru.json
-index 715840703d039a6d26a8ef51233c751678b77580..6fe4038b84257270dbf2b0b292d278f4732a862a 100644
+index 7987d3d16485a37ee8dd0ca9307de69567178fc7..159b76e42f0d8386c5d17dfde2832512fc585778 100644
 --- a/apps/mobile/src/i18n/translations/ru.json
 +++ b/apps/mobile/src/i18n/translations/ru.json
-@@ -2415,6 +2415,7 @@
+@@ -2446,6 +2446,7 @@
    "940f8b95cf1c9bd6": "Не удалось обновить авторазбор",
    "1343cf9e3a6caa44": "Сервер этого окружения пока не поддерживает отключение авторазбора для отдельного треда. Обновите сервер, чтобы использовать эту функцию.",
    "656ae8b4f8621a40": "Не удалось изменить настройку авторазбора.",
@@ -1043,7 +1045,7 @@ index 715840703d039a6d26a8ef51233c751678b77580..6fe4038b84257270dbf2b0b292d278f4
    "569c7df7859c9116": "Не удалось обновить заголовок",
    "89e2726358798289": "Сервер этого окружения пока не поддерживает повторную генерацию заголовков. Обновите сервер, чтобы перегенерировать заголовки тредов.",
    "eb49fd6eb5b0e8c5": "Не удалось перегенерировать заголовок треда.",
-@@ -4239,6 +4240,8 @@
+@@ -4270,6 +4271,8 @@
    "ce591b4de647ecda": "Открыть {title}",
    "4a9a6f6111329b54": "Перезагрузить {title}",
    "12f0890f800baa7a": "Страница недоступна",
@@ -1052,7 +1054,7 @@ index 715840703d039a6d26a8ef51233c751678b77580..6fe4038b84257270dbf2b0b292d278f4
    "9c5a2e144cefdf2f": "Только чтение",
    "12d03e02951725b0": "Чтение проектов и тредов. Нельзя ничего запускать, отправлять или менять.",
    "63fd02d55f0e4417": "Привязать машину к этому окружению",
-@@ -4955,6 +4958,7 @@
+@@ -4986,6 +4989,7 @@
    "fcf482cda9bf739f": "Авторазбор",
    "39eb35d54cacd314": "Как в настройках",
    "73c02fecfe6d6050": "Никогда",
@@ -1061,10 +1063,10 @@ index 715840703d039a6d26a8ef51233c751678b77580..6fe4038b84257270dbf2b0b292d278f4
    "dffd2e20f7ff5aa1": "Отметить непрочитанным",
    "1385e2d8bd696370": "Превратить в проект",
 diff --git a/apps/mobile/src/i18n/translations/sv.json b/apps/mobile/src/i18n/translations/sv.json
-index 5c1bfd6e98293cadc31d58d86c1d04417114b15b..9351c5b537c11cb39f9734a2958f4e7411d70748 100644
+index 38f2f3c80172c1280a8c845da58536ec240a3060..f5c4a6e65c449546d33ebd6222ff112946792d15 100644
 --- a/apps/mobile/src/i18n/translations/sv.json
 +++ b/apps/mobile/src/i18n/translations/sv.json
-@@ -2367,6 +2367,7 @@
+@@ -2398,6 +2398,7 @@
    "940f8b95cf1c9bd6": "Kunde inte uppdatera automatisk markering som klar",
    "1343cf9e3a6caa44": "Den här miljöns server stöder inte att stänga av automatisk markering som klar per tråd än. Uppdatera servern för att använda det.",
    "656ae8b4f8621a40": "Inställningen för automatisk markering som klar kunde inte ändras.",
@@ -1072,7 +1074,7 @@ index 5c1bfd6e98293cadc31d58d86c1d04417114b15b..9351c5b537c11cb39f9734a2958f4e74
    "569c7df7859c9116": "Kunde inte generera om titeln",
    "89e2726358798289": "Miljöns server stöder inte omgenerering av titlar än. Uppdatera servern för att generera om trådtitlar.",
    "eb49fd6eb5b0e8c5": "Trådtiteln kunde inte genereras om.",
-@@ -4191,6 +4192,8 @@
+@@ -4222,6 +4223,8 @@
    "ce591b4de647ecda": "Öppna {title}",
    "4a9a6f6111329b54": "Läs in {title} igen",
    "12f0890f800baa7a": "Sidan är inte tillgänglig",
@@ -1081,7 +1083,7 @@ index 5c1bfd6e98293cadc31d58d86c1d04417114b15b..9351c5b537c11cb39f9734a2958f4e74
    "9c5a2e144cefdf2f": "Endast läsning",
    "12d03e02951725b0": "Läs projekt och trådar. Kan inte starta, skicka meddelanden eller ändra något.",
    "63fd02d55f0e4417": "Länka en dator till den här miljön",
-@@ -4883,6 +4886,7 @@
+@@ -4914,6 +4917,7 @@
    "fcf482cda9bf739f": "Beteende för automatisk markering som klar",
    "39eb35d54cacd314": "Följ inställningarna",
    "73c02fecfe6d6050": "Aldrig",
@@ -1090,10 +1092,10 @@ index 5c1bfd6e98293cadc31d58d86c1d04417114b15b..9351c5b537c11cb39f9734a2958f4e74
    "dffd2e20f7ff5aa1": "Markera som oläst",
    "1385e2d8bd696370": "Gör om till projekt",
 diff --git a/apps/mobile/src/i18n/translations/zh.json b/apps/mobile/src/i18n/translations/zh.json
-index f7235086f18b4b705df98f677e60e87d27ac7f21..2bb31aabd5c9042ad39d0397911b29897c8af02f 100644
+index e673d0e56ba1b3794f7b3d1ec5382ace9e913f81..bde792d2dcee9a26a594aecc6815893837485ae3 100644
 --- a/apps/mobile/src/i18n/translations/zh.json
 +++ b/apps/mobile/src/i18n/translations/zh.json
-@@ -2370,6 +2370,7 @@
+@@ -2401,6 +2401,7 @@
    "940f8b95cf1c9bd6": "无法更新自动收尾",
    "1343cf9e3a6caa44": "此环境的服务器尚不支持按会话关闭自动收尾。请更新服务器后再使用该功能。",
    "656ae8b4f8621a40": "无法更改自动收尾设置。",
@@ -1101,7 +1103,7 @@ index f7235086f18b4b705df98f677e60e87d27ac7f21..2bb31aabd5c9042ad39d0397911b2989
    "569c7df7859c9116": "无法重新生成标题",
    "89e2726358798289": "此环境的服务器尚不支持重新生成标题。请更新服务器以重新生成会话标题。",
    "eb49fd6eb5b0e8c5": "无法重新生成会话标题。",
-@@ -4188,6 +4189,8 @@
+@@ -4219,6 +4220,8 @@
    "ce591b4de647ecda": "打开 {title}",
    "4a9a6f6111329b54": "重新加载 {title}",
    "12f0890f800baa7a": "页面不可用",
@@ -1110,7 +1112,7 @@ index f7235086f18b4b705df98f677e60e87d27ac7f21..2bb31aabd5c9042ad39d0397911b2989
    "9c5a2e144cefdf2f": "只读",
    "12d03e02951725b0": "读取项目和会话，不能启动会话、发送消息或进行任何更改。",
    "63fd02d55f0e4417": "将一台机器关联到此环境",
-@@ -4866,6 +4869,7 @@
+@@ -4897,6 +4900,7 @@
    "fcf482cda9bf739f": "自动收尾行为",
    "39eb35d54cacd314": "跟随设置",
    "73c02fecfe6d6050": "从不",
@@ -1119,7 +1121,7 @@ index f7235086f18b4b705df98f677e60e87d27ac7f21..2bb31aabd5c9042ad39d0397911b2989
    "dffd2e20f7ff5aa1": "标为未读",
    "1385e2d8bd696370": "转换为项目",
 diff --git a/apps/mobile/src/lib/threadActivity.ts b/apps/mobile/src/lib/threadActivity.ts
-index 1760b37b49606c125ebcd5470942927386dc314b..b75a3b84d8ba79ca24d86daf315429e678f84b4e 100644
+index e180927aa3c90ee5e9cea75312542a0e1db4f1ba..54e2ea0831fd4a726f78f0468c9506bbd4061d7c 100644
 --- a/apps/mobile/src/lib/threadActivity.ts
 +++ b/apps/mobile/src/lib/threadActivity.ts
 @@ -151,6 +151,7 @@ export interface ThreadFeedMessage {
@@ -1130,7 +1132,7 @@ index 1760b37b49606c125ebcd5470942927386dc314b..b75a3b84d8ba79ca24d86daf315429e6
    readonly idleCompaction?: import("@t3tools/contracts").OrchestrationV2IdleCompaction;
    readonly visibility: OrchestrationV2ProjectedTurnItem["visibility"];
    readonly sourceThreadId: ThreadId;
-@@ -2726,6 +2727,7 @@ export function buildThreadFeed(
+@@ -2736,6 +2737,7 @@ export function buildThreadFeed(
                  ...(item.scheduledTaskId ? { scheduledTaskId: item.scheduledTaskId } : {}),
                  ...(item.senderThreadId ? { senderThreadId: item.senderThreadId } : {}),
                  ...(item.linkedSender ? { linkedSender: item.linkedSender } : {}),
@@ -1644,10 +1646,10 @@ index 750ff136ac07d7fa8c9612a7fb0fe5e1f6e49948..bdb0d87a3813a96fcbd4d90c33bbbc3c
    }).pipe(Effect.scoped),
  );
 diff --git a/apps/server/src/auth/RpcAuthorization.ts b/apps/server/src/auth/RpcAuthorization.ts
-index 2cab3d32f12353f356114f0edf80687ad9e91003..1ab2214ab83683cc309c9e85b90113bab70669b9 100644
+index b276fafb2723a59539df401c5a71f3b5ba4e3fbc..3ef8b78cb4a15c8fe8826a76bf1df2233da4b623 100644
 --- a/apps/server/src/auth/RpcAuthorization.ts
 +++ b/apps/server/src/auth/RpcAuthorization.ts
-@@ -293,7 +293,8 @@ const sendsProviderSignOutPrompt = (method: string, payload: unknown): boolean =
+@@ -297,7 +297,8 @@ const sendsProviderSignOutPrompt = (method: string, payload: unknown): boolean =
    const command = payload as OrchestrationV2Command;
    switch (command.type) {
      case "message.dispatch":
@@ -2155,7 +2157,7 @@ index 3b2cb665b35480ecb83bb3c4f0673fed1ac4b2ae..348cfd71877ce4b4905caf5342b6049c
      ).pipe(Effect.provide(NodeHttpServer.layerTest)),
  );
 diff --git a/apps/server/src/mcp/McpHttpServer.ts b/apps/server/src/mcp/McpHttpServer.ts
-index ff55a2ea5459c406403ab008248dbe94fc848860..478a83781a2c9cd25f9d0b379202b9831f10043f 100644
+index be41f8630b7dda0ea01dae56ed85ce66ad455fbd..e9e9fc7f9e522677e2911c609c3bb821f460accf 100644
 --- a/apps/server/src/mcp/McpHttpServer.ts
 +++ b/apps/server/src/mcp/McpHttpServer.ts
 @@ -34,6 +34,7 @@ import { parseBearerToken } from "../auth/EnvironmentAuth.ts";
@@ -2166,7 +2168,7 @@ index ff55a2ea5459c406403ab008248dbe94fc848860..478a83781a2c9cd25f9d0b379202b983
  import * as DeviceService from "../device/DeviceService.ts";
  import * as HtmlRender from "../htmlRender/HtmlRender.ts";
  import * as MilestoneEvents from "../milestones/MilestoneEvents.ts";
-@@ -75,6 +76,9 @@ import * as ThreadHandlers from "./toolkits/thread/handlers.ts";
+@@ -78,6 +79,9 @@ import * as ThreadHandlers from "./toolkits/thread/handlers.ts";
  import * as ThreadMetadataMcpService from "./ThreadMetadataMcpService.ts";
  import * as McpSessionRegistry from "./McpSessionRegistry.ts";
  import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
@@ -2176,7 +2178,7 @@ index ff55a2ea5459c406403ab008248dbe94fc848860..478a83781a2c9cd25f9d0b379202b983
  import * as OrchestratorHandlers from "./toolkits/orchestrator/handlers.ts";
  import { OrchestratorToolkit } from "./toolkits/orchestrator/tools.ts";
  import * as PreviewHandlers from "./toolkits/preview/handlers.ts";
-@@ -148,7 +152,10 @@ export class McpClientAuthenticator extends Context.Service<
+@@ -151,7 +155,10 @@ export class McpClientAuthenticator extends Context.Service<
    {
      readonly authenticate: (
        request: HttpServerRequest.HttpServerRequest,
@@ -2188,7 +2190,7 @@ index ff55a2ea5459c406403ab008248dbe94fc848860..478a83781a2c9cd25f9d0b379202b983
    }
  >()("t3/mcp/McpHttpServer/McpClientAuthenticator") {}
  
-@@ -380,7 +387,12 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
+@@ -392,7 +399,12 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
      const request = yield* HttpServerRequest.HttpServerRequest;
      // The transport allows no browser Origin; refuse it before credentials, as the MCP spec requires.
      if (request.headers.origin !== undefined) return HttpServerResponse.empty({ status: 403 });
@@ -2202,7 +2204,7 @@ index ff55a2ea5459c406403ab008248dbe94fc848860..478a83781a2c9cd25f9d0b379202b983
      if (HttpServerResponse.isHttpServerResponse(admitted)) return admitted;
      if (yield* isUndefinedNotification(request)) return HttpServerResponse.empty({ status: 202 });
      const linkExpiresAt = admitted.client?.linkExpiresAt;
-@@ -1383,6 +1395,10 @@ export const layerPullRequestsToolkit = toolkitRegistration(
+@@ -1396,6 +1408,10 @@ export const layerPullRequestsToolkit = toolkitRegistration(
  
  const layerIssuesToolkit = toolkitRegistration(IssuesToolkit, IssuesHandlers.layer);
  
@@ -2213,7 +2215,7 @@ index ff55a2ea5459c406403ab008248dbe94fc848860..478a83781a2c9cd25f9d0b379202b983
  const layerDeviceStandardToolkitRegistration = toolkitRegistration(
    DeviceStandardToolkit,
    DeviceHandlers.layerStandard,
-@@ -1417,6 +1433,18 @@ export const layerInProcessMcpServer = McpServer.middleware<{
+@@ -1430,6 +1446,18 @@ export const layerInProcessMcpServer = McpServer.middleware<{
    { global: true },
  ).pipe(Layer.provideMerge(McpServer.McpServer.layer));
  
@@ -2232,7 +2234,7 @@ index ff55a2ea5459c406403ab008248dbe94fc848860..478a83781a2c9cd25f9d0b379202b983
  export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE, RR>) =>
    McpServer.layerHttp({
      name: "T3 Code",
-@@ -1424,7 +1452,7 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
+@@ -1437,7 +1465,7 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
      path: MCP_HTTP_PATH,
      protocols: mcpProtocols,
      allowSessionTermination: true,
@@ -2241,7 +2243,7 @@ index ff55a2ea5459c406403ab008248dbe94fc848860..478a83781a2c9cd25f9d0b379202b983
    }).pipe(Layer.provide(layerMcpAuthMiddleware));
  
  /** Every tool the T3 MCP server advertises. AgentContextBudget.test.ts measures this set. */
-@@ -1444,6 +1472,7 @@ export const layerTools = Layer.mergeAll(
+@@ -1458,6 +1486,7 @@ export const layerTools = Layer.mergeAll(
    layerDeviceToolkit,
    layerHtmlToolkit,
    layerMessageToolkit,
@@ -2250,7 +2252,7 @@ index ff55a2ea5459c406403ab008248dbe94fc848860..478a83781a2c9cd25f9d0b379202b983
  
  const layerToolExposure = Layer.effect(
 diff --git a/apps/server/src/mcp/McpInvocationContext.ts b/apps/server/src/mcp/McpInvocationContext.ts
-index f1a070e86b9e344273f5dcb5337df710219c6696..e73ad08befd7063ff4204aaae5f3137ea3b5f192 100644
+index 0ba10af2d8c4519ad38e0563f72d639cb2a50bb5..cddb4d3f93ad2073875b780c8ad336afd0fe0e50 100644
 --- a/apps/server/src/mcp/McpInvocationContext.ts
 +++ b/apps/server/src/mcp/McpInvocationContext.ts
 @@ -94,14 +94,16 @@ const interactionModeRank: Record<ProviderInteractionMode, number> = { plan: 0,
@@ -2331,10 +2333,10 @@ index 6cfd86bd3d8366ced52194a2fbed8db36baa544c..287afbd42dea57ad3b3f0e08e28600bf
    call(tool, scope, args).pipe(
      Effect.map((outcome) => expect(outcome).toBe(expected)),
 diff --git a/apps/server/src/mcp/McpToolAccess.testkit.ts b/apps/server/src/mcp/McpToolAccess.testkit.ts
-index a985c1477a232a57cb90da72b5e8eb9adb5d793d..58b751f924585825574b897e65c67b1e239bcbb0 100644
+index a985c1477a232a57cb90da72b5e8eb9adb5d793d..65962d8e718ad38ccd0f9e89df0d395eda1f776b 100644
 --- a/apps/server/src/mcp/McpToolAccess.testkit.ts
 +++ b/apps/server/src/mcp/McpToolAccess.testkit.ts
-@@ -13,6 +13,49 @@ import * as Effect from "effect/Effect";
+@@ -13,6 +13,50 @@ import * as Effect from "effect/Effect";
  import * as Layer from "effect/Layer";
  
  import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
@@ -2361,6 +2363,7 @@ index a985c1477a232a57cb90da72b5e8eb9adb5d793d..58b751f924585825574b897e65c67b1e
 +import { PeerLinks } from "../peer/PeerLinks.ts";
 +import { RemoteDelegation } from "../peer/RemoteDelegation.ts";
 +import { PreviewManager } from "../preview/Manager.ts";
++import { Workflows } from "../workflows/Workflows.ts";
 +import { PreviewBrowser } from "../preview/PreviewBrowser.ts";
 +import { ManagedProjectFolders } from "../project/ManagedProjectFolders.ts";
 +import { ProjectCloneTracker } from "../project/ProjectCloneTracker.ts";
@@ -2384,7 +2387,7 @@ index a985c1477a232a57cb90da72b5e8eb9adb5d793d..58b751f924585825574b897e65c67b1e
  
  const EPOCH = DateTime.makeUnsafe("2026-01-01T00:00:00.000Z");
  
-@@ -100,3 +143,49 @@ export const idleThreadProjection = (
+@@ -100,3 +144,50 @@ export const idleThreadProjection = (
      updatedAt: shell.updatedAt,
    };
  };
@@ -2409,6 +2412,7 @@ index a985c1477a232a57cb90da72b5e8eb9adb5d793d..58b751f924585825574b897e65c67b1e
 +  Layer.mock(PreviewAutomationBroker)({}),
 +  Layer.mock(PreviewBrowser)({}),
 +  Layer.mock(PreviewManager)({}),
++  Layer.mock(Workflows)({}),
 +  Layer.mock(ProjectCloneTracker)({}),
 +  Layer.mock(ProjectService)({}),
 +  Layer.mock(ProjectSetupScriptRunner)({}),
@@ -3293,18 +3297,18 @@ index 0000000000000000000000000000000000000000..940f5fc8f92e4da88309b0ec21b81573
 +/** The only tools an `ask` link may list or call. */
 +export const ASK_TOOL_NAMES: ReadonlySet<string> = new Set(Object.keys(AskToolkit.tools));
 diff --git a/apps/server/src/milestones/MilestoneEvents.test.ts b/apps/server/src/milestones/MilestoneEvents.test.ts
-index bdf102b4dce6f13095b4aaa5ae83c1e2f865f508..920365bb1ac3474f46325eaf96bdafcbc55087fb 100644
+index 49f6c1c5c6b5af3ee6ba1a9c91e7c08602a00579..b48b27712879b48520eb0cd26d4309138ee237e0 100644
 --- a/apps/server/src/milestones/MilestoneEvents.test.ts
 +++ b/apps/server/src/milestones/MilestoneEvents.test.ts
-@@ -27,6 +27,7 @@ import * as MilestoneHub from "./MilestoneHub.ts";
- const environmentId = EnvironmentId.make("environment-milestone-events-test");
+@@ -41,6 +41,7 @@ const environmentId = EnvironmentId.make("environment-milestone-events-test");
  const clientToken = "clientTokenWithoutDots";
  const threadToken = "threadTokenWithoutDots";
+ const hostToken = "hostTokenWithoutDots";
 +const askToken = "askTokenWithoutDots";
  const scopes: Record<string, McpInvocationContext.McpInvocationScope> = {
    [clientToken]: {
      environmentId,
-@@ -36,6 +37,14 @@ const scopes: Record<string, McpInvocationContext.McpInvocationScope> = {
+@@ -50,6 +51,14 @@ const scopes: Record<string, McpInvocationContext.McpInvocationScope> = {
      capabilities: new Set(["orchestration"]),
      issuedAt: 1,
    },
@@ -3319,18 +3323,18 @@ index bdf102b4dce6f13095b4aaa5ae83c1e2f865f508..920365bb1ac3474f46325eaf96bdafcb
    [threadToken]: {
      environmentId,
      requestNamespace: "provider-session",
-@@ -75,7 +84,7 @@ const serve = Effect.gen(function* () {
-   const revoked = yield* Deferred.make<void>();
-   yield* HttpRouter.serve(
-     McpHttpServer.layerMcpTransport(McpHttpServer.layerMilestoneEvents).pipe(
--      Layer.provide(ServerSettings.layerTest()),
-+      Layer.provide(ServerSettings.layerTest({ linkedEnvironmentsEnabled: true })),
+@@ -164,7 +173,7 @@ const serveWith = Effect.fnUntraced(function* (settings: { readonly workflowsEna
+           }),
+         ),
+       ),
+-      Layer.provide(ServerSettings.layerTest(settings)),
++      Layer.provide(ServerSettings.layerTest({ ...settings, linkedEnvironmentsEnabled: true })),
        Layer.provide(
          Layer.mock(SessionStore.SessionStore)({
            cookieName: "t3-session",
-@@ -186,6 +195,14 @@ it.effect("advertises the extension and lists each milestone type to outside cli
+@@ -328,6 +337,14 @@ it.effect("advertises the extension and lists each milestone type to outside cli
+       "includeSubagentChildren",
      ]);
-     expect(settledType.payloadSchema.properties.outcome).toBeDefined();
      expect((yield* call("events/list", {}, { token: threadToken })).result!.events).toEqual([]);
 +    expect((yield* call("events/list", {}, { token: askToken })).result!.events).toEqual([]);
 +    expect(
@@ -3344,10 +3348,10 @@ index bdf102b4dce6f13095b4aaa5ae83c1e2f865f508..920365bb1ac3474f46325eaf96bdafcb
  );
  
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index 57834f24e6b3cf6585635f9dfb39379017712a04..894db6101c5cef4c7aa985a970a261b9ad3f9522 100644
+index 6c143b52e29910f6a621ddfd16dfb1bc6fd5d9ce..050c38cf8b8f39d9f465b942bc8868fdc6214de3 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-@@ -697,6 +697,62 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
+@@ -702,6 +702,62 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
      );
    });
  
@@ -3410,7 +3414,7 @@ index 57834f24e6b3cf6585635f9dfb39379017712a04..894db6101c5cef4c7aa985a970a261b9
    it("keeps approval-required mode interactive with danger-full-access sandboxing", () => {
      const queryPolicy = ClaudeAdapterV2.claudeRuntimeQueryPolicyForRuntimePolicy(
        ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-@@ -1484,6 +1540,337 @@ describe("ClaudeAdapterV2 Auto-accept edits", () => {
+@@ -1489,6 +1545,337 @@ describe("ClaudeAdapterV2 Auto-accept edits", () => {
    );
  });
  
@@ -3748,7 +3752,7 @@ index 57834f24e6b3cf6585635f9dfb39379017712a04..894db6101c5cef4c7aa985a970a261b9
  describe("ClaudeAdapterV2 append-system-prompt-file launch argument", () => {
    const startTurnWithLaunchArgs = Effect.fnUntraced(function* (launchArgs: string, cwd: string) {
      const fileSystem = yield* FileSystem.FileSystem;
-@@ -3305,9 +3692,13 @@ describe("ClaudeAdapterV2 native fork", () => {
+@@ -3310,9 +3697,13 @@ describe("ClaudeAdapterV2 native fork", () => {
    );
  });
  
@@ -3763,7 +3767,7 @@ index 57834f24e6b3cf6585635f9dfb39379017712a04..894db6101c5cef4c7aa985a970a261b9
    const stdins: Array<NodeStream.PassThrough> = [];
    const spawn = (options: SpawnOptions): SpawnedProcess => {
      spawns.push(options);
-@@ -3331,14 +3722,20 @@ function makeFakeClaudeCli(answerSetServers = true) {
+@@ -3336,14 +3727,20 @@ function makeFakeClaudeCli(answerSetServers = true) {
        for (let end = pending.indexOf("\n"); end >= 0; end = pending.indexOf("\n")) {
          const frame = JSON.parse(pending.slice(0, end));
          pending = pending.slice(end + 1);
@@ -3785,7 +3789,7 @@ index 57834f24e6b3cf6585635f9dfb39379017712a04..894db6101c5cef4c7aa985a970a261b9
          };
          stdout.write(`${JSON.stringify({ type: "control_response", response })}\n`);
        }
-@@ -3350,7 +3747,7 @@ function makeFakeClaudeCli(answerSetServers = true) {
+@@ -3355,7 +3752,7 @@ function makeFakeClaudeCli(answerSetServers = true) {
      return child;
    };
    const closed = () => stdins.length > 0 && stdins.every((stdin) => stdin.writableEnded);
@@ -3795,7 +3799,7 @@ index 57834f24e6b3cf6585635f9dfb39379017712a04..894db6101c5cef4c7aa985a970a261b9
  
  describe("ClaudeAdapterV2 MCP credential channel", () => {
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda8a827bc3 100644
+index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696cbe76f0a 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -201,6 +201,7 @@ import { signalProcessGroup } from "@t3tools/provider-core/server/processGroup";
@@ -3828,7 +3832,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
  // Claude can consume a subagent result before the launching turn ends, leaving
  // its notification with no native wake turn to answer the continuation.
  const CLAUDE_WAKE_TURN_START_DEADLINE = "2 minutes";
-@@ -618,6 +634,7 @@ export const ClaudeProviderCapabilitiesV2 = {
+@@ -671,6 +687,7 @@ export const ClaudeProviderCapabilitiesV2 = {
      supportsMcpTools: true,
      supportsDynamicToolCallbacks: true,
      supportsBackgroundWait: true,
@@ -3836,7 +3840,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
    },
    approvals: {
      supportsCommandApproval: true,
-@@ -849,6 +866,24 @@ export class ClaudeBackgroundWorkBlocksQueryReplacementError extends Schema.Tagg
+@@ -902,6 +919,24 @@ export class ClaudeBackgroundWorkBlocksQueryReplacementError extends Schema.Tagg
    }
  }
  
@@ -3861,7 +3865,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
  export class ClaudeAppendSystemPromptFileError extends Schema.TaggedError<ClaudeAppendSystemPromptFileError>()(
    "ClaudeAppendSystemPromptFileError",
    {
-@@ -1722,29 +1757,41 @@ export const layerQueryRunner: Layer.Layer<
+@@ -1793,29 +1828,41 @@ export const layerQueryRunner: Layer.Layer<
            Effect.tap((queryRuntime) =>
              restore(
                Effect.gen(function* () {
@@ -3924,7 +3928,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
                    // Errors and mcp_status can echo headers; log only server names.
                    const failed = yield* Effect.tryPromise({
                      try: () => queryRuntime.setMcpServers(mcpServers),
-@@ -2355,6 +2402,8 @@ export function makeClaudeQueryOptions(input: {
+@@ -2443,6 +2490,8 @@ export function makeClaudeQueryOptions(input: {
    readonly appendSystemPromptFileText?: string;
    // Flag settings, because a user's settings.json env beats the process env in Claude Code.
    readonly toolSearchOverride?: "true";
@@ -3933,7 +3937,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
  }): ClaudeAgentSdkQueryOptions {
    const compiledSelection = compileClaudeModelSelection(input.modelSelection, input.modelCatalog);
    const {
-@@ -2386,9 +2435,20 @@ export function makeClaudeQueryOptions(input: {
+@@ -2474,9 +2523,20 @@ export function makeClaudeQueryOptions(input: {
      extraArgs["thinking-display"] = "summarized";
    }
    const pluginDirectories =
@@ -3955,7 +3959,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
    const threadIdentity: ClaudeAgentSdkThreadIdentity = input.resume
      ? { resume: input.nativeThreadId }
      : { sessionId: input.nativeThreadId };
-@@ -2452,10 +2512,13 @@ export function makeClaudeQueryOptions(input: {
+@@ -2540,10 +2600,13 @@ export function makeClaudeQueryOptions(input: {
      ...(input.title === undefined ? {} : { title: input.title }),
      tools: claudeAgentSdkQueryToolsForSdk(selectedTools),
      permissionMode:
@@ -3973,7 +3977,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
      includePartialMessages: true,
      promptSuggestions: input.promptSuggestions === true,
      ...(compiledSelection.effort === undefined
-@@ -2528,7 +2591,7 @@ export function makeClaudeQueryOptions(input: {
+@@ -2616,7 +2679,7 @@ export function makeClaudeQueryOptions(input: {
      ...(pluginDirectories.length === 0
        ? {}
        : { plugins: pluginDirectories.map((path) => ({ type: "local" as const, path })) }),
@@ -3982,7 +3986,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
    };
    const additionalDirectories = [
      ...(input.cwd === null ? [] : [input.cwd]),
-@@ -3509,6 +3572,9 @@ function readOnlyPolicyAllowsGlobalReads(
+@@ -3597,6 +3660,9 @@ function readOnlyPolicyAllowsGlobalReads(
  function permissionModeForClaudeRuntimePolicy(
    runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
  ): PermissionMode {
@@ -3992,7 +3996,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
    if (runtimePolicy.interactionMode === "plan") {
      return "plan";
    }
-@@ -3561,8 +3627,16 @@ export interface ClaudeRuntimeQueryPolicy {
+@@ -3649,8 +3715,16 @@ export interface ClaudeRuntimeQueryPolicy {
    readonly allowedTools?: ReadonlyArray<string>;
    readonly allowDangerouslySkipPermissions?: true;
    readonly installPermissionCallback: boolean;
@@ -4009,7 +4013,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
  interface ClaudeBypassAvailability {
    readonly bypassDisabled: boolean;
    readonly autoDisabled: boolean;
-@@ -3577,6 +3651,9 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
+@@ -3665,6 +3739,9 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
    runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
    availability: ClaudeBypassAvailability = CLAUDE_BYPASS_FULLY_AVAILABLE,
  ): ClaudeRuntimeQueryPolicy {
@@ -4019,7 +4023,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
    const requestedMode = permissionModeForClaudeRuntimePolicy(runtimePolicy);
    const downgraded = requestedMode === "bypassPermissions" && availability.bypassDisabled;
    const permissionMode = downgraded
-@@ -3725,6 +3802,7 @@ function claudeRuntimeQueryPolicyKey(policy: ClaudeRuntimeQueryPolicy): string {
+@@ -3813,6 +3890,7 @@ function claudeRuntimeQueryPolicyKey(policy: ClaudeRuntimeQueryPolicy): string {
      allowedTools: policy.allowedTools,
      allowDangerouslySkipPermissions: policy.allowDangerouslySkipPermissions,
      installPermissionCallback: policy.installPermissionCallback,
@@ -4027,7 +4031,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
    });
  }
  
-@@ -11937,7 +12015,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12035,7 +12113,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
            }
  
            const toolPresentations = claudeToolPresentationsFromAssistantMessage(message);
@@ -4040,7 +4044,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
              const nativeToolInput = claudeNativeToolInputFromUnknown(toolUse.input);
              if (toolUse.name === "Agent") {
                rememberClaudeSubagentLaunch(
-@@ -12662,6 +12744,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12760,6 +12842,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                toolUseID: callbackOptions.toolUseID,
              } satisfies PermissionResult;
            }
@@ -4057,7 +4061,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
  
            const nativeRequestId = callbackOptions.toolUseID;
            const nativeToolInput = claudeNativeToolInputFromRecord(toolInput);
-@@ -13202,13 +13294,25 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13300,13 +13392,25 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
            nativeThreadId: string,
            queryPolicy: Effect.Success<ReturnType<typeof queryPolicyForTurn>>,
          ) {
@@ -4085,7 +4089,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
                  const pendingWake = (yield* mcpSessions.read(turnInput.threadId))?.hasPendingWake;
                  return pendingWake !== undefined && (yield* pendingWake) ? { continue: false } : {};
                }),
-@@ -13233,7 +13337,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13331,7 +13435,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              existing !== null &&
              existing.nativeThreadId === nativeThreadId &&
              !existing.stopping &&
@@ -4096,7 +4100,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
            ) {
              return existing;
            }
-@@ -13413,6 +13519,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13511,6 +13617,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              supportedDialogKinds: ["resume_return"],
              ...(appendSystemPromptFileText === undefined ? {} : { appendSystemPromptFileText }),
              ...(toolSearchOverride === undefined ? {} : { toolSearchOverride }),
@@ -4104,7 +4108,7 @@ index eff3895a5badfa9a723848f6285cd9b5d186c5cc..a09fc4f7e1c33a20da58f56c0770ddda
            });
            const resolvedTurnCwd = yield* fileSystem
              .realPath(turnInput.runtimePolicy.cwd ?? ".")
-@@ -13694,7 +13801,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13792,7 +13899,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              }
              const [skills, queryPolicy] = yield* Effect.all(
                [
@@ -4570,7 +4574,7 @@ index 6c805cfc4592f310b0400d1f306679d3c1747ce8..e662f4dc6c5b3101c2b8069ec4db2b90
                        .pipe(
                          // A disabled instance cannot retry this completed turn; its result stands.
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48cee084c06 100644
+index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f1916347bf4a 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -12,6 +12,7 @@ import {
@@ -4671,7 +4675,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
        }).pipe(
          Effect.catchCause((cause) =>
            Effect.logWarning("Failed to requeue an unread steer", {
-@@ -4403,6 +4388,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4405,6 +4390,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            | "thread.snooze"
            | "thread.unsnooze"
            | "thread.auto-settle.set"
@@ -4679,7 +4683,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
            | "thread.pin"
            | "thread.unpin"
            | "thread.pin.reorder"
-@@ -4566,6 +4552,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4568,6 +4554,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          command.type === "thread.snooze" ||
          command.type === "thread.unsnooze" ||
          command.type === "thread.auto-settle.set" ||
@@ -4687,7 +4691,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
          command.type === "thread.pin" ||
          command.type === "thread.unpin" ||
          command.type === "thread.pin.reorder" ||
-@@ -5043,6 +5030,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5045,6 +5032,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
              updatedAt: unchanged ? thread.updatedAt : now,
            };
          }
@@ -4704,7 +4708,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
          case "thread.pin": {
            const alreadyPinned = thread.pinnedAt != null;
            const promotes = thread.settledOverride === "settled" || thread.snoozedUntil != null;
-@@ -5555,6 +5552,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5557,6 +5554,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            return "thread.unsnoozed" as const;
          case "thread.auto-settle.set":
            return "thread.auto-settle-set" as const;
@@ -4713,7 +4717,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
          case "thread.pin":
            return "thread.pinned" as const;
          case "thread.unpin":
-@@ -7178,6 +7177,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -7194,6 +7193,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            }
          : undefined,
      );
@@ -4734,7 +4738,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
      if (command.steerFollowUpOfRunId !== undefined) {
        const source = projection.runs.find((run) => run.id === command.steerFollowUpOfRunId);
        if (
-@@ -7589,8 +7602,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -7605,8 +7618,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        });
      }
      const output = outputSchema === undefined ? {} : { outputSchema };
@@ -4749,7 +4753,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
        (dispatchMode.type === "steer_active" || dispatchMode.type === "restart_active")
      ) {
        dispatchMode = { type: "queue_after_active" };
-@@ -7766,6 +7784,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -7782,6 +7800,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        );
        if (
          active !== undefined &&
@@ -4757,7 +4761,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
          activeTurn !== undefined &&
          providerThread?.providerSessionId != null &&
          (!commandNotice || providerThread.goal?.status === "active") &&
-@@ -8175,6 +8194,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8191,6 +8210,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          ...(continuedTaskId === undefined ? {} : { delegatedTaskId: continuedTaskId }),
          ...(freshContext ? { freshContext: true } : {}),
          ...output,
@@ -4765,7 +4769,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
        };
        const attempt: OrchestrationV2RunAttempt = {
          id: attemptId,
-@@ -8214,6 +8234,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8230,6 +8250,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : { scheduledTaskId: command.scheduledTaskId }),
          ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
          ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4773,7 +4777,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
          ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
          ...(followsThreadSelection ? { followsThreadSelection: true as const } : {}),
          id: command.messageId,
-@@ -8602,6 +8623,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8618,6 +8639,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          ...wakeWorkStartedAt(projection, command),
          ...(freshContext ? { freshContext: true } : {}),
          ...output,
@@ -4781,7 +4785,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
        };
        const attempt: OrchestrationV2RunAttempt = {
          id: attemptId,
-@@ -8641,6 +8663,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8657,6 +8679,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : { scheduledTaskId: command.scheduledTaskId }),
          ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
          ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4789,7 +4793,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
          ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
          ...(followsThreadSelection ? { followsThreadSelection: true as const } : {}),
          id: command.messageId,
-@@ -8665,6 +8688,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8681,6 +8704,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : { scheduledTaskId: command.scheduledTaskId }),
          ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
          ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4797,7 +4801,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
          ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
          id: idAllocator.derive.userTurnItem({ messageId: command.messageId }),
          threadId: command.threadId,
-@@ -9414,6 +9438,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -9430,6 +9454,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        ...(continuedTaskId === undefined ? {} : { delegatedTaskId: continuedTaskId }),
        ...wakeWorkStartedAt(projection, command),
        ...output,
@@ -4805,7 +4809,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
      };
      const attempt: OrchestrationV2RunAttempt = {
        id: attemptId,
-@@ -9453,6 +9478,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -9469,6 +9494,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          : { scheduledTaskId: command.scheduledTaskId }),
        ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
        ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4813,7 +4817,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
        ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
        id: command.messageId,
        threadId: command.threadId,
-@@ -9476,6 +9502,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -9492,6 +9518,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          : { scheduledTaskId: command.scheduledTaskId }),
        ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
        ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4821,7 +4825,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
        ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
        id: idAllocator.derive.userTurnItem({ messageId: command.messageId }),
        threadId: command.threadId,
-@@ -11966,6 +11993,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -11982,6 +12009,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: "Automatic completion deliveries cannot be promoted to Steer.",
        });
      }
@@ -4835,7 +4839,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
  
      const now = yield* DateTime.now;
      const emitEvent = emit(events, command);
-@@ -12028,8 +12062,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12044,8 +12078,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: "A message that asks for a result can't steer the current turn.",
        });
      }
@@ -4851,7 +4855,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
        if (goalCommand !== null) {
          yield* ensureGoalCommandSupported(command, queuedMessage, modelSelection.instanceId);
        }
-@@ -12415,6 +12454,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12431,6 +12470,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: "A guest's message cannot be edited. Cancel it instead.",
        });
      }
@@ -4866,7 +4870,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
      yield* ensureGoalCommandSupported(
        command,
        { text: command.text, attachments: command.attachments ?? queuedMessage.attachments },
-@@ -16041,6 +16088,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16074,6 +16121,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "thread.snooze":
        case "thread.unsnooze":
        case "thread.auto-settle.set":
@@ -4875,7 +4879,7 @@ index 82544be65ce93584976daefb981fc19b580a0d41..fbbc3e08f335c3f083cd18eab2d0e48c
        case "thread.unpin":
        case "thread.pin.reorder":
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.ts b/apps/server/src/orchestration-v2/ProjectionStore.ts
-index e10bc5340d646db62d489fd4c67e627d771212c9..ad23ef064687b6e662188620c2c737abdfb19e29 100644
+index 2278284d7fde74809f4d9e9238441b80286a40d9..86826b9b0558c78003b3c5fcae307ca4fe2423d1 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.ts
 @@ -660,6 +660,15 @@ export interface ProjectionStoreV2Shape {
@@ -4902,7 +4906,7 @@ index e10bc5340d646db62d489fd4c67e627d771212c9..ad23ef064687b6e662188620c2c737ab
      case "thread.pinned":
      case "thread.unpinned":
      case "thread.pin-reordered":
-@@ -2013,6 +2023,7 @@ export function threadShellFromProjection(
+@@ -2016,6 +2026,7 @@ export function threadShellFromProjection(
      pinnedAt: projection.thread.pinnedAt ?? null,
  
      autoSettleDisabledAt: projection.thread.autoSettleDisabledAt ?? null,
@@ -4910,7 +4914,7 @@ index e10bc5340d646db62d489fd4c67e627d771212c9..ad23ef064687b6e662188620c2c737ab
      pinOrderKey: projection.thread.pinOrderKey ?? null,
      ...(projection.thread.tags?.length ? { tags: projection.thread.tags } : {}),
      lastVisitedAt: projection.thread.lastVisitedAt,
-@@ -2311,6 +2322,7 @@ function shellFromState(input: {
+@@ -2317,6 +2328,7 @@ function shellFromState(input: {
      pinnedAt: input.state.thread.pinnedAt ?? null,
  
      autoSettleDisabledAt: input.state.thread.autoSettleDisabledAt ?? null,
@@ -4918,7 +4922,7 @@ index e10bc5340d646db62d489fd4c67e627d771212c9..ad23ef064687b6e662188620c2c737ab
      pinOrderKey: input.state.thread.pinOrderKey ?? null,
      ...(input.state.thread.tags?.length ? { tags: input.state.thread.tags } : {}),
      lastVisitedAt: input.state.thread.lastVisitedAt,
-@@ -2513,6 +2525,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -2519,6 +2531,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
              case "thread.snoozed":
              case "thread.unsnoozed":
              case "thread.auto-settle-set":
@@ -4926,7 +4930,7 @@ index e10bc5340d646db62d489fd4c67e627d771212c9..ad23ef064687b6e662188620c2c737ab
              case "thread.pinned":
              case "thread.unpinned":
              case "thread.pin-reordered":
-@@ -3366,6 +3379,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -3372,6 +3385,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
              event.type !== "thread.snoozed" &&
              event.type !== "thread.unsnoozed" &&
              event.type !== "thread.auto-settle-set" &&
@@ -4934,7 +4938,7 @@ index e10bc5340d646db62d489fd4c67e627d771212c9..ad23ef064687b6e662188620c2c737ab
              event.type !== "thread.pinned" &&
              event.type !== "thread.unpinned" &&
              event.type !== "thread.pin-reordered" &&
-@@ -9712,6 +9726,29 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -9723,6 +9737,29 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        return rows[0] === undefined ? null : ThreadId.make(rows[0].thread_id);
      }, Effect.mapError(shellSnapshotReadError));
  
@@ -4964,7 +4968,7 @@ index e10bc5340d646db62d489fd4c67e627d771212c9..ad23ef064687b6e662188620c2c737ab
      const listOlderSettledThreads: ProjectionStoreV2Shape["listOlderSettledThreads"] = Effect.fn(
        "ProjectionStore.listOlderSettledThreads",
      )(function* ({ before, projectIds, limit }) {
-@@ -9865,6 +9902,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -9876,6 +9913,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        readShellSnapshot: readOnReader(readShellSnapshot),
        listOlderSettledThreads: readOnReader(listOlderSettledThreads),
        getThreadShell: readOnReader(getThreadShell),
@@ -5610,10 +5614,10 @@ index 878392b8377c6d25a4ed3e8496bd8f780c67d612..d006c9d3ee34449eed87dcf1cfd5b611
          input.attempts.some(
            (attempt) => attempt.runId === run.id && completedAttemptIds.has(attempt.id),
 diff --git a/apps/server/src/orchestration-v2/ThreadForkService.ts b/apps/server/src/orchestration-v2/ThreadForkService.ts
-index e3e523e372bd09124816b4b721cd85067ac1a698..01fc5689011fb19e87acdc4cf7270e740dbca991 100644
+index 2981b4ccfb51993fdba7a404629dd7bbfe6787bb..04374b7280ce5fb46b71bdb95f559057e80e6a3d 100644
 --- a/apps/server/src/orchestration-v2/ThreadForkService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadForkService.ts
-@@ -137,6 +137,7 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
+@@ -142,6 +142,7 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
          pinOrderKey: null,
          activeOrderKey: null,
          autoSettleDisabledAt: null,
@@ -5622,13 +5626,13 @@ index e3e523e372bd09124816b4b721cd85067ac1a698..01fc5689011fb19e87acdc4cf7270e74
          guestShare: null,
          lastVisitedAt: null,
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.test.ts b/apps/server/src/orchestration-v2/ThreadManagementService.test.ts
-index a0b5625af0d2adff8d7dce60736b06113e8a96b1..e316cd19a8ce20a41f354fb2c6aa2fdc3afb8b49 100644
+index eb137e4c506100205300e559822f8473e331e118..22ea9c50a15cae9dfa40243c0d302c15d34f02be 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.test.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.test.ts
-@@ -87,6 +87,24 @@ it("stamps authoritative provenance on commands that create threads or messages"
-   expect(stamped).not.toHaveProperty("linkOrigin");
+@@ -95,6 +95,24 @@ it("stamps authoritative provenance on commands that create threads or messages"
    expect(stamped).not.toHaveProperty("delegatedFrom");
    expect(stamped).not.toHaveProperty("initialMessage");
+   expect(stamped).not.toHaveProperty("workflowRun");
 +
 +  const question = ThreadManagementService.withCreationProvenance(
 +    {
@@ -5651,7 +5655,7 @@ index a0b5625af0d2adff8d7dce60736b06113e8a96b1..e316cd19a8ce20a41f354fb2c6aa2fdc
  
  const layerReceiptsTest = CommandReceiptStore.layer.pipe(
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index 45b5e9effa8cf95190d84f77ba1b2e2ec141966e..8bd83e537f1051a85aa0c20c9a88c5e9161cbbc5 100644
+index 0acb07029f35d54621a7fa130cf296378b572ccc..b8ee1511257fce5bbf4974d11ee0bc78cb23c194 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
 @@ -28,6 +28,7 @@ import {
@@ -5670,7 +5674,7 @@ index 45b5e9effa8cf95190d84f77ba1b2e2ec141966e..8bd83e537f1051a85aa0c20c9a88c5e9
  import * as CommandReceiptStore from "./CommandReceiptStore.ts";
  import * as Orchestrator from "./Orchestrator.ts";
  import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
-@@ -97,7 +99,10 @@ export function withCreationProvenance(
+@@ -99,7 +101,10 @@ export function withCreationProvenance(
        } = command;
        return { ...rest, ...provenance };
      }
@@ -5682,7 +5686,7 @@ index 45b5e9effa8cf95190d84f77ba1b2e2ec141966e..8bd83e537f1051a85aa0c20c9a88c5e9
      case "thread.fork":
      case "thread.merge_back":
      case "delegated_task.request":
-@@ -156,6 +161,8 @@ export interface ThreadManagementSendInput {
+@@ -158,6 +163,8 @@ export interface ThreadManagementSendInput {
    readonly scheduledTaskId?: ScheduledTaskId;
    readonly senderThreadId?: ThreadId;
    readonly linkedSender?: OrchestrationV2LinkedSender;
@@ -5691,7 +5695,7 @@ index 45b5e9effa8cf95190d84f77ba1b2e2ec141966e..8bd83e537f1051a85aa0c20c9a88c5e9
    readonly text: string;
    readonly attachments: ReadonlyArray<ChatAttachment>;
    readonly modelSelection?: ModelSelection;
-@@ -623,6 +630,7 @@ function latestSteerableRun(
+@@ -625,6 +632,7 @@ function latestSteerableRun(
      .filter(
        (run) =>
          run.status === "running" &&
@@ -5699,7 +5703,7 @@ index 45b5e9effa8cf95190d84f77ba1b2e2ec141966e..8bd83e537f1051a85aa0c20c9a88c5e9
          run.activeAttemptId !== null &&
          projection.providerTurns.some(
            (turn) => turn.runAttemptId === run.activeAttemptId && turn.status === "running",
-@@ -914,9 +922,13 @@ const make = Effect.gen(function* () {
+@@ -916,9 +924,13 @@ const make = Effect.gen(function* () {
        });
      }
      const steerableRun = latestSteerableRun(target);
@@ -5715,7 +5719,7 @@ index 45b5e9effa8cf95190d84f77ba1b2e2ec141966e..8bd83e537f1051a85aa0c20c9a88c5e9
        (input.mode === "steer" || input.mode === "restart")
          ? "queue"
          : input.mode;
-@@ -947,7 +959,11 @@ const make = Effect.gen(function* () {
+@@ -949,7 +961,11 @@ const make = Effect.gen(function* () {
  
      // Turn start would fail on its own after the send reported success; a replay keeps its answer.
      // A live steer and a receipt replay without a target turn need no workspace.
@@ -5728,7 +5732,7 @@ index 45b5e9effa8cf95190d84f77ba1b2e2ec141966e..8bd83e537f1051a85aa0c20c9a88c5e9
        yield* worktreeRestore
          .restore(target.thread)
          .pipe(
-@@ -973,6 +989,7 @@ const make = Effect.gen(function* () {
+@@ -975,6 +991,7 @@ const make = Effect.gen(function* () {
        ...(input.scheduledTaskId === undefined ? {} : { scheduledTaskId: input.scheduledTaskId }),
        ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
        ...(input.linkedSender === undefined ? {} : { linkedSender: input.linkedSender }),
@@ -5765,7 +5769,7 @@ index 0000000000000000000000000000000000000000..26293a43a8a1e2f9dbd3337a15449d5e
 +  usageLimit: "The thread hit its usage limit before answering. Ask again later.",
 +} as const;
 diff --git a/apps/server/src/orchestration-v2/runOutput.ts b/apps/server/src/orchestration-v2/runOutput.ts
-index 26df71c0fa2e8aa0932ae054b776d8a2f442e1ba..c749a197455366b14c7383f1f576801b581e8293 100644
+index 20d76ecff009db00e5ff19de5bbc8fb55e6c6fc9..de5580a697f9a4a6499fabedaff1ec52e641a531 100644
 --- a/apps/server/src/orchestration-v2/runOutput.ts
 +++ b/apps/server/src/orchestration-v2/runOutput.ts
 @@ -1,4 +1,4 @@
@@ -5786,7 +5790,7 @@ index 26df71c0fa2e8aa0932ae054b776d8a2f442e1ba..c749a197455366b14c7383f1f576801b
      parseGoalCommand(message) !== null);
  
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index 87a85217b1f21d41d57d1a04bad6e00b9dc63ee9..db0212a82e5e8ecd0ebf4e0e3f98c8f299d06dfd 100644
+index 50b1fd5d7e91cb80bca53ab87db96c952c826277..d0ab591a74dbcfbfc3649144c6fcb63468df46a1 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 @@ -8019,6 +8019,125 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
@@ -5916,10 +5920,10 @@ index 87a85217b1f21d41d57d1a04bad6e00b9dc63ee9..db0212a82e5e8ecd0ebf4e0e3f98c8f2
      Effect.gen(function* () {
        const orchestrator = yield* Orchestrator.OrchestratorV2;
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.ts b/apps/server/src/orchestration-v2/runtimeLayer.ts
-index 1710da5b061d7c0fd26dbe3599c5ad2349521284..fe794a6a883e843799912240e1191dc93491186a 100644
+index c4eed74b274cf274ac785f7cdf364865779c7aee..42c57829b7831b6b0075aa1a611f26e05af1c971 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.ts
-@@ -187,6 +187,7 @@ const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pip
+@@ -191,6 +191,7 @@ const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pip
        IdAllocator.layer,
        ProjectionStore.layer,
        layerProviderSessionManagerProvided,
@@ -5940,10 +5944,10 @@ index 952162d2f11872ba8ad9119263d47ebdc3f8e038..d678e3cf7f6eca62ea4db1754a3c48da
      case "thread.unpin":
      case "thread.pin.reorder":
 diff --git a/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts b/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
-index bf47bc86109bb18020bb58a0ffdef564fbbde085..1cd5ba1bce7d2a05b344b43b1ab5985286962e95 100644
+index ccd4c69710d81ef1dbbf828058162e9955037deb..3d6ee505bce69a113fa39b5705049a0c0fbea7f2 100644
 --- a/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
 +++ b/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
-@@ -464,6 +464,7 @@ export function layerWithRegistry<Error>(
+@@ -484,6 +484,7 @@ export function layerWithRegistry<Error>(
          IdAllocator.layer,
          layerStores,
          layerProviderSessionManagerProvided,
@@ -7242,10 +7246,10 @@ index 6e84008a98ad4b2e0935a72134ac1a9124f7803e..eb2bc6439fa6e031d3dc615c2b0e267b
      assert.include(paths, "backgroundActivity.overrides.pauseWhenOnBattery");
      assert.notInclude(paths, "backgroundActivity.overrides");
 diff --git a/apps/server/src/provider/AgentContextBudget.test.ts b/apps/server/src/provider/AgentContextBudget.test.ts
-index 1117bf29801f8cdb4b314d2a920414b9b38e31d1..3897bce94d4bf14162ea570091565aa9aa31e38a 100644
+index ad8593c387528bb9fe22253fbd1d3cd1c2e693f3..3897bce94d4bf14162ea570091565aa9aa31e38a 100644
 --- a/apps/server/src/provider/AgentContextBudget.test.ts
 +++ b/apps/server/src/provider/AgentContextBudget.test.ts
-@@ -1,105 +1,18 @@
+@@ -1,107 +1,18 @@
 -import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 -import * as NodeServices from "@effect/platform-node/NodeServices";
  import { expect, it } from "@effect/vitest";
@@ -7282,6 +7286,7 @@ index 1117bf29801f8cdb4b314d2a920414b9b38e31d1..3897bce94d4bf14162ea570091565aa9
 -import { PeerLinks } from "../peer/PeerLinks.ts";
 -import { RemoteDelegation } from "../peer/RemoteDelegation.ts";
 -import { PreviewManager } from "../preview/Manager.ts";
+-import { Workflows } from "../workflows/Workflows.ts";
 -import { PreviewBrowser } from "../preview/PreviewBrowser.ts";
 -import { ManagedProjectFolders } from "../project/ManagedProjectFolders.ts";
 -import { ProjectCloneTracker } from "../project/ProjectCloneTracker.ts";
@@ -7324,6 +7329,7 @@ index 1117bf29801f8cdb4b314d2a920414b9b38e31d1..3897bce94d4bf14162ea570091565aa9
 -  Layer.mock(PreviewAutomationBroker)({}),
 -  Layer.mock(PreviewBrowser)({}),
 -  Layer.mock(PreviewManager)({}),
+-  Layer.mock(Workflows)({}),
 -  Layer.mock(ProjectCloneTracker)({}),
 -  Layer.mock(ProjectService)({}),
 -  Layer.mock(ProjectSetupScriptRunner)({}),
@@ -7353,10 +7359,10 @@ index 1117bf29801f8cdb4b314d2a920414b9b38e31d1..3897bce94d4bf14162ea570091565aa9
  
  const claudeSystemAppend = () => {
 diff --git a/apps/server/src/provider/ProviderRegistry.test.ts b/apps/server/src/provider/ProviderRegistry.test.ts
-index 69b7bd9eb2c1d64af6e4015c762a7d9b6e913b6c..90e72c48f648e742b156182eaea9823455992d3a 100644
+index 4fe6da7f791a9a42498f4dda8df9f88087c54d87..24ef0fbf3a9cf3065dc791aa34d6e76a1c30f01f 100644
 --- a/apps/server/src/provider/ProviderRegistry.test.ts
 +++ b/apps/server/src/provider/ProviderRegistry.test.ts
-@@ -456,6 +456,7 @@ function makeMutableServerSettingsService(
+@@ -457,6 +457,7 @@ function makeMutableServerSettingsService(
            Effect.map((subscription) => Stream.fromSubscription(subscription)),
          );
        },
@@ -7365,15 +7371,15 @@ index 69b7bd9eb2c1d64af6e4015c762a7d9b6e913b6c..90e72c48f648e742b156182eaea98234
    });
  }
 diff --git a/apps/server/src/provider/agentContextBudget.json b/apps/server/src/provider/agentContextBudget.json
-index 3f204d2e68a8de5e60bcd3a1da09646f06e2e62b..358baf4f5c9b9e97c7aeb446e3088843376607cb 100644
+index 169fac6ce2a859ee958f4afebe1a6014c3227552..0dd3ba7b12ec23617b9d6cc0aa6706fbe3bc2880 100644
 --- a/apps/server/src/provider/agentContextBudget.json
 +++ b/apps/server/src/provider/agentContextBudget.json
 @@ -1,5 +1,5 @@
  {
    "claudeSystemAppendBytes": 6245,
    "codexAdditionalContextBytes": 7639,
--  "mcpToolListJsonBytes": 60374
-+  "mcpToolListJsonBytes": 61572
+-  "mcpToolListJsonBytes": 61724
++  "mcpToolListJsonBytes": 62922
  }
 diff --git a/apps/server/src/relay/AgentAwarenessRelay.ts b/apps/server/src/relay/AgentAwarenessRelay.ts
 index 2eed87a8033bdc7c8a31f88334d2e0161d1817bd..8774a1175b76711bf2d268e1557cf201fc16b68e 100644
@@ -7596,10 +7602,10 @@ index 6aa4b11350efb5b82a76b3b6b9700f2289f62034..7bf256b68af7e445b471f6f9d7d7eb42
    ThreadWorktreeRestore,
    {
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 5f1c73ef11a38d15b93a5f40a5ffef228b7097cf..f340b402a61e4785f19a6f3e60a075673fa544a6 100644
+index 7acd0c44551f49897331ff829c42164988f50f2b..4d8dce6cde82654827e0bf9b41ef02f5fb96edbc 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -3547,6 +3547,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3561,6 +3561,9 @@ export default function ChatView(props: ChatViewProps) {
                isServerThread={isServerThread}
                activeThreadTitle={activeThread.title}
                activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
@@ -7610,7 +7616,7 @@ index 5f1c73ef11a38d15b93a5f40a5ffef228b7097cf..f340b402a61e4785f19a6f3e60a07567
                parentThreadLink={headerParentThreadLink}
                onOpenThread={onOpenRelatedThreadStable}
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 8882e92b6a40293eae44b6c250dc25e82ee4113c..88a968637f8af8a296dae56ec95dfae657c16ef2 100644
+index 79a19c7b0ae93b54aef2c803ff34821730cb9a56..f16fa08f50ed56bcd6a68420951faa9e7ac6b5fa 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -140,6 +140,7 @@ import {
@@ -7629,7 +7635,7 @@ index 8882e92b6a40293eae44b6c250dc25e82ee4113c..88a968637f8af8a296dae56ec95dfae6
      turnThreadIntoProject,
      reorderPinnedThread,
      reorderActiveThread,
-@@ -2885,6 +2887,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2886,6 +2888,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                isPinned,
                isSettled,
                autoSettleEnabled: thread.autoSettleDisabledAt == null,
@@ -7637,7 +7643,7 @@ index 8882e92b6a40293eae44b6c250dc25e82ee4113c..88a968637f8af8a296dae56ec95dfae6
                isSnoozed,
                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
                isRegeneratingTitle,
-@@ -2898,6 +2901,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2899,6 +2902,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                supports: {
                  settlement: configLoaded,
                  autoSettleOptOut: supportsAutoSettleOptOut,
@@ -7645,7 +7651,7 @@ index 8882e92b6a40293eae44b6c250dc25e82ee4113c..88a968637f8af8a296dae56ec95dfae6
                  snooze: configLoaded,
                  pinning: configLoaded,
                  titleRegeneration: configLoaded,
-@@ -3017,6 +3021,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3018,6 +3022,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              }
              return;
            }
@@ -7950,7 +7956,7 @@ index b32d816bd89abd2f09c5306fcaf4ea8bc3111cdc..d18f89244dc8b11cbd5dd6258b2aa123
    });
    return (
 diff --git a/apps/web/src/components/settings/EnvironmentsMap.tsx b/apps/web/src/components/settings/EnvironmentsMap.tsx
-index befa3c5e19b68854de7b5e08d2182f2acee41049..034af4c660430cac6e9c787952f799f5e7bf924b 100644
+index 5d4b2f96754c82cfc0c74245a1d304d73ef5740e..2bc5b8860a7ad97e14725e6325757e40c3caaafc 100644
 --- a/apps/web/src/components/settings/EnvironmentsMap.tsx
 +++ b/apps/web/src/components/settings/EnvironmentsMap.tsx
 @@ -140,9 +140,9 @@ import { SettingsSearchTarget } from "./settingsLayout";
@@ -8197,10 +8203,10 @@ index efcf6e4559622a12ce9ce6c0af72649732878bb2..b6778b3f99991b30be74c6e1ee48613a
  
    it("finds the Welcome page only where a primary computer can open it", () => {
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index dd9bd9cf0d799648cb3be5cb5bd4b5d0a0f43d6e..50065514b712638c5f7b59b1b2fe4683185ecf31 100644
+index a38c930eb5d1a95759397e667ce08689170c047d..c0a60883955cfc1c998dcb46724aa76417ca7326 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -1468,6 +1468,13 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -1475,6 +1475,13 @@ export const SETTINGS_SEARCH_ITEMS = [
      targetId: "linked-environments",
      searchTerms: [msg("link peer another machine vps agents work there handoff pairing code")],
    },
@@ -8452,10 +8458,10 @@ index ef7626acb91690aadd813f296921cd25db41783b..67b45b1015ed549a95b374870ed60450
        createProjectFromThread({
          environmentId: target.environmentId,
 diff --git a/apps/web/src/i18n/translations/de.json b/apps/web/src/i18n/translations/de.json
-index ecdb3d4220e679f0fd89bd901d9e525008bdc571..71d4107049db035ba8e823ac1a3a9af25663f931 100644
+index 7900e731860914a60e7f74d2b5fb0d9e66412aee..6591eed34e51b9e0729ebb65730225b388832ca7 100644
 --- a/apps/web/src/i18n/translations/de.json
 +++ b/apps/web/src/i18n/translations/de.json
-@@ -2512,6 +2512,7 @@
+@@ -2545,6 +2545,7 @@
    "ad170edd1d29d3f0": "Projekt erstellt",
    "722b23aee8640b09": "Thread konnte nicht in ein Projekt umgewandelt werden",
    "c9fdafde8e1fd711": "Automatisches Erledigen konnte nicht aktualisiert werden",
@@ -8463,7 +8469,7 @@ index ecdb3d4220e679f0fd89bd901d9e525008bdc571..71d4107049db035ba8e823ac1a3a9af2
    "9cf56ac40f1133c0": "Pfad nicht verfügbar",
    "755f85812d568822": "Dieser Thread hat keinen Arbeitsbereichspfad zum Kopieren.",
    "6c13d520b6601f65": "Thread „{title}“ archivieren?",
-@@ -2792,6 +2793,7 @@
+@@ -2825,6 +2826,7 @@
    "fcf482cda9bf739f": "Verhalten beim automatischen Erledigen",
    "39eb35d54cacd314": "Einstellungen folgen",
    "65e3725b1c46b314": "Nie",
@@ -8471,7 +8477,7 @@ index ecdb3d4220e679f0fd89bd901d9e525008bdc571..71d4107049db035ba8e823ac1a3a9af2
    "4bbe9b821de91d9d": "Thread",
    "f053d7461b8ecce5": "Thread-ID",
    "70399412ec5a7026": "Thread archivieren",
-@@ -3103,6 +3105,8 @@
+@@ -3136,6 +3138,8 @@
    "302b4ea2731cee30": "Melde dich bei T3 Connect mit dem Konto an, mit dem diese Umgebung verknüpft ist.",
    "f1002e7e5d33605c": "Stattdessen einen Anmeldecode verwenden",
    "5913b58cf86d9b58": "Anderes Konto verwenden",
@@ -8480,7 +8486,7 @@ index ecdb3d4220e679f0fd89bd901d9e525008bdc571..71d4107049db035ba8e823ac1a3a9af2
    "9c5a2e144cefdf2f": "Nur lesen",
    "12d03e02951725b0": "Projekte und Threads lesen. Kann nichts starten, keine Nachrichten senden und nichts ändern.",
    "b6c9bd4137eca7b1": "Die Umgebung hat eine Adresse zurückgegeben, die diese Seite nicht öffnet.",
-@@ -3370,6 +3374,8 @@
+@@ -3403,6 +3407,8 @@
      },
      " über eine verknüpfte Umgebung gestartet."
    ],
@@ -8489,7 +8495,7 @@ index ecdb3d4220e679f0fd89bd901d9e525008bdc571..71d4107049db035ba8e823ac1a3a9af2
    "601807baf4e25b94": "Vorschau von {name}",
    "922a18febd2c86d7": "Bildvorschau",
    "932e6e0577492ff3": "Audio nicht verfügbar",
-@@ -8964,6 +8970,7 @@
+@@ -8999,6 +9005,7 @@
    "6cf9e3083b15614f": "{label} hat nicht geantwortet",
    "34ccbdf619b83be3": "Widerrufe „T3 Code · …“ unter „Freigabe & Zugriff“ auf {label}, um die Sitzung auch dort zu beenden.",
    "81c9796bf61b306a": "Verknüpfung konnte nicht vergessen werden",
@@ -8497,7 +8503,7 @@ index ecdb3d4220e679f0fd89bd901d9e525008bdc571..71d4107049db035ba8e823ac1a3a9af2
    "130e51beb6cf5aad": "Umgebung verknüpfen",
    "122c3e355699e69d": "Agenten hier können dort dann Threads starten, ihnen Nachrichten senden und auf sie warten. Sie erscheint unter „Autorisierte Clients“ in „Freigabe & Zugriff“ dieser Umgebung und kann dort widerrufen werden.",
    "dc9a0b68d101e904": "Bereits verknüpft. Erneutes Verknüpfen verlängert sie mit dem gewählten Zugriff.",
-@@ -11953,6 +11960,8 @@
+@@ -11989,6 +11996,8 @@
    "8ed7c2a2226f4663": "localhost loopback portweiterleitung auf diesem gerät öffnen browser tabs streamen sicherheit port forwarding",
    "1c3e0ac06c8a1f1e": "verbindungen server backend lokal remote zugriff administrativ berechtigungen bereich kopplungslinks qr-code autorisierte clients sitzungen widerrufen endpunkt",
    "744fd34e8049efeb": "verknüpfen peer anderer rechner vps agenten dort arbeiten übergabe kopplungscode",
@@ -8507,10 +8513,10 @@ index ecdb3d4220e679f0fd89bd901d9e525008bdc571..71d4107049db035ba8e823ac1a3a9af2
    "cbf49f84e7f456e5": "Lastverteilung",
    "6f1a769805a28197": "automatisch rechner umgebung ressourcen cpu speicher kapazität präferenz gewichtung gemeinsame projekte",
 diff --git a/apps/web/src/i18n/translations/en.json b/apps/web/src/i18n/translations/en.json
-index 0cc2d503fd6209fca77fde8bc5b3e1379dced2a8..5a34f0165d6e79d7d850b7af2d36192cfbcc0175 100644
+index 5bdd7c383d3195b389cfa3ccdad8f115e6276298..5232751203e6dd805a67ec17df977be20fcce06b 100644
 --- a/apps/web/src/i18n/translations/en.json
 +++ b/apps/web/src/i18n/translations/en.json
-@@ -2512,6 +2512,7 @@
+@@ -2545,6 +2545,7 @@
    "ad170edd1d29d3f0": "Project created",
    "722b23aee8640b09": "Could not turn thread into a project",
    "c9fdafde8e1fd711": "Failed to update auto-settle",
@@ -8518,7 +8524,7 @@ index 0cc2d503fd6209fca77fde8bc5b3e1379dced2a8..5a34f0165d6e79d7d850b7af2d36192c
    "9cf56ac40f1133c0": "Path unavailable",
    "755f85812d568822": "This thread does not have a workspace path to copy.",
    "6c13d520b6601f65": "Archive thread \"{title}\"?",
-@@ -2791,6 +2792,7 @@
+@@ -2824,6 +2825,7 @@
    "fcf482cda9bf739f": "Auto-settle behavior",
    "39eb35d54cacd314": "Follow settings",
    "65e3725b1c46b314": "Never",
@@ -8526,7 +8532,7 @@ index 0cc2d503fd6209fca77fde8bc5b3e1379dced2a8..5a34f0165d6e79d7d850b7af2d36192c
    "4bbe9b821de91d9d": "Thread",
    "f053d7461b8ecce5": "Thread ID",
    "70399412ec5a7026": "Archive thread",
-@@ -3102,6 +3104,8 @@
+@@ -3135,6 +3137,8 @@
    "302b4ea2731cee30": "Sign in to T3 Connect with the account this environment is linked to.",
    "f1002e7e5d33605c": "Use a sign-in code instead",
    "5913b58cf86d9b58": "Use another account",
@@ -8535,7 +8541,7 @@ index 0cc2d503fd6209fca77fde8bc5b3e1379dced2a8..5a34f0165d6e79d7d850b7af2d36192c
    "9c5a2e144cefdf2f": "Read only",
    "12d03e02951725b0": "Read projects and threads. Cannot start, message or change anything.",
    "b6c9bd4137eca7b1": "The environment returned an address this page will not open.",
-@@ -3369,6 +3373,8 @@
+@@ -3402,6 +3406,8 @@
      },
      " through a linked environment."
    ],
@@ -8544,7 +8550,7 @@ index 0cc2d503fd6209fca77fde8bc5b3e1379dced2a8..5a34f0165d6e79d7d850b7af2d36192c
    "601807baf4e25b94": "Preview {name}",
    "922a18febd2c86d7": "Preview image",
    "932e6e0577492ff3": "Audio unavailable",
-@@ -8972,6 +8978,7 @@
+@@ -9007,6 +9013,7 @@
    "6cf9e3083b15614f": "{label} did not answer",
    "34ccbdf619b83be3": "Revoke \"T3 Code · …\" in {label}''s Sharing & access to end the session there too.",
    "81c9796bf61b306a": "Could not forget the link",
@@ -8552,7 +8558,7 @@ index 0cc2d503fd6209fca77fde8bc5b3e1379dced2a8..5a34f0165d6e79d7d850b7af2d36192c
    "130e51beb6cf5aad": "Link an environment",
    "122c3e355699e69d": "Agents here can then launch, message and wait on threads there. It appears under Authorized clients in that environment's Sharing & access, where it can be revoked.",
    "dc9a0b68d101e904": "Already linked. Linking again renews it with the access you pick.",
-@@ -11961,6 +11968,8 @@
+@@ -11997,6 +12004,8 @@
    "8ed7c2a2226f4663": "localhost loopback port forwarding open on this device browser tabs stream security",
    "1c3e0ac06c8a1f1e": "connections server backend local remote access administrative permissions scope pairing links qr code authorized clients sessions revoke endpoint",
    "744fd34e8049efeb": "link peer another machine vps agents work there handoff pairing code",
@@ -8562,10 +8568,10 @@ index 0cc2d503fd6209fca77fde8bc5b3e1379dced2a8..5a34f0165d6e79d7d850b7af2d36192c
    "cbf49f84e7f456e5": "Load balancing",
    "6f1a769805a28197": "automatic machine environment resources cpu memory capacity preference weight shared projects",
 diff --git a/apps/web/src/i18n/translations/es.json b/apps/web/src/i18n/translations/es.json
-index daf936020ff3a38c3570b924bc2928644a1b3a4f..3eae438bdc8c081f8c225930e0ebbef361cf2169 100644
+index 91dbb2b07f50fc530694a5044a74a89be497de73..60e2e088bdfa4651f2ba73f7ade01cc47bc2141b 100644
 --- a/apps/web/src/i18n/translations/es.json
 +++ b/apps/web/src/i18n/translations/es.json
-@@ -2512,6 +2512,7 @@
+@@ -2545,6 +2545,7 @@
    "ad170edd1d29d3f0": "Proyecto creado",
    "722b23aee8640b09": "No se pudo convertir el hilo en un proyecto",
    "c9fdafde8e1fd711": "No se pudo actualizar la resolución automática",
@@ -8573,7 +8579,7 @@ index daf936020ff3a38c3570b924bc2928644a1b3a4f..3eae438bdc8c081f8c225930e0ebbef3
    "9cf56ac40f1133c0": "Ruta no disponible",
    "755f85812d568822": "Este hilo no tiene una ruta de espacio de trabajo para copiar.",
    "6c13d520b6601f65": "¿Archivar el hilo \"{title}\"?",
-@@ -2791,6 +2792,7 @@
+@@ -2824,6 +2825,7 @@
    "fcf482cda9bf739f": "Resolución automática",
    "39eb35d54cacd314": "Según los ajustes",
    "65e3725b1c46b314": "Nunca",
@@ -8581,7 +8587,7 @@ index daf936020ff3a38c3570b924bc2928644a1b3a4f..3eae438bdc8c081f8c225930e0ebbef3
    "4bbe9b821de91d9d": "Hilo",
    "f053d7461b8ecce5": "ID del hilo",
    "70399412ec5a7026": "Archivar hilo",
-@@ -3102,6 +3104,8 @@
+@@ -3135,6 +3137,8 @@
    "302b4ea2731cee30": "Inicia sesión en T3 Connect con la cuenta a la que está vinculado este entorno.",
    "f1002e7e5d33605c": "Usar un código de inicio de sesión",
    "5913b58cf86d9b58": "Usar otra cuenta",
@@ -8590,7 +8596,7 @@ index daf936020ff3a38c3570b924bc2928644a1b3a4f..3eae438bdc8c081f8c225930e0ebbef3
    "9c5a2e144cefdf2f": "Solo lectura",
    "12d03e02951725b0": "Leer proyectos e hilos. No puede iniciar, enviar mensajes ni cambiar nada.",
    "b6c9bd4137eca7b1": "El entorno devolvió una dirección que esta página no abrirá.",
-@@ -3369,6 +3373,8 @@
+@@ -3402,6 +3406,8 @@
      },
      " a través de un entorno vinculado."
    ],
@@ -8599,7 +8605,7 @@ index daf936020ff3a38c3570b924bc2928644a1b3a4f..3eae438bdc8c081f8c225930e0ebbef3
    "601807baf4e25b94": "Vista previa de {name}",
    "922a18febd2c86d7": "Vista previa de la imagen",
    "932e6e0577492ff3": "Audio no disponible",
-@@ -8962,6 +8968,7 @@
+@@ -8997,6 +9003,7 @@
    "6cf9e3083b15614f": "{label} no respondió",
    "34ccbdf619b83be3": "Revoca \"T3 Code · …\" en Compartir y acceso de {label} para cerrar también la sesión allí.",
    "81c9796bf61b306a": "No se pudo olvidar el vínculo",
@@ -8607,7 +8613,7 @@ index daf936020ff3a38c3570b924bc2928644a1b3a4f..3eae438bdc8c081f8c225930e0ebbef3
    "130e51beb6cf5aad": "Vincular un entorno",
    "122c3e355699e69d": "Así los agentes de aquí podrán iniciar hilos allí, enviarles mensajes y esperarlos. Aparece en Clientes autorizados, en Compartir y acceso de ese entorno, donde se puede revocar.",
    "dc9a0b68d101e904": "Ya está vinculado. Vincularlo de nuevo lo renueva con el acceso que elijas.",
-@@ -11946,6 +11953,8 @@
+@@ -11982,6 +11989,8 @@
    "8ed7c2a2226f4663": "localhost loopback reenvío de puertos abrir en este dispositivo pestañas navegador transmitir seguridad port forwarding",
    "1c3e0ac06c8a1f1e": "conexiones servidor backend local remoto acceso administrativo permisos ámbito enlaces de emparejamiento código qr clientes autorizados sesiones revocar endpoint",
    "744fd34e8049efeb": "vincular par otra máquina vps agentes trabajar allí traspaso código de emparejamiento",
@@ -8617,10 +8623,10 @@ index daf936020ff3a38c3570b924bc2928644a1b3a4f..3eae438bdc8c081f8c225930e0ebbef3
    "cbf49f84e7f456e5": "Equilibrio de carga",
    "6f1a769805a28197": "automático máquina entorno recursos cpu memoria capacidad preferencia peso proyectos compartidos",
 diff --git a/apps/web/src/i18n/translations/fr.json b/apps/web/src/i18n/translations/fr.json
-index 713eca77f312780b07e2371a47c492a3cce73d0c..c12612132f736a3ef653be39c407257c0ae8079b 100644
+index f5cf7e62a4744466e949f0018f72dc32e98d4f94..05da74fde8ff6d3f77b6cca10bfae486fab25972 100644
 --- a/apps/web/src/i18n/translations/fr.json
 +++ b/apps/web/src/i18n/translations/fr.json
-@@ -2512,6 +2512,7 @@
+@@ -2545,6 +2545,7 @@
    "ad170edd1d29d3f0": "Projet créé",
    "722b23aee8640b09": "Impossible de transformer le fil en projet",
    "c9fdafde8e1fd711": "Échec de la mise à jour de la clôture automatique",
@@ -8628,7 +8634,7 @@ index 713eca77f312780b07e2371a47c492a3cce73d0c..c12612132f736a3ef653be39c407257c
    "9cf56ac40f1133c0": "Chemin indisponible",
    "755f85812d568822": "Ce fil n’a pas de chemin d’espace de travail à copier.",
    "6c13d520b6601f65": "Archiver le fil « {title} » ?",
-@@ -2791,6 +2792,7 @@
+@@ -2824,6 +2825,7 @@
    "fcf482cda9bf739f": "Comportement de la clôture automatique",
    "39eb35d54cacd314": "Suivre les paramètres",
    "65e3725b1c46b314": "Jamais",
@@ -8636,7 +8642,7 @@ index 713eca77f312780b07e2371a47c492a3cce73d0c..c12612132f736a3ef653be39c407257c
    "4bbe9b821de91d9d": "Fil",
    "f053d7461b8ecce5": "ID du fil",
    "70399412ec5a7026": "Archiver le fil",
-@@ -3102,6 +3104,8 @@
+@@ -3135,6 +3137,8 @@
    "302b4ea2731cee30": "Connectez-vous à T3 Connect avec le compte auquel cet environnement est associé.",
    "f1002e7e5d33605c": "Utiliser plutôt un code de connexion",
    "5913b58cf86d9b58": "Utiliser un autre compte",
@@ -8645,7 +8651,7 @@ index 713eca77f312780b07e2371a47c492a3cce73d0c..c12612132f736a3ef653be39c407257c
    "9c5a2e144cefdf2f": "Lecture seule",
    "12d03e02951725b0": "Lire les projets et les fils. Ne peut rien démarrer, envoyer ni modifier.",
    "b6c9bd4137eca7b1": "L’environnement a renvoyé une adresse que cette page n’ouvrira pas.",
-@@ -3369,6 +3373,8 @@
+@@ -3402,6 +3406,8 @@
      },
      " via un environnement associé."
    ],
@@ -8654,7 +8660,7 @@ index 713eca77f312780b07e2371a47c492a3cce73d0c..c12612132f736a3ef653be39c407257c
    "601807baf4e25b94": "Aperçu de {name}",
    "922a18febd2c86d7": "Aperçu de l’image",
    "932e6e0577492ff3": "Audio indisponible",
-@@ -8964,6 +8970,7 @@
+@@ -8999,6 +9005,7 @@
    "6cf9e3083b15614f": "{label} n’a pas répondu",
    "34ccbdf619b83be3": "Révoquez « T3 Code · … » dans Partage et accès sur {label} pour y fermer aussi la session.",
    "81c9796bf61b306a": "Impossible d’oublier l’association",
@@ -8662,7 +8668,7 @@ index 713eca77f312780b07e2371a47c492a3cce73d0c..c12612132f736a3ef653be39c407257c
    "130e51beb6cf5aad": "Associer un environnement",
    "122c3e355699e69d": "Les agents d’ici pourront alors lancer des fils là-bas, leur envoyer des messages et les attendre. L’association apparaît sous Clients autorisés dans Partage et accès de cet environnement, où elle peut être révoquée.",
    "dc9a0b68d101e904": "Déjà associé. Associer à nouveau renouvelle l’association avec l’accès que vous choisissez.",
-@@ -11951,6 +11958,8 @@
+@@ -11987,6 +11994,8 @@
    "8ed7c2a2226f4663": "localhost loopback redirection de ports ouvrir sur cet appareil onglets navigateur diffusion sécurité port forwarding",
    "1c3e0ac06c8a1f1e": "connexions serveur backend local accès distant autorisations administratives portée liens d’appairage code qr clients autorisés sessions révoquer point de terminaison",
    "744fd34e8049efeb": "associer pair autre machine vps agents y travaillent transfert code d’appairage",
@@ -8672,10 +8678,10 @@ index 713eca77f312780b07e2371a47c492a3cce73d0c..c12612132f736a3ef653be39c407257c
    "cbf49f84e7f456e5": "Répartition de charge",
    "6f1a769805a28197": "automatique machine environnement ressources cpu mémoire capacité préférence poids projets partagés",
 diff --git a/apps/web/src/i18n/translations/ja.json b/apps/web/src/i18n/translations/ja.json
-index 2b44f05d584e1ea7cbae4159bec51f09a7eef198..ea3311a43019ca73bf08884fda82a55b2fbc61de 100644
+index 7e3be343b068b8daab1297bed13b9354360a0df9..9bb6d8f25930ce5a733f609decb754c17c798b86 100644
 --- a/apps/web/src/i18n/translations/ja.json
 +++ b/apps/web/src/i18n/translations/ja.json
-@@ -2510,6 +2510,7 @@
+@@ -2543,6 +2543,7 @@
    "ad170edd1d29d3f0": "プロジェクトを作成しました",
    "722b23aee8640b09": "スレッドをプロジェクトに変換できませんでした",
    "c9fdafde8e1fd711": "自動対応済みの設定を更新できませんでした",
@@ -8683,7 +8689,7 @@ index 2b44f05d584e1ea7cbae4159bec51f09a7eef198..ea3311a43019ca73bf08884fda82a55b
    "9cf56ac40f1133c0": "パスを利用できません",
    "755f85812d568822": "このスレッドにはコピーできるワークスペースのパスがありません。",
    "6c13d520b6601f65": "スレッド「{title}」をアーカイブしますか？",
-@@ -2789,6 +2790,7 @@
+@@ -2822,6 +2823,7 @@
    "fcf482cda9bf739f": "自動対応済みの動作",
    "39eb35d54cacd314": "設定に従う",
    "65e3725b1c46b314": "しない",
@@ -8691,7 +8697,7 @@ index 2b44f05d584e1ea7cbae4159bec51f09a7eef198..ea3311a43019ca73bf08884fda82a55b
    "4bbe9b821de91d9d": "スレッド",
    "f053d7461b8ecce5": "スレッド ID",
    "70399412ec5a7026": "スレッドをアーカイブ",
-@@ -3100,6 +3102,8 @@
+@@ -3133,6 +3135,8 @@
    "302b4ea2731cee30": "この環境にリンクされているアカウントで T3 Connect にサインインしてください。",
    "f1002e7e5d33605c": "代わりにサインインコードを使用",
    "5913b58cf86d9b58": "別のアカウントを使用",
@@ -8700,7 +8706,7 @@ index 2b44f05d584e1ea7cbae4159bec51f09a7eef198..ea3311a43019ca73bf08884fda82a55b
    "9c5a2e144cefdf2f": "読み取り専用",
    "12d03e02951725b0": "プロジェクトとスレッドを読み取ります。開始、メッセージ送信、変更はできません。",
    "b6c9bd4137eca7b1": "環境から、このページでは開けないアドレスが返されました。",
-@@ -3367,6 +3371,8 @@
+@@ -3400,6 +3404,8 @@
      },
      " 上のエージェントが開始しました。"
    ],
@@ -8709,7 +8715,7 @@ index 2b44f05d584e1ea7cbae4159bec51f09a7eef198..ea3311a43019ca73bf08884fda82a55b
    "601807baf4e25b94": "{name} をプレビュー",
    "922a18febd2c86d7": "画像をプレビュー",
    "932e6e0577492ff3": "音声を利用できません",
-@@ -8920,6 +8926,7 @@
+@@ -8955,6 +8961,7 @@
    "6cf9e3083b15614f": "{label} が応答しませんでした",
    "34ccbdf619b83be3": "そこでのセッションも終了するには、{label} の「共有とアクセス」で \"T3 Code · …\" を取り消してください。",
    "81c9796bf61b306a": "リンクを削除できませんでした",
@@ -8717,7 +8723,7 @@ index 2b44f05d584e1ea7cbae4159bec51f09a7eef198..ea3311a43019ca73bf08884fda82a55b
    "130e51beb6cf5aad": "環境をリンク",
    "122c3e355699e69d": "これで、ここのエージェントがそこでスレッドを起動し、メッセージを送り、完了を待てるようになります。リンクはその環境の「共有とアクセス」の「承認済みクライアント」に表示され、そこで取り消せます。",
    "dc9a0b68d101e904": "すでにリンクされています。再度リンクすると、選択したアクセス権で更新されます。",
-@@ -11902,6 +11909,8 @@
+@@ -11938,6 +11945,8 @@
    "8ed7c2a2226f4663": "localhost ループバック ポートフォワーディング このデバイスで開く ブラウザ タブ ストリーミング セキュリティ port forwarding",
    "1c3e0ac06c8a1f1e": "接続 サーバー バックエンド ローカル リモート アクセス 管理者 権限 スコープ ペアリングリンク QR コード 認可済みクライアント セッション 取り消し エンドポイント connections",
    "744fd34e8049efeb": "リンク ピア 別のマシン VPS エージェント そこで作業 引き継ぎ ペアリングコード link machine",
@@ -8727,10 +8733,10 @@ index 2b44f05d584e1ea7cbae4159bec51f09a7eef198..ea3311a43019ca73bf08884fda82a55b
    "cbf49f84e7f456e5": "負荷分散",
    "6f1a769805a28197": "自動 マシン 環境 リソース CPU メモリ 容量 優先 重み 共有 プロジェクト automatic machine",
 diff --git a/apps/web/src/i18n/translations/ko.json b/apps/web/src/i18n/translations/ko.json
-index 48dc094c371ad3ff509a1b7cfc3ee870781f769e..e1cd05ef350c08c15614041ad6c1d551874a8215 100644
+index ef69858aead114fc98f09bb0e855fe222d1d4ed4..4e12144097b470d424b96ad70f9eb8fcae66ad5c 100644
 --- a/apps/web/src/i18n/translations/ko.json
 +++ b/apps/web/src/i18n/translations/ko.json
-@@ -2511,6 +2511,7 @@
+@@ -2544,6 +2544,7 @@
    "ad170edd1d29d3f0": "프로젝트 생성됨",
    "722b23aee8640b09": "스레드를 프로젝트로 전환할 수 없습니다",
    "c9fdafde8e1fd711": "자동 정리를 업데이트하지 못했습니다",
@@ -8738,7 +8744,7 @@ index 48dc094c371ad3ff509a1b7cfc3ee870781f769e..e1cd05ef350c08c15614041ad6c1d551
    "9cf56ac40f1133c0": "경로를 사용할 수 없음",
    "755f85812d568822": "이 스레드에는 복사할 작업 영역 경로가 없습니다.",
    "6c13d520b6601f65": "스레드 \"{title}\"을(를) 보관할까요?",
-@@ -2790,6 +2791,7 @@
+@@ -2823,6 +2824,7 @@
    "fcf482cda9bf739f": "자동 정리 동작",
    "39eb35d54cacd314": "설정 따르기",
    "65e3725b1c46b314": "안 함",
@@ -8746,7 +8752,7 @@ index 48dc094c371ad3ff509a1b7cfc3ee870781f769e..e1cd05ef350c08c15614041ad6c1d551
    "4bbe9b821de91d9d": "스레드",
    "f053d7461b8ecce5": "스레드 ID",
    "70399412ec5a7026": "스레드 보관",
-@@ -3101,6 +3103,8 @@
+@@ -3134,6 +3136,8 @@
    "302b4ea2731cee30": "이 환경이 연결된 계정으로 T3 Connect에 로그인하세요.",
    "f1002e7e5d33605c": "대신 로그인 코드 사용",
    "5913b58cf86d9b58": "다른 계정 사용",
@@ -8755,7 +8761,7 @@ index 48dc094c371ad3ff509a1b7cfc3ee870781f769e..e1cd05ef350c08c15614041ad6c1d551
    "9c5a2e144cefdf2f": "읽기 전용",
    "12d03e02951725b0": "프로젝트와 스레드를 읽습니다. 시작, 메시지 전송, 변경은 할 수 없습니다.",
    "b6c9bd4137eca7b1": "환경에서 이 페이지가 열지 않는 주소를 반환했습니다.",
-@@ -3367,6 +3371,8 @@
+@@ -3400,6 +3404,8 @@
      },
      "의 에이전트가 시작했습니다."
    ],
@@ -8764,7 +8770,7 @@ index 48dc094c371ad3ff509a1b7cfc3ee870781f769e..e1cd05ef350c08c15614041ad6c1d551
    "601807baf4e25b94": "{name} 미리 보기",
    "922a18febd2c86d7": "이미지 미리 보기",
    "932e6e0577492ff3": "오디오를 사용할 수 없음",
-@@ -8923,6 +8929,7 @@
+@@ -8958,6 +8964,7 @@
    "6cf9e3083b15614f": "{label}이(가) 응답하지 않았습니다",
    "34ccbdf619b83be3": "그곳의 세션도 끝내려면 {label}의 공유 및 액세스에서 \"T3 Code · …\"를 취소하세요.",
    "81c9796bf61b306a": "링크를 삭제할 수 없습니다",
@@ -8772,7 +8778,7 @@ index 48dc094c371ad3ff509a1b7cfc3ee870781f769e..e1cd05ef350c08c15614041ad6c1d551
    "130e51beb6cf5aad": "환경 연결",
    "122c3e355699e69d": "그러면 이곳의 에이전트가 그곳에서 스레드를 시작하고, 메시지를 보내고, 기다릴 수 있습니다. 해당 환경의 공유 및 액세스에서 승인된 클라이언트에 표시되며 그곳에서 취소할 수 있습니다.",
    "dc9a0b68d101e904": "이미 연결되어 있습니다. 다시 연결하면 선택한 액세스 권한으로 갱신됩니다.",
-@@ -11898,6 +11905,8 @@
+@@ -11934,6 +11941,8 @@
    "8ed7c2a2226f4663": "localhost 루프백 포트 포워딩 이 기기에서 열기 브라우저 탭 스트리밍 보안 port forwarding",
    "1c3e0ac06c8a1f1e": "연결 서버 백엔드 로컬 원격 액세스 관리 권한 범위 페어링 링크 QR 코드 인증된 클라이언트 세션 취소 엔드포인트",
    "744fd34e8049efeb": "다른 머신 연결 피어 vps 에이전트 원격 작업 넘기기 페어링 코드",
@@ -8782,10 +8788,10 @@ index 48dc094c371ad3ff509a1b7cfc3ee870781f769e..e1cd05ef350c08c15614041ad6c1d551
    "cbf49f84e7f456e5": "부하 분산",
    "6f1a769805a28197": "자동 머신 환경 리소스 cpu 메모리 용량 선호도 가중치 공유 프로젝트",
 diff --git a/apps/web/src/i18n/translations/pt-BR.json b/apps/web/src/i18n/translations/pt-BR.json
-index 9cc052192b4eb2064e9c8937ee531eec5e2b7eeb..2c92417b3c960e4a900198b0947820d258600308 100644
+index 5b2f82a27a416a86942cd205b14f469b4343ee9a..0ab9b1ef2f68e547aa393bf0e57dd3e1ad2c26f9 100644
 --- a/apps/web/src/i18n/translations/pt-BR.json
 +++ b/apps/web/src/i18n/translations/pt-BR.json
-@@ -2512,6 +2512,7 @@
+@@ -2545,6 +2545,7 @@
    "ad170edd1d29d3f0": "Projeto criado",
    "722b23aee8640b09": "Não foi possível transformar a thread em projeto",
    "c9fdafde8e1fd711": "Falha ao atualizar a conclusão automática",
@@ -8793,7 +8799,7 @@ index 9cc052192b4eb2064e9c8937ee531eec5e2b7eeb..2c92417b3c960e4a900198b0947820d2
    "9cf56ac40f1133c0": "Caminho indisponível",
    "755f85812d568822": "Esta thread não tem um caminho de workspace para copiar.",
    "6c13d520b6601f65": "Arquivar a thread \"{title}\"?",
-@@ -2791,6 +2792,7 @@
+@@ -2824,6 +2825,7 @@
    "fcf482cda9bf739f": "Comportamento da conclusão automática",
    "39eb35d54cacd314": "Seguir as configurações",
    "65e3725b1c46b314": "Nunca",
@@ -8801,7 +8807,7 @@ index 9cc052192b4eb2064e9c8937ee531eec5e2b7eeb..2c92417b3c960e4a900198b0947820d2
    "4bbe9b821de91d9d": "Thread",
    "f053d7461b8ecce5": "ID da thread",
    "70399412ec5a7026": "Arquivar thread",
-@@ -3102,6 +3104,8 @@
+@@ -3135,6 +3137,8 @@
    "302b4ea2731cee30": "Entre no T3 Connect com a conta à qual este ambiente está vinculado.",
    "f1002e7e5d33605c": "Usar um código de login",
    "5913b58cf86d9b58": "Usar outra conta",
@@ -8810,7 +8816,7 @@ index 9cc052192b4eb2064e9c8937ee531eec5e2b7eeb..2c92417b3c960e4a900198b0947820d2
    "9c5a2e144cefdf2f": "Somente leitura",
    "12d03e02951725b0": "Lê projetos e threads. Não pode iniciar, enviar mensagens nem alterar nada.",
    "b6c9bd4137eca7b1": "O ambiente retornou um endereço que esta página não vai abrir.",
-@@ -3369,6 +3373,8 @@
+@@ -3402,6 +3406,8 @@
      },
      " por meio de um ambiente vinculado."
    ],
@@ -8819,7 +8825,7 @@ index 9cc052192b4eb2064e9c8937ee531eec5e2b7eeb..2c92417b3c960e4a900198b0947820d2
    "601807baf4e25b94": "Pré-visualizar {name}",
    "922a18febd2c86d7": "Pré-visualizar imagem",
    "932e6e0577492ff3": "Áudio indisponível",
-@@ -8963,6 +8969,7 @@
+@@ -8998,6 +9004,7 @@
    "6cf9e3083b15614f": "{label} não respondeu",
    "34ccbdf619b83be3": "Revogue \"T3 Code · …\" em Compartilhamento e acesso de {label} para encerrar a sessão lá também.",
    "81c9796bf61b306a": "Não foi possível esquecer o vínculo",
@@ -8827,7 +8833,7 @@ index 9cc052192b4eb2064e9c8937ee531eec5e2b7eeb..2c92417b3c960e4a900198b0947820d2
    "130e51beb6cf5aad": "Vincular um ambiente",
    "122c3e355699e69d": "Os agentes daqui poderão então iniciar threads lá, enviar mensagens e aguardá-las. Ele aparece em Clientes autorizados em Compartilhamento e acesso daquele ambiente, onde pode ser revogado.",
    "dc9a0b68d101e904": "Já vinculado. Vincular novamente renova o vínculo com o acesso escolhido.",
-@@ -11951,6 +11958,8 @@
+@@ -11987,6 +11994,8 @@
    "8ed7c2a2226f4663": "localhost loopback encaminhamento de portas abrir neste dispositivo abas navegador transmitir segurança port forwarding",
    "1c3e0ac06c8a1f1e": "conexões servidor backend local remoto acesso administrativo permissões escopo links de pareamento código qr clientes autorizados sessões revogar endpoint",
    "744fd34e8049efeb": "vincular par outra máquina vps agentes trabalham lá transferir código de pareamento",
@@ -8837,10 +8843,10 @@ index 9cc052192b4eb2064e9c8937ee531eec5e2b7eeb..2c92417b3c960e4a900198b0947820d2
    "cbf49f84e7f456e5": "Balanceamento de carga",
    "6f1a769805a28197": "automático máquina ambiente recursos cpu memória capacidade preferência peso projetos compartilhados",
 diff --git a/apps/web/src/i18n/translations/ru.json b/apps/web/src/i18n/translations/ru.json
-index 1d8bc14fde51ff8917f4692ea94ecc84600bb792..9e497693b4bbed9780f68632ab8a95375cd53170 100644
+index 2891cb8165d7c175c694410419f72ba24c53e2c2..9825f76b921b54baf77c2c15772b9a2e2e528ceb 100644
 --- a/apps/web/src/i18n/translations/ru.json
 +++ b/apps/web/src/i18n/translations/ru.json
-@@ -2512,6 +2512,7 @@
+@@ -2545,6 +2545,7 @@
    "ad170edd1d29d3f0": "Проект создан",
    "722b23aee8640b09": "Не удалось превратить тред в проект",
    "c9fdafde8e1fd711": "Не удалось обновить авторазбор",
@@ -8848,7 +8854,7 @@ index 1d8bc14fde51ff8917f4692ea94ecc84600bb792..9e497693b4bbed9780f68632ab8a9537
    "9cf56ac40f1133c0": "Путь недоступен",
    "755f85812d568822": "У этого треда нет пути рабочей области для копирования.",
    "6c13d520b6601f65": "Архивировать тред «{title}»?",
-@@ -2791,6 +2792,7 @@
+@@ -2824,6 +2825,7 @@
    "fcf482cda9bf739f": "Авторазбор",
    "39eb35d54cacd314": "Как в настройках",
    "65e3725b1c46b314": "Никогда",
@@ -8856,7 +8862,7 @@ index 1d8bc14fde51ff8917f4692ea94ecc84600bb792..9e497693b4bbed9780f68632ab8a9537
    "4bbe9b821de91d9d": "Тред",
    "f053d7461b8ecce5": "ID треда",
    "70399412ec5a7026": "Архивировать тред",
-@@ -3102,6 +3104,8 @@
+@@ -3135,6 +3137,8 @@
    "302b4ea2731cee30": "Войдите в T3 Connect с аккаунтом, к которому привязано это окружение.",
    "f1002e7e5d33605c": "Использовать код входа",
    "5913b58cf86d9b58": "Использовать другой аккаунт",
@@ -8865,7 +8871,7 @@ index 1d8bc14fde51ff8917f4692ea94ecc84600bb792..9e497693b4bbed9780f68632ab8a9537
    "9c5a2e144cefdf2f": "Только чтение",
    "12d03e02951725b0": "Чтение проектов и тредов. Нельзя ничего запускать, отправлять или менять.",
    "b6c9bd4137eca7b1": "Окружение вернуло адрес, который эта страница не откроет.",
-@@ -3369,6 +3373,8 @@
+@@ -3402,6 +3406,8 @@
      },
      " через привязанное окружение."
    ],
@@ -8874,7 +8880,7 @@ index 1d8bc14fde51ff8917f4692ea94ecc84600bb792..9e497693b4bbed9780f68632ab8a9537
    "601807baf4e25b94": "Предпросмотр {name}",
    "922a18febd2c86d7": "Предпросмотр изображения",
    "932e6e0577492ff3": "Аудио недоступно",
-@@ -8964,6 +8970,7 @@
+@@ -8999,6 +9005,7 @@
    "6cf9e3083b15614f": "{label} не ответил",
    "34ccbdf619b83be3": "Чтобы завершить сеанс и там, отзовите «T3 Code · …» в разделе «Общий доступ» на {label}.",
    "81c9796bf61b306a": "Не удалось забыть привязку",
@@ -8882,7 +8888,7 @@ index 1d8bc14fde51ff8917f4692ea94ecc84600bb792..9e497693b4bbed9780f68632ab8a9537
    "130e51beb6cf5aad": "Привязать окружение",
    "122c3e355699e69d": "После этого агенты отсюда смогут запускать треды там, писать в них и ждать их. Связь появится в разделе «Авторизованные клиенты» в «Общем доступе» того окружения, где её можно отозвать.",
    "dc9a0b68d101e904": "Уже привязано. Повторная привязка продлевает её с выбранным уровнем доступа.",
-@@ -11952,6 +11959,8 @@
+@@ -11988,6 +11995,8 @@
    "8ed7c2a2226f4663": "localhost loopback перенаправление портов открыть на этом устройстве вкладки браузер трансляция безопасность port forwarding",
    "1c3e0ac06c8a1f1e": "подключения сервер бэкенд локальный удалённый доступ административные разрешения область ссылки сопряжения qr-код авторизованные клиенты сеансы отозвать конечная точка",
    "744fd34e8049efeb": "привязать другой компьютер vps агенты работают там передача код сопряжения",
@@ -8892,10 +8898,10 @@ index 1d8bc14fde51ff8917f4692ea94ecc84600bb792..9e497693b4bbed9780f68632ab8a9537
    "cbf49f84e7f456e5": "Балансировка нагрузки",
    "6f1a769805a28197": "автоматически компьютер окружение ресурсы cpu память мощность предпочтение вес общие проекты",
 diff --git a/apps/web/src/i18n/translations/sv.json b/apps/web/src/i18n/translations/sv.json
-index 234479a1b2558d9690563c8e68569579902848d4..c94884b2d98e146e7f0e5ef6ac3313087d4f1c95 100644
+index c792d6fb4a981da73a386a45632202f6a2f6f556..babc773c293d7d2d010f57105434f845bededed9 100644
 --- a/apps/web/src/i18n/translations/sv.json
 +++ b/apps/web/src/i18n/translations/sv.json
-@@ -2512,6 +2512,7 @@
+@@ -2545,6 +2545,7 @@
    "ad170edd1d29d3f0": "Projektet skapades",
    "722b23aee8640b09": "Kunde inte göra om tråden till ett projekt",
    "c9fdafde8e1fd711": "Det gick inte att uppdatera automatisk markering som klar",
@@ -8903,7 +8909,7 @@ index 234479a1b2558d9690563c8e68569579902848d4..c94884b2d98e146e7f0e5ef6ac331308
    "9cf56ac40f1133c0": "Sökvägen är inte tillgänglig",
    "755f85812d568822": "Den här tråden har ingen sökväg till arbetsytan att kopiera.",
    "6c13d520b6601f65": "Arkivera tråden ”{title}”?",
-@@ -2791,6 +2792,7 @@
+@@ -2824,6 +2825,7 @@
    "fcf482cda9bf739f": "Beteende för automatisk markering som klar",
    "39eb35d54cacd314": "Följ inställningarna",
    "65e3725b1c46b314": "Aldrig",
@@ -8911,7 +8917,7 @@ index 234479a1b2558d9690563c8e68569579902848d4..c94884b2d98e146e7f0e5ef6ac331308
    "4bbe9b821de91d9d": "Tråd",
    "f053d7461b8ecce5": "Tråd-ID",
    "70399412ec5a7026": "Arkivera tråd",
-@@ -3102,6 +3104,8 @@
+@@ -3135,6 +3137,8 @@
    "302b4ea2731cee30": "Logga in på T3 Connect med kontot som den här miljön är länkad till.",
    "f1002e7e5d33605c": "Använd en inloggningskod i stället",
    "5913b58cf86d9b58": "Använd ett annat konto",
@@ -8920,7 +8926,7 @@ index 234479a1b2558d9690563c8e68569579902848d4..c94884b2d98e146e7f0e5ef6ac331308
    "9c5a2e144cefdf2f": "Endast läsning",
    "12d03e02951725b0": "Läs projekt och trådar. Kan inte starta, skicka meddelanden eller ändra något.",
    "b6c9bd4137eca7b1": "Miljön returnerade en adress som den här sidan inte öppnar.",
-@@ -3369,6 +3373,8 @@
+@@ -3402,6 +3406,8 @@
      },
      " via en länkad miljö."
    ],
@@ -8929,7 +8935,7 @@ index 234479a1b2558d9690563c8e68569579902848d4..c94884b2d98e146e7f0e5ef6ac331308
    "601807baf4e25b94": "Förhandsvisa {name}",
    "922a18febd2c86d7": "Förhandsvisa bild",
    "932e6e0577492ff3": "Ljudet är inte tillgängligt",
-@@ -8970,6 +8976,7 @@
+@@ -9005,6 +9011,7 @@
    "6cf9e3083b15614f": "{label} svarade inte",
    "34ccbdf619b83be3": "Återkalla ”T3 Code · …” under Delning och åtkomst på {label} för att avsluta sessionen där också.",
    "81c9796bf61b306a": "Kunde inte glömma länken",
@@ -8937,7 +8943,7 @@ index 234479a1b2558d9690563c8e68569579902848d4..c94884b2d98e146e7f0e5ef6ac331308
    "130e51beb6cf5aad": "Länka en miljö",
    "122c3e355699e69d": "Agenter här kan sedan starta, skicka meddelanden till och vänta på trådar där. Den visas under Auktoriserade klienter i miljöns Delning och åtkomst, där den kan återkallas.",
    "dc9a0b68d101e904": "Redan länkad. Om du länkar igen förnyas den med den åtkomst du väljer.",
-@@ -11959,6 +11966,8 @@
+@@ -11995,6 +12002,8 @@
    "8ed7c2a2226f4663": "localhost loopback portvidarebefordran öppna på den här enheten webbläsarflikar strömma säkerhet port forwarding",
    "1c3e0ac06c8a1f1e": "anslutningar server backend lokal fjärråtkomst administrativa behörigheter omfång parkopplingslänkar qr-kod auktoriserade klienter sessioner återkalla slutpunkt",
    "744fd34e8049efeb": "länka peer annan dator vps agenter arbetar där överlämning parkopplingskod",
@@ -8947,10 +8953,10 @@ index 234479a1b2558d9690563c8e68569579902848d4..c94884b2d98e146e7f0e5ef6ac331308
    "cbf49f84e7f456e5": "Lastbalansering",
    "6f1a769805a28197": "automatisk dator miljö resurser cpu minne kapacitet preferens vikt delade projekt",
 diff --git a/apps/web/src/i18n/translations/zh.json b/apps/web/src/i18n/translations/zh.json
-index 19eff455a318c201ae2f71ae92533d12cd4fe132..b8917ad0de6424126ef90c97cd42b6614f200896 100644
+index cd80e9a35102abfc4bf93b1b185d5758d1fce3d4..1d54d34daaccfc0d22d8ecf2ecfb523fbea5ef64 100644
 --- a/apps/web/src/i18n/translations/zh.json
 +++ b/apps/web/src/i18n/translations/zh.json
-@@ -2516,6 +2516,7 @@
+@@ -2549,6 +2549,7 @@
    "ad170edd1d29d3f0": "项目已创建",
    "722b23aee8640b09": "无法将会话转换为项目",
    "c9fdafde8e1fd711": "更新自动收尾设置失败",
@@ -8958,7 +8964,7 @@ index 19eff455a318c201ae2f71ae92533d12cd4fe132..b8917ad0de6424126ef90c97cd42b661
    "9cf56ac40f1133c0": "路径不可用",
    "755f85812d568822": "此会话没有可复制的工作区路径。",
    "6c13d520b6601f65": "归档会话“{title}”？",
-@@ -2795,6 +2796,7 @@
+@@ -2828,6 +2829,7 @@
    "fcf482cda9bf739f": "自动收尾行为",
    "39eb35d54cacd314": "跟随设置",
    "65e3725b1c46b314": "从不",
@@ -8966,7 +8972,7 @@ index 19eff455a318c201ae2f71ae92533d12cd4fe132..b8917ad0de6424126ef90c97cd42b661
    "4bbe9b821de91d9d": "会话",
    "f053d7461b8ecce5": "会话 ID",
    "70399412ec5a7026": "归档会话",
-@@ -3106,6 +3108,8 @@
+@@ -3139,6 +3141,8 @@
    "302b4ea2731cee30": "请使用此环境所关联的账号登录 T3 Connect。",
    "f1002e7e5d33605c": "改用登录码",
    "5913b58cf86d9b58": "使用其他账号",
@@ -8975,7 +8981,7 @@ index 19eff455a318c201ae2f71ae92533d12cd4fe132..b8917ad0de6424126ef90c97cd42b661
    "9c5a2e144cefdf2f": "只读",
    "12d03e02951725b0": "读取项目和会话，不能启动会话、发送消息或进行任何更改。",
    "b6c9bd4137eca7b1": "环境返回了一个此页面不会打开的地址。",
-@@ -3374,6 +3378,8 @@
+@@ -3407,6 +3411,8 @@
      },
      " 上的智能体通过已关联的环境启动。"
    ],
@@ -8984,7 +8990,7 @@ index 19eff455a318c201ae2f71ae92533d12cd4fe132..b8917ad0de6424126ef90c97cd42b661
    "601807baf4e25b94": "预览 {name}",
    "922a18febd2c86d7": "预览图片",
    "932e6e0577492ff3": "音频不可用",
-@@ -8980,6 +8986,7 @@
+@@ -9015,6 +9021,7 @@
    "6cf9e3083b15614f": "{label} 没有响应",
    "34ccbdf619b83be3": "在 {label} 的“共享与访问”中撤销“T3 Code · …”，以同时结束那里的连接。",
    "81c9796bf61b306a": "无法移除关联",
@@ -8992,7 +8998,7 @@ index 19eff455a318c201ae2f71ae92533d12cd4fe132..b8917ad0de6424126ef90c97cd42b661
    "130e51beb6cf5aad": "关联环境",
    "122c3e355699e69d": "这里的智能体随后就能在该环境中启动会话、发送消息并等待结果。此连接将显示在该环境“共享与访问”的“已授权客户端”中，可在那里撤销。",
    "dc9a0b68d101e904": "已关联。再次关联将使用你选择的访问权限续期。",
-@@ -11976,6 +11983,8 @@
+@@ -12012,6 +12019,8 @@
    "8ed7c2a2226f4663": "localhost 回环 端口转发 在此设备上打开 浏览器 标签页 串流 安全 port forwarding",
    "1c3e0ac06c8a1f1e": "连接 服务器 后端 本地 远程 访问 管理员 权限 范围 配对链接 二维码 已授权的客户端 客户端连接 撤销 端点",
    "744fd34e8049efeb": "关联 对等 另一台机器 vps 智能体 在那里工作 移交 配对码",
@@ -9239,10 +9245,10 @@ index b855e7ea99f0d4c790d67abe54cc56acef3ab2ea..8a73863a2180145c193752b2945908eb
    input: ReorderPinnedThreadInput,
  ) {
 diff --git a/packages/client-runtime/src/state/commandPermissions.test.ts b/packages/client-runtime/src/state/commandPermissions.test.ts
-index 18dee4bd56b4125a60d38a9cdef1e39038d07633..31ecf3c6af099bcaa722e364986986fe818668cb 100644
+index a3b1861ca035162c603a6358e594031627e41542..c413f384f69cd1e6a88c5ed64f36172537326117 100644
 --- a/packages/client-runtime/src/state/commandPermissions.test.ts
 +++ b/packages/client-runtime/src/state/commandPermissions.test.ts
-@@ -21,10 +21,12 @@ import {
+@@ -22,10 +22,12 @@ import {
    ORCHESTRATION_V2_WS_METHODS,
    ScheduledTaskId,
    WS_METHODS,
@@ -9255,7 +9261,7 @@ index 18dee4bd56b4125a60d38a9cdef1e39038d07633..31ecf3c6af099bcaa722e364986986fe
  import * as DateTime from "effect/DateTime";
  import * as Effect from "effect/Effect";
  import * as Fiber from "effect/Fiber";
-@@ -35,6 +37,7 @@ import { createCommandPermissions } from "./commandPermissions.ts";
+@@ -36,6 +38,7 @@ import { createCommandPermissions } from "./commandPermissions.ts";
  import { createEnvironmentRpcCommand, runAtomCommand } from "./runtime.ts";
  import { AVAILABLE_CONNECTION_STATE, BearerConnectionTarget } from "../connection/model.ts";
  import { createPeerLinkEnvironmentAtoms } from "./peerLinks.ts";
@@ -9263,7 +9269,7 @@ index 18dee4bd56b4125a60d38a9cdef1e39038d07633..31ecf3c6af099bcaa722e364986986fe
  
  vi.mock("./session.ts", () => ({
    createEnvironmentSessionAtoms: () => ({ sessionStateAtom: sessions }),
-@@ -519,6 +522,71 @@ it.effect(
+@@ -542,6 +545,71 @@ it.effect(
      }),
  );
  
@@ -9336,10 +9342,10 @@ index 18dee4bd56b4125a60d38a9cdef1e39038d07633..31ecf3c6af099bcaa722e364986986fe
    Effect.gen(function* () {
      const registry = yield* setup;
 diff --git a/packages/client-runtime/src/state/models.ts b/packages/client-runtime/src/state/models.ts
-index 4401f90e898c327c2cd969c1a871c7055314e332..85bcb1ded37a62ade37d0c5653cff9f22f8edd93 100644
+index a57483fdd95c539da5fed2ccb2c6b2bd9f97b1f9..f0adcef82fa1788c2a7c6ad5be6641dec500fc59 100644
 --- a/packages/client-runtime/src/state/models.ts
 +++ b/packages/client-runtime/src/state/models.ts
-@@ -193,6 +193,7 @@ export interface EnvironmentThreadShell {
+@@ -201,6 +201,7 @@ export interface EnvironmentThreadShell {
    readonly limitRecovery?: import("@t3tools/contracts").OrchestrationV2LimitRecovery | null;
    readonly pinnedAt: string | null;
    readonly autoSettleDisabledAt?: string | null;
@@ -9347,7 +9353,7 @@ index 4401f90e898c327c2cd969c1a871c7055314e332..85bcb1ded37a62ade37d0c5653cff9f2
    readonly pinOrderKey: string | null;
    readonly activeOrderKey: string | null;
    readonly pullRequests: ReadonlyArray<import("@t3tools/contracts").ThreadPullRequestLink>;
-@@ -351,6 +352,7 @@ export function presentThreadShell(
+@@ -360,6 +361,7 @@ export function presentThreadShell(
      limitRecovery: thread.limitRecovery ?? null,
      pinnedAt: nullableIso(thread.pinnedAt ?? null),
      autoSettleDisabledAt: nullableIso(thread.autoSettleDisabledAt ?? null),
@@ -9566,10 +9572,10 @@ index 5a630a6b7abe989984b2e7d86acc504f18bc8e9b..93892d155e0c20af3c85c918ab7121e6
    "approval-required": "SUPERVISED",
    "auto-accept-edits": "EDITS",
 diff --git a/packages/contracts/src/clientRpcPermissions.ts b/packages/contracts/src/clientRpcPermissions.ts
-index f7825d6364b791230358a9aac372a23edc531031..bfeecf26ddb6d1c6548bc1714e756684cdc8576f 100644
+index b23b4650b20a9e5efcd3c03673160af9cb447840..9c96f6d7b7f2fa82870deadfcedb85fa5b39e84c 100644
 --- a/packages/contracts/src/clientRpcPermissions.ts
 +++ b/packages/contracts/src/clientRpcPermissions.ts
-@@ -117,6 +117,12 @@ export function clientRpcRequiredScopes(
+@@ -124,6 +124,12 @@ export function clientRpcRequiredScopes(
      )
        return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
    }
@@ -9619,10 +9625,10 @@ index 5e16fb4a545ad44fe26b332d9a994ac139c9d815..e3428784ece01607c6017bde4da2bd4f
      expect(withMessageSenderNote(message, text)).toBe(expected);
    });
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029bfec170bd 100644
+index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d464d4afa6a 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
-@@ -339,6 +339,8 @@ export const OrchestrationV2ToolCapabilities = Schema.Struct({
+@@ -358,6 +358,8 @@ export const OrchestrationV2ToolCapabilities = Schema.Struct({
    supportsDynamicToolCallbacks: Schema.Boolean,
    /** The agent can mark background work it resumes from, so the thread holds as waiting. */
    supportsBackgroundWait: Schema.optional(Schema.Boolean),
@@ -9631,7 +9637,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
  });
  export type OrchestrationV2ToolCapabilities = typeof OrchestrationV2ToolCapabilities.Type;
  
-@@ -526,6 +528,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
+@@ -546,6 +548,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
    guestShare: Schema.optional(Schema.NullOr(ThreadGuestShare)),
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -9639,7 +9645,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
    pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    /** Absent on threads written before tags existed; read as empty. */
-@@ -608,12 +611,14 @@ interface CompactionMessageFields {
+@@ -628,12 +631,14 @@ interface CompactionMessageFields {
    readonly createdBy?: OrchestrationV2Actor | undefined;
    readonly creationSource?: OrchestrationV2CreationSource | undefined;
    readonly idleCompaction?: OrchestrationV2IdleCompaction | undefined;
@@ -9654,7 +9660,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
      message.text.trim().toLowerCase() === IDLE_COMPACTION_TEXT &&
      (message.attachments?.length ?? 0) === 0
    );
-@@ -624,7 +629,8 @@ const LEADING_COMMAND = /^\s*(?:\/|\p{Sc}[a-zA-Z0-9:_-]*[a-zA-Z])/u;
+@@ -644,7 +649,8 @@ const LEADING_COMMAND = /^\s*(?:\/|\p{Sc}[a-zA-Z0-9:_-]*[a-zA-Z])/u;
  /**
   * Who sent a message, in a line the model reads before its text, or the text unchanged when a
   * person typed it. Providers parse slash commands and skill mentions such as `$deploy` from the
@@ -9664,7 +9670,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
   */
  export function withMessageSenderNote(
    message: {
-@@ -633,9 +639,14 @@ export function withMessageSenderNote(
+@@ -653,9 +659,14 @@ export function withMessageSenderNote(
      readonly scheduledTaskId?: ScheduledTaskId | undefined;
      readonly senderThreadId?: ThreadId | undefined;
      readonly linkedSender?: OrchestrationV2LinkedSender | undefined;
@@ -9679,7 +9685,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
    const agent = message.createdBy === "agent";
    const note =
      agent && message.linkedSender !== undefined
-@@ -658,12 +669,13 @@ export type OrchestrationV2GoalCommand =
+@@ -678,12 +689,13 @@ export type OrchestrationV2GoalCommand =
    | { readonly type: "resume" }
    | { readonly type: "set"; readonly objective: string };
  
@@ -9695,7 +9701,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
    const match = /^\/goal(?:\s+([\s\S]*))?$/u.exec(message.text.trim());
    if (match === null) return null;
    const argument = (match[1] ?? "").trim();
-@@ -834,6 +846,8 @@ export const OrchestrationV2Run = Schema.Struct({
+@@ -854,6 +866,8 @@ export const OrchestrationV2Run = Schema.Struct({
    freshContext: Schema.optional(Schema.Boolean),
    /** The JSON Schema of the result this run was asked to return as data. */
    outputSchema: Schema.optional(Schema.Record(Schema.String, Schema.Json)),
@@ -9704,7 +9710,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
    /**
     * Its own field, written by its own event: lifecycle writers hold a copy of the run from when
     * the turn started, and their updates must not put an unanswered run back.
-@@ -1498,6 +1512,8 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
+@@ -1523,6 +1537,8 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
    followsThreadSelection: Schema.optional(Schema.Literal(true)),
    senderThreadId: Schema.optional(ThreadId),
    linkedSender: Schema.optional(OrchestrationV2LinkedSender),
@@ -9713,7 +9719,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
    idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
    /**
     * The message is the script a provider-native workflow run executes, not prose. Clients show
-@@ -1878,6 +1894,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
+@@ -1903,6 +1919,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
      scheduledTaskId: Schema.optional(ScheduledTaskId),
      senderThreadId: Schema.optional(ThreadId),
      linkedSender: Schema.optional(OrchestrationV2LinkedSender),
@@ -9721,7 +9727,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
      idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
      workflowScript: OrchestrationV2ConversationMessage.fields.workflowScript,
      freshContext: OrchestrationV2Run.fields.freshContext,
-@@ -2162,6 +2179,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
+@@ -2187,6 +2204,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
        "thread.unsnoozed",
        "thread.pinned",
        "thread.auto-settle-set",
@@ -9729,7 +9735,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
        "thread.unpinned",
        "thread.pin-reordered",
        "thread.active-reordered",
-@@ -2433,6 +2451,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
+@@ -2459,6 +2477,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
    limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -9737,7 +9743,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
    pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    /** Absent on threads written before tags existed; read as empty. */
-@@ -2606,6 +2625,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
+@@ -2632,6 +2651,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
    lastSnoozeWakeAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
@@ -9745,7 +9751,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
    lastVisitedAt: Schema.NullOr(Schema.DateTimeUtcFromString).pipe(
      Schema.withDecodingDefault(Effect.succeed(null)),
    ),
-@@ -2779,6 +2799,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
+@@ -2805,6 +2825,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
      scheduledTaskId: Schema.optional(ScheduledTaskId),
      senderThreadId: Schema.optional(ThreadId),
      linkedSender: Schema.optional(OrchestrationV2LinkedSender),
@@ -9753,7 +9759,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
      idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
      workflowScript: OrchestrationV2ConversationMessage.fields.workflowScript,
      freshContext: OrchestrationV2Run.fields.freshContext,
-@@ -3066,6 +3087,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
+@@ -3092,6 +3113,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
    snoozedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
@@ -9761,7 +9767,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
    lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    titleRegeneration: Schema.optional(
      Schema.NullOr(
-@@ -3119,6 +3141,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
+@@ -3145,6 +3167,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
        "thread.unsnoozed",
        "thread.pinned",
        "thread.auto-settle-set",
@@ -9769,7 +9775,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
        "thread.unpinned",
        "thread.pin-reordered",
        "thread.active-reordered",
-@@ -3385,6 +3408,12 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3413,6 +3436,12 @@ export const OrchestrationV2Command = Schema.Union([
      threadId: ThreadId,
      enabled: Schema.Boolean,
    }),
@@ -9782,7 +9788,7 @@ index decd7cd7cac3db30c6fa898b62af4807aeb7403a..b5ad0fe8ef24ccd520c394472f4a029b
    Schema.Struct({
      type: Schema.Literal("thread.pin"),
      commandId: CommandId,
-@@ -3564,6 +3593,8 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3592,6 +3621,8 @@ export const OrchestrationV2Command = Schema.Union([
      scheduledTaskId: Schema.optional(ScheduledTaskId),
      senderThreadId: Schema.optional(ThreadId),
      linkedSender: Schema.optional(OrchestrationV2LinkedSender),
@@ -9871,7 +9877,7 @@ index 49595364ad78677fe9d15f26e2314c692ec4a2cd..3e35153db442162d37ca3032939dcf3d
      message: Schema.String,
    },
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index b4459a6f4128e82bf56d0dff07fd174c8d5d7247..5d7be3a1214c6b687bb261307722b06d6b4c06cf 100644
+index e09345e859909de8880af623e766063a871f51a3..46dbf4da0dd99d7c0013294ae00632b547b431ee 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -1,5 +1,6 @@
@@ -9881,10 +9887,10 @@ index b4459a6f4128e82bf56d0dff07fd174c8d5d7247..5d7be3a1214c6b687bb261307722b06d
    AuthOrchestrationOperateScope,
    AuthAccessWriteScope,
    AuthSettingsWriteScope,
-@@ -1502,6 +1503,10 @@ export const ServerSettings = Schema.Struct({
-    * and tasks on another machine; tasks already running there finish.
-    */
+@@ -1504,6 +1505,10 @@ export const ServerSettings = Schema.Struct({
    linkedEnvironmentsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+   /** Beta: durable workflows from the workflows folder of the T3 home. Off runs none of them. */
+   workflowsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 +  /** The broadest access another machine may link here with. A link above it is revoked when used. */
 +  linkedEnvironmentsInboundMaxAccess: AuthMcpClientAccess.pipe(
 +    Schema.withDecodingDefault(Effect.succeed("full-access" as const)),
@@ -9892,15 +9898,15 @@ index b4459a6f4128e82bf56d0dff07fd174c8d5d7247..5d7be3a1214c6b687bb261307722b06d
    /** Beta: Claude and Codex predict the next prompt after completed turns. Codex follows a change at once; open Claude threads after they restart. */
    promptSuggestionsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
    sidebarAutoSettleKeepPullRequests: Schema.Boolean.pipe(
-@@ -1939,6 +1944,7 @@ export const ServerSettingsPatch = Schema.Struct({
-   hideTaggedThreads: Schema.optionalKey(Schema.Boolean),
+@@ -1942,6 +1947,7 @@ export const ServerSettingsPatch = Schema.Struct({
    guestSharingEnabled: Schema.optionalKey(Schema.Boolean),
    linkedEnvironmentsEnabled: Schema.optionalKey(Schema.Boolean),
+   workflowsEnabled: Schema.optionalKey(Schema.Boolean),
 +  linkedEnvironmentsInboundMaxAccess: Schema.optionalKey(AuthMcpClientAccess),
    promptSuggestionsEnabled: Schema.optionalKey(Schema.Boolean),
    backgroundActivity: Schema.optionalKey(
      Schema.Struct({
-@@ -2028,7 +2034,11 @@ export function requiredScopesForServerSettingsPatch(
+@@ -2031,7 +2037,11 @@ export function requiredScopesForServerSettingsPatch(
    let changesAccess = false;
    for (const [key, value] of Object.entries(patch)) {
      if (value === undefined) continue;
@@ -9914,7 +9920,7 @@ index b4459a6f4128e82bf56d0dff07fd174c8d5d7247..5d7be3a1214c6b687bb261307722b06d
      } else if (
        key === "providers" ||
 diff --git a/packages/provider-core/src/server/ProviderAdapter.ts b/packages/provider-core/src/server/ProviderAdapter.ts
-index 049198f9a6cb488efd3e8baf1f27236480086864..45fe56574bb91855af2f9c75fedecabe818ed1a4 100644
+index 4d008a7233900330c8f12bb09b8e9c16566278c1..58abfd5958d10159d5578ce3ccbb6d9c9373919d 100644
 --- a/packages/provider-core/src/server/ProviderAdapter.ts
 +++ b/packages/provider-core/src/server/ProviderAdapter.ts
 @@ -74,6 +74,8 @@ export const ProviderAdapterV2RuntimePolicy = Schema.Struct({
