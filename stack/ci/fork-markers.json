@@ -8,7 +8,8 @@
     { "name": "deleted transcript aggregation", "pattern": "retainedFiles\\.push\\(\\{" },
     { "name": "usage cache import floor", "pattern": "SPEED_COMPATIBLE_SINCE_VERSION = 4;" },
     { "name": "terminal origin environment", "pattern": "originEnvironmentId: [\\w$]+\\.originEnvironmentId \\?\\? null" },
-    { "name": "queued run merge command", "pattern": "queued-run\\.merge" }
+    { "name": "queued run merge command", "pattern": "queued-run\\.merge" },
+    { "name": "ask link default refusal", "pattern": "paired to ask questions only" }
   ],
   "serverAbsent": ["CACHE_RETENTION_DAYS"],
   "web": [
@@ -33,6 +34,7 @@
     { "name": "new terminal machine menu", "pattern": "New terminal on" },
     { "name": "send all queued as one", "pattern": "Send all as one" },
     { "name": "reorder pinned in grouped sidebar", "pattern": "sidebar-marker-pinned" },
-    { "name": "pin from sidebar card", "pattern": "group-has-\\[:focus-visible\\]/sidebar-row:inline-flex" }
+    { "name": "pin from sidebar card", "pattern": "group-has-\\[:focus-visible\\]/sidebar-row:inline-flex" },
+    { "name": "answer linked questions opt-in", "pattern": "Answer linked questions" }
   ]
 }
