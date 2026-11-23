@@ -35,6 +35,7 @@
     { "name": "send all queued as one", "pattern": "Send all as one" },
     { "name": "reorder pinned in grouped sidebar", "pattern": "sidebar-marker-pinned" },
     { "name": "pin from sidebar card", "pattern": "group-has-\\[:focus-visible\\]/sidebar-row:inline-flex" },
-    { "name": "answer linked questions opt-in", "pattern": "Answer linked questions" }
+    { "name": "answer linked questions opt-in", "pattern": "Answer linked questions" },
+    { "name": "GPT model OpenAI logo", "pattern": "/\\^gpt\\[\\\\s\\\\d-\\]/i" }
   ]
 }

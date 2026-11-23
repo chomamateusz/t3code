@@ -1,0 +1,475 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
+Date: Sun, 22 Nov 2026 20:53:13 +0100
+Subject: =?UTF-8?q?=F0=9F=8F=B7=EF=B8=8F=20Show=20the=20OpenAI=20logo=20fo?=
+ =?UTF-8?q?r=20GPT=20models=20served=20through=20another=20provider?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Behaviours:
+- Where an icon stands for one specific model, a GPT model shows the OpenAI logo (black or white per theme, as the Codex provider does) instead of its provider's logo. This covers GPT models a Claude instance lists through the fleet proxy (slugs such as claude-fable-5-dd-los-2.6-tpg, names such as "GPT 6.2 Sol") and GPT models of any other provider.
+- Places: model picker rows (provider tabs and Favorites), the composer's model picker trigger (single and multiple selection), the composer's model mention menu and model mention chips (their accent follows the logo), the current-provider icon of sidebar thread rows and their hover card, thread chip hover cards, handoff endpoints in the timeline (icon and label colour), subagent hover cards, the provider subagent bar, the guest page's model label and the usage model dialog header.
+- A model is GPT when its display name starts with "GPT" followed by a space, a dash or a digit (any case), or its slug starts with "gpt-". One helper decides it: modelBrandDriverKind(driverKind, model) in providerIconUtils returns the codex driver kind for a GPT model and the provider's own driver kind otherwise.
+- Custom OpenAI-compatible endpoints keep their initials tile, which already carries the OpenAI mark.
+- Provider-level icons (picker sidebar tabs, settings cards, usage charts, subagent avatars, the sidebar's earlier-provider icons, command palette harness icons) keep the provider's logo. Instance badges (accent colour, initials) are unchanged.
+- No server or contracts change.
+
+Files:
+apps/web:
+- apps/web/src/components/chat/providerIconUtils.ts
+- apps/web/src/components/chat/providerIconUtils.test.ts
+- apps/web/src/components/chat/ModelListRow.tsx
+- apps/web/src/components/chat/ProviderModelPicker.tsx
+- apps/web/src/components/chat/ComposerCommandMenu.tsx
+- apps/web/src/components/chat/ModelMentionChip.tsx
+- apps/web/src/components/chat/V2LifecycleRow.tsx
+- apps/web/src/components/chat/SubagentTooltipContent.tsx
+- apps/web/src/components/chat/ProviderSubagentBar.tsx
+- apps/web/src/components/ChatView.tsx
+- apps/web/src/components/ThreadChipHoverCard.tsx
+- apps/web/src/components/sidebar/SidebarThreadRow.tsx
+- apps/web/src/components/guest/GuestPage.tsx
+- apps/web/src/components/usage/UsageModelDialog.tsx
+
+Tests:
+- New providerIconUtils.test.ts: proxied GPT names, GPT slugs without a name, non-GPT models (including a "GPTX" name), missing model, custom endpoint.
+- vp test run providerIconUtils.test.ts ProviderInstanceIcon.test.ts ComposerCommandMenu.test.tsx on 047fb5b162 with the whole series applied: 6 passed.
+- vp run check:changed HEAD: format, lint, knip, typecheck and React Compiler passed; the 14 test files beside the changed files ran 112 passed, 1 failed. The failure, ChatView.browser.test.tsx "a shortcut conditioned on rightPanelOpen sees the thread's open right panel", fails the same way on the series without this commit and passes when run alone.
+- vp build of apps/web: the bundle carries the GPT name pattern (fork marker "GPT model OpenAI logo").
+- No run in a real client yet.
+
+Model/harness: Claude Opus 5.5 / Claude Code
+---
+ apps/web/src/components/ChatView.tsx          |  5 +++
+ .../src/components/ThreadChipHoverCard.tsx    |  7 +++-
+ .../components/chat/ComposerCommandMenu.tsx   |  6 ++-
+ apps/web/src/components/chat/ModelListRow.tsx |  4 +-
+ .../src/components/chat/ModelMentionChip.tsx  |  4 +-
+ .../components/chat/ProviderModelPicker.tsx   | 18 +++++++--
+ .../components/chat/ProviderSubagentBar.tsx   |  4 +-
+ .../chat/SubagentTooltipContent.tsx           |  3 +-
+ .../src/components/chat/V2LifecycleRow.tsx    |  8 ++--
+ .../components/chat/providerIconUtils.test.ts | 37 +++++++++++++++++++
+ .../src/components/chat/providerIconUtils.ts  | 22 ++++++++++-
+ apps/web/src/components/guest/GuestPage.tsx   |  8 +++-
+ .../components/sidebar/SidebarThreadRow.tsx   | 15 ++++++--
+ .../src/components/usage/UsageModelDialog.tsx |  3 +-
+ 14 files changed, 122 insertions(+), 22 deletions(-)
+ create mode 100644 apps/web/src/components/chat/providerIconUtils.test.ts
+
+diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
+index 09792ed56a9906acf7e5403821b9e0f2f4c47413..92f6ad7bc862ba639174030a5093c7893ac95165 100644
+--- a/apps/web/src/components/ChatView.tsx
++++ b/apps/web/src/components/ChatView.tsx
+@@ -3815,6 +3815,11 @@ export default function ChatView(props: ChatViewProps) {
+                                     providerInstanceEntries,
+                                   )
+                                 }
++                                model={
++                                  providerSubagentCatalogModel ?? {
++                                    slug: activeThread?.modelSelection.model,
++                                  }
++                                }
+                                 modelLabel={providerSubagentModelLabel}
+                                 effortLabel={providerSubagentEffortLabel}
+                                 status={providerSubagentStatus}
+diff --git a/apps/web/src/components/ThreadChipHoverCard.tsx b/apps/web/src/components/ThreadChipHoverCard.tsx
+index e6a51a9f8a5a5a109d0ac6e9fa82d91b714fe59b..d2d63bf184ea730d51faef5033acefd16f9c8579 100644
+--- a/apps/web/src/components/ThreadChipHoverCard.tsx
++++ b/apps/web/src/components/ThreadChipHoverCard.tsx
+@@ -6,7 +6,7 @@ import { useGT } from "gt-react";
+ import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
+ import type { useProject } from "~/state/entities";
+ import { useEnvironmentProviders } from "~/state/environments";
+-import { getTriggerDisplayModelName } from "./chat/providerIconUtils";
++import { getTriggerDisplayModelName, modelBrandDriverKind } from "./chat/providerIconUtils";
+ import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
+ import { ProjectFavicon } from "./ProjectFavicon";
+ import { ThreadHoverCard } from "./ThreadHoverCard";
+@@ -67,7 +67,10 @@ export function ThreadChipHoverCard(props: {
+       {provider && modelLabel ? (
+         <div className="flex min-w-0 items-center gap-2">
+           <ProviderInstanceIcon
+-            driverKind={provider.driver}
++            driverKind={modelBrandDriverKind(
++              provider.driver,
++              model ?? { slug: shell?.modelSelection.model },
++            )}
+             displayName={resolveProviderInstanceDisplayName(provider)}
+             acpRegistryIconUrl={provider.iconUrl}
+             iconClassName="size-3 shrink-0 opacity-60"
+diff --git a/apps/web/src/components/chat/ComposerCommandMenu.tsx b/apps/web/src/components/chat/ComposerCommandMenu.tsx
+index 50ee237c87e0f0c86c86cd5e50dd70932ae8a63a..f0fd8a4e08a60323b1452cc36d62eaa537d3c198 100644
+--- a/apps/web/src/components/chat/ComposerCommandMenu.tsx
++++ b/apps/web/src/components/chat/ComposerCommandMenu.tsx
+@@ -35,6 +35,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+ import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
+ import { PierreEntryIcon } from "./PierreEntryIcon";
+ import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
++import { modelBrandDriverKind } from "./providerIconUtils";
+ import { ComposerBanner } from "./ComposerBanner";
+ import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
+ 
+@@ -253,7 +254,10 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
+       ) : null}
+       {props.item.type === "model" ? (
+         <ProviderInstanceIcon
+-          driverKind={props.item.driverKind}
++          driverKind={modelBrandDriverKind(props.item.driverKind, {
++            slug: props.item.model,
++            name: props.item.label,
++          })}
+           displayName={props.item.providerDisplayName}
+           acpRegistryAgentId={props.item.acpRegistryAgentId}
+           acpRegistryIconUrl={props.item.acpRegistryIconUrl}
+diff --git a/apps/web/src/components/chat/ModelListRow.tsx b/apps/web/src/components/chat/ModelListRow.tsx
+index 74dae2dc23582985c08ee36dd3d6384cfa3516db..ba1222dac62bcad464bd17689af7fd4320b8b7ad 100644
+--- a/apps/web/src/components/chat/ModelListRow.tsx
++++ b/apps/web/src/components/chat/ModelListRow.tsx
+@@ -2,7 +2,7 @@ import { type ProviderDriverKind, type ProviderInstanceId } from "@t3tools/contr
+ import { T, useGT } from "gt-react";
+ import { memo } from "react";
+ import { CheckIcon, StarIcon } from "lucide-react";
+-import { getDisplayModelName } from "./providerIconUtils";
++import { getDisplayModelName, modelBrandDriverKind } from "./providerIconUtils";
+ import { ComboboxItem } from "../ui/combobox";
+ import { Button } from "../ui/button";
+ import { Badge } from "../ui/badge";
+@@ -57,7 +57,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
+     >
+       {/* One row shape in every tab: the logo names the provider, so Favorites needs no second line. */}
+       <ProviderInstanceIcon
+-        driverKind={props.driverKind}
++        driverKind={modelBrandDriverKind(props.driverKind, model)}
+         displayName={props.providerDisplayName}
+         accentColor={props.providerAccentColor}
+         acpRegistryAgentId={props.acpRegistryAgentId}
+diff --git a/apps/web/src/components/chat/ModelMentionChip.tsx b/apps/web/src/components/chat/ModelMentionChip.tsx
+index 40210f2d9ef81a36e4186f63f03c0c8d306af35e..5c1fd4c6c5a2e1c294c07834b0275c4936621714 100644
+--- a/apps/web/src/components/chat/ModelMentionChip.tsx
++++ b/apps/web/src/components/chat/ModelMentionChip.tsx
+@@ -9,7 +9,7 @@ import { serverEnvironment } from "~/state/server";
+ import { contextChipAccentWithHueOf } from "~/themePalette";
+ import { ContextChipPopover } from "../contextChipParts";
+ import { ProviderInstanceIcon, providerLogoColor } from "./ProviderInstanceIcon";
+-import { getDisplayModelName } from "./providerIconUtils";
++import { getDisplayModelName, modelBrandDriverKind } from "./providerIconUtils";
+ 
+ interface ModelMentionPresentation {
+   readonly label: string;
+@@ -48,7 +48,7 @@ const modelMentionPresentationAtom = Atom.family((key: string) =>
+     const next: ModelMentionPresentation = {
+       label: getDisplayModelName(option),
+       providerLabel: option.subProvider ?? entry.displayName,
+-      driverKind: entry.driverKind,
++      driverKind: modelBrandDriverKind(entry.driverKind, option),
+       providerDisplayName: entry.displayName,
+       acpRegistryAgentId: entry.acpRegistryAgentId,
+       acpRegistryIconUrl: entry.acpRegistryIconUrl,
+diff --git a/apps/web/src/components/chat/ProviderModelPicker.tsx b/apps/web/src/components/chat/ProviderModelPicker.tsx
+index 254b1ffeac9370d02ca64816bfdb24093a556b20..6023f62e05357b590cae21bc172bb9c05fa8e7ba 100644
+--- a/apps/web/src/components/chat/ProviderModelPicker.tsx
++++ b/apps/web/src/components/chat/ProviderModelPicker.tsx
+@@ -26,7 +26,12 @@ import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPick
+ import { retainedModelWhileProviderLocked } from "./ProviderModelPicker.logic";
+ import { ChatGptSharingControl } from "./ChatGptSharingControl";
+ import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
+-import { ModelEsque, getDisplayModelName, getTriggerDisplayModelName } from "./providerIconUtils";
++import {
++  ModelEsque,
++  getDisplayModelName,
++  getTriggerDisplayModelName,
++  modelBrandDriverKind,
++} from "./providerIconUtils";
+ import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
+ import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
+ import { takeOpenTarget, useComposerMenuProps } from "./composerEventScope";
+@@ -248,6 +253,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+     return {
+       ...selection,
+       entry,
++      option: model,
+       label: model
+         ? withUnavailable(getTriggerDisplayModelName(model, entry?.driverKind), model.isUnavailable)
+         : selection.model,
+@@ -396,7 +402,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+                   selection.entry ? (
+                     <ProviderInstanceIcon
+                       key={`${selection.instanceId}:${selection.model}`}
+-                      driverKind={selection.entry.driverKind}
++                      driverKind={modelBrandDriverKind(
++                        selection.entry.driverKind,
++                        selection.option ?? { slug: selection.model },
++                      )}
+                       displayName={selection.entry.displayName}
+                       accentColor={selection.entry.accentColor}
+                       acpRegistryAgentId={selection.entry.acpRegistryAgentId}
+@@ -416,7 +425,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+             // Narrow compacted composers hide the provider icon before truncating the name.
+             <span data-chat-provider-model-picker-icon className="contents">
+               <ProviderInstanceIcon
+-                driverKind={activeEntry.driverKind}
++                driverKind={modelBrandDriverKind(
++                  activeEntry.driverKind,
++                  selectedModel ?? { slug: props.model },
++                )}
+                 displayName={activeEntry.displayName}
+                 accentColor={activeEntry.accentColor}
+                 acpRegistryAgentId={activeEntry.acpRegistryAgentId}
+diff --git a/apps/web/src/components/chat/ProviderSubagentBar.tsx b/apps/web/src/components/chat/ProviderSubagentBar.tsx
+index 315461296bade6fdc20b7a04f13991338f212673..05ec8943c5e54bffc8ed8b2241d1511a39af749c 100644
+--- a/apps/web/src/components/chat/ProviderSubagentBar.tsx
++++ b/apps/web/src/components/chat/ProviderSubagentBar.tsx
+@@ -11,6 +11,7 @@ import { tickTextContent } from "~/lib/tickTextContent";
+ import type { ProviderInstanceEntry } from "../../providerInstances";
+ import { Button } from "../ui/button";
+ import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
++import { modelBrandDriverKind, type ModelIdentity } from "./providerIconUtils";
+ import {
+   ReadOnlyComposerBar,
+   ReadOnlyComposerLead,
+@@ -20,6 +21,7 @@ import {
+ export function ProviderSubagentBar(props: {
+   readonly provider: ProviderInstanceEntry | null;
+   readonly showInstanceBadge: boolean;
++  readonly model: ModelIdentity | null;
+   readonly modelLabel: string;
+   readonly effortLabel: string | null;
+   readonly status: ProviderSubagentStatus | null;
+@@ -63,7 +65,7 @@ export function ProviderSubagentBar(props: {
+       <ReadOnlyComposerLead>
+         {props.provider ? (
+           <ProviderInstanceIcon
+-            driverKind={props.provider.driverKind}
++            driverKind={modelBrandDriverKind(props.provider.driverKind, props.model)}
+             displayName={props.provider.displayName}
+             accentColor={props.provider.accentColor}
+             acpRegistryAgentId={props.provider.acpRegistryAgentId}
+diff --git a/apps/web/src/components/chat/SubagentTooltipContent.tsx b/apps/web/src/components/chat/SubagentTooltipContent.tsx
+index 722968fb6241a18b81434a00be1517bbbd534cee..13abbfd33f052f3bebc3fd17d4c996edf9dfaf8c 100644
+--- a/apps/web/src/components/chat/SubagentTooltipContent.tsx
++++ b/apps/web/src/components/chat/SubagentTooltipContent.tsx
+@@ -28,6 +28,7 @@ import {
+ import { ThreadHoverCard } from "../ThreadHoverCard";
+ import { MiddleTruncate } from "../ui/middle-truncate";
+ import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
++import { modelBrandDriverKind } from "./providerIconUtils";
+ import { cn } from "~/lib/utils";
+ import { deriveProviderInstanceEntries, shouldShowInstanceBadge } from "../../providerInstances";
+ 
+@@ -136,7 +137,7 @@ export function SubagentTooltipContent(props: {
+       <div className="flex min-w-0 items-center gap-2">
+         {driver ? (
+           <ProviderInstanceIcon
+-            driverKind={driver}
++            driverKind={modelBrandDriverKind(driver, providerModel ?? { slug: modelSlug })}
+             displayName={entry?.displayName ?? props.provider?.displayName ?? driver}
+             accentColor={entry?.accentColor}
+             acpRegistryIconUrl={props.provider?.iconUrl}
+diff --git a/apps/web/src/components/chat/V2LifecycleRow.tsx b/apps/web/src/components/chat/V2LifecycleRow.tsx
+index 44d578ee19b73dd4f72a16d9a654f8972a903d78..ff20ee42579955027255adf427a5249023a3a41c 100644
+--- a/apps/web/src/components/chat/V2LifecycleRow.tsx
++++ b/apps/web/src/components/chat/V2LifecycleRow.tsx
+@@ -62,7 +62,7 @@ import {
+   type ProviderInstanceEntry,
+ } from "../../providerInstances";
+ import { formatShortTimestamp } from "../../timestampFormat";
+-import { getTriggerDisplayModelName } from "./providerIconUtils";
++import { getTriggerDisplayModelName, modelBrandDriverKind } from "./providerIconUtils";
+ import { ProviderInstanceIcon, providerTextColor } from "./ProviderInstanceIcon";
+ import { cn } from "~/lib/utils";
+ import { TimelineSystemDivider } from "./TimelineSystemDivider";
+@@ -736,9 +736,11 @@ function HandoffEndpoint(props: {
+       : model !== undefined && model.length > 0
+         ? model
+         : (entry?.displayName ?? props.instanceId);
+-  const labelColor = providerTextColor(
++  const driverKind = modelBrandDriverKind(
+     entry?.driverKind ?? ProviderDriverKind.make(props.instanceId),
++    providerModel ?? { slug: model },
+   );
++  const labelColor = providerTextColor(driverKind);
+   return (
+     <Tooltip>
+       <TooltipTrigger
+@@ -748,7 +750,7 @@ function HandoffEndpoint(props: {
+             className="inline-flex min-w-0 items-center gap-1.5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+           >
+             <ProviderInstanceIcon
+-              driverKind={entry?.driverKind ?? ProviderDriverKind.make(props.instanceId)}
++              driverKind={driverKind}
+               displayName={entry?.displayName ?? props.instanceId}
+               accentColor={entry?.accentColor}
+               acpRegistryAgentId={entry?.acpRegistryAgentId}
+diff --git a/apps/web/src/components/chat/providerIconUtils.test.ts b/apps/web/src/components/chat/providerIconUtils.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..61a8232cdbe145d7599edfe209a349bfe020d7da
+--- /dev/null
++++ b/apps/web/src/components/chat/providerIconUtils.test.ts
+@@ -0,0 +1,37 @@
++import { ProviderDriverKind } from "@t3tools/contracts";
++import { describe, expect, it } from "vite-plus/test";
++
++import { modelBrandDriverKind } from "./providerIconUtils";
++
++const claude = ProviderDriverKind.make("claudeAgent");
++const codex = ProviderDriverKind.make("codex");
++const cursor = ProviderDriverKind.make("cursor");
++const custom = ProviderDriverKind.make("openaiCompatible");
++
++describe("modelBrandDriverKind", () => {
++  it("shows the OpenAI logo for a proxied GPT model by its display name", () => {
++    expect(
++      modelBrandDriverKind(claude, { slug: "claude-fable-5-dd-los-2.6-tpg", name: "GPT 6.2 Sol" }),
++    ).toBe(codex);
++    expect(modelBrandDriverKind(claude, { slug: "proxy-alias", name: "gpt-6-astra" })).toBe(codex);
++    expect(modelBrandDriverKind(cursor, { slug: "x", name: "GPT5 Codex" })).toBe(codex);
++  });
++
++  it("shows the OpenAI logo for a GPT slug without a name", () => {
++    expect(modelBrandDriverKind(claude, { slug: "GPT-6.2-sol" })).toBe(codex);
++  });
++
++  it("keeps the driver's logo for other models", () => {
++    expect(modelBrandDriverKind(claude, { slug: "claude-opus-5-5", name: "Claude Opus 5.5" })).toBe(
++      claude,
++    );
++    expect(modelBrandDriverKind(claude, { slug: "gptx", name: "GPTX Turbo" })).toBe(claude);
++    expect(modelBrandDriverKind(cursor, { slug: "composer-2.5", name: "Composer" })).toBe(cursor);
++    expect(modelBrandDriverKind(claude, null)).toBe(claude);
++    expect(modelBrandDriverKind(claude, undefined)).toBe(claude);
++  });
++
++  it("keeps a custom endpoint's own tile", () => {
++    expect(modelBrandDriverKind(custom, { slug: "gpt-6-luna", name: "GPT 6 Luna" })).toBe(custom);
++  });
++});
+diff --git a/apps/web/src/components/chat/providerIconUtils.ts b/apps/web/src/components/chat/providerIconUtils.ts
+index 565dc25c05f1de5e86c57a9fa525dbb3ad67610e..ef352fadd5169afadff86600dceb5d9210241b0b 100644
+--- a/apps/web/src/components/chat/providerIconUtils.ts
++++ b/apps/web/src/components/chat/providerIconUtils.ts
+@@ -1,4 +1,4 @@
+-import type { ProviderDriverKind } from "@t3tools/contracts";
++import { ProviderDriverKind } from "@t3tools/contracts";
+ import { resolveModelShortName } from "@t3tools/client-runtime/provider-clients";
+ 
+ export type ModelEsque = {
+@@ -42,3 +42,23 @@ export function getTriggerDisplayModelName(
+   const shortName = resolveModelShortName(model, driverKind);
+   return getDisplayModelName({ ...model, shortName }, { preferShortName: true });
+ }
++
++export type ModelIdentity = {
++  readonly slug?: string | null | undefined;
++  readonly name?: string | null | undefined;
++};
++
++const OPENAI_LOGO_DRIVER_KIND = ProviderDriverKind.make("codex");
++const GPT_MODEL_NAME = /^gpt[\s\d-]/i;
++
++export function modelBrandDriverKind(
++  driverKind: ProviderDriverKind,
++  model: ModelIdentity | null | undefined,
++): ProviderDriverKind {
++  // A custom endpoint's tile is its only identity and already carries the OpenAI mark.
++  if (!model || driverKind === "openaiCompatible") return driverKind;
++  const isGpt =
++    GPT_MODEL_NAME.test(model.name?.trim() ?? "") ||
++    (model.slug?.trim().toLowerCase().startsWith("gpt-") ?? false);
++  return isGpt ? OPENAI_LOGO_DRIVER_KIND : driverKind;
++}
+diff --git a/apps/web/src/components/guest/GuestPage.tsx b/apps/web/src/components/guest/GuestPage.tsx
+index 9cc690491d3290c5dfbc0f927a1f633cdfec6837..968655ddbc4fe7c1048644bdbce97b3f2056d204 100644
+--- a/apps/web/src/components/guest/GuestPage.tsx
++++ b/apps/web/src/components/guest/GuestPage.tsx
+@@ -44,7 +44,11 @@ import { GuestMessageName, guestBubbleClassName } from "../chat/guestMessageStyl
+ import type { MessagesTimelineHistoryControls } from "../chat/MessagesTimeline";
+ import { ReadOnlyThreadTimeline } from "../chat/ReadOnlyThreadTimeline";
+ import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
+-import { getDisplayModelName, getTriggerDisplayModelName } from "../chat/providerIconUtils";
++import {
++  getDisplayModelName,
++  getTriggerDisplayModelName,
++  modelBrandDriverKind,
++} from "../chat/providerIconUtils";
+ import type { TimelineRow } from "../chat/timelineRowContext";
+ import { GuestHtmlRender } from "./GuestHtmlRender";
+ import { Button } from "../ui/button";
+@@ -536,7 +540,7 @@ function GuestModelLabel({ model }: { readonly model: GuestThreadModel }) {
+     >
+       {model.driver === null ? null : (
+         <ProviderInstanceIcon
+-          driverKind={model.driver}
++          driverKind={modelBrandDriverKind(model.driver, model)}
+           displayName={label}
+           className="size-4"
+           iconClassName="size-4"
+diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
+index a23be6bd239d9b1ffe575db503f93f197d3a0dc5..edb3387773586d333fe2c2b799ae9312a740327f 100644
+--- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
++++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
+@@ -123,7 +123,7 @@ import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
+ import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
+ import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
+ import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
+-import { getTriggerDisplayModelName } from "../chat/providerIconUtils";
++import { getTriggerDisplayModelName, modelBrandDriverKind } from "../chat/providerIconUtils";
+ import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
+ import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
+ import { InlineButton } from "../ui/button";
+@@ -208,6 +208,13 @@ function terminalProcessLabel(count: number, resolve: MessageResolver): string {
+   );
+ }
+ 
++function threadModelDriverKind(entry: SidebarProviderEntry, model: string) {
++  return modelBrandDriverKind(
++    entry.driverKind,
++    entry.models.find((candidate) => candidate.slug === model) ?? { slug: model },
++  );
++}
++
+ function SidebarProviderStack(props: {
+   thread: SidebarThreadSummary;
+   providerEntryByInstanceId: ReadonlyMap<string, SidebarProviderEntry>;
+@@ -222,7 +229,7 @@ function SidebarProviderStack(props: {
+   );
+   const current = (
+     <ProviderInstanceIcon
+-      driverKind={currentEntry.driverKind}
++      driverKind={threadModelDriverKind(currentEntry, props.thread.modelSelection.model)}
+       displayName={currentEntry.displayName}
+       accentColor={currentEntry.accentColor}
+       acpRegistryAgentId={currentEntry.acpRegistryAgentId}
+@@ -288,7 +295,9 @@ function SidebarThreadTooltip({
+   terminalStatus: TerminalStatusIndicator | null;
+   terminalProcessCount: number;
+ }) {
+-  const driverKind = providerEntry?.driverKind ?? null;
++  const driverKind = providerEntry
++    ? threadModelDriverKind(providerEntry, thread.modelSelection.model)
++    : null;
+   const worktreePath = thread.worktreePath?.trim();
+   const previousProviderNames = thread.providerInstanceHistory
+     .filter((instanceId) => instanceId !== modelInstanceId)
+diff --git a/apps/web/src/components/usage/UsageModelDialog.tsx b/apps/web/src/components/usage/UsageModelDialog.tsx
+index d2b5dcc6caa0efbc811ec385eeaeb3662095f26a..ae84201b1f288827eca9865ace2baea5cdae2cad 100644
+--- a/apps/web/src/components/usage/UsageModelDialog.tsx
++++ b/apps/web/src/components/usage/UsageModelDialog.tsx
+@@ -4,6 +4,7 @@ import { isModelCostUnknown, type ModelTotals } from "@t3tools/shared/usageMerge
+ 
+ import { mergeAnsweredUsage, type EnvironmentUsageStatus } from "../../state/usage";
+ import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
++import { modelBrandDriverKind } from "../chat/providerIconUtils";
+ import { Button } from "../ui/button";
+ import {
+   Dialog,
+@@ -80,7 +81,7 @@ export function UsageModelDialog({
+         <DialogHeader>
+           <div className="flex items-center gap-2">
+             <ProviderInstanceIcon
+-              driverKind={presentation.driverKind}
++              driverKind={modelBrandDriverKind(presentation.driverKind, { slug: model.model })}
+               displayName={presentation.label}
+               iconClassName="size-5"
+             />
