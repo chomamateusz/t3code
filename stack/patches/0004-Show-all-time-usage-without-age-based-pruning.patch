@@ -120,7 +120,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code;
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
 diff --git a/apps/server/src/serverSettings.test.ts b/apps/server/src/serverSettings.test.ts
-index f837fd8ca97222bff714181ade6311ec65a128e2..73d9cc96fdcce8789cde6b87a22a648130edb8ae 100644
+index 5d46c916c3990400ca3c442506509d9f09b44c02..9e83aac3e598cfcd527aba0c41056f3e5588c13b 100644
 --- a/apps/server/src/serverSettings.test.ts
 +++ b/apps/server/src/serverSettings.test.ts
 @@ -650,7 +650,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
@@ -993,7 +993,7 @@ index 843b414b97f32872cba0ad85fee3516a15d37551..18cd2915ab568654eecc4d1ef8dd1466
    // Snapshot now: the encoding runs later, while the file is written.
    return (cache, extra) => encode([...cache], extra);
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index 99ff61182d626559bcb56fd3b52e79f25b9e8fb8..d78189290e65e1c147e103af2dd28a19e4d2f66b 100644
+index 55d4278b0fe161c389784f056592c4f744cb2321..36b789cbc953bd7d0eb0d627520dbf9fdb37aa20 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 @@ -29,7 +29,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
@@ -1007,7 +1007,7 @@ index 99ff61182d626559bcb56fd3b52e79f25b9e8fb8..d78189290e65e1c147e103af2dd28a19
    ].map((command, index) => [command, index]),
  );
  
-@@ -499,7 +501,9 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+@@ -503,7 +505,9 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
  
  // Whole labels: search titles keep the encoded message, which cannot nest another one.
  const USAGE_COMMAND_LABELS: Record<
@@ -1019,7 +1019,7 @@ index 99ff61182d626559bcb56fd3b52e79f25b9e8fb8..d78189290e65e1c147e103af2dd28a19
  > = {
    "usage.cost": msg("Usage: Cost"),
 diff --git a/apps/web/src/components/usage/UsagePage.tsx b/apps/web/src/components/usage/UsagePage.tsx
-index adb05afb92ebb220460ff11023a5d3dcc88dd843..17a8bed7a11d31d047b8057eff44204c51c3237e 100644
+index 326b592e823dbc1317b0b779839f2398560a47e7..20d9db877f77c428b105f86f49eef1878b1e78f3 100644
 --- a/apps/web/src/components/usage/UsagePage.tsx
 +++ b/apps/web/src/components/usage/UsagePage.tsx
 @@ -42,7 +42,6 @@ import { shortcutLabelForCommand } from "../../keybindings";
@@ -1356,10 +1356,10 @@ index 43f4c94a19328be71934d655617849c609298754..71b56f04e81d22c312b9ef528b7c6ba4
  Press `Escape` to return to the previous page. Customize these shortcuts in
  **Settings → Keybindings**.
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index b0726b07174c9b7bd74d13711ea5a08c0ee412ff..111aaf4e8fa1418508ed31291b7dcd4d9f7cfd78 100644
+index 4538065ee5c50c2681008ebc842caab2cdc8893b..f239577770c7e5e32ec5e47e47d59652e45f1aed 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -1602,7 +1602,7 @@ export const ServerSettings = Schema.Struct({
+@@ -1609,7 +1609,7 @@ export const ServerSettings = Schema.Struct({
    ),
  
    usageHistoryRetentionDays: UsageHistoryRetentionDays.pipe(

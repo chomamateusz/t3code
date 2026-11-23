@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
-Date: Sun, 22 Nov 2026 02:11:11 +0100
+Date: Sat, 21 Nov 2026 02:08:08 +0100
 Subject: =?UTF-8?q?=F0=9F=93=A4=20Send=20every=20queued=20message=20at=20o?=
  =?UTF-8?q?nce?=
 MIME-Version: 1.0
@@ -96,6 +96,10 @@ Port to 1ed4f6a96f: upstream #38874 lets a run ask for a typed result (outputSch
 
 Port to 047fb5b162: upstream c385377544 (#40316, slash commands sent during a turn wait instead of steering) clears a queued run's steer-when-ready mark when an edit turns its message into a command. Orchestrator.ts: dispatchQueuedRunEdit keeps that run.updated after this commit's shared emitQueuedMessageRewrite (which now emits the message and turn-item updates the edit used to emit inline) and imports upstream's isSlashCommand beside mergeQueuedMessages; a merge already refuses a command part, so the merged message never needs it. contracts server.ts: queuedRunMerge sits beside upstream 10586f9e31's featureFlags.
 
+Port to def64e3a54: upstream c3a330d834 (#40767, Queue shows for running sessions that cannot steer) counts an agent as able to steer only when it steers actively or can interrupt and restart (supportsSteering, canSteer). threadWorkflows.ts computes canPromoteToSteer with that rule before the send-as-one and send-each reasons read it. threadWorkflows.test.ts keeps upstream's supportsInterrupt capability beside this commit's activeSteeringAcceptsAttachments, and the agents in the send-the-whole-queue table report interrupt support.
+
+queuedMessageMerge.ts: since upstream 08804b2170 (#40373) a queued message that names no model carries followsThreadSelection and runs on the thread's pick when it starts, while its run keeps the pick from queue time. A merge now refuses a part whose followsThreadSelection differs from the first part's ("Queued messages use different models."), so messages merge only when all of them or none of them follow the thread's pick. threadWorkflows.test.ts gains rows for both.
+
 Files:
 apps/server:
 - apps/server/src/orchestration-v2/GuestShare.test.ts
@@ -172,16 +176,16 @@ Tests:
  docs/user/keybindings.md                      |   3 +-
  .../client-runtime/src/operations/commands.ts |  15 +
  .../src/state/threadCommands.ts               |   7 +
- .../src/state/threadWorkflows.test.ts         | 226 ++++++++++++-
- .../src/state/threadWorkflows.ts              | 129 ++++++--
+ .../src/state/threadWorkflows.test.ts         | 241 +++++++++++++-
+ .../src/state/threadWorkflows.ts              | 121 +++++--
  packages/contracts/src/keybindings.ts         |   1 +
  packages/contracts/src/orchestrationV2.ts     |   7 +
  packages/contracts/src/server.ts              |   1 +
  packages/shared/package.json                  |   8 +
  packages/shared/src/model.ts                  |   9 +-
- packages/shared/src/queuedMessageMerge.ts     | 156 +++++++++
+ packages/shared/src/queuedMessageMerge.ts     | 160 +++++++++
  packages/shared/src/queuedMessageMergeCopy.ts |  29 ++
- 24 files changed, 1419 insertions(+), 121 deletions(-)
+ 24 files changed, 1434 insertions(+), 117 deletions(-)
  create mode 100644 packages/shared/src/queuedMessageMerge.ts
  create mode 100644 packages/shared/src/queuedMessageMergeCopy.ts
 
@@ -240,10 +244,10 @@ index 7ea6f95a7a5159dc636b48f8aa020f543ec653a8..646cee832d6d4372a0132985fe4811f7
  );
  
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index bcbe8a3656017a040e42f5490d49e7181bc8bd96..d3749d57bfba7fc63b1629caf513c276911f620e 100644
+index 13fc22a0a051c44d6643eac8b2254a7bc162ad2b..82544be65ce93584976daefb981fc19b580a0d41 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
-@@ -31,6 +31,7 @@ import {
+@@ -32,6 +32,7 @@ import {
    isOrchestrationV2WorkActive,
    isProviderNativeSubagentThread,
    MessageId,
@@ -251,7 +255,7 @@ index bcbe8a3656017a040e42f5490d49e7181bc8bd96..d3749d57bfba7fc63b1629caf513c276
    type NodeId,
    type ModelSelection,
    OrchestrationV2Command,
-@@ -93,6 +94,7 @@ import { combinePullRequestWatchWakes, type PullRequestWatchWake } from "./pullR
+@@ -94,6 +95,7 @@ import { combinePullRequestWatchWakes, type PullRequestWatchWake } from "./pullR
  import { outputRequestProblem } from "./runOutput.ts";
  import { recordThreadOpen } from "@t3tools/shared/paletteSearch";
  import { isSlashCommand } from "@t3tools/shared/composerTrigger";
@@ -259,7 +263,7 @@ index bcbe8a3656017a040e42f5490d49e7181bc8bd96..d3749d57bfba7fc63b1629caf513c276
  import {
    backgroundWorkHoldsCompletion,
    derivePendingBackgroundWork,
-@@ -223,6 +225,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
+@@ -224,6 +226,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
  import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import * as ServerSettings from "../serverSettings.ts";
  
@@ -267,7 +271,7 @@ index bcbe8a3656017a040e42f5490d49e7181bc8bd96..d3749d57bfba7fc63b1629caf513c276
  const isMessageQuestionAnswer = Schema.is(
    Schema.Union([TrimmedNonEmptyString, Schema.NonEmptyArray(TrimmedNonEmptyString)]),
  );
-@@ -691,6 +694,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
+@@ -692,6 +695,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
      case "queued-run.reorder":
      case "queued-run.cancel":
      case "queued-run.edit":
@@ -275,7 +279,7 @@ index bcbe8a3656017a040e42f5490d49e7181bc8bd96..d3749d57bfba7fc63b1629caf513c276
      case "runtime-request.respond":
      case "runtime-request.delivery.fail":
      case "thread.user-input.dismiss":
-@@ -12313,46 +12317,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12430,46 +12434,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: editProblem,
        });
      }
@@ -331,7 +335,7 @@ index bcbe8a3656017a040e42f5490d49e7181bc8bd96..d3749d57bfba7fc63b1629caf513c276
      // A command cannot steer, so an edit into one keeps it queued where it is.
      if (
        queuedRun.steerWhenReadyRunId !== undefined &&
-@@ -12362,13 +12338,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12479,13 +12455,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        })
      ) {
        const { steerWhenReadyRunId: _, ...queued } = queuedRun;
@@ -350,7 +354,7 @@ index bcbe8a3656017a040e42f5490d49e7181bc8bd96..d3749d57bfba7fc63b1629caf513c276
          payload: queued,
        });
      }
-@@ -12396,6 +12375,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12513,6 +12492,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
      }
    });
  
@@ -479,7 +483,7 @@ index bcbe8a3656017a040e42f5490d49e7181bc8bd96..d3749d57bfba7fc63b1629caf513c276
    const subagentCount = (threadId: ThreadId) =>
      projectionStore
        .getSubagentCount(threadId)
-@@ -16032,6 +16133,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16168,6 +16269,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "run.output.submit":
          yield* dispatchRunOutputSubmit(command, events);
          break;
@@ -489,7 +493,7 @@ index bcbe8a3656017a040e42f5490d49e7181bc8bd96..d3749d57bfba7fc63b1629caf513c276
        case "checkpoint.rollback":
          yield* dispatchCheckpointRollback(command, events, effects);
          break;
-@@ -16269,7 +16373,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16408,7 +16512,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                ),
              );
            if (
@@ -499,7 +503,7 @@ index bcbe8a3656017a040e42f5490d49e7181bc8bd96..d3749d57bfba7fc63b1629caf513c276
              cause._tag === "OrchestratorDispatchError"
            ) {
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index b5072355659efaa807e7bfae181404a96eec9d62..b8a79bb7cf48af7071d7efb8a530b693a835047b 100644
+index 3d640f61fc3985d7060d7a5a9449481f60e97ccf..87a85217b1f21d41d57d1a04bad6e00b9dc63ee9 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 @@ -10,6 +10,8 @@ import { assert, it } from "@effect/vitest";
@@ -519,7 +523,7 @@ index b5072355659efaa807e7bfae181404a96eec9d62..b8a79bb7cf48af7071d7efb8a530b693
    type OrchestrationV2DomainEvent,
    type OrchestrationV2Run,
    type OrchestrationV2ShellSnapshot,
-@@ -11766,6 +11769,312 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -11879,6 +11882,312 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
        assert.equal(cancelAgainError._tag, "OrchestratorDispatchError");
      }),
    );
@@ -857,10 +861,10 @@ index 61fb57ada454ed0b1a9a309eb066ff03db841f86..33aa46863d0b7f36613f6f8b959933e7
    "thread.guest-message.dismiss": () => ({ feature: "guest_message.dismiss" }),
  };
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 90c264f5408ca6f11030fbd233dd9416c33d3c0c..babd4788b19259a7ee41c5e2b7b49793ace59eba 100644
+index 051f81c08f70b422920a526fffc955aca1ac6aed..6f346d0da7f78c72d7e7fbb9d6a2cb04c01d07dd 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
-@@ -1919,6 +1919,7 @@ export const layerWsRpc = (
+@@ -1923,6 +1923,7 @@ export const layerWsRpc = (
            threadSnapshotPagination: true,
            threadFind: true,
            threadFindProgressive: true,
@@ -869,10 +873,10 @@ index 90c264f5408ca6f11030fbd233dd9416c33d3c0c..babd4788b19259a7ee41c5e2b7b49793
            secretReferences: true,
            secretRequestReferences: true,
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index ea16d027fcfe91d581d5781a6808dd3d63aa8334..b23e64e05e442505e544ccd7e837135e9b3e9e18 100644
+index 229ac99e3a756abd7beca111d54a984ccc26f183..5f1c73ef11a38d15b93a5f40a5ffef228b7097cf 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -2898,6 +2898,8 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2922,6 +2922,8 @@ export default function ChatView(props: ChatViewProps) {
          routeKind !== "draft" &&
          composerRef.current?.isCaretAtStart() === true &&
          queuedRunsControlRef.current?.editLatest(event.repeat) === true,
@@ -881,7 +885,7 @@ index ea16d027fcfe91d581d5781a6808dd3d63aa8334..b23e64e05e442505e544ccd7e837135e
        "thread.stop": ({ event }) => {
          if (!canInterruptRunningThread) return false;
          if (!event.repeat) void onInterruptStable();
-@@ -3196,6 +3198,11 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3220,6 +3222,11 @@ export default function ChatView(props: ChatViewProps) {
            editShortcutLabel={shortcutLabelForCommand(keybindings, "thread.editQueuedMessage", {
              context: { composerFocus: true },
            })}
@@ -1161,10 +1165,10 @@ index 4f4daf7c798b46ac677cae2e3d552f2cf71cd43a..e581d006b1e74a63bb3cf5b7e1d3f49b
 +  await expect.element(sendAllAsOne()).not.toBeInTheDocument();
 +});
 diff --git a/apps/web/src/components/chat/QueuedRunsControl.tsx b/apps/web/src/components/chat/QueuedRunsControl.tsx
-index d8318b7279e7da9adaf7292b87be54b189fdb89d..01aff086b83f33143cb7cf43f953c6bcf9ef090c 100644
+index 20ea71f88adcdd749104e35e0ad908bfb9973f98..2a41a0a83f0c08e016d6a83a99b3c9b3809f39ff 100644
 --- a/apps/web/src/components/chat/QueuedRunsControl.tsx
 +++ b/apps/web/src/components/chat/QueuedRunsControl.tsx
-@@ -64,6 +64,7 @@ const QUEUE_VISIBLE_ROWS = 3;
+@@ -65,6 +65,7 @@ const QUEUE_VISIBLE_ROWS = 3;
  export interface QueuedRunsControlHandle {
    steerNext: (repeat: boolean) => boolean;
    editLatest: (repeat: boolean) => boolean;
@@ -1172,7 +1176,7 @@ index d8318b7279e7da9adaf7292b87be54b189fdb89d..01aff086b83f33143cb7cf43f953c6bc
  }
  
  type ThreadQueueProjection = Parameters<typeof deriveThreadQueueWorkflowState>[0];
-@@ -86,6 +87,7 @@ export function QueuedRunsControl({
+@@ -87,6 +88,7 @@ export function QueuedRunsControl({
    readonly ref?: Ref<QueuedRunsControlHandle>;
    readonly steerShortcutLabel?: string | null;
    readonly editShortcutLabel?: string | null;
@@ -1180,7 +1184,7 @@ index d8318b7279e7da9adaf7292b87be54b189fdb89d..01aff086b83f33143cb7cf43f953c6bc
    readonly environmentId: EnvironmentId;
    readonly threadId: ThreadId;
    readonly optimisticMessages: ReadonlyArray<
-@@ -105,9 +107,12 @@ export function QueuedRunsControl({
+@@ -106,9 +108,12 @@ export function QueuedRunsControl({
    const projection = useQuietThreadProjection(
      scopeThreadRef(props.environmentId, props.threadId),
    )?.projection;
@@ -1193,7 +1197,7 @@ index d8318b7279e7da9adaf7292b87be54b189fdb89d..01aff086b83f33143cb7cf43f953c6bc
    const [showAll, setShowAll] = useState(false);
    const queueListId = useId();
    const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
-@@ -173,13 +178,7 @@ export function QueuedRunsControl({
+@@ -174,13 +179,7 @@ export function QueuedRunsControl({
      })),
    ];
  
@@ -1208,7 +1212,7 @@ index d8318b7279e7da9adaf7292b87be54b189fdb89d..01aff086b83f33143cb7cf43f953c6bc
      const result = workflow?.canSendNow
        ? await resume({
            environmentId: props.environmentId,
-@@ -191,8 +190,6 @@ export function QueuedRunsControl({
+@@ -192,8 +191,6 @@ export function QueuedRunsControl({
              input: { threadId: props.threadId, queuedRunId, targetRunId: activeRun.id },
            })
          : null;
@@ -1217,7 +1221,7 @@ index d8318b7279e7da9adaf7292b87be54b189fdb89d..01aff086b83f33143cb7cf43f953c6bc
      if (result?._tag === "Failure" && !isAtomCommandInterrupted(result)) {
        const error = squashAtomCommandFailure(result);
        toastManager.add({
-@@ -204,6 +201,90 @@ export function QueuedRunsControl({
+@@ -205,6 +202,90 @@ export function QueuedRunsControl({
              : m(msg("An error occurred.")),
        });
      }
@@ -1308,7 +1312,7 @@ index d8318b7279e7da9adaf7292b87be54b189fdb89d..01aff086b83f33143cb7cf43f953c6bc
    };
  
    useImperativeHandle(ref, () => ({
-@@ -236,6 +317,11 @@ export function QueuedRunsControl({
+@@ -237,6 +318,11 @@ export function QueuedRunsControl({
        }
        return true;
      },
@@ -1320,7 +1324,7 @@ index d8318b7279e7da9adaf7292b87be54b189fdb89d..01aff086b83f33143cb7cf43f953c6bc
    }));
  
    if (items.length === 0) return null;
-@@ -431,30 +517,64 @@ export function QueuedRunsControl({
+@@ -434,30 +520,64 @@ export function QueuedRunsControl({
            );
          })}
        </ol>
@@ -1409,10 +1413,10 @@ index d8318b7279e7da9adaf7292b87be54b189fdb89d..01aff086b83f33143cb7cf43f953c6bc
        ) : null}
      </section>
 diff --git a/apps/web/src/components/chat/useQueuedRunEdit.browser.test.tsx b/apps/web/src/components/chat/useQueuedRunEdit.browser.test.tsx
-index a88da51cce16e360f7ebb0cec7c5ed55a6e30ca1..ef6715ea617f0f08b7b4fff32b143bec9717a7ce 100644
+index 5ad406da5ef9157fda913409481016f6f535186d..d300fd3e7f0bd450e3d749f97a9a238978fb882e 100644
 --- a/apps/web/src/components/chat/useQueuedRunEdit.browser.test.tsx
 +++ b/apps/web/src/components/chat/useQueuedRunEdit.browser.test.tsx
-@@ -79,7 +79,10 @@ vi.mock("../../state/threads", async () => {
+@@ -80,7 +80,10 @@ vi.mock("../../state/threads", async () => {
            return {
              projection: {
                thread: { id: ref.threadId, activeProviderThreadId: null },
@@ -1425,10 +1429,10 @@ index a88da51cce16e360f7ebb0cec7c5ed55a6e30ca1..ef6715ea617f0f08b7b4fff32b143bec
                providerThreads: [],
                providerSessions: [
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index d78189290e65e1c147e103af2dd28a19e4d2f66b..21aa567267f50d2e00832e4b38d8db509b1149bd 100644
+index 36b789cbc953bd7d0eb0d627520dbf9fdb37aa20..f81d193468621d7fab4638effb45e3bc415a6b98 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-@@ -444,6 +444,7 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+@@ -448,6 +448,7 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
    "composer.dictation": msg("Composer: Start or Finish Dictation"),
    "thread.steerQueuedMessage": msg("Queue: Send First Queued Message"),
    "thread.editQueuedMessage": msg("Queue: Edit Last Queued Message"),
@@ -1471,7 +1475,7 @@ index eab9e88ec98f0eab13a6ce39b7867a745d7d38bb..e7c895d6ff20303346d3a95ae4f6a564
  Use `mod+shift+m` to choose a model and `mod+shift+h` to choose a host.
  To step a new thread to the next machine instead of opening the menu, bind
 diff --git a/packages/client-runtime/src/operations/commands.ts b/packages/client-runtime/src/operations/commands.ts
-index ee17123e8839f1e4f15658b9423078e84067d880..3b7c871ce80db7e598d783d56d8a9c641bc6e864 100644
+index 0ea95420460a7b63382281af30af17b6bb9f902b..b855e7ea99f0d4c790d67abe54cc56acef3ab2ea 100644
 --- a/packages/client-runtime/src/operations/commands.ts
 +++ b/packages/client-runtime/src/operations/commands.ts
 @@ -276,6 +276,10 @@ export interface CancelQueuedRunInput extends ThreadCommandInput {
@@ -1485,7 +1489,7 @@ index ee17123e8839f1e4f15658b9423078e84067d880..3b7c871ce80db7e598d783d56d8a9c64
  export interface RetryWorkspacePreparationInput extends ThreadCommandInput {
    readonly runId: RunId;
  }
-@@ -1188,6 +1192,17 @@ export const cancelQueuedRun = Effect.fn("EnvironmentCommands.cancelQueuedRun")(
+@@ -1201,6 +1205,17 @@ export const cancelQueuedRun = Effect.fn("EnvironmentCommands.cancelQueuedRun")(
    });
  });
  
@@ -1529,26 +1533,26 @@ index 98d88407b85b45775669a82c18cf57524766f6e7..2a39f39ef571fac4e93e5cfed94adb3d
        label: "environment-data:commands:thread:retry-workspace-preparation",
        execute: retryWorkspacePreparation,
 diff --git a/packages/client-runtime/src/state/threadWorkflows.test.ts b/packages/client-runtime/src/state/threadWorkflows.test.ts
-index a4049c7169163077dfc940bb2e81b07ae4642449..b40661aa9ca37e3e9ca531beeaf7d0a361187c92 100644
+index fd8092a996a66e8dd143ea49fb90b4a4a4f15c13..b5c68d9280b563d9135ec16ccc14ffd2020cc2e5 100644
 --- a/packages/client-runtime/src/state/threadWorkflows.test.ts
 +++ b/packages/client-runtime/src/state/threadWorkflows.test.ts
-@@ -13,6 +13,7 @@ const capabilities = (input?: {
-   readonly queued?: boolean;
+@@ -15,6 +15,7 @@ const capabilities = (input?: {
    readonly steer?: boolean;
    readonly restartSteer?: boolean;
+   readonly interrupt?: boolean;
 +  readonly steerAttachments?: boolean;
    readonly nativeFork?: boolean;
    readonly portableFork?: boolean;
  }) =>
-@@ -21,6 +22,7 @@ const capabilities = (input?: {
-       supportsQueuedMessages: input?.queued ?? false,
+@@ -24,6 +25,7 @@ const capabilities = (input?: {
        supportsActiveSteering: input?.steer ?? false,
        supportsSteeringByInterruptRestart: input?.restartSteer ?? false,
+       supportsInterrupt: input?.interrupt ?? false,
 +      activeSteeringAcceptsAttachments: input?.steerAttachments ?? true,
      },
      threads: {
        canForkThread: input?.nativeFork ?? false,
-@@ -335,9 +337,16 @@ describe("thread workflows", () => {
+@@ -367,9 +369,16 @@ describe("thread workflows", () => {
              status,
              providerThreadId: "provider-thread",
              activeAttemptId: "attempt-active",
@@ -1566,7 +1570,7 @@ index a4049c7169163077dfc940bb2e81b07ae4642449..b40661aa9ca37e3e9ca531beeaf7d0a3
          ],
          messages: [{ id: "message", text: "Queued" }],
          providerTurns: [
-@@ -367,6 +376,221 @@ describe("thread workflows", () => {
+@@ -399,6 +408,236 @@ describe("thread workflows", () => {
      },
    );
  
@@ -1679,6 +1683,19 @@ index a4049c7169163077dfc940bb2e81b07ae4642449..b40661aa9ca37e3e9ca531beeaf7d0a3
 +      each: cannotJoin,
 +    },
 +    {
++      name: "messages that all follow the thread's model",
++      first: { followsThreadSelection: true },
++      second: { followsThreadSelection: true },
++      asOne: null,
++      each: null,
++    },
++    {
++      name: "one message that follows the thread's model",
++      second: { followsThreadSelection: true },
++      asOne: "Queued messages use different models.",
++      each: null,
++    },
++    {
 +      name: "attachments the turn cannot take",
 +      provider: { steerAttachments: false },
 +      second: { attachments: [image] },
@@ -1698,6 +1715,7 @@ index a4049c7169163077dfc940bb2e81b07ae4642449..b40661aa9ca37e3e9ca531beeaf7d0a3
 +      readonly activeModel?: string;
 +      readonly activeMessage?: Record<string, unknown>;
 +      readonly notificationPosition?: number;
++      readonly first?: Record<string, unknown>;
 +      readonly second?: Record<string, unknown>;
 +      readonly secondRun?: Record<string, unknown>;
 +      readonly asOne: string | null;
@@ -1740,7 +1758,7 @@ index a4049c7169163077dfc940bb2e81b07ae4642449..b40661aa9ca37e3e9ca531beeaf7d0a3
 +        ],
 +        messages: [
 +          message("message-active", row.activeMessage),
-+          message("message-first"),
++          message("message-first", row.first),
 +          message("message-second", row.second),
 +          ...(row.notificationPosition === undefined
 +            ? []
@@ -1770,6 +1788,7 @@ index a4049c7169163077dfc940bb2e81b07ae4642449..b40661aa9ca37e3e9ca531beeaf7d0a3
 +                  queued: true,
 +                  steer: row.provider?.restartSteer !== true,
 +                  restartSteer: row.provider?.restartSupported ?? true,
++                  interrupt: true,
 +                  ...(row.provider?.steerAttachments === undefined
 +                    ? {}
 +                    : { steerAttachments: row.provider.steerAttachments }),
@@ -1789,7 +1808,7 @@ index a4049c7169163077dfc940bb2e81b07ae4642449..b40661aa9ca37e3e9ca531beeaf7d0a3
      const projectedItem = {
        item: { type: "assistant_message", runId: "run", status: "completed" },
 diff --git a/packages/client-runtime/src/state/threadWorkflows.ts b/packages/client-runtime/src/state/threadWorkflows.ts
-index 7dbbcf1e80c575f0de5e3d4f2f70a13916a17860..40685fa22bc8c822d6ecbf63071b358971c41de1 100644
+index 9e3d1eb4512b29946c7dcb162ecaec115593480f..97090a7f7558094e847a9737a3da3b0e0a03da56 100644
 --- a/packages/client-runtime/src/state/threadWorkflows.ts
 +++ b/packages/client-runtime/src/state/threadWorkflows.ts
 @@ -7,6 +7,9 @@ import {
@@ -1800,9 +1819,9 @@ index 7dbbcf1e80c575f0de5e3d4f2f70a13916a17860..40685fa22bc8c822d6ecbf63071b3589
 +import { mergeQueuedMessages } from "@t3tools/shared/queuedMessageMerge";
 +import { queuedMessageMergeReason } from "@t3tools/shared/queuedMessageMergeCopy";
  
+ import { compactionBlocksSteering } from "./composerDispatch.ts";
  import type { ThreadStructure } from "./models.ts";
- 
-@@ -41,8 +44,12 @@ export interface ThreadQueueWorkflowState {
+@@ -42,8 +45,12 @@ export interface ThreadQueueWorkflowState {
    /** The active run is a compaction, so promoting a queued message stops it instead of steering. */
    readonly promoteSkipsCompaction: boolean;
    readonly canSendNow: boolean;
@@ -1815,7 +1834,7 @@ index 7dbbcf1e80c575f0de5e3d4f2f70a13916a17860..40685fa22bc8c822d6ecbf63071b3589
  export function resolveActiveThreadRun(projection: Pick<Projection, "runs">): Run | null {
    return projection.runs.findLast((run) => ACTIVE_RUN_STATUSES.has(run.status)) ?? null;
  }
-@@ -158,45 +165,115 @@ export function deriveThreadQueueWorkflowState(
+@@ -187,41 +194,111 @@ export function deriveThreadQueueWorkflowState(
      projection.providerTurns.some(
        (turn) => turn.runAttemptId === activeRun.activeAttemptId && turn.status === "running",
      );
@@ -1868,12 +1887,8 @@ index 7dbbcf1e80c575f0de5e3d4f2f70a13916a17860..40685fa22bc8c822d6ecbf63071b3589
 +  const canPromoteToSteer =
 +    promoteSkipsCompaction ||
 +    ((activeRun?.status === "preparing" || activeRun?.status === "starting") &&
-+      (capabilities === undefined ||
-+        capabilities.supportsActiveSteering ||
-+        capabilities.supportsSteeringByInterruptRestart)) ||
-+    (hasSteerableProviderTurn &&
-+      (capabilities?.supportsActiveSteering === true ||
-+        capabilities?.supportsSteeringByInterruptRestart === true));
++      (capabilities === undefined || canSteer)) ||
++    (hasSteerableProviderTurn && canSteer);
 +  const merged = mergeQueuedMessages(queuedRuns);
 +  const queueStart = deliveryQueue.findIndex((run) => run.id === queuedRuns[0]?.run.id);
 +  const queueIsContiguous = queuedRuns.every(
@@ -1899,12 +1914,8 @@ index 7dbbcf1e80c575f0de5e3d4f2f70a13916a17860..40685fa22bc8c822d6ecbf63071b3589
 -    canPromoteToSteer:
 -      promoteSkipsCompaction ||
 -      ((activeRun?.status === "preparing" || activeRun?.status === "starting") &&
--        (capabilities === undefined ||
--          capabilities.supportsActiveSteering ||
--          capabilities.supportsSteeringByInterruptRestart)) ||
--      (hasSteerableProviderTurn &&
--        (capabilities?.supportsActiveSteering === true ||
--          capabilities?.supportsSteeringByInterruptRestart === true)),
+-        (capabilities === undefined || canSteer)) ||
+-      (hasSteerableProviderTurn && canSteer),
 +    canSendNow,
 +    canPromoteToSteer,
      promoteSkipsCompaction,
@@ -1970,10 +1981,10 @@ index eda5138b760b9b3d028d89d9b4b7a0c0b7c8075b..56f521670e72594a00b8737a97486206
    "thread.next",
    "thread.copyReference",
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index 2d5bc546d180099d1ea0c8eeaa3b837510773cb8..dcb2901b0e22819b917d64bcca22b0fc6b327246 100644
+index 6eec84b4dc2533b7c73164f8841256224611fbf9..decd7cd7cac3db30c6fa898b62af4807aeb7403a 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
-@@ -3657,6 +3657,13 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3691,6 +3691,13 @@ export const OrchestrationV2Command = Schema.Union([
      // Replaces all attachments; absent preserves them for older clients editing text.
      attachments: Schema.optional(Schema.Array(ChatAttachment)),
    }),
@@ -2000,7 +2011,7 @@ index 1e7042600149522b1591eb9a733be473e22668c5..55e320b58d1d50b94813b7ecdc94fe4f
    secretProviderSettings: Schema.optionalKey(Schema.Boolean),
    /** Secret settings may point at a secret provider; older servers drop the reference. */
 diff --git a/packages/shared/package.json b/packages/shared/package.json
-index daa396dd07043a6e25a6f03531e06d90479846bd..eff42eaca296d936a8202d0b8fc5ab72e40b6c80 100644
+index b727b976fe1431a633a55cafeeb87d2f6f4597e2..e32e5554578ad9e2e6a9a21413186310c94e2f49 100644
 --- a/packages/shared/package.json
 +++ b/packages/shared/package.json
 @@ -307,6 +307,14 @@
@@ -2047,10 +2058,10 @@ index 472bee24b63ed102d256529445884ea78e0f002a..a17c89716492b22d2edb7bd57f501d89
    if (trimmed.startsWith("Ultrathink:")) {
 diff --git a/packages/shared/src/queuedMessageMerge.ts b/packages/shared/src/queuedMessageMerge.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..b4c7b283032a3451b51a393f77bf563592a8ebd2
+index 0000000000000000000000000000000000000000..bb69ba4400ed76bf6aa4efdf20504f1e00cadb7c
 --- /dev/null
 +++ b/packages/shared/src/queuedMessageMerge.ts
-@@ -0,0 +1,156 @@
+@@ -0,0 +1,160 @@
 +import {
 +  type ChatAttachment,
 +  COMPOSER_CONTEXT_MAX_RECORDS,
@@ -2091,6 +2102,7 @@ index 0000000000000000000000000000000000000000..b4c7b283032a3451b51a393f77bf5635
 +        | "workflowScript"
 +        | "delegatedCompletion"
 +        | "notification"
++        | "followsThreadSelection"
 +      >
 +    | undefined;
 +}
@@ -2153,7 +2165,10 @@ index 0000000000000000000000000000000000000000..b4c7b283032a3451b51a393f77bf5635
 +    return QUEUED_MESSAGE_MERGE_REASONS.continuation;
 +  }
 +  if (run.outputSchema !== undefined) return QUEUED_MESSAGE_MERGE_REASONS.outputSchema;
-+  if (!modelSelectionsEqual(run.modelSelection, first.run.modelSelection)) {
++  if (
++    message.followsThreadSelection !== first.message?.followsThreadSelection ||
++    !modelSelectionsEqual(run.modelSelection, first.run.modelSelection)
++  ) {
 +    return QUEUED_MESSAGE_MERGE_REASONS.models;
 +  }
 +  return null;

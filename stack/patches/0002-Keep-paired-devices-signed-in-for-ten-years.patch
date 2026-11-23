@@ -106,7 +106,7 @@ index 6eceb824a8cba8b1766848cfa279446db5871dc5..513eb65433cc729c85e479203444da3c
            "ServerAuthInvalidCredentialError",
          );
 diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
-index 202ca25310d132cd66519a2677dc63d3de165ddc..1de7fd2fcfb56b393c705f52a4bbc06efec5895e 100644
+index 977840617d04c6124732234593b5e387be61236b..fa812562669268c566934e9a5a5179403c26cab9 100644
 --- a/apps/server/src/auth/EnvironmentAuth.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.ts
 @@ -92,7 +92,7 @@ const PEER_LINK_RENEWAL_STEP = Duration.days(1);
@@ -160,7 +160,7 @@ index ea64b8523541bf76f94d648ad31211c02fff5fb5..1483e9501067479720a7380c5cc4e4a7
  and unrevoked, so a device idle past the window pairs again. Renewal stays in place rather than issuing a
  successor, so live sockets keep their session, Sharing & access shows one row
 diff --git a/docs/user/remote-access.md b/docs/user/remote-access.md
-index 99255db9ac8cb415eb68d19916dfbb878c6ab69b..a33aa9e3eae549567d1a62c93983a24a930c9735 100644
+index 051445f03eb0768af00edd40c9c8efdec9dd3512..e9280e18f7628988d818fc8ee0d4cfce02017521 100644
 --- a/docs/user/remote-access.md
 +++ b/docs/user/remote-access.md
 @@ -128,7 +128,7 @@ Android app then trusts it.

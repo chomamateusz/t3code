@@ -94,10 +94,10 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 apps/server/src/provider/fleetProxyLimits.ts
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index e1665b1bafb3e1efc806ec3b1a656a63efdc983c..45f370dc12149bd107cc920f768020af6b48b0c6 100644
+index 3d017de3925fa7bbc24c29ee2b0d9ac4387143ad..57834f24e6b3cf6585635f9dfb39379017712a04 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-@@ -76,6 +76,7 @@ import * as Scope from "effect/Scope";
+@@ -77,6 +77,7 @@ import * as Scope from "effect/Scope";
  import * as Stream from "effect/Stream";
  import * as TestClock from "effect/testing/TestClock";
  import { Tool } from "effect/ai";
@@ -105,15 +105,15 @@ index e1665b1bafb3e1efc806ec3b1a656a63efdc983c..45f370dc12149bd107cc920f768020af
  import { formatClaudeResumeCompactionQuestion } from "@t3tools/shared/claudeCompaction";
  import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
  import * as HostProcess from "@t3tools/shared/HostProcess";
-@@ -111,6 +112,7 @@ import {
+@@ -112,6 +113,7 @@ import {
    resolveClaudeModelSettingsKey,
  } from "../../provider/ClaudeCodeModelRoutes.ts";
  import { resolveProviderCatalog } from "../../provider/ModelManifest.ts";
 +import fleetLimitsSample from "../../provider/fleetProxyLimits.fixture.json" with { type: "json" };
  import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+ import { AGENT_FEEDBACK_INSTRUCTIONS } from "@t3tools/provider-core/server/runtimeInstructions";
  import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
- import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
-@@ -3780,6 +3782,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -3851,6 +3853,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      readonly offer?: (message: SDKUserMessage) => Effect.Effect<void>;
      readonly promptSuggestions?: boolean;
      readonly routeModelCatalog?: ClaudeAdapterV2.ClaudeAdapterV2Options["routeModelCatalog"];
@@ -121,7 +121,7 @@ index e1665b1bafb3e1efc806ec3b1a656a63efdc983c..45f370dc12149bd107cc920f768020af
    }) =>
      Effect.gen(function* () {
        const fileSystem = yield* FileSystem.FileSystem;
-@@ -3846,6 +3849,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -3917,6 +3920,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
          idAllocator,
          ...(options?.onSessionInit ? { onSessionInit: options.onSessionInit } : {}),
          ...(options?.routeModelCatalog ? { routeModelCatalog: options.routeModelCatalog } : {}),
@@ -131,7 +131,7 @@ index e1665b1bafb3e1efc806ec3b1a656a63efdc983c..45f370dc12149bd107cc920f768020af
          continuationRequests: {
            offer: (request) =>
              Effect.sync(() => {
-@@ -10185,6 +10191,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -10485,6 +10491,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      ),
    );
  
@@ -305,7 +305,7 @@ index e1665b1bafb3e1efc806ec3b1a656a63efdc983c..45f370dc12149bd107cc920f768020af
      Effect.gen(function* () {
        const harness = yield* makeWakeHarness;
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index b120f9feb5e5a4f676688ca74f1aee7f9f0cdb27..926c4fa304a35cda21ac4a5bfbd8519860880131 100644
+index 370b6b6c4c3f6cf5e3f1133ac652a0e20774c0fc..eff3895a5badfa9a723848f6285cd9b5d186c5cc 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -37,6 +37,7 @@ import {
@@ -316,7 +316,7 @@ index b120f9feb5e5a4f676688ca74f1aee7f9f0cdb27..926c4fa304a35cda21ac4a5bfbd85198
  import {
    type CanUseTool,
    type ElicitationRequest,
-@@ -163,6 +164,7 @@ import * as Semaphore from "effect/Semaphore";
+@@ -164,6 +165,7 @@ import * as Semaphore from "effect/Semaphore";
  import * as Stream from "effect/Stream";
  import * as ChildProcess from "effect/process/ChildProcess";
  import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -324,7 +324,7 @@ index b120f9feb5e5a4f676688ca74f1aee7f9f0cdb27..926c4fa304a35cda21ac4a5bfbd85198
  
  import { resolveAttachmentPath } from "../../attachmentStore.ts";
  import { snapshotMcpApp } from "../../mcpApps/McpAppSnapshot.ts";
-@@ -5743,6 +5745,7 @@ export interface ClaudeAdapterV2Options {
+@@ -5785,6 +5787,7 @@ export interface ClaudeAdapterV2Options {
      cwd: string | null,
      launchSettings?: ClaudeSdkSettings,
    ) => Effect.Effect<ClaudeModelCatalog>;
@@ -332,7 +332,7 @@ index b120f9feb5e5a4f676688ca74f1aee7f9f0cdb27..926c4fa304a35cda21ac4a5bfbd85198
    readonly continuationRequests?: {
      readonly offer: (
        request: ProviderContinuationRequests.ProviderContinuationRequest,
-@@ -12288,15 +12291,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12364,15 +12367,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                resetTimes.length > 0 && resetTimes.every((time) => time !== null)
                  ? resetTimes.reduce((latest, time) => (time! > latest ? time! : latest), "")
                  : null;
@@ -380,7 +380,7 @@ index b120f9feb5e5a4f676688ca74f1aee7f9f0cdb27..926c4fa304a35cda21ac4a5bfbd85198
              // Claude answers a steer it has not read yet as the next native turn, which echoes
              // the steer. A result without echoes cannot prove that turn will come.
              if (
-@@ -15093,7 +15120,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+@@ -15193,7 +15220,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
      input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
      hooks: Pick<
        ClaudeAdapterV2Options,

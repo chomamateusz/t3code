@@ -43,6 +43,10 @@ Port to b6ac2449f1: upstream 055b44919e wraps imageCompression.ts's read errors 
 
 Port to 047fb5b162: upstream 227ac64b74 (#40501, downscaled attachments keep Display P3 colours) reads each image's colour space before decoding and draws on a canvas in that space. reencodeWithinBudget keeps upstream's readImageColorSpace ahead of the bitmap this commit decodes once and reuses, and closes that reused bitmap when the colour read fails; fitImageToMaxEdge keeps upstream's colour space for its 2000 px canvas. Upstream's new imageCompression.browser.test.ts colour cases run unchanged on top of the 2000 px resize.
 
+Port to def64e3a54: useComposerContextImport.ts conflicted only in its imports: upstream 87554a7b86 (#40945, editing a queued message keeps its attachment chips resolved) imports QueuedAttachmentContextBinding and matchRestorableQueuedAttachment beside this commit's prepareImageForAttachment and resizeSnapShotSource; both are kept. A pasted record that matches a removed queued attachment is restored with its uploaded attachment, as upstream does; every other imported image still goes through prepareImageForAttachment (2000 px longest edge and byte limit).
+
+imageCompression.browser.test.ts: Display P3 colour is now checked on the fork's over-cap paths too. The downscale table gains a Display P3 PNG that is still over the byte cap after the 2000 px resize and is re-encoded to WebP from the reused decoded bitmap, and each P3-tagged HEIC is also prepared under a cap below its converted JPEG, which re-encodes that JPEG with the same colours.
+
 Files:
 apps/web:
 - apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
@@ -75,12 +79,13 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .../chat/useComposerContextImport.ts          |  33 +++-
  .../SnapShotCoordinator.browser.test.ts       |  20 ++-
  .../src/components/preview/PreviewView.tsx    |   2 +-
+ .../src/lib/imageCompression.browser.test.ts  |  47 +++--
  apps/web/src/lib/imageCompression.test.ts     | 160 ++++++++++++++++--
  apps/web/src/lib/imageCompression.ts          |  47 ++---
  apps/web/src/lib/previewAnnotation.test.ts    |  50 +++++-
  apps/web/src/lib/previewAnnotation.ts         |  15 +-
  docs/user/composer.md                         |   4 +
- 9 files changed, 428 insertions(+), 60 deletions(-)
+ 10 files changed, 463 insertions(+), 72 deletions(-)
 
 diff --git a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
 index d48e965895ddd40377c2836ffc39435e889af34a..32111a881eee54403248d3da956e194082b6d448 100644
@@ -310,10 +315,10 @@ index d48e965895ddd40377c2836ffc39435e889af34a..32111a881eee54403248d3da956e1940
    "preserves thread identity across repeated pastes: %s",
    async (variant) => {
 diff --git a/apps/web/src/components/chat/useComposerContextImport.ts b/apps/web/src/components/chat/useComposerContextImport.ts
-index 61d0abd7319a6b2fcf5f5095e8b194dcb25c08c4..c38ffa28d328ef1a4e915a73045556bfe8f6326c 100644
+index 458f39dc9863834708bd03e87ead78ef3968ffca..f12c450b640e3d78ed187a1b6e922246c44dc815 100644
 --- a/apps/web/src/components/chat/useComposerContextImport.ts
 +++ b/apps/web/src/components/chat/useComposerContextImport.ts
-@@ -14,6 +14,7 @@ import {
+@@ -15,6 +15,7 @@ import {
    type ComposerContextRecord,
    type EnvironmentId,
    PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
@@ -321,16 +326,16 @@ index 61d0abd7319a6b2fcf5f5095e8b194dcb25c08c4..c38ffa28d328ef1a4e915a73045556bf
  } from "@t3tools/contracts";
  import {
    type ComposerFileAttachment,
-@@ -59,6 +60,8 @@ import { useAtomCommand } from "../../state/use-atom-command";
- import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
- import { useStableCallback } from "../../hooks/useStableCallback";
+@@ -62,6 +63,8 @@ import { useStableCallback } from "../../hooks/useStableCallback";
  import { countPreparingComposerImages } from "./preparingComposerImages";
+ import type { QueuedAttachmentContextBinding } from "./composerContextUndo";
+ import { matchRestorableQueuedAttachment } from "./queuedMessageEdit";
 +import { prepareImageForAttachment } from "~/lib/imageCompression";
 +import { resizeSnapShotSource } from "~/lib/snapShotSource";
  
  const isUnreachable = Schema.is(
    Schema.Union([ConnectionTransientError, ConnectionBlockedError, EnvironmentRpcUnavailableError]),
-@@ -168,7 +171,8 @@ export function useComposerContextImport(input: {
+@@ -175,7 +178,8 @@ export function useComposerContextImport(input: {
          description: m(msg("{reason} Remove the chip or attach the file again.", { reason })),
        });
      };
@@ -340,7 +345,7 @@ index 61d0abd7319a6b2fcf5f5095e8b194dcb25c08c4..c38ffa28d328ef1a4e915a73045556bf
      if (!file) {
        const sourceConnection = readPreparedConnection(sourceEnvironmentId);
        if (!sourceConnection) {
-@@ -198,7 +202,26 @@ export function useComposerContextImport(input: {
+@@ -205,7 +209,26 @@ export function useComposerContextImport(input: {
          return;
        }
        file = new File([blob], record.name, { type: record.mimeType || blob.type });
@@ -368,7 +373,7 @@ index 61d0abd7319a6b2fcf5f5095e8b194dcb25c08c4..c38ffa28d328ef1a4e915a73045556bf
        // Question attachments have no inline reference; annotations can own their screenshots.
        const references = new Set(collectInlineContextIds(promptRef.current));
        if (
-@@ -243,12 +266,14 @@ export function useComposerContextImport(input: {
+@@ -250,12 +273,14 @@ export function useComposerContextImport(input: {
            {
              type: "image",
              id: localId,
@@ -443,6 +448,72 @@ index bb62228b937369f81c9ec05d829b3dfdf71b8ca0..9f15d29f37360626d93fed65e7e41734
        const cropDropped = screenshotFailed || capture.status === "failed";
        const annotation = capture.status === "failed" ? { ...picked, screenshot: null } : picked;
        if (capture.status === "captured") await readComposerImageBytes(capture.file);
+diff --git a/apps/web/src/lib/imageCompression.browser.test.ts b/apps/web/src/lib/imageCompression.browser.test.ts
+index 2e7597eaa8bf800a5f7cec7afabfcff4c9a3c54c..33b737fed1a5f7fada75c614cd3b4cd2ed55520a 100644
+--- a/apps/web/src/lib/imageCompression.browser.test.ts
++++ b/apps/web/src/lib/imageCompression.browser.test.ts
+@@ -97,19 +97,34 @@ describe("prepareImageForAttachment color", () => {
+   // P3 green lies outside sRGB, so an sRGB canvas clips it; a P3 canvas would turn sRGB red's
+   // stored (255,0,0) into P3 values.
+   it.each([
+-    ["Display P3 PNG", "display-p3", "color(display-p3 0 1 0)", "image/png"],
+-    ["Display P3 JPEG", "display-p3", "color(display-p3 0 1 0)", "image/jpeg"],
+-    ["sRGB PNG", "srgb", "#ff0000", "image/png"],
+-    ["sRGB JPEG", "srgb", "#ff0000", "image/jpeg"],
+-  ] as const)("keeps a downscaled %s in its own color space", async (_, space, fill, type) => {
+-    const source = await makeImage(space, fill, type);
++    ["Display P3 PNG", "display-p3", "color(display-p3 0 1 0)", "image/png", undefined],
++    ["Display P3 JPEG", "display-p3", "color(display-p3 0 1 0)", "image/jpeg", undefined],
++    ["sRGB PNG", "srgb", "#ff0000", "image/png", undefined],
++    ["sRGB JPEG", "srgb", "#ff0000", "image/jpeg", undefined],
++    [
++      "Display P3 PNG still over the byte cap",
++      "display-p3",
++      "color(display-p3 0 1 0)",
++      "image/png",
++      "image/webp",
++    ],
++  ] as const)(
++    "keeps a downscaled %s in its own color space",
++    async (_, space, fill, type, reencodedType) => {
++      const source = await makeImage(space, fill, type);
++      const resized = await prepareImageForAttachment(source, 20 * 1024 * 1024);
++      if (!resized.ok) throw new Error(resized.reason);
+ 
+-    const result = await prepareImageForAttachment(source, 20 * 1024 * 1024);
+-    if (!result.ok) throw new Error(result.reason);
+-    expect(result.recompressed).toBe(true);
+-    expect(result.imageSize).toEqual({ width: 2000, height: 1333 });
+-    await expectSameColors(result.file, source);
+-  });
++      const result = reencodedType
++        ? await prepareImageForAttachment(source, resized.file.size - 1)
++        : resized;
++      if (!result.ok) throw new Error(result.reason);
++      expect(result.recompressed).toBe(true);
++      expect(result.file.type).toBe(reencodedType ?? type);
++      expect(result.imageSize).toEqual({ width: 2000, height: 1333 });
++      await expectSameColors(result.file, source);
++    },
++  );
+ 
+   it("keeps Display P3 colors when the stash re-encodes a WebP", async () => {
+     const source = await makeImage("display-p3", "color(display-p3 0 1 0)", "image/webp");
+@@ -149,6 +164,14 @@ describe("prepareImageForAttachment color", () => {
+       );
+       if (!result.ok) throw new Error(result.reason);
+       expectNear(await readPixel(result.file), decoded);
++
++      const overCap = await prepareImageForAttachment(
++        new File([heic], "photo.heic", { type: "image/heic" }),
++        result.file.size - 1,
++      );
++      if (!overCap.ok) throw new Error(overCap.reason);
++      expect(overCap.file.size).toBeLessThan(result.file.size);
++      expectNear(await readPixel(overCap.file), decoded);
+     }
+   });
+ });
 diff --git a/apps/web/src/lib/imageCompression.test.ts b/apps/web/src/lib/imageCompression.test.ts
 index e40c3968bc850e77a2e0e96b762da9f75ffbdbb1..7ecec677c0486af0b59d1cd273433b4f6e79ff78 100644
 --- a/apps/web/src/lib/imageCompression.test.ts

@@ -51,6 +51,10 @@ Port to b6ac2449f1: the web copy this commit adds follows upstream's translation
 
 Port to 047fb5b162: vite-env.d.ts: upstream 10586f9e31 (#40594, one T3CODE_FEATURE_FLAGS service) drops T3CODE_FEATURE_SECRETS from ImportMetaEnv; this commit's T3CODE_RELEASE_REPOSITORY declaration stays beside T3CODE_DESKTOP_UPDATE_REPOSITORY. No update guard changed.
 
+Port to def64e3a54: bundledDev.test.ts conflicted only in its copied-file list: upstream 91d2d90f46 (#26451, a failed main chunk load reloads once) adds src/lib/chunkReloadGuard.ts to the bootstrap bundle beside this commit's src/lib/desktopReleaseLinks.ts; both are copied. No update guard changed.
+
+release-fork.yml: the macOS arm64 desktop job runs on macos-26, because upstream packaging runs stageAppleSpeech (scripts/build-desktop-artifact.ts) and apps/desktop/scripts/build-apple-speech.mjs needs Xcode 26. Upstream's release workflows select no Xcode version, so none is selected here; the macOS verification job, which builds nothing, stays on macos-15.
+
 Files:
 .github:
 - .github/workflows/release-desktop.yml
@@ -131,7 +135,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .../desktop/src/updates/updatesTestHarness.ts |  24 +-
  apps/desktop/vite.config.test.ts              |  30 ++
  apps/desktop/vite.config.ts                   |   5 +
- apps/web/src/bundledDev.test.ts               |   7 +-
+ apps/web/src/bundledDev.test.ts               |   1 +
  .../components/desktopUpdate.logic.test.ts    |  52 ++-
  .../web/src/components/desktopUpdate.logic.ts |  52 +--
  .../components/settings/SettingsPanels.tsx    |  12 +
@@ -149,7 +153,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  scripts/build-desktop-artifact.ts             |  15 +-
  scripts/verify-fork-update-feed.test.ts       |  37 ++
  scripts/verify-fork-update-feed.ts            |  36 ++
- 33 files changed, 1587 insertions(+), 80 deletions(-)
+ 33 files changed, 1582 insertions(+), 79 deletions(-)
  create mode 100644 .github/workflows/release-fork.yml
  create mode 100644 apps/desktop/src/updates/forkFeedPolicy.test.ts
  create mode 100644 apps/desktop/src/updates/forkUpdateProvider.test.ts
@@ -174,7 +178,7 @@ index 2d3a38168c79eef782889f22e48034dc235cf8ea..cf0d6687a7dac8a51e75f5d040c33352
        - name: Reject running an untrusted bundle
 diff --git a/.github/workflows/release-fork.yml b/.github/workflows/release-fork.yml
 new file mode 100644
-index 0000000000000000000000000000000000000000..65b33f5ed17a389b082c908de46c4f0e5a3324e9
+index 0000000000000000000000000000000000000000..d8f60129f500fc6bf6084a1a832f03f3512a36c3
 --- /dev/null
 +++ b/.github/workflows/release-fork.yml
 @@ -0,0 +1,442 @@
@@ -433,7 +437,7 @@ index 0000000000000000000000000000000000000000..65b33f5ed17a389b082c908de46c4f0e
 +      clerk_cli_oauth_client_id: ${{ needs.build_bundle.outputs.clerk_cli_oauth_client_id }}
 +      relay_url: ${{ needs.build_bundle.outputs.relay_url }}
 +      label: macOS arm64
-+      runner: macos-15
++      runner: macos-26
 +      platform: mac
 +      target: dmg
 +      arch: arm64
@@ -1642,23 +1646,17 @@ index 6ded8e851ddbbf5c9be5dffa1c09a7a246b555f6..d6262e10736062002975685a98ada3f9
      repoEnv.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() ?? "",
    ),
 diff --git a/apps/web/src/bundledDev.test.ts b/apps/web/src/bundledDev.test.ts
-index 770b26e0a686b75139c3c4e87f33e34e6a211f3d..7c6fb1b2348d5f20a8b737b401090fe8631bed8b 100644
+index 5517910d754db6b7bc05905f7343feb5bbfc3be3..30b91bf0d489aad68cd7924f7148ef0b70e34ee9 100644
 --- a/apps/web/src/bundledDev.test.ts
 +++ b/apps/web/src/bundledDev.test.ts
-@@ -26,7 +26,12 @@ it("initializes React refresh before a shared UI chunk runs in bundled dev", asy
-   try {
-     await NodeFSP.mkdir(NodePath.join(root, "src/lib"), { recursive: true });
-     await NodeFSP.writeFile(NodePath.join(root, "package.json"), '{"type":"module"}');
--    for (const file of ["index.html", "src/bootstrap.ts", "src/lib/bootError.ts"]) {
-+    for (const file of [
-+      "index.html",
-+      "src/bootstrap.ts",
-+      "src/lib/bootError.ts",
+@@ -31,6 +31,7 @@ it("initializes React refresh before a shared UI chunk runs in bundled dev", asy
+       "src/bootstrap.ts",
+       "src/lib/bootError.ts",
+       "src/lib/chunkReloadGuard.ts",
 +      "src/lib/desktopReleaseLinks.ts",
-+    ]) {
+     ]) {
        await NodeFSP.copyFile(new URL(`../${file}`, import.meta.url), NodePath.join(root, file));
      }
-     await NodeFSP.writeFile(
 diff --git a/apps/web/src/components/desktopUpdate.logic.test.ts b/apps/web/src/components/desktopUpdate.logic.test.ts
 index 29494789b6cff2f2039cf3cee040104df636f661..0c737edb3da5b6bc4fe9d5d640b3296dae548313 100644
 --- a/apps/web/src/components/desktopUpdate.logic.test.ts
@@ -2272,10 +2270,10 @@ index 307b9c5d8284dc07a5c257dfe6c3d91f6ff5219a..54e9b8fbfa89c89d8f1cf88fdf8f8693
  }
  
 diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
-index 005e828202bdae5996f25fa3f695da31e8c47917..575259ff74ee1962abca80a696ceae12fcad4d14 100644
+index e107c9a7e74919b1aa70c460c75cdc568d77c09e..8ab409dcace977e052800bb8a2f02ebfd749fdc4 100644
 --- a/apps/web/vite.config.ts
 +++ b/apps/web/vite.config.ts
-@@ -350,6 +350,11 @@ export default defineConfig(({ command }) => {
+@@ -353,6 +353,11 @@ export default defineConfig(({ command }) => {
        ],
      },
      define: {

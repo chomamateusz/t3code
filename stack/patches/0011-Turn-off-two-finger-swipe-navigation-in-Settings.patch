@@ -441,7 +441,7 @@ index 0ef89029e34cacfb5aad12c9406152e0b510d139..155ec5358a538bda672b079d5311bdd8
          <SettingsRow
            {...setting("unpin-confirmation")}
 diff --git a/apps/web/src/components/settings/settingsSearch.test.ts b/apps/web/src/components/settings/settingsSearch.test.ts
-index 4bc2c2a6317e5c549008901c264a49d957e0cef5..434438ee33dd58dc38f2db977481841253898988 100644
+index 3249b6762423440d5fb22feca52d5e2ef92aef61..efcf6e4559622a12ce9ce6c0af72649732878bb2 100644
 --- a/apps/web/src/components/settings/settingsSearch.test.ts
 +++ b/apps/web/src/components/settings/settingsSearch.test.ts
 @@ -135,6 +135,8 @@ describe("searchSettings", () => {
@@ -454,10 +454,10 @@ index 4bc2c2a6317e5c549008901c264a49d957e0cef5..434438ee33dd58dc38f2db9774818412
      expect(searchSettings("wsl")).toEqual([]);
      expect(searchSettings("update track")).toEqual([]);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index b1aca3cea5628b459a1df29f12281d596c18b002..f6dedaf58da5ae0d49209b2ea8ebb8ed266669dd 100644
+index 0a79fa56cdfed8c98741f2c5931edb377ba9ef31..e09d667b20868d72c38d33fc64f5e9047304b111 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -940,6 +940,15 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -943,6 +943,15 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: [msg("confirmation desktop app exit direct hold double click press twice")],
      desktopOnly: true,
    },
@@ -498,7 +498,7 @@ index 9dc56d7a6a02d95c0b3c89882cbbc4dff1739bd6..771e102d2b25467839ce623f83e76d90
    it("resolves instance enabled state with explicit false winning", () => {
      const grok = ProviderDriverKind.make("grok");
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 111aaf4e8fa1418508ed31291b7dcd4d9f7cfd78..aa64dc1d2e0dadf1c763408a05ad41d33bee8651 100644
+index f239577770c7e5e32ec5e47e47d59652e45f1aed..b4459a6f4128e82bf56d0dff07fd174c8d5d7247 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -475,6 +475,7 @@ export const ClientSettingsSchema = Schema.Struct({
@@ -509,7 +509,7 @@ index 111aaf4e8fa1418508ed31291b7dcd4d9f7cfd78..aa64dc1d2e0dadf1c763408a05ad41d3
    confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
    confirmTerminalClose: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
    confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-@@ -2082,6 +2083,7 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2090,6 +2091,7 @@ export const ClientSettingsPatch = Schema.Struct({
    browserProfiles: Schema.optionalKey(Schema.Array(BrowserProfile)),
    browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),
    confirmQuit: Schema.optionalKey(QuitConfirmationMode),

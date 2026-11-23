@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
-Date: Sun, 22 Nov 2026 02:10:06 +0100
+Date: Fri, 20 Nov 2026 02:06:47 +0100
 Subject: =?UTF-8?q?=E2=9C=A8=20Start=20new=20threads=20inside=20the=20side?=
  =?UTF-8?q?bar=20filter?=
 MIME-Version: 1.0
@@ -42,6 +42,8 @@ Port to 29b42d409c: CommandPalette.tsx keeps upstream #39393's port-forward view
 
 Port to 047fb5b162: upstream 46ee2fc7ff (#35185) makes the sidebar's New thread start directly in the one project the sidebar is filtered to (resolveScopedNewThreadProjectRef, the viewed thread's environment first, not in the folder sidebar). This commit's startNewThreadInSidebarFilter already starts directly for one reachable member and offers the restricted picker when the filtered project has several reachable members, so handleNewThreadClick keeps this commit's flow and no longer calls upstream's helper; resolveScopedNewThreadProjectRef and its Sidebar.logic.test.ts cases stay in Sidebar.logic.ts unused by the sidebar. docs/user/thread-sidebar.md: upstream's one-project sentence is replaced by this commit's filtered-start paragraphs, which cover it.
 chatRouteCommands.ts: upstream c5dc20f9f5 (#37191, new threads from a grouped repository start in its root checkout) passes selectProjectGroupingSettings(getClientSettings()) to resolveDefaultProjectRef, so this commit keeps those two imports when it removes readProjectGroups.
+
+Port to def64e3a54: upstream a3323d4a43 (#41070) opens a new thread's draft without waiting for t3.json, so resolveDefaultEnvMode is synchronous and the checks it needed while waiting (an abandoned open, a draft registered meanwhile, a project removed meanwhile) are gone. useHandleNewThread.ts keeps exactProject on the remaining paths: readStoredDraft finds the stored draft, every draft it registers gets the manual environment selection, and the open draft is reused only for the exact member. useHandleNewThread.test.ts starts from upstream's rewritten fixture and keeps this commit's cases; the exact-member case for a draft registered while waiting left with the wait, and the entities mock keeps readProject for startNewThreadInMember.
 
 Files:
 apps/web:
@@ -109,8 +111,8 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  apps/web/src/components/Sidebar.tsx           |  45 +-
  .../SidebarThreadHeader.browser.test.tsx      |  87 +++
  .../sidebar/SidebarThreadHeader.tsx           |  37 +-
- apps/web/src/hooks/useHandleNewThread.test.ts | 233 +++++++-
- apps/web/src/hooks/useHandleNewThread.ts      |  41 +-
+ apps/web/src/hooks/useHandleNewThread.test.ts | 212 +++++++-
+ apps/web/src/hooks/useHandleNewThread.ts      |  32 +-
  apps/web/src/keybindings.test.ts              | 131 ++++-
  apps/web/src/keybindings.ts                   |  27 +-
  apps/web/src/newThreadActions.ts              |  79 +++
@@ -120,7 +122,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .../src/shortcuts/chatRouteCommands.test.ts   |   5 +-
  apps/web/src/shortcuts/chatRouteCommands.ts   |  30 +-
  docs/user/thread-sidebar.md                   |  33 +-
- 21 files changed, 1979 insertions(+), 157 deletions(-)
+ 21 files changed, 1953 insertions(+), 153 deletions(-)
  create mode 100644 apps/web/src/components/sidebar/SidebarThreadHeader.browser.test.tsx
  create mode 100644 apps/web/src/newThreadActions.ts
  create mode 100644 apps/web/src/newThreadTarget.test.ts
@@ -562,7 +564,7 @@ index 8fc6f18fa4bd28d2cffebe1b99811b1976623741..bfa6a200050bb0e492511d122bfa6b33
        return openWithIntent({ kind: "change-theme" });
    }
 diff --git a/apps/web/src/components/CommandPalette.tsx b/apps/web/src/components/CommandPalette.tsx
-index 3349902aeea05d2a098c9a9d6d9815a90a5722ec..150476b40854eaeba068ca3e71726bafb92f0483 100644
+index cc839c6d92c3cf2a6d2bb382f5b1b3edb95e6f91..db117be851d3d6fccfdc355d13265a5e0deeda3f 100644
 --- a/apps/web/src/components/CommandPalette.tsx
 +++ b/apps/web/src/components/CommandPalette.tsx
 @@ -102,6 +102,9 @@ import { useAtomValue } from "@effect/atom-react";
@@ -940,7 +942,7 @@ index 1a0b4c588d64ce351a3cc7f9d2bed44f8c56e420..6da644ed1e1d16f836333a00a0cde380
      } else {
        expect(openCommandPalette).not.toHaveBeenCalled();
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index cd9de69f65350b7663ea5c2c48053a24a0740e43..a683ded2846a762b1bff5fa5ccd8387566ec104d 100644
+index 37fa83bdcb58088187208e295fe9a5a1fea228c0..018ee814fc9462f575d03279704c2065bbb5634a 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -127,6 +127,7 @@ import {
@@ -968,7 +970,7 @@ index cd9de69f65350b7663ea5c2c48053a24a0740e43..a683ded2846a762b1bff5fa5ccd83875
    shouldNavigateAfterThreadPark,
    sidebarListItemId,
    sidebarThreadKeyAtY,
-@@ -3095,24 +3095,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3126,24 +3126,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      : null;
  
    const handleNewThreadClick = (event?: ReactMouseEvent) => {
@@ -994,7 +996,7 @@ index cd9de69f65350b7663ea5c2c48053a24a0740e43..a683ded2846a762b1bff5fa5ccd83875
        if (isMobile) setOpenMobile(false);
        // With no current or open project, such as when every project is archived, pick one.
        void startNewThreadFromContext({
-@@ -3126,7 +3109,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3157,7 +3140,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
        return;
      }
      if (isMobile) setOpenMobile(false);
@@ -1010,7 +1012,7 @@ index cd9de69f65350b7663ea5c2c48053a24a0740e43..a683ded2846a762b1bff5fa5ccd83875
    };
  
    const newThreadShortcutLabel =
-@@ -3172,16 +3162,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3203,16 +3193,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                }
                onNewProject={openAddProjectCommandPalette}
                onNewThread={handleNewThreadClick}
@@ -1218,20 +1220,20 @@ index 0f1f2f8e6f55bb27681d8224db11257d3a2070ce..66c79f3389fdc03312ad3ce5eeed25e3
            >
              <SquarePenIcon />
 diff --git a/apps/web/src/hooks/useHandleNewThread.test.ts b/apps/web/src/hooks/useHandleNewThread.test.ts
-index 7c64d0077cc2bcb2cf20da2296b3b77bda1ac0d4..8627b4098492d76160f514ca94320b215a0b7421 100644
+index 07df36fe906a49112cf137466fa49338d484254d..3c78df2bbd4b44f60ad777a2a843cce81440cb27 100644
 --- a/apps/web/src/hooks/useHandleNewThread.test.ts
 +++ b/apps/web/src/hooks/useHandleNewThread.test.ts
-@@ -5,6 +5,9 @@ const testState = vi.hoisted(() => {
-   let completeProjectFileRead: (value: null) => void = () => undefined;
-   let projectFileRead = Promise.resolve<null>(null);
-   let projectRemoved = false;
+@@ -11,6 +11,9 @@ const testState = vi.hoisted(() => {
+     branch: null as string | null,
+     environmentSelection: undefined as "manual" | undefined,
+   };
 +  let scratch = false;
 +  let groupCount = 2;
 +  let boringSidebarEnabled = false;
    let connectedEnvironmentIds = ["environment-primary", "environment-ssh"];
    let targetSettings = {
      defaultThreadEnvMode: "local" as "local" | "worktree" | null,
-@@ -12,12 +15,15 @@ const testState = vi.hoisted(() => {
+@@ -18,13 +21,17 @@ const testState = vi.hoisted(() => {
      defaultModelSelection: null,
      defaultRuntimeMode: "full-access" as RuntimeMode,
    };
@@ -1247,9 +1249,11 @@ index 7c64d0077cc2bcb2cf20da2296b3b77bda1ac0d4..8627b4098492d76160f514ca94320b21
 +  let storedDraft: StoredDraft | null = null;
 +  let additionalDrafts: Record<string, StoredDraft> = {};
    let openDraftRoute: { readonly kind: "draft"; readonly draftId: string } | null = null;
-   let draftsWithUserText = new Set<string>();
++  let draftsWithUserText = new Set<string>();
    const router = {
-@@ -33,6 +39,12 @@ const testState = vi.hoisted(() => {
+     state: {
+       location: { href: "/" },
+@@ -38,6 +45,12 @@ const testState = vi.hoisted(() => {
      }),
    };
    const draftStore = {
@@ -1262,10 +1266,10 @@ index 7c64d0077cc2bcb2cf20da2296b3b77bda1ac0d4..8627b4098492d76160f514ca94320b21
      getComposerDraft: vi.fn((draftId: string) => ({ draftId })),
      getDraftSessionByLogicalProjectKey: vi.fn(() => storedDraft),
      getDraftSession: vi.fn(() =>
-@@ -57,6 +69,24 @@ const testState = vi.hoisted(() => {
- 
-   return {
-     completeProjectFileRead: (value: null) => completeProjectFileRead(value),
+@@ -71,6 +84,24 @@ const testState = vi.hoisted(() => {
+     pickBranch(branch: string) {
+       draftSession = { ...draftSession, branch, environmentSelection: "manual" };
+     },
 +    configureStart: (input: {
 +      scratch?: boolean;
 +      groupCount?: number;
@@ -1287,9 +1291,17 @@ index 7c64d0077cc2bcb2cf20da2296b3b77bda1ac0d4..8627b4098492d76160f514ca94320b21
      draftStore,
      get projectFileRead() {
        return projectFileRead;
-@@ -84,6 +114,9 @@ const testState = vi.hoisted(() => {
-     registerDraft(draft: NonNullable<typeof storedDraft>) {
-       storedDraft = draft;
+@@ -81,9 +112,17 @@ const testState = vi.hoisted(() => {
+     disconnect(environmentId: string) {
+       connectedEnvironmentIds = connectedEnvironmentIds.filter((id) => id !== environmentId);
+     },
++    hasUserText: (draft: { readonly draftId?: string } | null | undefined) =>
++      draft?.draftId !== undefined && draftsWithUserText.has(draft.draftId),
++    giveUserText(draftId: string) {
++      draftsWithUserText = new Set([...draftsWithUserText, draftId]);
++    },
+     get openDraftRoute() {
+       return openDraftRoute;
      },
 +    addDraft(draft: StoredDraft) {
 +      additionalDrafts[draft.draftId] = draft;
@@ -1297,21 +1309,26 @@ index 7c64d0077cc2bcb2cf20da2296b3b77bda1ac0d4..8627b4098492d76160f514ca94320b21
      openEmptyDraft(draftId: string) {
        openDraftRoute = { kind: "draft", draftId };
      },
-@@ -98,9 +131,13 @@ const testState = vi.hoisted(() => {
+@@ -98,13 +137,18 @@ const testState = vi.hoisted(() => {
        },
      ) {
        storedDraft = nextStoredDraft;
 +      additionalDrafts = {};
        openDraftRoute = null;
-       draftsWithUserText = new Set();
-       projectRemoved = false;
++      draftsWithUserText = new Set();
+       draftSession = {
+         envMode: "local",
+         worktreePath: null,
+         branch: null,
+         environmentSelection: undefined,
+       };
 +      scratch = false;
 +      groupCount = 2;
 +      boringSidebarEnabled = false;
        connectedEnvironmentIds = ["environment-primary", "environment-ssh"];
        targetSettings = {
          defaultThreadEnvMode: workspaceDefaults.envMode,
-@@ -140,7 +177,19 @@ vi.mock("../rpc/atomRegistry", () => ({
+@@ -144,7 +188,19 @@ vi.mock("../rpc/atomRegistry", () => ({
      get: (atom: unknown) =>
        atom === "connected-environment-ids"
          ? testState.connectedEnvironmentIds
@@ -1332,7 +1349,7 @@ index 7c64d0077cc2bcb2cf20da2296b3b77bda1ac0d4..8627b4098492d76160f514ca94320b21
    },
  }));
  
-@@ -192,12 +241,14 @@ vi.mock("react", () => ({
+@@ -197,13 +253,16 @@ vi.mock("react", () => ({
  }));
  vi.mock("../components/Sidebar.logic", () => ({
    orderItemsByPreferredIds: ({ items }: { items: unknown[] }) => items,
@@ -1343,11 +1360,14 @@ index 7c64d0077cc2bcb2cf20da2296b3b77bda1ac0d4..8627b4098492d76160f514ca94320b21
      getState: () => testState.draftStore,
    });
    return {
+-    composerDraftHasUserContent: () => false,
 +    DraftId: { make: (value: string) => value },
-     composerDraftHasUserContent: (draft: { readonly draftId?: string } | null | undefined) =>
-       testState.hasUserText(draft),
++    composerDraftHasUserContent: (draft: { readonly draftId?: string } | null | undefined) =>
++      testState.hasUserText(draft),
      markPromotedDraftThreadByRef: vi.fn(),
-@@ -217,7 +268,12 @@ vi.mock("../lib/utils", () => ({
+     useComposerDraftStore,
+   };
+@@ -222,7 +281,12 @@ vi.mock("../lib/utils", () => ({
    newDraftId: () => "draft-delayed",
    newThreadId: () => "thread-delayed",
  }));
@@ -1360,7 +1380,7 @@ index 7c64d0077cc2bcb2cf20da2296b3b77bda1ac0d4..8627b4098492d76160f514ca94320b21
    deriveLogicalProjectKeyFromSettings: () => "remote-project",
    getProjectOrderKey: () => "remote-project",
    selectProjectGroupingSettings: () => ({}),
-@@ -226,7 +282,9 @@ vi.mock("../state/entities", () => {
+@@ -231,11 +295,14 @@ vi.mock("../state/entities", () => {
    const project = {
      id: "project-remote",
      environmentId: "environment-ssh",
@@ -1371,7 +1391,12 @@ index 7c64d0077cc2bcb2cf20da2296b3b77bda1ac0d4..8627b4098492d76160f514ca94320b21
      defaultThreadEnvMode: null,
      defaultModelSelection: null,
    };
-@@ -243,6 +301,7 @@ vi.mock("../state/projects", () => ({ defaultProjectFallbackReadyAtom: () => tru
+   return {
++    readProject: () => project,
+     readProjects: () => [project],
+     readThreadShell: () => null,
+     readThreadShells: () => [],
+@@ -247,6 +314,7 @@ vi.mock("../state/projects", () => ({ defaultProjectFallbackReadyAtom: () => tru
  vi.mock("../state/olderSettledShelf", () => ({ readUnloadedThreadCount: () => 0 }));
  vi.mock("../state/presentation", () => ({
    environmentSummaries: { connectedEnvironmentIdsAtom: "connected-environment-ids" },
@@ -1379,7 +1404,7 @@ index 7c64d0077cc2bcb2cf20da2296b3b77bda1ac0d4..8627b4098492d76160f514ca94320b21
  }));
  vi.mock("../state/server", () => ({
    environmentServerConfigsAtom: {},
-@@ -255,9 +314,31 @@ vi.mock("../uiStateStore", () => ({
+@@ -259,13 +327,35 @@ vi.mock("../uiStateStore", () => ({
    legacyProjectCwdPreferenceKey: () => "remote-project",
    useUiStateStore: () => [],
  }));
@@ -1407,12 +1432,16 @@ index 7c64d0077cc2bcb2cf20da2296b3b77bda1ac0d4..8627b4098492d76160f514ca94320b21
 +  }),
 +}));
  
- import { resolveDefaultProjectRef, useNewThreadHandler } from "./useHandleNewThread";
+ import {
+   readPendingWorkspaceDefault,
+   resolveDefaultProjectRef,
+   useNewThreadHandler,
+ } from "./useHandleNewThread";
 +import { startNewThreadInMember, startNewThreadInSidebarFilter } from "../newThreadActions";
  
  describe.each([
    ["new", null],
-@@ -266,6 +347,7 @@ describe.each([
+@@ -274,6 +364,7 @@ describe.each([
      {
        draftId: "draft-existing",
        environmentId: "environment-ssh",
@@ -1420,15 +1449,7 @@ index 7c64d0077cc2bcb2cf20da2296b3b77bda1ac0d4..8627b4098492d76160f514ca94320b21
        promotedTo: null,
        threadId: "thread-existing",
      },
-@@ -299,6 +381,7 @@ describe.each([
-     testState.registerDraft({
-       draftId: "draft-home",
-       environmentId: "environment-ssh",
-+      projectId: "project-remote",
-       promotedTo: null,
-       threadId: "thread-home",
-     });
-@@ -349,11 +432,151 @@ describe.each([
+@@ -363,6 +454,115 @@ describe.each([
  });
  
  describe("useNewThreadHandler", () => {
@@ -1541,59 +1562,23 @@ index 7c64d0077cc2bcb2cf20da2296b3b77bda1ac0d4..8627b4098492d76160f514ca94320b21
 +    );
 +  });
 +
-+  it("reuses an exact-member draft registered while project defaults resolve", async () => {
-+    testState.reset(null, { envMode: null, startFromOrigin: false });
-+    const pendingOpen = useNewThreadHandler()(
-+      { environmentId: "environment-ssh", projectId: "project-remote" } as never,
-+      { exactProject: true },
-+    );
-+    testState.addDraft({
-+      draftId: "draft-raced",
-+      environmentId: "environment-ssh",
-+      projectId: "project-remote",
-+      promotedTo: null,
-+      threadId: "thread-raced",
-+    });
-+    testState.completeProjectFileRead(null);
-+
-+    await expect(pendingOpen).resolves.toEqual({
-+      draftId: "draft-raced",
-+      threadId: "thread-raced",
-+    });
-+    expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
-+      "remote-project",
-+      { environmentId: "environment-ssh", projectId: "project-remote" },
-+      "draft-raced",
-+      expect.objectContaining({
-+        environmentSelection: "manual",
-+        loadBalancedEnvironmentId: null,
-+      }),
-+    );
-+  });
-+
-   it("keeps the text of a draft that gained some while it waited", async () => {
+   it("seeds the prompt into the empty draft that is already open", async () => {
      testState.reset(null);
-     const raced = {
-       draftId: "draft-raced",
-       environmentId: "environment-ssh",
-+      projectId: "project-remote",
-       promotedTo: null,
-       threadId: "thread-raced",
-     };
+     testState.openEmptyDraft("draft-open");
 diff --git a/apps/web/src/hooks/useHandleNewThread.ts b/apps/web/src/hooks/useHandleNewThread.ts
-index 1be24bd9a3489f8767a4ad2589df7fd582236c98..71c427415567e6d34673641f1081138bee00e421 100644
+index ea9c42b2649b56cc281441efc8fd110bf6721a1d..e1457fc385d08867280957943b4b613ff2a4b1fd 100644
 --- a/apps/web/src/hooks/useHandleNewThread.ts
 +++ b/apps/web/src/hooks/useHandleNewThread.ts
-@@ -8,7 +8,7 @@ import { type AnyRouter, useRouter } from "@tanstack/react-router";
+@@ -14,7 +14,7 @@ import { flushSync } from "react-dom";
  import {
    composerDraftHasUserContent,
    markPromotedDraftThreadByRef,
 -  type DraftId,
 +  DraftId,
+   type DraftSessionState,
    type DraftThreadEnvMode,
    type DraftThreadState,
-   useComposerDraftStore,
-@@ -102,6 +102,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -141,6 +141,7 @@ export function createNewThreadHandler(router: AnyRouter) {
        envMode?: DraftThreadEnvMode;
        startFromOrigin?: boolean;
        replace?: boolean;
@@ -1601,22 +1586,14 @@ index 1be24bd9a3489f8767a4ad2589df7fd582236c98..71c427415567e6d34673641f1081138b
        /** Composer text for the draft, set before it shows. A draft with user text keeps it. */
        prompt?: string;
      },
-@@ -235,10 +236,13 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -309,11 +310,32 @@ export function createNewThreadHandler(router: AnyRouter) {
      const logicalProjectKey = project
        ? deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings)
        : scopedProjectKey(projectRef);
 +    const targetEnvironmentOptions = options?.exactProject
 +      ? { environmentSelection: "manual" as const, loadBalancedEnvironmentId: null }
 +      : {};
-     // Another opener (home's own first-project draft) may have reached this project's draft first.
-     // Matches lag the location during a navigation, so compare against the location.
-     const resultIfAbandoned = () => {
--      const draft = getDraftSessionByLogicalProjectKey(logicalProjectKey);
-+      const draft = readStoredDraft();
-       if (draft === null || draft.promotedTo != null || readProject(projectRef) === null) {
-         return null;
-       }
-@@ -254,7 +258,25 @@ export function createNewThreadHandler(router: AnyRouter) {
+     const hasBranchOption = options?.branch !== undefined;
      const hasWorktreePathOption = options?.worktreePath !== undefined;
      const hasEnvModeOption = options?.envMode !== undefined;
      const hasStartFromOriginOption = options?.startFromOrigin !== undefined;
@@ -1643,18 +1620,7 @@ index 1be24bd9a3489f8767a4ad2589df7fd582236c98..71c427415567e6d34673641f1081138b
      const storedDraftThreadRef = storedDraftThread
        ? scopeThreadRef(storedDraftThread.environmentId, storedDraftThread.threadId)
        : null;
-@@ -300,9 +322,7 @@ export function createNewThreadHandler(router: AnyRouter) {
-             routeTargetNow.draftId === emptyStoredDraftThread.draftId;
-           const promotedMeanwhile =
-             storedDraftThreadRef !== null && readThreadShell(storedDraftThreadRef) !== null;
--          const remappedMeanwhile =
--            getDraftSessionByLogicalProjectKey(logicalProjectKey)?.draftId !==
--            emptyStoredDraftThread.draftId;
-+          const remappedMeanwhile = readStoredDraft()?.draftId !== emptyStoredDraftThread.draftId;
-           const investedMeanwhile = composerDraftHasUserContent(
-             getComposerDraft(emptyStoredDraftThread.draftId),
-           );
-@@ -345,6 +365,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -384,6 +406,7 @@ export function createNewThreadHandler(router: AnyRouter) {
            projectRef,
            emptyStoredDraftThread.draftId,
            {
@@ -1662,7 +1628,7 @@ index 1be24bd9a3489f8767a4ad2589df7fd582236c98..71c427415567e6d34673641f1081138b
              threadId: emptyStoredDraftThread.threadId,
              ...workspaceContext,
              ...(!isDraftAlreadyOpen ? { runtimeMode: defaultRuntimeMode } : {}),
-@@ -376,6 +397,9 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -416,6 +439,9 @@ export function createNewThreadHandler(router: AnyRouter) {
        latestActiveDraftThread &&
        currentRouteTarget?.kind === "draft" &&
        latestActiveDraftThread.logicalProjectKey === logicalProjectKey &&
@@ -1672,7 +1638,7 @@ index 1be24bd9a3489f8767a4ad2589df7fd582236c98..71c427415567e6d34673641f1081138b
        latestActiveDraftThread.promotedTo == null &&
        !composerDraftHasUserContent(getComposerDraft(currentRouteTarget.draftId))
      ) {
-@@ -388,6 +412,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -428,6 +454,7 @@ export function createNewThreadHandler(router: AnyRouter) {
          setDraftThreadContext(currentRouteTarget.draftId, pickExplicitWorkspaceOptions(options));
        }
        setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, currentRouteTarget.draftId, {
@@ -1680,25 +1646,9 @@ index 1be24bd9a3489f8767a4ad2589df7fd582236c98..71c427415567e6d34673641f1081138b
          threadId: latestActiveDraftThread.threadId,
          createdAt: latestActiveDraftThread.createdAt,
          runtimeMode: latestActiveDraftThread.runtimeMode,
-@@ -410,13 +435,14 @@ export function createNewThreadHandler(router: AnyRouter) {
-         return resultIfAbandoned();
-       }
-       // Reuse drafts registered while awaiting so their pending navigation cannot lose them.
--      const racedDraft = getDraftSessionByLogicalProjectKey(logicalProjectKey);
-+      const racedDraft = readStoredDraft();
-       if (
-         racedDraft &&
-         racedDraft.draftId !== storedDraftThread?.draftId &&
-         readThreadShell(scopeThreadRef(racedDraft.environmentId, racedDraft.threadId)) === null
-       ) {
-         setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, racedDraft.draftId, {
-+          ...targetEnvironmentOptions,
-           threadId: racedDraft.threadId,
-           createdAt: racedDraft.createdAt,
-           runtimeMode: racedDraft.runtimeMode,
-@@ -432,6 +458,7 @@ export function createNewThreadHandler(router: AnyRouter) {
-         return { draftId: racedDraft.draftId, threadId: racedDraft.threadId };
-       }
+@@ -448,6 +475,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+       const defaultEnvMode = options?.envMode === undefined ? resolveDefaultEnvMode() : null;
+       const initialEnvMode = options?.envMode ?? defaultEnvMode?.envMode ?? "local";
        setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
 +        ...targetEnvironmentOptions,
          threadId,
@@ -2965,10 +2915,10 @@ index 7cca45fbd81db6f35188ab04be1cba3dd2df7dbc..125482f36ed7ccb16d343b2d5cd9f56c
        "preview.toggle": (event) => {
          claim(event);
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 9e5d4c1a7a14534332332f35ac3ef406b561c270..f7d291be26faca6644523e7cbe53b01c039292ea 100644
+index 865dbb02457b6f89b2889fd25b3f9ad646ccf628..988ebbda4eac8d545deeaeb0710dbea3509b9227 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -5,14 +5,27 @@ need a separate branch and working directory.
+@@ -6,14 +6,27 @@ branch, so T3 Code refuses a branch switch there while one of them is working.
  
  ## Start a thread
  
@@ -3004,7 +2954,7 @@ index 9e5d4c1a7a14534332332f35ac3ef406b561c270..f7d291be26faca6644523e7cbe53b01c
  
  On mobile, **New thread** starts in the current thread's project, or else in the
  project the thread list is filtered to, or else in the last project you opened
-@@ -29,8 +42,8 @@ if that project exists there. Otherwise it selects an environment that has it.
+@@ -30,8 +43,8 @@ if that project exists there. Otherwise it selects an environment that has it.
  A thread does not need a project. To start one without a project, click **or
  start without a project** under a new thread's heading, pick **No project** from
  the project menu in that heading or from **New thread in...** in the command

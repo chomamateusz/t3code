@@ -233,7 +233,7 @@ index 8af803db1fd8c29b14c319a8b8451f2f380c5c5a..f4e7cb7f5d480a18aeeb2dc0adf8dc52
      Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) => fs.exists(filePath));
  
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index fb19b6c7ad1d677d93df5ddddab8564f7ef852b8..6ef772875517087a438f37be43abf8c34d66a251 100644
+index e87ba67cf5837c37ca8942b912cbb156eedf8b10..2588d2df8dbf5cb9466275ad1bf70e74d436f0b2 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
 @@ -21,6 +21,7 @@ import {
@@ -262,7 +262,7 @@ index fb19b6c7ad1d677d93df5ddddab8564f7ef852b8..6ef772875517087a438f37be43abf8c3
    };
  }
  
-@@ -3333,6 +3338,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+@@ -3330,6 +3335,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
          runtimeEnv: normalizedRuntimeEnv(input.env),
          stopOnSettle: input.stopOnSettle ?? false,
          startupError: null,
@@ -1731,10 +1731,10 @@ index 2c39a36bec486ab1d5f09f8bedff8babca6c5c01..87f858f20a8d6cb97afceda73c7f016b
  });
  
 diff --git a/apps/web/src/state/terminalSessions.ts b/apps/web/src/state/terminalSessions.ts
-index 8eaca1b774c859a49e28451ad7432d934f6b577f..d448b3a6fcd7c2ea8704c2b6437a56f2dd8f1f4f 100644
+index 0915810b47fedce4b7ef18600aea06bb30fb4a51..2ab31233af45961bca02c4be87bcf47de55a2ef0 100644
 --- a/apps/web/src/state/terminalSessions.ts
 +++ b/apps/web/src/state/terminalSessions.ts
-@@ -100,7 +100,11 @@ export function selectKnownTerminalSessions(
+@@ -106,7 +106,11 @@ export function selectKnownTerminalSessions(
    let views = index.views.get(environmentId);
    const cached = views?.get(threadId);
    if (cached) return cached;

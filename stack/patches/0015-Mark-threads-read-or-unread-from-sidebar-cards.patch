@@ -173,7 +173,7 @@ index d31d96c9517b384b0ccf6a18b110a3a1fc19a018..dd7f082c6612d14953a7b103001ed1ba
    "approval",
    "input",
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index ba7e0ee46604936f1596073d7f5dd9078f41970f..d32af52f20c51c16f519360dc6247761ac78365f 100644
+index e2bdc6b9cf3bf716c292f919d8bef9575a2f1b7b..f9d71113c5a82af144be30ce6d3cf980390c00f7 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -141,6 +141,7 @@ import {
@@ -192,7 +192,7 @@ index ba7e0ee46604936f1596073d7f5dd9078f41970f..d32af52f20c51c16f519360dc6247761
  } from "./Sidebar.logic";
  import {
    createSidebarCollisionDetection,
-@@ -980,6 +982,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -988,6 +990,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      reorderPinnedThread,
      reorderActiveThread,
      markThreadUnread,
@@ -200,7 +200,7 @@ index ba7e0ee46604936f1596073d7f5dd9078f41970f..d32af52f20c51c16f519360dc6247761
      archiveThread,
      deleteThread,
    } = useThreadActions();
-@@ -1037,6 +1040,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1045,6 +1048,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
    const rangeSelectTo = useThreadSelectionStore((s) => s.rangeSelectTo);
    const acknowledgeWoke = useAcknowledgeThreadWoke();
@@ -213,7 +213,7 @@ index ba7e0ee46604936f1596073d7f5dd9078f41970f..d32af52f20c51c16f519360dc6247761
    // A Settings or Usage modal keeps the thread behind it current.
    const routeTarget = useShownThreadRouteTarget().shownTarget;
    const routeDraftThread = useComposerDraftStore((store) =>
-@@ -2832,6 +2841,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2863,6 +2872,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                isSnoozed,
                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
                isRegeneratingTitle,
@@ -221,7 +221,7 @@ index ba7e0ee46604936f1596073d7f5dd9078f41970f..d32af52f20c51c16f519360dc6247761
                isRunning: !threadRuntimeCanArchive(thread.runtime),
                canShareWithGuest: appAtomRegistry.get(
                  canShareWithGuestAtom(threadRef.environmentId),
-@@ -2977,8 +2987,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3008,8 +3018,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              if (toast) toastManager.add(toast);
              return;
            }
@@ -232,7 +232,7 @@ index ba7e0ee46604936f1596073d7f5dd9078f41970f..d32af52f20c51c16f519360dc6247761
              return;
            case "copy-path":
              if (!threadWorkspacePath) {
-@@ -3513,6 +3524,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3543,6 +3554,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              onUnsnooze={attemptUnsnooze}
                              onUnpin={attemptUnpin}
                              onAcknowledgeWoke={acknowledgeWoke}
@@ -241,10 +241,10 @@ index ba7e0ee46604936f1596073d7f5dd9078f41970f..d32af52f20c51c16f519360dc6247761
                            />
                          );
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
-index 20ac809c130bb08beba90479e4d97d0bd735f05d..d07a999df8093e0bdd58e8722953d426f08ceb74 100644
+index 39abba5e5b808c359db5300302d07018279ecb74..7707afbbb31d28cfcbfee4dd3e7380a16200d7d2 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
-@@ -71,6 +71,7 @@ function Row(props: {
+@@ -70,6 +70,7 @@ function Row(props: {
          onUnsnooze={noop}
          onUnpin={noop}
          onAcknowledgeWoke={noop}
@@ -253,19 +253,19 @@ index 20ac809c130bb08beba90479e4d97d0bd735f05d..d07a999df8093e0bdd58e8722953d426
        <li>Outside</li>
      </ul>
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 6dbed6103894d104675c570fa4ab7d85f6493fdc..c332374f87f56be7ba56d475a73b392bc82d7924 100644
+index e5d0ff49d2dbc00a3a6653385066e5e471e1204f..e1ddcd5e745caaaa60de6353fa26a4874d36fc40 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -48,6 +48,8 @@ import {
-   CircleDotDashedIcon,
+@@ -50,6 +50,8 @@ import {
    ClockIcon,
+   FolderGit2Icon,
    GitBranchIcon,
 +  MailCheckIcon,
 +  MailOpenIcon,
    MessageCircleQuestionIcon,
    PinIcon,
    PinOffIcon,
-@@ -91,8 +93,10 @@ import {
+@@ -93,8 +95,10 @@ import {
    animateSidebarLayoutChanges,
    resolveSidebarRowAccessibility,
    type SidebarDropVerb,
@@ -276,7 +276,7 @@ index 6dbed6103894d104675c570fa4ab7d85f6493fdc..c332374f87f56be7ba56d475a73b392b
    shouldRecedeSidebarThread,
    resolveWorkingStartedAt,
    useRetainedValue,
-@@ -461,6 +465,39 @@ function SnoozeMenuButton(props: {
+@@ -469,6 +473,39 @@ function SnoozeMenuButton(props: {
    );
  }
  
@@ -316,7 +316,7 @@ index 6dbed6103894d104675c570fa4ab7d85f6493fdc..c332374f87f56be7ba56d475a73b392b
  type SortableThreadRowBag = Pick<
    ReturnType<typeof useSortable>,
    "listeners" | "setNodeRef" | "transform" | "transition" | "isDragging"
-@@ -630,6 +667,7 @@ type SidebarThreadRowProps = {
+@@ -637,6 +674,7 @@ type SidebarThreadRowProps = {
    onUnsnooze: (threadRef: ScopedThreadRef) => void;
    onUnpin: (threadRef: ScopedThreadRef) => void;
    onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
@@ -324,7 +324,7 @@ index 6dbed6103894d104675c570fa4ab7d85f6493fdc..c332374f87f56be7ba56d475a73b392b
    onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
  };
  
-@@ -685,6 +723,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -692,6 +730,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      onContextMenu,
      onAcknowledgeWoke,
      onFileDropThreads,
@@ -332,7 +332,7 @@ index 6dbed6103894d104675c570fa4ab7d85f6493fdc..c332374f87f56be7ba56d475a73b392b
      onRenameTitleChange,
      onSettle,
      onActionSweepStart,
-@@ -781,6 +820,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -788,6 +827,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      isSelected,
    });
    const isWokeStatus = topStatus?.icon === "woke";
@@ -343,7 +343,7 @@ index 6dbed6103894d104675c570fa4ab7d85f6493fdc..c332374f87f56be7ba56d475a73b392b
  
    const branchMismatch = resolveLocalCheckoutBranchMismatch({
      effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
-@@ -876,6 +919,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -882,6 +925,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
          addFolders: () => {},
        })
      : null;
@@ -355,7 +355,7 @@ index 6dbed6103894d104675c570fa4ab7d85f6493fdc..c332374f87f56be7ba56d475a73b392b
    const handleSettleClick = (event: ReactMouseEvent) => {
      event.preventDefault();
      event.stopPropagation();
-@@ -1648,7 +1696,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1643,7 +1691,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                        <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
                      )}
                    </span>
@@ -367,7 +367,7 @@ index 6dbed6103894d104675c570fa4ab7d85f6493fdc..c332374f87f56be7ba56d475a73b392b
                      <span
                        className={cn(
                          // Mouse clicks leave Settle focused; focus-within would pin controls over
-@@ -1676,6 +1727,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1671,6 +1722,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                            </TooltipPopup>
                          </Tooltip>
                        ) : null}
@@ -637,10 +637,10 @@ index 2a591127044d129955e6e44b00f55da81c001cc4..c4528d2813e1a86614bd6d2fa3ae182b
      turnThreadIntoProject: (target: ScopedThreadRef) =>
        createProjectFromThread({
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 12d8e3ee47640e85b0c3d18a8ec92b8c6b3dd47b..fd0bb18ddf165c23d349d2758dadf9cddfea7ffc 100644
+index f00db93127957bfb687ba46d13abc1218df21d5d..de1876562b0a111eb72d88f29f469572eae42d59 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -84,6 +84,9 @@ viewing. Discarding an unsent draft from the sidebar works the same way: Undo br
+@@ -85,6 +85,9 @@ viewing. Discarding an unsent draft from the sidebar works the same way: Undo br
  back its text and attachments. `mod+z` triggers the most recent Undo, even from the composer; see
  [Keybindings](./keybindings.md#commands-with-special-behavior).
  
