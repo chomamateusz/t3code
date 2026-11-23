@@ -2256,10 +2256,10 @@ index e107c9a7e74919b1aa70c460c75cdc568d77c09e..8ab409dcace977e052800bb8a2f02ebf
        // Override .env URLs with empty values in single-origin dev so clients use window.location.origin.
        "import.meta.env.VITE_HTTP_URL": JSON.stringify(configuredHttpUrl ?? ""),
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index c9180ec3d3ae63cc35e80c368765424a5f23b5c1..04c9caf5832ade144cbe8301df45dfb70a6fabf1 100644
+index 43e89846bded00d933f000d7074873ce98e99c9f..237a4e9030f314abf63f6725ba7fe49238e49366 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
-@@ -1974,3 +1974,67 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+@@ -1979,3 +1979,67 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
      assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
@@ -2328,10 +2328,10 @@ index c9180ec3d3ae63cc35e80c368765424a5f23b5c1..04c9caf5832ade144cbe8301df45dfb7
 +  }).pipe(Effect.provide(NodeServices.layer)),
 +);
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 746ac826005b3383c8cb359c6613a7e16f99cadd..4390c1e1777057af7e77f640e394619632459704 100644
+index 1d334ad98e5fcfa62bd13cb5ec73d723b1e0ea93..4a4e1e2c31c935d2edf6411d2d582d43320965e1 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
-@@ -2726,6 +2726,13 @@ export function resolveDesktopRuntimeDependencies(
+@@ -2728,6 +2728,13 @@ export function resolveDesktopRuntimeDependencies(
    );
  }
  
@@ -2345,7 +2345,7 @@ index 746ac826005b3383c8cb359c6613a7e16f99cadd..4390c1e1777057af7e77f640e3946196
  export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig")(function* (
    updateChannel: "latest" | "nightly",
  ) {
-@@ -2737,7 +2744,9 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
+@@ -2739,7 +2746,9 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
      Option.getOrUndefined(env.updateRepository)?.trim() ||
      Option.getOrUndefined(env.githubRepository)?.trim() ||
      ""
@@ -2356,7 +2356,7 @@ index 746ac826005b3383c8cb359c6613a7e16f99cadd..4390c1e1777057af7e77f640e3946196
    if (!rawRepo) return undefined;
  
    const [owner, repo, ...rest] = rawRepo.split("/");
-@@ -2847,6 +2856,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2849,6 +2858,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
        ...(platform === "win" && wslRuntimeBundled ? WSL_RUNTIME_EXTRA_RESOURCES : []),
      ],
    };

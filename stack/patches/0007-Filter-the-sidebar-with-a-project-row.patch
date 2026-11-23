@@ -68,6 +68,8 @@ Port to 047fb5b162: Sidebar.logic.test.ts only: upstream 46ee2fc7ff (#35185, sid
 
 Port to def64e3a54: upstream dbb5bdb582 (#33057) removes the header's Add project button and offers Add project as the first item of the project scope combobox. This commit replaces that combobox with the project row, so the header keeps its Add project button (onNewProject), and the combobox helpers upstream extended (ADD_PROJECT_SCOPE_ITEM_VALUE, filterSidebarProjectScopeItems, reduceSidebarProjectScopeMenuState) and their Sidebar.logic.test.ts case go with the combobox. scripts/scenarios/add-project-tab-reaches-submit.e2e.ts and its copy in docs/operations/scenarios.md tap the Add project button again. LabsSettingsPanel.tsx keeps upstream fe9c98c98f's (#35871) AgentFeedbackMode import beside this commit's imports, and upstream bcb9217e8e's (#26661) departing-thread state stays next to the project row's selection handlers.
 
+Port to d63b9c4c76: upstream 780db269df (#41330) deleted docs/operations/scenarios.md and its example scenario (docs/internals/15_testing.md describes scenarios without one), so that hunk is dropped; scripts/scenarios/add-project-tab-reaches-submit.e2e.ts still taps the Add project button; code unchanged.
+
 Files:
 apps/web:
 - apps/web/src/components/ProjectComboboxRow.tsx
@@ -152,10 +154,9 @@ Model/harness: GPT-6 / Codex; badge legend follow-up: Claude Opus 5.5 / Claude C
  apps/web/src/sidebarProjectRow.ts             | 459 ++++++++++
  apps/web/src/uiStateStore.test.ts             | 260 +++++-
  apps/web/src/uiStateStore.ts                  | 223 ++++-
- docs/operations/scenarios.md                  |   3 +-
  docs/user/thread-sidebar.md                   |  54 ++
  .../add-project-tab-reaches-submit.e2e.ts     |   3 +-
- 25 files changed, 4875 insertions(+), 582 deletions(-)
+ 24 files changed, 4874 insertions(+), 580 deletions(-)
  delete mode 100644 apps/web/src/components/ProjectComboboxRow.tsx
  create mode 100644 apps/web/src/components/settings/ProjectManualOrderList.browser.test.tsx
  create mode 100644 apps/web/src/components/settings/ProjectManualOrderList.tsx
@@ -6287,20 +6288,6 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
    setSidebarEnvironmentScopeKeys: (environmentKeys) =>
      set((state) => setSidebarEnvironmentScopeKeys(state, environmentKeys)),
    setPullRequestMergeMethod: (method) => set((state) => setPullRequestMergeMethod(state, method)),
-diff --git a/docs/operations/scenarios.md b/docs/operations/scenarios.md
-index abfccf45a9673cd64436ee024eacbd0854a8fbfb..798d0663716845ee0ac2a05e6fc3cecf777a600c 100644
---- a/docs/operations/scenarios.md
-+++ b/docs/operations/scenarios.md
-@@ -23,8 +23,7 @@ test(
-     await t3.project("demo");
-     await t3.open();
- 
--    await screen.getByRole("combobox", "Projects").tap();
--    await screen.getByRole("option", "Add project").tap();
-+    await screen.getByRole("button", "Add project").tap();
-     await screen.getByText("Git URL").tap();
-     await screen.getByRole("combobox").fill("https://github.com/pingdotgg/t3code.git");
-     const submit = screen.getByRole("button", "Continue (Enter)");
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
 index 6c63f1b9c342d2f95d11b7b3365c7282caa3cadb..980063f1f5fe7c78efa7d159c5b50dfce82629a8 100644
 --- a/docs/user/thread-sidebar.md

@@ -79,8 +79,8 @@ Behaviours:
   as above the cap at that start.
 - The environments map and its access meter draw six levels; the five old
   levels look as before.
-- User docs (docs/user/remote-access.md) and internal docs (environment-auth,
-  remote, adding-a-provider) describe the level, the opt-in, the cap and
+- User docs (docs/user/remote-access.md) and internal docs (environment auth,
+  remote environments, providers) describe the level, the opt-in, the cap and
   tools.supportsToollessTurns.
 
 Not covered: the mobile settings screen has no row for the cap; t3_ask_list
@@ -90,6 +90,8 @@ evals/mcp-tool-use were not run against a model.
 Port to 21b52875ea: upstream e414cfd4be (#38882, durable workflows) adds the workflowsEnabled setting next to linkedEnvironmentsInboundMaxAccess in settings.ts (both kept), the t3_workflow tool, workflow milestone event types and a Workflows mock in the MCP tool test layer. t3_workflow is declared through McpToolAccess.toLayer, so the default deny refuses it to an ask link, and layerAskLinkVisibility hides it and the workflow event types from ask discovery. McpToolAccess.testkit.ts's toolHandlerServices gains upstream's Workflows mock, AgentContextBudget.test.ts keeps using it, mcpToolListJsonBytes is 62922 (upstream's 61724 plus the same 1198 bytes the ask tools added before), MilestoneEvents.test.ts serves upstream's workflow settings with linked environments on and keeps the host-token and ask-token cases, and ThreadManagementService.test.ts keeps upstream's workflowRun provenance assertion beside the forged ask question.
 
 Port to 21b52875ea: the translation catalog hunks (apps/mobile and apps/web i18n/translations, 20 files) are dropped: stack patches wrap their copy but never commit catalogs, which conflict with upstream's catalog edits; a missing key renders the English source, which is what the dropped entries held in every locale.
+
+Port to d63b9c4c76: upstream 780db269df (#41330) rewrote docs/internals into numbered pages under new documentation rules, deleting adding-a-provider.md, environment-auth.md and remote.md. The three internal hunks move, shortened to constraints: the tools.supportsToollessTurns rule joins the capabilities bullet of 03_providers.md, the ask grant becomes a bullet in 04_environment-auth.md, and 05_remote.md's peer links gain the ask-link and inbound-cap bullets and the note that ask links cannot open linked thread streams. Code applied without conflicts.
 
 Files:
 - apps/mobile:
@@ -147,8 +149,8 @@ Files:
   src/hooks/useThreadActionMenu.ts, src/hooks/useThreadActions.ts,
   src/session-logic.ts, src/types.ts
 - docs:
-  internals/adding-a-provider.md, internals/environment-auth.md,
-  internals/remote.md, user/remote-access.md
+  internals/03_providers.md, internals/04_environment-auth.md,
+  internals/05_remote.md, user/remote-access.md
 - packages/client-runtime:
   src/operations/commands.ts, src/state/models.ts,
   src/state/orchestrationV2Projection.ts, src/state/runtime.ts,
@@ -302,9 +304,9 @@ Tests:
  apps/web/src/session-logic.test.ts            |   2 +
  apps/web/src/session-logic.ts                 |   1 +
  apps/web/src/types.ts                         |   2 +
- docs/internals/adding-a-provider.md           |   4 +-
- docs/internals/environment-auth.md            |   8 +-
- docs/internals/remote.md                      |  25 +-
+ docs/internals/03_providers.md                |   5 +-
+ docs/internals/04_environment-auth.md         |   4 +
+ docs/internals/05_remote.md                   |  16 +-
  docs/user/remote-access.md                    |  37 ++
  .../cases/linked-questions.ndjson             |   2 +
  evals/mcp-tool-use/run.ts                     |   2 +
@@ -323,7 +325,7 @@ Tests:
  packages/contracts/src/settings.ts            |  12 +-
  .../src/server/ProviderAdapter.ts             |   2 +
  .../shared/src/orchestrationV2ThreadError.ts  |  39 ++
- 126 files changed, 4656 insertions(+), 392 deletions(-)
+ 126 files changed, 4646 insertions(+), 390 deletions(-)
  create mode 100644 apps/server/src/mcp/toolkits/ask/handlers.ts
  create mode 100644 apps/server/src/mcp/toolkits/ask/tools.ts
  create mode 100644 apps/server/src/orchestration-v2/linkedQuestionFailures.ts
@@ -4264,7 +4266,7 @@ index 6c805cfc4592f310b0400d1f306679d3c1747ce8..e662f4dc6c5b3101c2b8069ec4db2b90
                        .pipe(
                          // A disabled instance cannot retry this completed turn; its result stands.
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f1916347bf4a 100644
+index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058d497c0d7 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -12,6 +12,7 @@ import {
@@ -4381,7 +4383,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
          command.type === "thread.pin" ||
          command.type === "thread.unpin" ||
          command.type === "thread.pin.reorder" ||
-@@ -5045,6 +5032,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5069,6 +5056,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
              updatedAt: unchanged ? thread.updatedAt : now,
            };
          }
@@ -4398,7 +4400,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
          case "thread.pin": {
            const alreadyPinned = thread.pinnedAt != null;
            const promotes = thread.settledOverride === "settled" || thread.snoozedUntil != null;
-@@ -5557,6 +5554,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5581,6 +5578,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            return "thread.unsnoozed" as const;
          case "thread.auto-settle.set":
            return "thread.auto-settle-set" as const;
@@ -4407,7 +4409,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
          case "thread.pin":
            return "thread.pinned" as const;
          case "thread.unpin":
-@@ -7194,6 +7193,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -7218,6 +7217,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            }
          : undefined,
      );
@@ -4428,7 +4430,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
      if (command.steerFollowUpOfRunId !== undefined) {
        const source = projection.runs.find((run) => run.id === command.steerFollowUpOfRunId);
        if (
-@@ -7605,8 +7618,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -7629,8 +7642,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        });
      }
      const output = outputSchema === undefined ? {} : { outputSchema };
@@ -4443,7 +4445,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
        (dispatchMode.type === "steer_active" || dispatchMode.type === "restart_active")
      ) {
        dispatchMode = { type: "queue_after_active" };
-@@ -7782,6 +7800,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -7806,6 +7824,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        );
        if (
          active !== undefined &&
@@ -4451,7 +4453,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
          activeTurn !== undefined &&
          providerThread?.providerSessionId != null &&
          (!commandNotice || providerThread.goal?.status === "active") &&
-@@ -8191,6 +8210,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8215,6 +8234,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          ...(continuedTaskId === undefined ? {} : { delegatedTaskId: continuedTaskId }),
          ...(freshContext ? { freshContext: true } : {}),
          ...output,
@@ -4459,7 +4461,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
        };
        const attempt: OrchestrationV2RunAttempt = {
          id: attemptId,
-@@ -8230,6 +8250,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8254,6 +8274,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : { scheduledTaskId: command.scheduledTaskId }),
          ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
          ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4467,7 +4469,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
          ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
          ...(followsThreadSelection ? { followsThreadSelection: true as const } : {}),
          id: command.messageId,
-@@ -8618,6 +8639,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8642,6 +8663,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          ...wakeWorkStartedAt(projection, command),
          ...(freshContext ? { freshContext: true } : {}),
          ...output,
@@ -4475,7 +4477,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
        };
        const attempt: OrchestrationV2RunAttempt = {
          id: attemptId,
-@@ -8657,6 +8679,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8681,6 +8703,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : { scheduledTaskId: command.scheduledTaskId }),
          ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
          ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4483,7 +4485,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
          ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
          ...(followsThreadSelection ? { followsThreadSelection: true as const } : {}),
          id: command.messageId,
-@@ -8681,6 +8704,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8705,6 +8728,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : { scheduledTaskId: command.scheduledTaskId }),
          ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
          ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4491,7 +4493,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
          ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
          id: idAllocator.derive.userTurnItem({ messageId: command.messageId }),
          threadId: command.threadId,
-@@ -9430,6 +9454,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -9454,6 +9478,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        ...(continuedTaskId === undefined ? {} : { delegatedTaskId: continuedTaskId }),
        ...wakeWorkStartedAt(projection, command),
        ...output,
@@ -4499,7 +4501,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
      };
      const attempt: OrchestrationV2RunAttempt = {
        id: attemptId,
-@@ -9469,6 +9494,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -9493,6 +9518,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          : { scheduledTaskId: command.scheduledTaskId }),
        ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
        ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4507,7 +4509,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
        ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
        id: command.messageId,
        threadId: command.threadId,
-@@ -9492,6 +9518,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -9516,6 +9542,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          : { scheduledTaskId: command.scheduledTaskId }),
        ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
        ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4515,7 +4517,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
        ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
        id: idAllocator.derive.userTurnItem({ messageId: command.messageId }),
        threadId: command.threadId,
-@@ -11982,6 +12009,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12006,6 +12033,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: "Automatic completion deliveries cannot be promoted to Steer.",
        });
      }
@@ -4529,7 +4531,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
  
      const now = yield* DateTime.now;
      const emitEvent = emit(events, command);
-@@ -12044,8 +12078,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12068,8 +12102,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: "A message that asks for a result can't steer the current turn.",
        });
      }
@@ -4545,7 +4547,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
        if (goalCommand !== null) {
          yield* ensureGoalCommandSupported(command, queuedMessage, modelSelection.instanceId);
        }
-@@ -12431,6 +12470,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12455,6 +12494,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: "A guest's message cannot be edited. Cancel it instead.",
        });
      }
@@ -4560,7 +4562,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
      yield* ensureGoalCommandSupported(
        command,
        { text: command.text, attachments: command.attachments ?? queuedMessage.attachments },
-@@ -16074,6 +16121,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16098,6 +16145,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "thread.snooze":
        case "thread.unsnooze":
        case "thread.auto-settle.set":
@@ -4569,7 +4571,7 @@ index 4a31afbc4554cde39b830b2f632eef3e62492cbf..f45c80fee04a71019bebe2390a61f191
        case "thread.unpin":
        case "thread.pin.reorder":
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.ts b/apps/server/src/orchestration-v2/ProjectionStore.ts
-index 2278284d7fde74809f4d9e9238441b80286a40d9..86826b9b0558c78003b3c5fcae307ca4fe2423d1 100644
+index 84458e644e50927df51d237c508430d8261ae577..1151f855beba05e5a2660e1b770de7bf4928827f 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.ts
 @@ -660,6 +660,15 @@ export interface ProjectionStoreV2Shape {
@@ -4628,7 +4630,7 @@ index 2278284d7fde74809f4d9e9238441b80286a40d9..86826b9b0558c78003b3c5fcae307ca4
              event.type !== "thread.pinned" &&
              event.type !== "thread.unpinned" &&
              event.type !== "thread.pin-reordered" &&
-@@ -9723,6 +9737,29 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -9740,6 +9754,29 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        return rows[0] === undefined ? null : ThreadId.make(rows[0].thread_id);
      }, Effect.mapError(shellSnapshotReadError));
  
@@ -4658,7 +4660,7 @@ index 2278284d7fde74809f4d9e9238441b80286a40d9..86826b9b0558c78003b3c5fcae307ca4
      const listOlderSettledThreads: ProjectionStoreV2Shape["listOlderSettledThreads"] = Effect.fn(
        "ProjectionStore.listOlderSettledThreads",
      )(function* ({ before, projectIds, limit }) {
-@@ -9876,6 +9913,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -9893,6 +9930,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        readShellSnapshot: readOnReader(readShellSnapshot),
        listOlderSettledThreads: readOnReader(listOlderSettledThreads),
        getThreadShell: readOnReader(getThreadShell),
@@ -4667,7 +4669,7 @@ index 2278284d7fde74809f4d9e9238441b80286a40d9..86826b9b0558c78003b3c5fcae307ca4
        getThread: readOnReader(getThread),
        findThread: readOnReader(findThread),
 diff --git a/apps/server/src/orchestration-v2/ProviderEventIngestor.ts b/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
-index 118a13a33426683f26debb6207a7e74307ce625b..5af47bb496e8747456596c1bf5d440f83b03d85b 100644
+index 02057de1cae6d2973474dee9ace69b84319d0f2e..de7f9d2807d81241c8a29de61e164d35fd720b0d 100644
 --- a/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
 +++ b/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
 @@ -35,10 +35,14 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -5480,7 +5482,7 @@ index 20d76ecff009db00e5ff19de5bbc8fb55e6c6fc9..de5580a697f9a4a6499fabedaff1ec52
      parseGoalCommand(message) !== null);
  
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index 50b1fd5d7e91cb80bca53ab87db96c952c826277..d0ab591a74dbcfbfc3649144c6fcb63468df46a1 100644
+index 673916ebf06c438da04bae4ece71b1ffa19904cb..4bed588abec4200140920b34006b30f898fe9039 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 @@ -8019,6 +8019,125 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
@@ -7292,10 +7294,10 @@ index 6aa4b11350efb5b82a76b3b6b9700f2289f62034..7bf256b68af7e445b471f6f9d7d7eb42
    ThreadWorktreeRestore,
    {
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 7acd0c44551f49897331ff829c42164988f50f2b..4d8dce6cde82654827e0bf9b41ef02f5fb96edbc 100644
+index 1178ade462cbb4775b0dcc82e0ec6d2ded8fe455..09792ed56a9906acf7e5403821b9e0f2f4c47413 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -3561,6 +3561,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3567,6 +3567,9 @@ export default function ChatView(props: ChatViewProps) {
                isServerThread={isServerThread}
                activeThreadTitle={activeThread.title}
                activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
@@ -8199,83 +8201,64 @@ index 2f61b38b9b18252fc6e5f160ea51a2af453cd074..0295c91d030f5306c49f4d52b47e1d07
    readonly idleCompaction?: import("@t3tools/contracts").OrchestrationV2IdleCompaction;
    readonly createdAt: string;
    readonly updatedAt: string;
-diff --git a/docs/internals/adding-a-provider.md b/docs/internals/adding-a-provider.md
-index 14ac6db1eb68cebc2e77ece20a40040aee0366db..d05d3f6827f4159867cd00fbfa85782c57cb9323 100644
---- a/docs/internals/adding-a-provider.md
-+++ b/docs/internals/adding-a-provider.md
-@@ -24,7 +24,9 @@ capabilities, never the driver kind.
- - **Capabilities.** Set every flag in `OrchestrationV2ProviderCapabilities` to what the provider
-   really does. Turn off fork, rollback, steering, or subagent support it lacks; orchestration then
-   falls back, for example to portable context handoff for forks. A capability left on that fails
--  at runtime is a bug.
-+  at runtime is a bug. Set `tools.supportsToollessTurns` only when the adapter can switch every
-+  tool off for one turn (`runtimePolicy.tools: "none"`), including MCP servers, skills and slash
-+  commands; linked questions run there.
- - **Permission modes.** Offer only modes the provider enforces natively, through
-   `supportedRuntimeModes` in the provider presentation ([Grok](../../packages/provider-grok/src/server/status.ts)
-   and [Pi](../../packages/provider-pi/src/server/status.ts) are examples). Do not imitate a missing
-diff --git a/docs/internals/environment-auth.md b/docs/internals/environment-auth.md
-index 1483e9501067479720a7380c5cc4e4a77ef61f23..403a969be67b7033ce33814cf5b7354a6799d762 100644
---- a/docs/internals/environment-auth.md
-+++ b/docs/internals/environment-auth.md
-@@ -76,8 +76,12 @@ alone would let an agent start a thread in full access and act through it.
- The result is an ordinary session with subject `mcp-client`. A read-only
- grant holds `orchestration:read` alone. On `/mcp` it passes only tools
- declared as reads in [McpToolAccess](../../apps/server/src/mcp/McpToolAccess.ts),
--where every tool must declare who may call it to compile. Any other grant adds
--`orchestration:operate` and a signed ceiling. Only `/mcp` accepts these sessions, and for a
-+where every tool must declare who may call it to compile. An `ask` grant, for
-+peer links only, holds `orchestration:ask` alone, which satisfies no RPC or route
-+scope; on `/mcp` it passes only tools declared with `McpToolAccess.asks`, so a new
-+tool is closed to it by default. Approving one needs `orchestration:read`
-+(`mcpApprovalScopes`), since the grant holds no scope an approver could match.
-+Any other grant adds `orchestration:operate` and a signed ceiling. Only `/mcp` accepts these sessions, and for a
- [peer link](remote.md#peer-links)'s session alone the thread routes in
- [linkThreadHttp](../../apps/server/src/peer/linkThreadHttp.ts), which only read, and the
- client pairing described below. Every other HTTP and WebSocket
-diff --git a/docs/internals/remote.md b/docs/internals/remote.md
-index c4d52681cb606b4571d28151c7eb4cf403be7f60..b19be46f7bde5acdc1495bf15b8e6111abb2b2e4 100644
---- a/docs/internals/remote.md
-+++ b/docs/internals/remote.md
-@@ -125,7 +125,8 @@ the owner's client gets. Clients reduce and draw it like any thread, read-only,
- so there is no second transcript format to keep in step. The relay holds one
- upstream per subscription and nothing once the client stops listening. The
- routes accept only a peer link's session, refuse browser origins as `/mcp` does,
--and serve any access level, since each already reads threads through `/mcp`.
-+and serve every access level but `ask`, since each of those already reads threads
-+through `/mcp`.
+diff --git a/docs/internals/03_providers.md b/docs/internals/03_providers.md
+index 69206d8458c616ad54f6145270d0b09fe1bfda1e..1d5b3b6357810549810b21c8949c49dcee31d629 100644
+--- a/docs/internals/03_providers.md
++++ b/docs/internals/03_providers.md
+@@ -29,7 +29,10 @@ clients read declared capabilities, never provider names.
  
- **Work a link paired below full access starts stays within that link.** The
- receiving environment knows a session is a peer link because the linking side
-@@ -162,6 +163,28 @@ its agents can already do anything that user can, so the fence would only stop
- T3's own tools. Its work still carries `linkOrigin`, so clients show where it
- came from. A stamp without the access, from before it was recorded, is fenced.
+ - **Declare only what the provider actually supports.** Turn off fork, rollback, steering, or
+   subagent capabilities the provider lacks so orchestration degrades cleanly (for example, portable
+-  context handoff for forks). A capability left enabled that fails at runtime is a bug.
++  context handoff for forks). A capability left enabled that fails at runtime is a bug. Set
++  `tools.supportsToollessTurns` only when the adapter can switch off every tool for one turn
++  (`runtimePolicy.tools: "none"`), including MCP servers, skills, and slash commands; linked
++  questions run there.
+ - **Never emulate missing permission modes.** Expose only modes the provider enforces natively; do
+   not fake a mode by auto-answering approvals in T3. Unoffered stored modes fall back to Supervised.
+   Pass native approval and question option IDs through unchanged, and ensure every request can be
+diff --git a/docs/internals/04_environment-auth.md b/docs/internals/04_environment-auth.md
+index 53c9f60d8f7c6facba9f74114379bce21c3c2e29..c1db24c76d6f093edc341799d0aef4e71a8945d9 100644
+--- a/docs/internals/04_environment-auth.md
++++ b/docs/internals/04_environment-auth.md
+@@ -45,6 +45,10 @@ model.
+   [peer links](./05_remote.md#peer-links)). Every MCP tool must statically declare its access level in
+   [`McpToolAccess.ts`](../../apps/server/src/mcp/McpToolAccess.ts), and thread-only tools must still
+   refuse outside callers in handlers—hiding from tool listings is only discovery.
++- **An `ask` grant holds no RPC or route scope.** A peer link paired to ask questions only holds
++  `orchestration:ask` alone. On `/mcp` only tools declared with `McpToolAccess.asks` run for it, so
++  a new tool stays closed to it by default. Approving one needs `orchestration:read`
++  (`mcpApprovalScopes`), since the grant holds no scope an approver could match.
+ - **Peer-link client pairing.** Only a full-access peer link may mint a one-time client pairing on
+   the linked environment (since full-access agents can already run `t3 auth pairing create`). The
+   linked side enforces this itself, and the operation stays a human-triggered RPC/HTTP route rather
+diff --git a/docs/internals/05_remote.md b/docs/internals/05_remote.md
+index 13ef6dffb9374ce8f5b557ae5c03ad5c364bced0..f0edafdc555fbf9a99716d148a22ef8536105801 100644
+--- a/docs/internals/05_remote.md
++++ b/docs/internals/05_remote.md
+@@ -38,7 +38,21 @@ side lists and revokes it in Sharing & access like any other session, and owns i
+   side, so idempotency keys must be hashed with the caller's namespace before forwarding.
+ - **Clients read linked threads as standard thread streams.**
+   [`PeerThreadRelay`](../../apps/server/src/peer/PeerThreadRelay.ts) proxies the same stream format
+-  read-only so there is no second transcript schema to maintain.
++  read-only so there is no second transcript schema to maintain. `ask` links cannot open them.
++- **`ask` links reach only opted-in threads, and the answers run without tools.**
++  [`McpHttpServer`](../../apps/server/src/mcp/McpHttpServer.ts) hides every tool not declared with
++  `McpToolAccess.asks` from an `ask` session, including tools registered by hand.
++  [`LinkedQuestions`](../../apps/server/src/peer/LinkedQuestions.ts) accepts a question only for a
++  thread its owner opted in and serializes the opt-in, open-run, and rate checks. The run is
++  `toolless`: turn start passes `runtimePolicy.tools: "none"` only to a provider session that
++  reports `tools.supportsToollessTurns` and refuses any other. The question is inert text (command
++  parsers ignore messages with `linkOrigin`), and a `toolless` run's usage limit is recorded as an
++  ordinary failure so the thread's usage-limit state, queue hold, and recovery never see it.
++- **Each machine caps the links into it.** `linkedEnvironmentsInboundMaxAccess` is checked at
++  approval, at token exchange, and on every use of a peer-link session through one choke point,
++  [`inboundCap`](../../apps/server/src/peer/inboundCap.ts), shared by `/mcp`, the link thread routes
++  and their open streams, and client pairing. A session found above the cap is revoked in the same
++  request, so raising the cap later does not bring it back.
  
-+**An `ask` link reaches only opted-in threads, and their answers run without
-+tools.** Its session is default-denied in the shared declarations: only tools
-+declared with `McpToolAccess.asks` (the three `t3_ask_*` tools) run for it, and a
-+global visibility in [`McpHttpServer`](../../apps/server/src/mcp/McpHttpServer.ts)
-+hides everything else from it, including tools registered by hand.
-+[`LinkedQuestions`](../../apps/server/src/peer/LinkedQuestions.ts) accepts a
-+question only for a thread its owner opted in, serializes the opt-in, open-run and
-+rate checks, and dispatches it with `linkOrigin`. That run is `toolless`, and turn
-+start passes `runtimePolicy.tools: "none"` only to a provider session that reports
-+`tools.supportsToollessTurns`; any other refuses before the turn starts. The
-+question is inert text: T3's command parsers ignore a message with `linkOrigin`.
-+The ingestor records a `toolless` run's usage limit as an ordinary failure with a
-+fixed text, so the thread's usage-limit state, queue hold and recovery never see
-+a question. A question sent while that state holds the thread is refused.
-+
-+**Each machine caps the links into it.** `linkedEnvironmentsInboundMaxAccess` is
-+checked at approval, at token exchange and on every use of a peer-link session,
-+through one choke point in [`inboundCap`](../../apps/server/src/peer/inboundCap.ts)
-+that `/mcp`, the link thread routes (and their open streams) and client pairing
-+share. A session found above the cap is revoked in the same request, so raising
-+the cap later does not bring it back.
-+
  ## Hosted web is a client
  
- The hosted web app stores its connection catalog in the browser and connects
 diff --git a/docs/user/remote-access.md b/docs/user/remote-access.md
 index e9280e18f7628988d818fc8ee0d4cfce02017521..3a7039a7adadf07ec730814a54205de785403cb4 100644
 --- a/docs/user/remote-access.md
@@ -8765,10 +8748,10 @@ index 5e16fb4a545ad44fe26b332d9a994ac139c9d815..e3428784ece01607c6017bde4da2bd4f
      expect(withMessageSenderNote(message, text)).toBe(expected);
    });
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d464d4afa6a 100644
+index b9c265e542b3607937757aeadc4ce0db9e09332c..f352361ce4b771931e7b12ed5c79e77077579c4c 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
-@@ -358,6 +358,8 @@ export const OrchestrationV2ToolCapabilities = Schema.Struct({
+@@ -359,6 +359,8 @@ export const OrchestrationV2ToolCapabilities = Schema.Struct({
    supportsDynamicToolCallbacks: Schema.Boolean,
    /** The agent can mark background work it resumes from, so the thread holds as waiting. */
    supportsBackgroundWait: Schema.optional(Schema.Boolean),
@@ -8777,7 +8760,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
  });
  export type OrchestrationV2ToolCapabilities = typeof OrchestrationV2ToolCapabilities.Type;
  
-@@ -546,6 +548,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
+@@ -547,6 +549,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
    guestShare: Schema.optional(Schema.NullOr(ThreadGuestShare)),
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -8785,7 +8768,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
    pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    /** Absent on threads written before tags existed; read as empty. */
-@@ -628,12 +631,14 @@ interface CompactionMessageFields {
+@@ -629,12 +632,14 @@ interface CompactionMessageFields {
    readonly createdBy?: OrchestrationV2Actor | undefined;
    readonly creationSource?: OrchestrationV2CreationSource | undefined;
    readonly idleCompaction?: OrchestrationV2IdleCompaction | undefined;
@@ -8800,7 +8783,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
      message.text.trim().toLowerCase() === IDLE_COMPACTION_TEXT &&
      (message.attachments?.length ?? 0) === 0
    );
-@@ -644,7 +649,8 @@ const LEADING_COMMAND = /^\s*(?:\/|\p{Sc}[a-zA-Z0-9:_-]*[a-zA-Z])/u;
+@@ -645,7 +650,8 @@ const LEADING_COMMAND = /^\s*(?:\/|\p{Sc}[a-zA-Z0-9:_-]*[a-zA-Z])/u;
  /**
   * Who sent a message, in a line the model reads before its text, or the text unchanged when a
   * person typed it. Providers parse slash commands and skill mentions such as `$deploy` from the
@@ -8810,7 +8793,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
   */
  export function withMessageSenderNote(
    message: {
-@@ -653,9 +659,14 @@ export function withMessageSenderNote(
+@@ -654,9 +660,14 @@ export function withMessageSenderNote(
      readonly scheduledTaskId?: ScheduledTaskId | undefined;
      readonly senderThreadId?: ThreadId | undefined;
      readonly linkedSender?: OrchestrationV2LinkedSender | undefined;
@@ -8825,7 +8808,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
    const agent = message.createdBy === "agent";
    const note =
      agent && message.linkedSender !== undefined
-@@ -678,12 +689,13 @@ export type OrchestrationV2GoalCommand =
+@@ -679,12 +690,13 @@ export type OrchestrationV2GoalCommand =
    | { readonly type: "resume" }
    | { readonly type: "set"; readonly objective: string };
  
@@ -8841,7 +8824,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
    const match = /^\/goal(?:\s+([\s\S]*))?$/u.exec(message.text.trim());
    if (match === null) return null;
    const argument = (match[1] ?? "").trim();
-@@ -854,6 +866,8 @@ export const OrchestrationV2Run = Schema.Struct({
+@@ -855,6 +867,8 @@ export const OrchestrationV2Run = Schema.Struct({
    freshContext: Schema.optional(Schema.Boolean),
    /** The JSON Schema of the result this run was asked to return as data. */
    outputSchema: Schema.optional(Schema.Record(Schema.String, Schema.Json)),
@@ -8850,7 +8833,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
    /**
     * Its own field, written by its own event: lifecycle writers hold a copy of the run from when
     * the turn started, and their updates must not put an unanswered run back.
-@@ -1523,6 +1537,8 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
+@@ -1524,6 +1538,8 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
    followsThreadSelection: Schema.optional(Schema.Literal(true)),
    senderThreadId: Schema.optional(ThreadId),
    linkedSender: Schema.optional(OrchestrationV2LinkedSender),
@@ -8859,7 +8842,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
    idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
    /**
     * The message is the script a provider-native workflow run executes, not prose. Clients show
-@@ -1903,6 +1919,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
+@@ -1904,6 +1920,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
      scheduledTaskId: Schema.optional(ScheduledTaskId),
      senderThreadId: Schema.optional(ThreadId),
      linkedSender: Schema.optional(OrchestrationV2LinkedSender),
@@ -8867,7 +8850,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
      idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
      workflowScript: OrchestrationV2ConversationMessage.fields.workflowScript,
      freshContext: OrchestrationV2Run.fields.freshContext,
-@@ -2187,6 +2204,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
+@@ -2188,6 +2205,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
        "thread.unsnoozed",
        "thread.pinned",
        "thread.auto-settle-set",
@@ -8875,7 +8858,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
        "thread.unpinned",
        "thread.pin-reordered",
        "thread.active-reordered",
-@@ -2459,6 +2477,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
+@@ -2460,6 +2478,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
    limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -8883,7 +8866,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
    pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    /** Absent on threads written before tags existed; read as empty. */
-@@ -2632,6 +2651,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
+@@ -2633,6 +2652,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
    lastSnoozeWakeAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
@@ -8891,7 +8874,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
    lastVisitedAt: Schema.NullOr(Schema.DateTimeUtcFromString).pipe(
      Schema.withDecodingDefault(Effect.succeed(null)),
    ),
-@@ -2805,6 +2825,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
+@@ -2806,6 +2826,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
      scheduledTaskId: Schema.optional(ScheduledTaskId),
      senderThreadId: Schema.optional(ThreadId),
      linkedSender: Schema.optional(OrchestrationV2LinkedSender),
@@ -8899,7 +8882,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
      idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
      workflowScript: OrchestrationV2ConversationMessage.fields.workflowScript,
      freshContext: OrchestrationV2Run.fields.freshContext,
-@@ -3092,6 +3113,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
+@@ -3093,6 +3114,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
    snoozedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
@@ -8907,7 +8890,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
    lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    titleRegeneration: Schema.optional(
      Schema.NullOr(
-@@ -3145,6 +3167,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
+@@ -3146,6 +3168,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
        "thread.unsnoozed",
        "thread.pinned",
        "thread.auto-settle-set",
@@ -8915,7 +8898,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
        "thread.unpinned",
        "thread.pin-reordered",
        "thread.active-reordered",
-@@ -3413,6 +3436,12 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3414,6 +3437,12 @@ export const OrchestrationV2Command = Schema.Union([
      threadId: ThreadId,
      enabled: Schema.Boolean,
    }),
@@ -8928,7 +8911,7 @@ index 0873f38172890e95d057b8e2f5ee13b9f462ad9a..521489d66881a32bae830f00f1cf1d46
    Schema.Struct({
      type: Schema.Literal("thread.pin"),
      commandId: CommandId,
-@@ -3592,6 +3621,8 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3593,6 +3622,8 @@ export const OrchestrationV2Command = Schema.Union([
      scheduledTaskId: Schema.optional(ScheduledTaskId),
      senderThreadId: Schema.optional(ThreadId),
      linkedSender: Schema.optional(OrchestrationV2LinkedSender),
@@ -9060,7 +9043,7 @@ index e09345e859909de8880af623e766063a871f51a3..46dbf4da0dd99d7c0013294ae00632b5
      } else if (
        key === "providers" ||
 diff --git a/packages/provider-core/src/server/ProviderAdapter.ts b/packages/provider-core/src/server/ProviderAdapter.ts
-index 4d008a7233900330c8f12bb09b8e9c16566278c1..58abfd5958d10159d5578ce3ccbb6d9c9373919d 100644
+index 015a68f48982b426f8cbb39205889eed5ec44372..ddf032b6d501ba297531af241b5002f2638f12e2 100644
 --- a/packages/provider-core/src/server/ProviderAdapter.ts
 +++ b/packages/provider-core/src/server/ProviderAdapter.ts
 @@ -74,6 +74,8 @@ export const ProviderAdapterV2RuntimePolicy = Schema.Struct({

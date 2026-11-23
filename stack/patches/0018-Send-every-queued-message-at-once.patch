@@ -244,7 +244,7 @@ index 7ea6f95a7a5159dc636b48f8aa020f543ec653a8..646cee832d6d4372a0132985fe4811f7
  );
  
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index ae06077992d0a48e6d18e5b8ffda55ceb0bba5e1..4a31afbc4554cde39b830b2f632eef3e62492cbf 100644
+index b95f618d8c1df5fd761a82de96475fb4d2436b21..032aaab874d8b379a72072c3ffe2087d770de993 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -32,6 +32,7 @@ import {
@@ -279,7 +279,7 @@ index ae06077992d0a48e6d18e5b8ffda55ceb0bba5e1..4a31afbc4554cde39b830b2f632eef3e
      case "runtime-request.respond":
      case "runtime-request.delivery.fail":
      case "thread.user-input.dismiss":
-@@ -12446,46 +12450,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12470,46 +12474,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: editProblem,
        });
      }
@@ -335,7 +335,7 @@ index ae06077992d0a48e6d18e5b8ffda55ceb0bba5e1..4a31afbc4554cde39b830b2f632eef3e
      // A command cannot steer, so an edit into one keeps it queued where it is.
      if (
        queuedRun.steerWhenReadyRunId !== undefined &&
-@@ -12495,13 +12471,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12519,13 +12495,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        })
      ) {
        const { steerWhenReadyRunId: _, ...queued } = queuedRun;
@@ -354,7 +354,7 @@ index ae06077992d0a48e6d18e5b8ffda55ceb0bba5e1..4a31afbc4554cde39b830b2f632eef3e
          payload: queued,
        });
      }
-@@ -12529,6 +12508,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12553,6 +12532,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
      }
    });
  
@@ -483,7 +483,7 @@ index ae06077992d0a48e6d18e5b8ffda55ceb0bba5e1..4a31afbc4554cde39b830b2f632eef3e
    const subagentCount = (threadId: ThreadId) =>
      projectionStore
        .getSubagentCount(threadId)
-@@ -16201,6 +16302,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16225,6 +16326,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "run.output.submit":
          yield* dispatchRunOutputSubmit(command, events);
          break;
@@ -493,7 +493,7 @@ index ae06077992d0a48e6d18e5b8ffda55ceb0bba5e1..4a31afbc4554cde39b830b2f632eef3e
        case "checkpoint.rollback":
          yield* dispatchCheckpointRollback(command, events, effects);
          break;
-@@ -16441,7 +16545,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16465,7 +16569,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                ),
              );
            if (
@@ -503,7 +503,7 @@ index ae06077992d0a48e6d18e5b8ffda55ceb0bba5e1..4a31afbc4554cde39b830b2f632eef3e
              cause._tag === "OrchestratorDispatchError"
            ) {
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index d43bd686d69326bda34c0a019f0454f92cc31441..50b1fd5d7e91cb80bca53ab87db96c952c826277 100644
+index 8dcb4f946fb0eee687c8f9b1b73d5aef5d984cb0..673916ebf06c438da04bae4ece71b1ffa19904cb 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 @@ -10,6 +10,8 @@ import { assert, it } from "@effect/vitest";
@@ -523,7 +523,7 @@ index d43bd686d69326bda34c0a019f0454f92cc31441..50b1fd5d7e91cb80bca53ab87db96c95
    type OrchestrationV2DomainEvent,
    type OrchestrationV2Run,
    type OrchestrationV2ShellSnapshot,
-@@ -11879,6 +11882,312 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -12018,6 +12021,312 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
        assert.equal(cancelAgainError._tag, "OrchestratorDispatchError");
      }),
    );
@@ -861,7 +861,7 @@ index 61fb57ada454ed0b1a9a309eb066ff03db841f86..33aa46863d0b7f36613f6f8b959933e7
    "thread.guest-message.dismiss": () => ({ feature: "guest_message.dismiss" }),
  };
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index ff783eeb573249a3c0b6d4c33f50e1afc81c2cb8..45fa5b67e1a8de7ae7664b24ea02488d09bb8fcc 100644
+index b6922b9e90996d8e03ce0e656abc2deeec5dc7cc..58a95e810148cfc08c6ac8e7a6f1081ad946720c 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -1931,6 +1931,7 @@ export const layerWsRpc = (
@@ -873,10 +873,10 @@ index ff783eeb573249a3c0b6d4c33f50e1afc81c2cb8..45fa5b67e1a8de7ae7664b24ea02488d
            secretReferences: true,
            secretRequestReferences: true,
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index e3b4e9e5f768290890dad873df821d68fed5f904..7acd0c44551f49897331ff829c42164988f50f2b 100644
+index 10cbb215c9e0f03ce96a269924ccfbd73a9f8d8f..1178ade462cbb4775b0dcc82e0ec6d2ded8fe455 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -2936,6 +2936,8 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2942,6 +2942,8 @@ export default function ChatView(props: ChatViewProps) {
          routeKind !== "draft" &&
          composerRef.current?.isCaretAtStart() === true &&
          queuedRunsControlRef.current?.editLatest(event.repeat) === true,
@@ -885,7 +885,7 @@ index e3b4e9e5f768290890dad873df821d68fed5f904..7acd0c44551f49897331ff829c421649
        "thread.stop": ({ event }) => {
          if (!canInterruptRunningThread) return false;
          if (!event.repeat) void onInterruptStable();
-@@ -3234,6 +3236,11 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3240,6 +3242,11 @@ export default function ChatView(props: ChatViewProps) {
            editShortcutLabel={shortcutLabelForCommand(keybindings, "thread.editQueuedMessage", {
              context: { composerFocus: true },
            })}
@@ -1981,10 +1981,10 @@ index eda5138b760b9b3d028d89d9b4b7a0c0b7c8075b..56f521670e72594a00b8737a97486206
    "thread.next",
    "thread.copyReference",
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index c9c8eea937e945cff7cb484c2aaff9293cb7d743..0873f38172890e95d057b8e2f5ee13b9f462ad9a 100644
+index a25842bd99391db26b0b9d2f4cd838b8b0bb1d8f..b9c265e542b3607937757aeadc4ce0db9e09332c 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
-@@ -3719,6 +3719,13 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3720,6 +3720,13 @@ export const OrchestrationV2Command = Schema.Union([
      // Replaces all attachments; absent preserves them for older clients editing text.
      attachments: Schema.optional(Schema.Array(ChatAttachment)),
    }),
