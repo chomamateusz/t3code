@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 09:42:21 +0100
+Subject: =?UTF-8?q?=F0=9F=A9=B9=20Send=20milestone=20webhooks=20through=20?=
+ =?UTF-8?q?node:http=20so=20the=20server=20single-executable=20builds?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Upstream 8cc8bcbf6b (#41141, MCP Events webhooks) builds the webhook client
+with NodeHttpClient.layerUndiciOptions from the @effect/platform-node barrel.
+That keeps @effect/platform-node's Undici module in the CLI bundle, whose
+`export * from "undici"` becomes a static ESM import of the external undici
+package. `cli.ts build-exe` refuses it ("imports file-backed packages that a
+single-executable cannot resolve: undici"), so the Linux x64 runtime does not
+build on upstream main from #41141 on (stack build 45127747387).
+
+The client now comes from NodeHttpClient.layerNodeHttpOptions({ lookup }),
+imported from @effect/platform-node/NodeHttpClient like the other server
+clients. The same DNS lookup refuses names that resolve to a private address
+when the socket connects, and redirects still come back unfollowed
+(McpWebhookTransport.test.ts covers both). The bundle holds no static undici
+import afterwards.
+
+Drop this commit once upstream builds its single-executable from main again.
+
+Files:
+- apps/server: src/mcp/McpWebhookTransport.ts
+---
+ apps/server/src/mcp/McpWebhookTransport.ts | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/apps/server/src/mcp/McpWebhookTransport.ts b/apps/server/src/mcp/McpWebhookTransport.ts
+index 8bdde7b1184da70f4a066e606a080f58d4dff45e..fe6fc04209d0160e89f4785d217517298db70c96 100644
+--- a/apps/server/src/mcp/McpWebhookTransport.ts
++++ b/apps/server/src/mcp/McpWebhookTransport.ts
+@@ -1,7 +1,7 @@
+ import * as NodeDns from "node:dns";
+ import * as NodeNet from "node:net";
+ 
+-import { NodeHttpClient } from "@effect/platform-node";
++import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
+ import * as Config from "effect/Config";
+ import * as Effect from "effect/Effect";
+ import * as Schema from "effect/Schema";
+@@ -122,6 +122,6 @@ export const make = (hosts: ReadonlyArray<string>) => {
+   return {
+     check,
+     allowsPlaintext: (url: URL) => allowed.has(hostOf(url)),
+-    layerClient: NodeHttpClient.layerUndiciOptions({ connect: { lookup } }),
++    layerClient: NodeHttpClient.layerNodeHttpOptions({ lookup }),
+   };
+ };
