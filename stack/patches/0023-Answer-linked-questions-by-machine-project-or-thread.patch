@@ -1,0 +1,3696 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 00:03:33 +0100
+Subject: =?UTF-8?q?=F0=9F=8E=9B=EF=B8=8F=20Answer=20linked=20questions=20b?=
+ =?UTF-8?q?y=20machine,=20project=20or=20thread?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Behaviours:
+- Three levels decide whether a thread answers questions from linked
+  machines; the nearest one that is set wins: the thread's own choice, else
+  its project's, else the machine's. One function in contracts
+  (threadAnswersLinkedQuestions) computes it; the server reads it through
+  readAnsweringThread for t3_ask_send and the last gate before an answering
+  turn starts, t3_ask_list filters with it, and web and mobile show it.
+- Machine level: new server setting linkedQuestionsAnswerByDefault (default
+  false), beside linkedEnvironmentsInboundMaxAccess: same schema file,
+  changing it needs access:write, a row "Answer linked questions in every
+  thread" in Settings -> Environments -> List under "Links into this
+  machine", manageable and lockable through the managed policy. A lock fixes
+  the machine level only. No mobile settings row.
+- Project level: not set, on or off, stored in the server's project row
+  (projection_projects.linked_questions, carried by project.meta-updated) and
+  changed only by the new project mutation project.linked-questions.set,
+  which needs orchestration:operate and access:write. It has no MCP tool,
+  palette entry or keybinding; t3_project_create and t3_project_update do
+  not take it, and no t3.json or project setting carries it. The column is
+  added when the project store starts, not by a numbered migration, so a
+  database keeps upstream's migration ids; when two processes add it at the
+  same first start, a "duplicate column name" answer counts as added.
+  Entry: "Answer linked questions" in the project folder's menu in the web
+  sidebar (the only web sidebar menu with project actions); it writes every
+  checkout of the project. The mobile app has no project menu, so it has no
+  entry.
+- Thread level: thread.linked-questions.set and its "Answer linked
+  questions" entry keep their place and permissions; enabled is now true,
+  false or null (not set). Off is stored as linkedQuestionsDisabledAt
+  beside linkedQuestionsEnabledAt.
+- The thread and project controls (web thread header and sidebar menus, the
+  web sidebar project folder menu, a row in the project's settings page,
+  the mobile thread row) offer
+  "Default (on|off, from the project|this machine)", "On" and "Off", and
+  Default returns a thread or project to not set.
+- Question threads, subagents, side chats and a workflow run's agent steps
+  never answer at any level, are left out of t3_ask_list (workflow steps
+  already in its query) and no longer offer the entry. A task delegated from
+  a linked machine keeps its menu entry and follows the levels. A fork
+  starts not set.
+- Stored data: a thread stored as on stays on; every other thread and every
+  project starts not set. A thread switched off by hand before this change
+  follows its project and the machine afterwards.
+- The header chip "Answers linked questions" and the mobile thread row
+  (the menu's subtitle) show the effective state.
+- t3_ask_list returns the newest activity first, at most 50 threads, each
+  with its project's name, takes an optional titleContains
+  (case-insensitive, thread title or project name), and says how many
+  matched (total) and whether the list was cut (truncated). Archived
+  threads stay out; scheduled-task webhook tokens are withheld from project
+  names as from titles. t3_ask_send and the turn-start gate use the same
+  effective state, so a question that has not started is refused when
+  answering is off at any level; at both turn-start gates, through one
+  helper, a project or setting that cannot be read refuses too.
+- Mixed builds: servers advertise a new capability linkedQuestionLevels
+  beside askLinks. Web and mobile offer the project entry and the
+  three-choice thread control only with it; against a server without it the
+  thread keeps the previous On/Off switch and the project entry and the
+  machine setting's row are absent.
+  A t3_ask_list reply from a machine on the previous build decodes with an
+  empty project, total = the threads returned and truncated = false.
+- Limits, the answering turn, what an answer sees, question threads, the
+  inbound cap and link levels are unchanged. User docs explain the three
+  levels and name the managed-policy key; two internal sentences that said
+  "opt-in" now say "answers".
+
+Base: upstream 54ba2408f4 with the series through 12b09ce160 (on it a
+question's context stops at the asked thread's latest /clear and ask links
+are refused writesOwnerWork); unchanged by this commit.
+
+Not covered: the evals cases were built with --dry-run but not run against a
+model (no API key here). A project group spanning machines shows the first
+checkout's choice in its menu. The mobile project overview (Organize
+section) has no row for the project level.
+
+Files:
+- apps/mobile:
+  src/features/home/HomeScreen.tsx, src/features/home/useThreadListActions.ts,
+  src/features/threads/thread-list-v2-items.tsx,
+  src/state/use-thread-selection.ts
+- apps/server:
+  src/environment/ServerEnvironment.ts,
+  src/mcp/toolkits/ask/handlers.ts, src/mcp/toolkits/ask/tools.ts,
+  src/orchestration-v2/Orchestrator.ts,
+  src/orchestration-v2/ProjectCommands.ts,
+  src/orchestration-v2/ProjectStore.ts,
+  src/orchestration-v2/ProjectionStore.ts,
+  src/orchestration-v2/ProviderTurnStartService.ts,
+  src/orchestration-v2/ThreadForkService.ts,
+  src/orchestration-v2/linkedQuestionFailures.ts,
+  src/peer/LinkedQuestions.ts, src/project/ProjectMutation.ts,
+  src/project/ProjectService.ts, src/provider/agentContextBudget.json
+- apps/web:
+  src/components/ChatView.tsx, src/components/Sidebar.tsx,
+  src/components/settings/LinkedEnvironmentsSettings.tsx,
+  src/components/settings/ProjectSettingsPanel.tsx,
+  src/components/settings/settingsSearch.ts,
+  src/components/threadActionMenu.logic.ts,
+  src/hooks/useProjectGroupUpdate.ts, src/hooks/useThreadActionMenu.ts,
+  src/hooks/useThreadActions.ts
+- docs:
+  internals/05_remote.md, user/remote-access.md
+- packages/client-runtime:
+  src/operations/commands.ts, src/state/models.ts,
+  src/state/projectCommands.ts, src/state/threadCommands.ts
+- packages/contracts:
+  src/applicationEvent.ts, src/clientRpcPermissions.ts, src/environment.ts,
+  src/index.ts, src/linkedQuestions.ts, src/orchestrationProject.ts,
+  src/orchestrationV2.ts, src/orchestratorMcp.ts, src/project.ts,
+  src/settings.ts
+- packages/provider-core:
+  src/server/subagentProjection.ts
+
+Tests:
+- apps/server:
+  src/auth/RpcAuthorization.test.ts, src/mcp/linkOrigin.test.ts,
+  src/mcp/toolkits/project/handlers.test.ts,
+  src/orchestration-v2/Orchestrator.control-reads.test.ts,
+  src/orchestration-v2/ProjectStore.test.ts,
+  src/orchestration-v2/ProviderTurnControlService.test.ts,
+  src/orchestration-v2/ProviderTurnStartService.test.ts,
+  src/orchestration-v2/ProviderTurnStartService.testkit.ts,
+  src/orchestration-v2/ThreadForkService.test.ts,
+  src/orchestration-v2/ThreadLaunchService.test.ts,
+  src/peer/LinkedQuestions.test.ts, src/policy/ManagedPolicy.test.ts,
+  src/project/ProjectMutation.test.ts, src/project/ProjectService.test.ts,
+  src/relay/AgentAwarenessRelay.test.ts
+- apps/web:
+  src/components/settings/settingsSearch.test.ts,
+  src/components/threadActionMenu.logic.test.ts,
+  src/hooks/useThreadActionMenu.test.ts
+- evals:
+  mcp-tool-use/cases/linked-questions.ndjson
+- packages/client-runtime:
+  src/state/commandPermissions.test.ts
+- packages/contracts:
+  src/linkedQuestions.test.ts, src/orchestratorMcp.test.ts,
+  src/settings.test.ts
+---
+ apps/mobile/src/features/home/HomeScreen.tsx  |   2 +-
+ .../src/features/home/useThreadListActions.ts |   7 +-
+ .../features/threads/thread-list-v2-items.tsx | 131 +++++++++---
+ apps/mobile/src/state/use-thread-selection.ts |   1 +
+ apps/server/src/auth/RpcAuthorization.test.ts |  21 +-
+ .../src/environment/ServerEnvironment.ts      |   1 +
+ apps/server/src/mcp/linkOrigin.test.ts        | 196 +++++++++++++++++-
+ apps/server/src/mcp/toolkits/ask/handlers.ts  |   2 +-
+ apps/server/src/mcp/toolkits/ask/tools.ts     |   2 +-
+ .../src/mcp/toolkits/project/handlers.test.ts |  10 +
+ .../Orchestrator.control-reads.test.ts        |  18 ++
+ .../src/orchestration-v2/Orchestrator.ts      |  14 +-
+ .../src/orchestration-v2/ProjectCommands.ts   |   5 +
+ .../src/orchestration-v2/ProjectStore.test.ts |  13 ++
+ .../src/orchestration-v2/ProjectStore.ts      |  32 +++
+ .../src/orchestration-v2/ProjectionStore.ts   |  61 ++++--
+ .../ProviderTurnControlService.test.ts        |   2 +-
+ .../ProviderTurnStartService.test.ts          |  71 ++++++-
+ .../ProviderTurnStartService.testkit.ts       |   1 +
+ .../ProviderTurnStartService.ts               |   9 +-
+ .../ThreadForkService.test.ts                 |   3 +
+ .../src/orchestration-v2/ThreadForkService.ts |   1 +
+ .../ThreadLaunchService.test.ts               |   1 +
+ .../linkedQuestionFailures.ts                 |  86 +++++---
+ apps/server/src/peer/LinkedQuestions.test.ts  |  32 ++-
+ apps/server/src/peer/LinkedQuestions.ts       |  63 ++++--
+ apps/server/src/policy/ManagedPolicy.test.ts  |   8 +-
+ .../src/project/ProjectMutation.test.ts       |   2 +
+ apps/server/src/project/ProjectMutation.ts    |  12 +-
+ .../server/src/project/ProjectService.test.ts |  46 ++++
+ apps/server/src/project/ProjectService.ts     |  25 +++
+ .../src/provider/agentContextBudget.json      |   2 +-
+ .../src/relay/AgentAwarenessRelay.test.ts     |   1 +
+ apps/web/src/components/ChatView.tsx          |   8 +-
+ apps/web/src/components/Sidebar.tsx           |  26 ++-
+ .../settings/LinkedEnvironmentsSettings.tsx   |  44 ++++
+ .../settings/ProjectSettingsPanel.tsx         |  49 +++++
+ .../settings/settingsSearch.test.ts           |   7 +
+ .../src/components/settings/settingsSearch.ts |   7 +
+ .../components/threadActionMenu.logic.test.ts |  93 ++++++++-
+ .../src/components/threadActionMenu.logic.ts  | 117 ++++++++++-
+ apps/web/src/hooks/useProjectGroupUpdate.ts   |  50 +++++
+ .../web/src/hooks/useThreadActionMenu.test.ts |   6 +-
+ apps/web/src/hooks/useThreadActionMenu.ts     |   9 +-
+ apps/web/src/hooks/useThreadActions.ts        |  41 +++-
+ docs/internals/05_remote.md                   |   4 +-
+ docs/user/remote-access.md                    |  37 +++-
+ .../cases/linked-questions.ndjson             |   3 +-
+ .../client-runtime/src/operations/commands.ts |  24 ++-
+ .../src/state/commandPermissions.test.ts      |  49 +++--
+ packages/client-runtime/src/state/models.ts   |   2 +
+ .../src/state/projectCommands.ts              |  17 +-
+ .../src/state/threadCommands.ts               |   5 +-
+ packages/contracts/src/applicationEvent.ts    |   2 +
+ .../contracts/src/clientRpcPermissions.ts     |   8 +-
+ packages/contracts/src/environment.ts         |   3 +
+ packages/contracts/src/index.ts               |   1 +
+ .../contracts/src/linkedQuestions.test.ts     | 101 +++++++++
+ packages/contracts/src/linkedQuestions.ts     | 101 +++++++++
+ .../contracts/src/orchestrationProject.ts     |   3 +
+ packages/contracts/src/orchestrationV2.ts     |   7 +-
+ .../contracts/src/orchestratorMcp.test.ts     |  26 +++
+ packages/contracts/src/orchestratorMcp.ts     |  33 ++-
+ packages/contracts/src/project.ts             |   7 +
+ packages/contracts/src/settings.test.ts       |  10 +
+ packages/contracts/src/settings.ts            |  12 +-
+ .../src/server/subagentProjection.ts          |   1 +
+ 67 files changed, 1608 insertions(+), 186 deletions(-)
+ create mode 100644 packages/contracts/src/linkedQuestions.test.ts
+ create mode 100644 packages/contracts/src/linkedQuestions.ts
+
+diff --git a/apps/mobile/src/features/home/HomeScreen.tsx b/apps/mobile/src/features/home/HomeScreen.tsx
+index 3bf5b7fa2519599b15b4082a1439c7fbacb80af0..7a8e11df1e0fe670ca8b987ba85362fd3efca1de 100644
+--- a/apps/mobile/src/features/home/HomeScreen.tsx
++++ b/apps/mobile/src/features/home/HomeScreen.tsx
+@@ -145,7 +145,7 @@ interface HomeScreenProps {
+   ) => Promise<boolean>;
+   readonly onSetThreadLinkedQuestions: (
+     thread: EnvironmentThreadShell,
+-    enabled: boolean,
++    enabled: boolean | null,
+   ) => Promise<boolean>;
+   readonly onMoveThread: (
+     thread: EnvironmentThreadShell,
+diff --git a/apps/mobile/src/features/home/useThreadListActions.ts b/apps/mobile/src/features/home/useThreadListActions.ts
+index 9cedc5840e3ea5c0f8ca1c827d63c47e9fbb8e3f..8ff25bd7a854522482acf84260a26b0a93a43907 100644
+--- a/apps/mobile/src/features/home/useThreadListActions.ts
++++ b/apps/mobile/src/features/home/useThreadListActions.ts
+@@ -242,7 +242,7 @@ export function useThreadListActions(): {
+   ) => Promise<boolean>;
+   readonly setThreadLinkedQuestions: (
+     thread: EnvironmentThreadShell,
+-    enabled: boolean,
++    enabled: boolean | null,
+   ) => Promise<boolean>;
+   readonly moveThread: (
+     thread: EnvironmentThreadShell,
+@@ -580,7 +580,10 @@ export function useThreadListActions(): {
+     }
+     return true;
+   };
+-  const setThreadLinkedQuestions = async (thread: EnvironmentThreadShell, enabled: boolean) => {
++  const setThreadLinkedQuestions = async (
++    thread: EnvironmentThreadShell,
++    enabled: boolean | null,
++  ) => {
+     selectionHaptic();
+     const result = await setLinkedQuestionsMutation({
+       environmentId: thread.environmentId,
+diff --git a/apps/mobile/src/features/threads/thread-list-v2-items.tsx b/apps/mobile/src/features/threads/thread-list-v2-items.tsx
+index a0c122211a1c98bc604cc1d700b279b7817521cc..393ebf026e498ecc5f61ce769904618c9c83467b 100644
+--- a/apps/mobile/src/features/threads/thread-list-v2-items.tsx
++++ b/apps/mobile/src/features/threads/thread-list-v2-items.tsx
+@@ -30,8 +30,12 @@ import {
+   AuthOrchestrationOperateScope,
+   type EnvironmentId,
+   type EnvironmentMachineKind,
++  type ResolvedLinkedQuestions,
++  threadAnswersLinkedQuestions,
++  threadLinkedQuestionsControl,
+ } from "@t3tools/contracts";
+ import { toServerClock } from "@t3tools/client-runtime/clock";
++import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+ import type { SnoozePresetSetting } from "@t3tools/contracts/settings";
+ import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
+ import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
+@@ -58,6 +62,7 @@ import { cn } from "../../lib/cn";
+ import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
+ import { copyThreadReference } from "../../lib/copyThreadReference";
+ import { useUniwindTheme } from "../../lib/useUniwindTheme";
++import { useEnvironmentServerConfig, useProject } from "../../state/entities";
+ import { useEnvironmentScope } from "../../state/session";
+ import type { PendingNewTask } from "../../state/use-pending-new-tasks";
+ import {
+@@ -163,6 +168,20 @@ const TABULAR_DURATION_STYLE = {
+   fontVariant: ["tabular-nums"],
+ } as const;
+ 
++function linkedQuestionsDefaultTitle(
++  inherited: ResolvedLinkedQuestions,
++  gt: ReturnType<typeof useGT>,
++): string {
++  if (inherited.from === "project") {
++    return inherited.answers
++      ? gt("Default (on, from the project)")
++      : gt("Default (off, from the project)");
++  }
++  return inherited.answers
++    ? gt("Default (on, from this machine)")
++    : gt("Default (off, from this machine)");
++}
++
+ function ThreadListV2Duration(props: {
+   readonly environmentId: EnvironmentId;
+   readonly startedAt: string | null;
+@@ -779,7 +798,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+   readonly onPinThread: (thread: EnvironmentThreadShell) => void;
+   readonly onUnpinThread: (thread: EnvironmentThreadShell) => void;
+   readonly onSetThreadAutoSettle: (thread: EnvironmentThreadShell, enabled: boolean) => void;
+-  readonly onSetThreadLinkedQuestions: (thread: EnvironmentThreadShell, enabled: boolean) => void;
++  readonly onSetThreadLinkedQuestions: (
++    thread: EnvironmentThreadShell,
++    enabled: boolean | null,
++  ) => void;
+   readonly settlementSupported: boolean;
+   readonly snoozeSupported: boolean;
+   readonly snoozePresets: ReadonlyArray<SnoozePresetSetting> | undefined;
+@@ -965,10 +987,23 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+     (enabled: boolean) => onSetThreadAutoSettle(thread, enabled),
+     [onSetThreadAutoSettle, thread],
+   );
+-  const handleToggleLinkedQuestions = useCallback(
+-    () => onSetThreadLinkedQuestions(thread, thread.linkedQuestionsEnabledAt == null),
++  const handleSetLinkedQuestions = useCallback(
++    (enabled: boolean | null) => onSetThreadLinkedQuestions(thread, enabled),
+     [onSetThreadLinkedQuestions, thread],
+   );
++  const projectLinkedQuestions =
++    useProject(
++      props.linkedQuestionsSupported
++        ? scopeProjectRef(thread.environmentId, thread.projectId)
++        : null,
++    )?.linkedQuestions ?? null;
++  const linkedQuestionsServer = useEnvironmentServerConfig(
++    props.linkedQuestionsSupported ? thread.environmentId : null,
++  );
++  const machineAnswersLinkedQuestions =
++    linkedQuestionsServer?.settings.linkedQuestionsAnswerByDefault === true;
++  const linkedQuestionLevels =
++    linkedQuestionsServer?.environment.capabilities.linkedQuestionLevels === true;
+   const handleMoveUp = useCallback(() => onMoveThread?.(thread, "up"), [onMoveThread, thread]);
+   const handleMoveDown = useCallback(() => onMoveThread?.(thread, "down"), [onMoveThread, thread]);
+   const handleArchive = useCallback(() => onArchiveThread(thread), [onArchiveThread, thread]);
+@@ -1070,26 +1105,67 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+         : [],
+     [gt, props.autoSettleOptOutSupported, thread.autoSettleDisabledAt],
+   );
+-  const linkedQuestionsMenuItems = useMemo<MenuAction[]>(
+-    () =>
+-      props.linkedQuestionsSupported && canSetLinkedQuestions && thread.linkedQuestionOf == null
+-        ? [
+-            {
+-              id: "linked-questions",
+-              title: gt("Answer linked questions"),
+-              image: "questionmark.bubble",
+-              state: thread.linkedQuestionsEnabledAt == null ? "off" : "on",
+-            } satisfies MenuAction,
+-          ]
+-        : [],
+-    [
+-      gt,
+-      props.linkedQuestionsSupported,
+-      canSetLinkedQuestions,
+-      thread.linkedQuestionOf,
+-      thread.linkedQuestionsEnabledAt,
+-    ],
+-  );
++  const linkedQuestionsMenuItems = useMemo<MenuAction[]>(() => {
++    if (!props.linkedQuestionsSupported || !canSetLinkedQuestions) return [];
++    const control = threadLinkedQuestionsControl({
++      thread,
++      project: projectLinkedQuestions,
++      machine: machineAnswersLinkedQuestions,
++      levels: linkedQuestionLevels,
++    });
++    if (control === null) return [];
++    if (control.kind === "switch") {
++      return [
++        {
++          id: "linked-questions",
++          title: gt("Answer linked questions"),
++          image: "questionmark.bubble",
++          state: control.enabled ? "on" : "off",
++        } satisfies MenuAction,
++      ];
++    }
++    const { choice, inherited } = control;
++    const answers = threadAnswersLinkedQuestions({
++      thread,
++      project: projectLinkedQuestions,
++      machine: machineAnswersLinkedQuestions,
++    });
++    return [
++      {
++        id: "linked-questions",
++        title: gt("Answer linked questions"),
++        subtitle: answers
++          ? gt("On", { $context: "answer linked questions" })
++          : gt("Off", { $context: "answer linked questions" }),
++        image: "questionmark.bubble",
++        subactions: [
++          {
++            id: "linked-questions:default",
++            title: linkedQuestionsDefaultTitle(inherited, gt),
++            state: choice === null ? "on" : "off",
++          },
++          {
++            id: "linked-questions:on",
++            title: gt("On", { $context: "answer linked questions" }),
++            state: choice === "on" ? "on" : "off",
++          },
++          {
++            id: "linked-questions:off",
++            title: gt("Off", { $context: "answer linked questions" }),
++            state: choice === "off" ? "on" : "off",
++          },
++        ],
++      } satisfies MenuAction,
++    ];
++  }, [
++    gt,
++    props.linkedQuestionsSupported,
++    canSetLinkedQuestions,
++    thread,
++    projectLinkedQuestions,
++    machineAnswersLinkedQuestions,
++    linkedQuestionLevels,
++  ]);
+   const canTurnIntoProject = canTurnThreadIntoProject(thread);
+   const titleMenuItems = useMemo<MenuAction[]>(
+     () => [
+@@ -1253,7 +1329,12 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+       if (nativeEvent.event === "unpin") handleUnpin();
+       if (nativeEvent.event === "auto-settle:enabled") handleSetAutoSettle(true);
+       if (nativeEvent.event === "auto-settle:disabled") handleSetAutoSettle(false);
+-      if (nativeEvent.event === "linked-questions") handleToggleLinkedQuestions();
++      if (nativeEvent.event === "linked-questions") {
++        handleSetLinkedQuestions(thread.linkedQuestionsEnabledAt == null);
++      }
++      if (nativeEvent.event === "linked-questions:default") handleSetLinkedQuestions(null);
++      if (nativeEvent.event === "linked-questions:on") handleSetLinkedQuestions(true);
++      if (nativeEvent.event === "linked-questions:off") handleSetLinkedQuestions(false);
+       if (nativeEvent.event === "arrange") appAtomRegistry.set(threadArrangementOpenAtom, true);
+       if (nativeEvent.event === "move-up") handleMoveUp();
+       if (nativeEvent.event === "move-down") handleMoveDown();
+@@ -1323,7 +1404,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+       handleSettle,
+       handleSnooze,
+       handleSetAutoSettle,
+-      handleToggleLinkedQuestions,
++      handleSetLinkedQuestions,
+       handleUnpin,
+       handleUnsettle,
+       handleUnsnooze,
+diff --git a/apps/mobile/src/state/use-thread-selection.ts b/apps/mobile/src/state/use-thread-selection.ts
+index 08be4a407e2f826f7d2f05a1b7d3d1ec751721d8..60a57a74a68565475478f2187a1fdac9f9e09025 100644
+--- a/apps/mobile/src/state/use-thread-selection.ts
++++ b/apps/mobile/src/state/use-thread-selection.ts
+@@ -107,6 +107,7 @@ function threadDetailToShell(
+     activeOrderKey: thread.activeOrderKey,
+     autoSettleDisabledAt: thread.autoSettleDisabledAt,
+     linkedQuestionsEnabledAt: thread.linkedQuestionsEnabledAt,
++    linkedQuestionsDisabledAt: thread.linkedQuestionsDisabledAt,
+     pinnedAt: thread.pinnedAt,
+     pinOrderKey: thread.pinOrderKey,
+     snoozedUntil: thread.snoozedUntil ?? null,
+diff --git a/apps/server/src/auth/RpcAuthorization.test.ts b/apps/server/src/auth/RpcAuthorization.test.ts
+index f8e295854a46c0c4566b04a67228c104a05916fe..e7f01cccad70f2d3b9732e83405cf396d30a59e6 100644
+--- a/apps/server/src/auth/RpcAuthorization.test.ts
++++ b/apps/server/src/auth/RpcAuthorization.test.ts
+@@ -593,11 +593,14 @@ describe("settings mutation authorization", () => {
+             patch: { requireConnectDeviceApproval: false },
+           }).pipe(Effect.flip),
+         ).toMatchObject({ requiredPermission: AuthAccessWriteScope });
+-        expect(
+-          yield* client[WS_METHODS.serverUpdateSettings]({
+-            patch: { linkedEnvironmentsInboundMaxAccess: "full-access" },
+-          }).pipe(Effect.flip),
+-        ).toMatchObject({ requiredPermission: AuthAccessWriteScope });
++        for (const patch of [
++          { linkedEnvironmentsInboundMaxAccess: "full-access" as const },
++          { linkedQuestionsAnswerByDefault: true },
++        ]) {
++          expect(
++            yield* client[WS_METHODS.serverUpdateSettings]({ patch }).pipe(Effect.flip),
++          ).toMatchObject({ requiredPermission: AuthAccessWriteScope });
++        }
+         // A reference names any secret the store holds, and the host entry names where it goes.
+         expect(
+           yield* client[WS_METHODS.serverUpdateSettings]({
+@@ -1048,9 +1051,11 @@ it.effect("requires provider management to send /logout through chat", () =>
+       threadId: ThreadId.make("thread"),
+       enabled: true,
+     };
+-    expect(yield* dispatch(optIn).pipe(Effect.flip)).toMatchObject({
+-      requiredPermission: AuthAccessWriteScope,
+-    });
++    for (const enabled of [true, false, null]) {
++      expect(yield* dispatch({ ...optIn, enabled }).pipe(Effect.flip)).toMatchObject({
++        requiredPermission: AuthAccessWriteScope,
++      });
++    }
+     const owner = yield* RpcTest.makeClient(group).pipe(
+       Effect.provide(
+         Layer.merge(
+diff --git a/apps/server/src/environment/ServerEnvironment.ts b/apps/server/src/environment/ServerEnvironment.ts
+index 64d756e80415d9f258ea1995c88de6a355792140..fd8b00955ce0c9e905883d1986b5e22bd1fc2f04 100644
+--- a/apps/server/src/environment/ServerEnvironment.ts
++++ b/apps/server/src/environment/ServerEnvironment.ts
+@@ -302,6 +302,7 @@ export const make = Effect.gen(function* () {
+       linkClientPairing: true,
+       linkPairingForLink: true,
+       askLinks: true,
++      linkedQuestionLevels: true,
+       mcpApprovalCodes: true,
+       peerLinkPairingCodes: true,
+       mcpHostedApproval: true,
+diff --git a/apps/server/src/mcp/linkOrigin.test.ts b/apps/server/src/mcp/linkOrigin.test.ts
+index 8f4d4e4aff340d06d584987bc69e62d95ec99334..229f178692d02ab41bc402049aebd1d97f955f9f 100644
+--- a/apps/server/src/mcp/linkOrigin.test.ts
++++ b/apps/server/src/mcp/linkOrigin.test.ts
+@@ -18,6 +18,8 @@ import {
+   ProviderThreadId,
+   ProviderTurnId,
+   ThreadId,
++  type LinkedQuestionsChoice,
++  type OrchestrationProjectShell,
+ } from "@t3tools/contracts";
+ import * as DateTime from "effect/DateTime";
+ import * as Duration from "effect/Duration";
+@@ -74,6 +76,31 @@ import { ASK_MAX_PER_WINDOW, ASK_MAX_UNARCHIVED_QUESTIONS } from "../peer/Linked
+ 
+ const instanceId = ProviderInstanceId.make("codex");
+ const projectId = ProjectId.make("project:link-origin");
++const answeringProjectId = ProjectId.make("project:answers");
++const quietProjectId = ProjectId.make("project:quiet");
++const projectShell = (
++  id: ProjectId,
++  title: string,
++  linkedQuestions: LinkedQuestionsChoice | null,
++): OrchestrationProjectShell => ({
++  id,
++  title,
++  workspaceRoot: `/p/${id}`,
++  defaultModelSelection: null,
++  scripts: [],
++  linkedQuestions,
++  createdAt: "2026-10-18T00:00:00.000Z",
++  updatedAt: "2026-10-18T00:00:00.000Z",
++});
++const projectShells = [
++  projectShell(projectId, "t3code", null),
++  projectShell(answeringProjectId, "Answering Desk", "on"),
++  projectShell(
++    quietProjectId,
++    "Quiet https://t3.example/api/hooks/task-daily/PROJECT_TOKEN",
++    "off",
++  ),
++];
+ const adapter = {
+   instanceId,
+   driver: ProviderDriverKind.make("codex"),
+@@ -177,6 +204,9 @@ const layerTools = Layer.mergeAll(
+   Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
+   Layer.provide(
+     Layer.mock(ProjectService.ProjectService)({
++      getShell: (id) =>
++        Effect.succeed(Option.fromUndefinedOr(projectShells.find((shell) => shell.id === id))),
++      listShells: () => Effect.succeed(projectShells),
+       getById: (id) =>
+         Effect.succeed(
+           id === projectId
+@@ -336,7 +366,7 @@ const askLink = (sessionId: string): McpInvocationContext.McpInvocationScope =>
+   capabilities: new Set(),
+ });
+ 
+-const ownThread = (name: string, title = name) =>
++const ownThread = (name: string, title = name, threadProjectId = projectId) =>
+   Effect.gen(function* () {
+     const orchestrator = yield* Orchestrator.OrchestratorV2;
+     const threadId = ThreadId.make(`thread:${name}`);
+@@ -344,7 +374,7 @@ const ownThread = (name: string, title = name) =>
+       type: "thread.create",
+       commandId: CommandId.make(`create:${name}`),
+       threadId,
+-      projectId,
++      projectId: threadProjectId,
+       title,
+       modelSelection: { instanceId, model: "gpt-5" },
+       runtimeMode: "full-access",
+@@ -357,7 +387,7 @@ const ownThread = (name: string, title = name) =>
+     return threadId;
+   });
+ 
+-const answerLinkedQuestions = (threadId: ThreadId, enabled: boolean) =>
++const answerLinkedQuestions = (threadId: ThreadId, enabled: boolean | null) =>
+   Orchestrator.OrchestratorV2.pipe(
+     Effect.flatMap((orchestrator) =>
+       orchestrator.dispatch({
+@@ -671,7 +701,12 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
+             assert.equal(result.isError, false, JSON.stringify(result.content));
+             const listing = result.structuredContent as {
+               machine: string;
+-              threads: ReadonlyArray<{ threadId: ThreadId; title: string; machine: string }>;
++              threads: ReadonlyArray<{
++                threadId: ThreadId;
++                title: string;
++                project: string;
++                machine: string;
++              }>;
+             };
+             return {
+               machine: listing.machine,
+@@ -690,6 +725,7 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
+           {
+             threadId,
+             title: "answers-questions https://t3.example/api/hooks/task-daily/[withheld]",
++            project: "t3code",
+             machine: "Box",
+           },
+         ],
+@@ -779,7 +815,58 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
+     }),
+   );
+ 
+-  it.effect("never asks a subagent of a thread that opted in", () =>
++  it.effect("asks a thread by its own choice, else its project's, else this machine's", () =>
++    Effect.gen(function* () {
++      const settings = yield* ServerSettings.ServerSettingsService;
++      const asker = askLink("levels-asker");
++      const plain = yield* ownThread("levels-plain");
++      const inAnswering = yield* ownThread(
++        "levels-answering",
++        "levels-answering",
++        answeringProjectId,
++      );
++      const inQuiet = yield* ownThread("levels-quiet", "levels-quiet", quietProjectId);
++      const answering = call(asker, "t3_ask_list", { titleContains: "levels-" }).pipe(
++        Effect.map((result) =>
++          (result.structuredContent as { threads: ReadonlyArray<{ threadId: ThreadId }> }).threads
++            .map((thread) => thread.threadId)
++            .toSorted(),
++        ),
++      );
++
++      assert.deepEqual(yield* answering, [inAnswering]);
++      yield* settings.updateSettings({ linkedQuestionsAnswerByDefault: true });
++      assert.deepEqual(yield* answering, [inAnswering, plain]);
++      yield* answerLinkedQuestions(inQuiet, true);
++      yield* answerLinkedQuestions(inAnswering, false);
++      assert.deepEqual(yield* answering, [plain, inQuiet]);
++      assert.equal(failureCode(yield* ask(asker, inAnswering)), "thread_not_found");
++      yield* answerLinkedQuestions(inAnswering, null);
++      yield* answerLinkedQuestions(inQuiet, null);
++      assert.deepEqual(yield* answering, [inAnswering, plain]);
++      assert.equal(failureCode(yield* ask(asker, inQuiet)), "thread_not_found");
++      const sent = yield* ask(asker, plain);
++      assert.equal(sent.isError, false, JSON.stringify(sent.content));
++
++      yield* settings.updateSettings({ linkedQuestionsAnswerByDefault: false });
++      assert.deepEqual(yield* answering, [inAnswering]);
++      assert.equal(
++        failureCode(yield* ask(asker, plain, { clientRequestId: "after-machine-off" })),
++        "thread_not_found",
++      );
++    }).pipe(
++      Effect.ensuring(
++        ServerSettings.ServerSettingsService.pipe(
++          Effect.flatMap((settings) =>
++            settings.updateSettings({ linkedQuestionsAnswerByDefault: false }),
++          ),
++          Effect.orDie,
++        ),
++      ),
++    ),
++  );
++
++  it.effect("never asks a subagent of a thread that opted in, or a workflow's agent step", () =>
+     Effect.gen(function* () {
+       const orchestrator = yield* Orchestrator.OrchestratorV2;
+       const asker = askLink("subagent-asker");
+@@ -821,7 +908,47 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
+         childId,
+       );
+       assert.equal(failureCode(yield* ask(asker, childId)), "thread_not_found");
+-    }),
++
++      const stepId = ThreadId.make("thread:workflow-step");
++      yield* orchestrator.dispatch({
++        type: "thread.create",
++        commandId: CommandId.make("create:workflow-step"),
++        threadId: stepId,
++        projectId,
++        title: "workflow-step",
++        modelSelection: { instanceId, model: "gpt-5" },
++        runtimeMode: "full-access",
++        interactionMode: "default",
++        branch: null,
++        worktreePath: null,
++        createdBy: "agent",
++        creationSource: "mcp",
++        workflowRun: {
++          environmentId: EnvironmentId.make("environment:box"),
++          runId: "run-1",
++          workflow: "fix",
++          step: "write",
++        },
++      });
++
++      const settings = yield* ServerSettings.ServerSettingsService;
++      yield* settings.updateSettings({ linkedQuestionsAnswerByDefault: true });
++      yield* answerLinkedQuestions(childId, true);
++      yield* answerLinkedQuestions(stepId, true);
++      assert.equal(failureCode(yield* ask(asker, childId)), "thread_not_found");
++      assert.equal(failureCode(yield* ask(asker, stepId)), "thread_not_found");
++      const listedAfter = yield* call(asker, "t3_ask_list", { titleContains: "workflow-step" });
++      assert.deepEqual((listedAfter.structuredContent as { threads: unknown[] }).threads, []);
++    }).pipe(
++      Effect.ensuring(
++        ServerSettings.ServerSettingsService.pipe(
++          Effect.flatMap((settings) =>
++            settings.updateSettings({ linkedQuestionsAnswerByDefault: false }),
++          ),
++          Effect.orDie,
++        ),
++      ),
++    ),
+   );
+ 
+   it.effect("treats a question's usage limit as an ordinary failure of its thread", () =>
+@@ -975,3 +1102,60 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
+     }),
+   );
+ });
++
++it.layer(Layer.provideMerge(layerTools, layerOrchestration))(
++  "a machine with many answering threads",
++  (it) => {
++    it.effect("lists the newest 50 with their projects, and says how many matched", () =>
++      Effect.gen(function* () {
++        const asker = askLink("many-asker");
++        const releases: Array<ThreadId> = [];
++        for (let index = 0; index < 52; index++) {
++          releases.push(yield* ownThread(`many-${index}`, `Release ${index}`, answeringProjectId));
++          yield* TestClock.adjust(Duration.seconds(1));
++        }
++        const payments = yield* ownThread("many-payments", "Payments", quietProjectId);
++        yield* answerLinkedQuestions(payments, true);
++        yield* TestClock.adjust(Duration.seconds(1));
++        yield* ownThread("many-silent", "Payments silent");
++        const list = (args: Record<string, unknown>) =>
++          call(asker, "t3_ask_list", args).pipe(
++            Effect.map((result) => {
++              assert.equal(result.isError, false, JSON.stringify(result.content));
++              return result.structuredContent as {
++                threads: ReadonlyArray<{ threadId: ThreadId; title: string; project: string }>;
++                total: number;
++                truncated: boolean;
++              };
++            }),
++          );
++
++        const all = yield* list({});
++        assert.equal(all.total, 53);
++        assert.isTrue(all.truncated);
++        assert.deepEqual(
++          all.threads.map((thread) => thread.threadId),
++          [payments, ...releases.toReversed().slice(0, 49)],
++        );
++        assert.deepInclude(all.threads[0], {
++          title: "Payments",
++          project: "Quiet https://t3.example/api/hooks/task-daily/[withheld]",
++        });
++        assert.deepInclude(all.threads[1], { title: "Release 51", project: "Answering Desk" });
++
++        const byTitle = yield* list({ titleContains: "release 5" });
++        assert.deepEqual(
++          byTitle.threads.map((thread) => thread.title),
++          ["Release 51", "Release 50", "Release 5"],
++        );
++        assert.deepInclude(byTitle, { total: 3, truncated: false });
++        const byProject = yield* list({ titleContains: "QUIET" });
++        assert.deepEqual(
++          byProject.threads.map((thread) => thread.threadId),
++          [payments],
++        );
++        assert.equal((yield* list({ titleContains: "PROJECT_TOKEN" })).total, 0);
++      }),
++    );
++  },
++);
+diff --git a/apps/server/src/mcp/toolkits/ask/handlers.ts b/apps/server/src/mcp/toolkits/ask/handlers.ts
+index 280ebe70c5d42dfc711ec694198864398dcf4e24..cce3ef15ff33766a4d1dd56cffbe6cbf970b2d13 100644
+--- a/apps/server/src/mcp/toolkits/ask/handlers.ts
++++ b/apps/server/src/mcp/toolkits/ask/handlers.ts
+@@ -18,7 +18,7 @@ const withQuestions = <A, E>(
+ 
+ const handlers = {
+   t3_ask_list: McpToolAccess.asks(
+-    () => withQuestions((questions, scope) => questions.list(scope)),
++    (input) => withQuestions((questions, scope) => questions.list(scope, input)),
+     "reads",
+   ),
+   t3_ask_send: McpToolAccess.asks(
+diff --git a/apps/server/src/mcp/toolkits/ask/tools.ts b/apps/server/src/mcp/toolkits/ask/tools.ts
+index 940f5fc8f92e4da88309b0ec21b815730232e84f..a5cf647b7abd8d1b68295c71b52d7fcae61b6f68 100644
+--- a/apps/server/src/mcp/toolkits/ask/tools.ts
++++ b/apps/server/src/mcp/toolkits/ask/tools.ts
+@@ -21,7 +21,7 @@ const dependencies = [
+ 
+ const AskListTool = Tool.make("t3_ask_list", {
+   description:
+-    "List threads on a linked machine that answer questions from linked machines. Pass that machine's environmentId from t3_environment_links. Only threads whose owner turned on Answer linked questions appear.",
++    "List threads on a linked machine that answer questions from linked machines, newest activity first, at most 50 per call. Pass that machine's environmentId from t3_environment_links. To find a thread or project by name, pass titleContains. truncated: more threads matched (total) than were returned; narrow titleContains.",
+   parameters: OrchestratorMcpAskListInput,
+   success: OrchestratorMcpAskListResult,
+   failure: OrchestratorMcpFailure,
+diff --git a/apps/server/src/mcp/toolkits/project/handlers.test.ts b/apps/server/src/mcp/toolkits/project/handlers.test.ts
+index 17fa4dd496fad09979908f02e410fa77d35e8dd8..712f0706f1f25e6840cdaf28eaeba323d55119c7 100644
+--- a/apps/server/src/mcp/toolkits/project/handlers.test.ts
++++ b/apps/server/src/mcp/toolkits/project/handlers.test.ts
+@@ -1384,3 +1384,13 @@ it.effect("a project update or create that is refused tells the agent why", () =
+     expect(dropped.at(-1)?.result).toMatchObject({ code: "invalid_request" });
+   }),
+ );
++
++it("never lets an agent choose whether a project's threads answer linked questions", () => {
++  for (const fields of [
++    ProjectToolkit.tools.t3_project_create.parametersSchema.fields,
++    ProjectToolkit.tools.t3_project_update.parametersSchema.fields,
++  ]) {
++    expect(Object.keys(fields)).not.toContain("linkedQuestions");
++    expect(Object.keys(fields)).not.toContain("enabled");
++  }
++});
+diff --git a/apps/server/src/orchestration-v2/Orchestrator.control-reads.test.ts b/apps/server/src/orchestration-v2/Orchestrator.control-reads.test.ts
+index ac7cb9c714d88942da0a5a17c261017fb0a2b9bc..f5ce742d64c858f9a48ed8ec99406846d704d2d5 100644
+--- a/apps/server/src/orchestration-v2/Orchestrator.control-reads.test.ts
++++ b/apps/server/src/orchestration-v2/Orchestrator.control-reads.test.ts
+@@ -22,6 +22,7 @@ import {
+   RuntimeRequestId,
+   ThreadId,
+   TurnItemId,
++  threadLinkedQuestionsChoice,
+ } from "@t3tools/contracts";
+ import * as DateTime from "effect/DateTime";
+ import * as Deferred from "effect/Deferred";
+@@ -617,6 +618,23 @@ it.effect(
+         assert.ok(shell);
+         assert.equal(shell.autoSettleDisabledAt == null, enabled);
+       }
++      for (const [enabled, choice] of [
++        [false, "off"],
++        [true, "on"],
++        [null, null],
++      ] as const) {
++        yield* orchestrator.dispatch({
++          type: "thread.linked-questions.set",
++          commandId: CommandId.make(`linked-questions-${enabled}`),
++          threadId,
++          enabled,
++        });
++        const updated = yield* projections.getThreadProjection(threadId);
++        assert.equal(threadLinkedQuestionsChoice(updated.thread), choice);
++        const shell = yield* projections.getThreadShell(threadId);
++        assert.ok(shell);
++        assert.equal(threadLinkedQuestionsChoice(shell), choice);
++      }
+       yield* sql`INSERT INTO orchestration_v2_projection_messages
+       (message_id, thread_id, run_id, node_id, role, streaming, created_at, updated_at, payload_json)
+       VALUES ('obsolete', ${threadId}, NULL, NULL, 'assistant', 0, ${DateTime.formatIso(now)}, ${DateTime.formatIso(now)}, '{"obsolete":true}')`;
+diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
+index e8b4dbc9c2de466b33444e6a87e6a7f6653c0b11..7443d0e3ceca265804ceef4c406145fa0ba2715c 100644
+--- a/apps/server/src/orchestration-v2/Orchestrator.ts
++++ b/apps/server/src/orchestration-v2/Orchestrator.ts
+@@ -13,7 +13,7 @@ import {
+   runRanAfter,
+   usageLimitBlockedRun,
+ } from "@t3tools/shared/orchestrationV2ThreadError";
+-import { threadIssueKeysEqual } from "@t3tools/contracts";
++import { threadIssueKeysEqual, threadLinkedQuestionsChoice } from "@t3tools/contracts";
+ import { canonicalizeGitCafePullRequestUrl } from "@t3tools/source-control-definitions/registry";
+ import { threadPullRequestsOf } from "../sourceControl/threadPullRequests.ts";
+ import {
+@@ -856,7 +856,7 @@ function metadataUpdateContinuation(
+ function questionThreadRefuses(command: OrchestrationV2ServerCommand): boolean {
+   switch (command.type) {
+     case "thread.linked-questions.set":
+-      return command.enabled;
++      return command.enabled === true;
+     case "thread.pull-request.watch":
+       return command.watching;
+     case "thread.pull-request-watch.sync":
+@@ -5183,12 +5183,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+           };
+         }
+         case "thread.linked-questions.set": {
+-          const unchanged = command.enabled === (thread.linkedQuestionsEnabledAt != null);
++          const choice = command.enabled === null ? null : command.enabled ? "on" : "off";
++          const unchanged = choice === threadLinkedQuestionsChoice(thread);
+           return {
+             ...thread,
+-            linkedQuestionsEnabledAt: command.enabled
+-              ? (thread.linkedQuestionsEnabledAt ?? now)
+-              : null,
++            linkedQuestionsEnabledAt:
++              choice === "on" ? (thread.linkedQuestionsEnabledAt ?? now) : null,
++            linkedQuestionsDisabledAt:
++              choice === "off" ? (thread.linkedQuestionsDisabledAt ?? now) : null,
+             updatedAt: unchanged ? thread.updatedAt : now,
+           };
+         }
+diff --git a/apps/server/src/orchestration-v2/ProjectCommands.ts b/apps/server/src/orchestration-v2/ProjectCommands.ts
+index 8e5669a76a01aacd0c12e97c086b143ed9d3325b..e9b13bba1b9240d6a1939326670625576d0cc02d 100644
+--- a/apps/server/src/orchestration-v2/ProjectCommands.ts
++++ b/apps/server/src/orchestration-v2/ProjectCommands.ts
+@@ -1,6 +1,7 @@
+ import {
+   type CommandId,
+   type EventId,
++  type LinkedQuestionsChoice,
+   MAX_SCRIPT_ID_LENGTH,
+   type ModelSelection,
+   type ProjectIconOverride,
+@@ -42,6 +43,7 @@ export interface ProjectMetaUpdateCommand {
+   readonly trackedFolders?: ReadonlyArray<ProjectTrackedFolder>;
+   readonly pinned?: boolean;
+   readonly archived?: boolean;
++  readonly linkedQuestions?: LinkedQuestionsChoice | null;
+ }
+ 
+ export interface ProjectDeleteCommand {
+@@ -226,6 +228,9 @@ export function planProjectCommand(input: {
+           ...(command.archived === undefined
+             ? {}
+             : { archivedAt: command.archived ? (project.archivedAt ?? occurredAt) : null }),
++          ...(command.linkedQuestions === undefined
++            ? {}
++            : { linkedQuestions: command.linkedQuestions }),
+           updatedAt: occurredAt,
+         },
+       });
+diff --git a/apps/server/src/orchestration-v2/ProjectStore.test.ts b/apps/server/src/orchestration-v2/ProjectStore.test.ts
+index 7691b7fd1e9221de332786a3a43b7402a744f6b6..e27a9acd12fb9900f8c74858fb1a994292f705ac 100644
+--- a/apps/server/src/orchestration-v2/ProjectStore.test.ts
++++ b/apps/server/src/orchestration-v2/ProjectStore.test.ts
+@@ -11,6 +11,19 @@ import * as ProjectStore from "./ProjectStore.ts";
+ it.layer(ProjectStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory)))(
+   "ProjectStoreV2",
+   (it) => {
++    it.effect("comes up when another process adds the linked questions column first", () =>
++      Effect.gen(function* () {
++        const sql = yield* SqlClient.SqlClient;
++        const sawNoColumnYet = new Proxy(sql, {
++          apply: (target, self, args: [TemplateStringsArray, ...Array<unknown>]) =>
++            args[0].join("").startsWith("PRAGMA table_info")
++              ? Effect.succeed([{ name: "project_id" }])
++              : Reflect.apply(target, self, args),
++        });
++        yield* ProjectStore.make.pipe(Effect.provideService(SqlClient.SqlClient, sawNoColumnYet));
++      }),
++    );
++
+     it.effect("stores a model selection without options as JSON without an options key", () =>
+       Effect.gen(function* () {
+         const projects = yield* ProjectStore.ProjectStoreV2;
+diff --git a/apps/server/src/orchestration-v2/ProjectStore.ts b/apps/server/src/orchestration-v2/ProjectStore.ts
+index ee83411213a26b38d2b81f5573b55b3e039053cf..b95788a98664d9cd7b25b2592a8a5505b2f542cf 100644
+--- a/apps/server/src/orchestration-v2/ProjectStore.ts
++++ b/apps/server/src/orchestration-v2/ProjectStore.ts
+@@ -1,6 +1,7 @@
+ import {
+   type ApplicationProjectEvent,
+   IsoDateTime,
++  LinkedQuestionsChoice,
+   ModelSelection,
+   type OrchestrationProjectShell,
+   StoredProjectIcon,
+@@ -16,6 +17,7 @@ import * as Layer from "effect/Layer";
+ import * as Option from "effect/Option";
+ import * as Schema from "effect/Schema";
+ import * as SqlClient from "effect/sql/SqlClient";
++import * as SqlError from "effect/sql/SqlError";
+ import * as SqlSchema from "effect/sql/SqlSchema";
+ 
+ export class ProjectStoreV2Error extends Schema.TaggedError<ProjectStoreV2Error>()(
+@@ -44,6 +46,7 @@ export const ProjectRow = Schema.Struct({
+   trackedFolders: ProjectTrackedFolders,
+   pinnedAt: Schema.NullOr(IsoDateTime),
+   archivedAt: Schema.NullOr(IsoDateTime),
++  linkedQuestions: Schema.optional(Schema.NullOr(LinkedQuestionsChoice)),
+   createdAt: IsoDateTime,
+   updatedAt: IsoDateTime,
+   deletedAt: Schema.NullOr(IsoDateTime),
+@@ -76,6 +79,7 @@ function toShell(row: ProjectRow): OrchestrationProjectShell {
+     trackedFolders: row.trackedFolders,
+     pinnedAt: row.pinnedAt,
+     archivedAt: row.archivedAt,
++    linkedQuestions: row.linkedQuestions ?? null,
+     createdAt: row.createdAt,
+     updatedAt: row.updatedAt,
+   };
+@@ -107,9 +111,29 @@ export class ProjectStoreV2 extends Context.Service<
+   }
+ >()("t3/orchestration-v2/ProjectStore/ProjectStoreV2") {}
+ 
++const isDuplicateColumn = (error: SqlError.SqlError) =>
++  error.reason.cause instanceof Error &&
++  error.reason.cause.message.includes("duplicate column name");
++
++// Not a numbered migration: upstream owns those ids, and a database that recorded one it never
++// shipped refuses upstream's next migration. Adding a nullable column is safe to repeat, and
++// another process starting on the same database may add it between the check and the ALTER.
++const ensureLinkedQuestionsColumn = Effect.fn("ProjectStoreV2.ensureLinkedQuestionsColumn")(
++  function* (sql: SqlClient.SqlClient) {
++    const columns = yield* sql<{ readonly name: string }>`PRAGMA table_info(projection_projects)`;
++    if (columns.length === 0 || columns.some((column) => column.name === "linked_questions")) {
++      return;
++    }
++    yield* sql`ALTER TABLE projection_projects ADD COLUMN linked_questions TEXT`.pipe(
++      Effect.catchIf(isDuplicateColumn, () => Effect.void),
++    );
++  },
++);
++
+ /** @public */
+ export const make = Effect.gen(function* () {
+   const sql = yield* SqlClient.SqlClient;
++  yield* ensureLinkedQuestionsColumn(sql).pipe(Effect.orDie);
+   const encodeRow = Schema.encodeEffect(ProjectDbRow);
+ 
+   const selectRows = SqlSchema.findAll({
+@@ -135,6 +159,7 @@ export const make = Effect.gen(function* () {
+         tracked_folders_json AS "trackedFolders",
+         pinned_at AS "pinnedAt",
+         archived_at AS "archivedAt",
++        linked_questions AS "linkedQuestions",
+         created_at AS "createdAt",
+         updated_at AS "updatedAt",
+         deleted_at AS "deletedAt"
+@@ -169,6 +194,7 @@ export const make = Effect.gen(function* () {
+             tracked_folders_json,
+             pinned_at,
+             archived_at,
++            linked_questions,
+             created_at,
+             updated_at,
+             deleted_at
+@@ -187,6 +213,7 @@ export const make = Effect.gen(function* () {
+             ${encoded.trackedFolders},
+             ${encoded.pinnedAt},
+             ${encoded.archivedAt},
++            ${encoded.linkedQuestions ?? null},
+             ${encoded.createdAt},
+             ${encoded.updatedAt},
+             ${encoded.deletedAt}
+@@ -209,6 +236,7 @@ export const make = Effect.gen(function* () {
+             tracked_folders_json = excluded.tracked_folders_json,
+             pinned_at = excluded.pinned_at,
+             archived_at = excluded.archived_at,
++            linked_questions = excluded.linked_questions,
+             created_at = excluded.created_at,
+             updated_at = excluded.updated_at,
+             deleted_at = excluded.deleted_at
+@@ -261,6 +289,7 @@ export const make = Effect.gen(function* () {
+           trackedFolders: payload.trackedFolders ?? [],
+           pinnedAt: null,
+           archivedAt: null,
++          linkedQuestions: null,
+           createdAt: payload.createdAt,
+           updatedAt: payload.updatedAt,
+           deletedAt: null,
+@@ -294,6 +323,9 @@ export const make = Effect.gen(function* () {
+         ...(payload.trackedFolders === undefined ? {} : { trackedFolders: payload.trackedFolders }),
+         ...(payload.pinnedAt === undefined ? {} : { pinnedAt: payload.pinnedAt }),
+         ...(payload.archivedAt === undefined ? {} : { archivedAt: payload.archivedAt }),
++        ...(payload.linkedQuestions === undefined
++          ? {}
++          : { linkedQuestions: payload.linkedQuestions }),
+         updatedAt: payload.updatedAt,
+       }).pipe(mapError("apply"));
+     },
+diff --git a/apps/server/src/orchestration-v2/ProjectionStore.ts b/apps/server/src/orchestration-v2/ProjectionStore.ts
+index 4cf5e19978330eecd36f7b15bdd5bd526655fd29..eca5b941f02d4eefdd7bd1e89f67616882aa30fa 100644
+--- a/apps/server/src/orchestration-v2/ProjectionStore.ts
++++ b/apps/server/src/orchestration-v2/ProjectionStore.ts
+@@ -1,5 +1,10 @@
+ import type { ProjectThreadAwarenessV2Input } from "@t3tools/shared/agentAwareness";
+-import { applyOrchestrationV2ThreadVisit, pendingGuestMessageCount } from "@t3tools/contracts";
++import {
++  applyOrchestrationV2ThreadVisit,
++  type LinkedQuestionsThread,
++  OrchestrationV2AppThreadLineage,
++  pendingGuestMessageCount,
++} from "@t3tools/contracts";
+ import { applyThreadPullRequestLinkUpdate } from "../sourceControl/threadPullRequests.ts";
+ import { projectTurnItemForWire } from "./WireProjection.ts";
+ import * as Stream from "effect/Stream";
+@@ -210,6 +215,14 @@ export type ProjectionLimitRecoveryCandidate = Pick<
+   | "snoozedUntil"
+ >;
+ 
++export interface LinkedQuestionCandidate extends LinkedQuestionsThread {
++  readonly threadId: ThreadId;
++  readonly projectId: ProjectId;
++  readonly title: string;
++}
++
++const isThreadRelationship = Schema.is(OrchestrationV2AppThreadLineage.fields.relationshipToParent);
++
+ export type ProjectionThreadPullRequests = Pick<
+   OrchestrationV2AppThread,
+   "id" | "projectId" | "lineage" | "settledOverride" | "settledAt" | "pullRequests"
+@@ -661,13 +674,9 @@ export interface ProjectionStoreV2Shape {
+   readonly getThreadShell: (
+     threadId: ThreadId,
+   ) => Effect.Effect<OrchestrationV2ThreadShell | null, ProjectionStoreV2Error>;
+-  /** Threads that are not archived or deleted and whose owner turned on Answer linked questions. */
+-  readonly listLinkedQuestionThreads: () => Effect.Effect<
+-    ReadonlyArray<{
+-      readonly threadId: ThreadId;
+-      readonly projectId: ProjectId;
+-      readonly title: string;
+-    }>,
++  /** Threads that are not archived, deleted or a workflow's agent step, newest activity first, with what decides whether they answer linked questions. */
++  readonly listLinkedQuestionCandidates: () => Effect.Effect<
++    ReadonlyArray<LinkedQuestionCandidate>,
+     ProjectionStoreV2Error
+   >;
+   /** The linked questions asked of this thread that are not deleted: those still answering and those not archived. */
+@@ -2039,6 +2048,7 @@ export function threadShellFromProjection(
+ 
+     autoSettleDisabledAt: projection.thread.autoSettleDisabledAt ?? null,
+     linkedQuestionsEnabledAt: projection.thread.linkedQuestionsEnabledAt ?? null,
++    linkedQuestionsDisabledAt: projection.thread.linkedQuestionsDisabledAt ?? null,
+     pinOrderKey: projection.thread.pinOrderKey ?? null,
+     ...(projection.thread.tags?.length ? { tags: projection.thread.tags } : {}),
+     lastVisitedAt: projection.thread.lastVisitedAt,
+@@ -2344,6 +2354,7 @@ function shellFromState(input: {
+ 
+     autoSettleDisabledAt: input.state.thread.autoSettleDisabledAt ?? null,
+     linkedQuestionsEnabledAt: input.state.thread.linkedQuestionsEnabledAt ?? null,
++    linkedQuestionsDisabledAt: input.state.thread.linkedQuestionsDisabledAt ?? null,
+     pinOrderKey: input.state.thread.pinOrderKey ?? null,
+     ...(input.state.thread.tags?.length ? { tags: input.state.thread.tags } : {}),
+     lastVisitedAt: input.state.thread.lastVisitedAt,
+@@ -9781,24 +9792,46 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+       return rows[0] === undefined ? null : ThreadId.make(rows[0].thread_id);
+     }, Effect.mapError(shellSnapshotReadError));
+ 
+-    const listLinkedQuestionThreads = Effect.fn("ProjectionStore.listLinkedQuestionThreads")(
++    const listLinkedQuestionCandidates = Effect.fn("ProjectionStore.listLinkedQuestionCandidates")(
+       function* () {
+         const rows = yield* sql<{
+           readonly thread_id: string;
+           readonly project_id: string;
+           readonly title: string;
++          readonly relationship_to_parent: string | null;
++          readonly side_chat: number | null;
++          readonly linked_question_of: string | null;
++          readonly enabled_at: string | null;
++          readonly disabled_at: string | null;
+         }>`
+-          SELECT thread_id, project_id, title
++          SELECT
++            thread_id,
++            project_id,
++            title,
++            json_extract(payload_json, '$.lineage.relationshipToParent') AS relationship_to_parent,
++            json_extract(payload_json, '$.lineage.sideChat') AS side_chat,
++            json_extract(payload_json, '$.linkedQuestionOf') AS linked_question_of,
++            json_extract(payload_json, '$.linkedQuestionsEnabledAt') AS enabled_at,
++            json_extract(payload_json, '$.linkedQuestionsDisabledAt') AS disabled_at
+           FROM orchestration_v2_projection_threads
+           WHERE deleted_at IS NULL
+             AND archived_at IS NULL
+-            AND json_extract(payload_json, '$.linkedQuestionsEnabledAt') IS NOT NULL
+-          ORDER BY title, thread_id
++            AND json_extract(payload_json, '$.lineage.workflowStep') IS NOT 1
++          ORDER BY updated_at DESC, thread_id
+         `;
+-        return rows.map((row) => ({
++        return rows.map((row): LinkedQuestionCandidate => ({
+           threadId: ThreadId.make(row.thread_id),
+           projectId: ProjectId.make(row.project_id),
+           title: row.title,
++          lineage: {
++            relationshipToParent: isThreadRelationship(row.relationship_to_parent)
++              ? row.relationship_to_parent
++              : null,
++            sideChat: row.side_chat === 1,
++          },
++          linkedQuestionOf: row.linked_question_of,
++          linkedQuestionsEnabledAt: row.enabled_at,
++          linkedQuestionsDisabledAt: row.disabled_at,
+         }));
+       },
+       Effect.mapError(shellSnapshotReadError),
+@@ -9975,7 +10008,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+       readShellSnapshot: readOnReader(readShellSnapshot),
+       listOlderSettledThreads: readOnReader(listOlderSettledThreads),
+       getThreadShell: readOnReader(getThreadShell),
+-      listLinkedQuestionThreads: readOnReader(listLinkedQuestionThreads),
++      listLinkedQuestionCandidates: readOnReader(listLinkedQuestionCandidates),
+       getLinkedQuestionLoad: readOnReader(getLinkedQuestionLoad),
+       findGuestShareThreadId: readOnReader(findGuestShareThreadId),
+       getThread: readOnReader(getThread),
+diff --git a/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts b/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
+index cf5a09845f7a57f02c7eee5a579c6d558a6caf3a..0a6c37a4e0bb7cf99989b1d2ba34ea2caf102efd 100644
+--- a/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
++++ b/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
+@@ -147,7 +147,7 @@ function layerProjectionStore(
+       getThreadShell: () => Effect.die("unused getThreadShell"),
+       getThreadTitles: () => Effect.die("unused getThreadTitles"),
+       getThreadLinkMetadata: () => Effect.die("unused getThreadLinkMetadata"),
+-      listLinkedQuestionThreads: () => Effect.die("unused listLinkedQuestionThreads"),
++      listLinkedQuestionCandidates: () => Effect.die("unused listLinkedQuestionCandidates"),
+       getLinkedQuestionLoad: () => Effect.die("unused getLinkedQuestionLoad"),
+       findGuestShareThreadId: () => Effect.die("unused findGuestShareThreadId"),
+       getThread: () => Effect.die("unused getThread"),
+diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.test.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.test.ts
+index 8a73b9c72125bdfe5a77649c332a98202f18a823..15295219226d19bc8db0d2f95f1b6c8dde3a9b51 100644
+--- a/apps/server/src/orchestration-v2/ProviderTurnStartService.test.ts
++++ b/apps/server/src/orchestration-v2/ProviderTurnStartService.test.ts
+@@ -105,11 +105,14 @@ const normalize = (target: string) => {
+   }
+   return `/${parts.join("/")}`;
+ };
+-const layerWorktreeLocation = (worktreesDir = managedWorktreesDir) =>
++const layerWorktreeLocation = (
++  worktreesDir = managedWorktreesDir,
++  settings: Parameters<typeof ServerSettings.layerTest>[0] = {},
++) =>
+   Layer.mergeAll(
+     Path.layer,
+     Layer.mock(ServerConfig.ServerConfig)({ worktreesDir } as ServerConfig.ServerConfig["Service"]),
+-    ServerSettings.layerTest(),
++    ServerSettings.layerTest(settings),
+   );
+ 
+ function startWithMissingWorktree(
+@@ -525,7 +528,15 @@ function makeLocalCommandHarness(input: {
+   readonly turnStartHistory?: ReadonlyArray<OrchestrationV2TurnItem>;
+   readonly linkedQuestion?: {
+     readonly toollessTurns?: boolean;
+-    readonly asked?: "opted-in" | "opted-out" | "archived";
++    readonly asked?:
++      | "opted-in"
++      | "opted-out"
++      | "archived"
++      | "by-project"
++      | "by-machine"
++      | "project-off"
++      | "nothing-on"
++      | "project-unreadable";
+     readonly outsideQuestionThread?: boolean;
+   };
+   readonly previousTurn?: {
+@@ -1423,11 +1434,15 @@ function makeLocalCommandHarness(input: {
+             : projection,
+       ),
+   );
++  const asked = input.linkedQuestion?.asked ?? "opted-in";
+   const askedShell = {
+     id: askedThreadId,
+     deletedAt: null,
+-    archivedAt: input.linkedQuestion?.asked === "archived" ? now : null,
+-    linkedQuestionsEnabledAt: input.linkedQuestion?.asked === "opted-out" ? null : now,
++    archivedAt: asked === "archived" ? now : null,
++    lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: askedThreadId },
++    linkedQuestionsEnabledAt:
++      asked === "opted-in" || asked === "archived" || asked === "project-unreadable" ? now : null,
++    linkedQuestionsDisabledAt: asked === "opted-out" ? now : null,
+   } as never as OrchestrationV2ThreadShell;
+   const prepareProviderHandoff = vi.fn<
+     ContextHandoffService.ContextHandoffServiceV2["Service"]["prepareProviderHandoff"]
+@@ -1515,7 +1530,9 @@ function makeLocalCommandHarness(input: {
+               };
+             }),
+         }),
+-        layerWorktreeLocation(input.worktreesDir),
++        layerWorktreeLocation(input.worktreesDir, {
++          linkedQuestionsAnswerByDefault: asked === "project-off" || asked === "by-machine",
++        }),
+         layerNoTaskFolders,
+         input.fileSystem === undefined
+           ? FileSystem.layerNoop({ exists: () => Effect.succeed(true) })
+@@ -1532,6 +1549,18 @@ function makeLocalCommandHarness(input: {
+             Effect.succeedSome({
+               workspaceRoot: input.workspaceRoot ?? "/tmp/native-account-project",
+             } as never),
++          getShell: () =>
++            asked === "project-unreadable"
++              ? Effect.fail(
++                  new ProjectService.ProjectOperationError({
++                    operation: "read-project",
++                    cause: new Error("database is locked"),
++                  }),
++                )
++              : Effect.succeedSome({
++                  linkedQuestions:
++                    asked === "project-off" ? "off" : asked === "by-project" ? "on" : null,
++                } as never),
+         }),
+         Layer.mock(ProjectionStore.ProjectionStoreV2)({
+           getThreadRecords,
+@@ -3389,6 +3418,21 @@ effectIt.effect.each(["/logout", "/compact", "/goal ship it", "Which branch is d
+     }),
+ );
+ 
++effectIt.effect.each(["by-project", "by-machine"] as const)(
++  "starts a linked question for a thread that answers %s",
++  (asked) =>
++    Effect.gen(function* () {
++      const harness = makeLocalCommandHarness({
++        text: "Which branch is deployed?",
++        linkedQuestion: { asked, toollessTurns: true },
++      });
++
++      yield* harness.start;
++
++      expect(harness.startTurn).toHaveBeenCalledOnce();
++    }),
++);
++
+ effectIt.effect.each([
+   {
+     refusal: "a provider that cannot turn its tools off",
+@@ -3405,6 +3449,21 @@ effectIt.effect.each([
+     linkedQuestion: { asked: "archived", toollessTurns: true },
+     message: LINKED_QUESTION_FAILURES.optedOut,
+   },
++  {
++    refusal: "an asked thread whose project is off on a machine that answers",
++    linkedQuestion: { asked: "project-off", toollessTurns: true },
++    message: LINKED_QUESTION_FAILURES.optedOut,
++  },
++  {
++    refusal: "an asked thread no level switched on",
++    linkedQuestion: { asked: "nothing-on", toollessTurns: true },
++    message: LINKED_QUESTION_FAILURES.optedOut,
++  },
++  {
++    refusal: "an asked thread whose project cannot be read",
++    linkedQuestion: { asked: "project-unreadable", toollessTurns: true },
++    message: LINKED_QUESTION_FAILURES.optedOut,
++  },
+   {
+     refusal: "a tool-less run outside a question thread",
+     linkedQuestion: { outsideQuestionThread: true, toollessTurns: true },
+diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.testkit.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.testkit.ts
+index 8b5fbc009aae939b5968eda9e3309828810a487b..c147a4811e45d7ab5b5a65e684667b20544a5793 100644
+--- a/apps/server/src/orchestration-v2/ProviderTurnStartService.testkit.ts
++++ b/apps/server/src/orchestration-v2/ProviderTurnStartService.testkit.ts
+@@ -39,6 +39,7 @@ export const layer = Layer.mergeAll(
+   }),
+   Layer.mock(ProjectService.ProjectService)({
+     getById: () => Effect.succeedNone,
++    getShell: () => Effect.succeedNone,
+   }),
+ );
+ 
+diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
+index b066e277ee1155c64aeb0347592abb394c708ca6..1bddcfdd9cb6f70be8ffeaf2cfcc3b5c9e9a3cb4 100644
+--- a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
++++ b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
+@@ -333,6 +333,11 @@ export const layer: Layer.Layer<
+     const restoreMissingWorktree = yield* makeRestoreMissingWorktree;
+     const worktreeRestore = yield* ThreadWorktreeRestore;
+     const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
++    const linkedQuestionReaders = {
++      projectionStore,
++      projects,
++      settings: yield* ServerSettings.ServerSettingsService,
++    };
+ 
+     // Build draining callbacks outside startup scope so they cannot retain full thread history.
+     const makeRunControls = (input: {
+@@ -377,7 +382,7 @@ export const layer: Layer.Layer<
+           isCurrentAttemptInStatus("running").pipe(
+             Effect.tap((current) =>
+               current && input.linkedQuestionOf !== undefined
+-                ? assertAskedThreadAnswers(projectionStore, input.linkedQuestionOf)
++                ? assertAskedThreadAnswers(linkedQuestionReaders, input.linkedQuestionOf)
+                 : Effect.void,
+             ),
+           ),
+@@ -748,7 +753,7 @@ export const layer: Layer.Layer<
+       const linkedQuestionRefusal = yield* linkedQuestionStartRefusal({
+         run,
+         askedThreadId: linkedQuestionOf,
+-        projectionStore,
++        readers: linkedQuestionReaders,
+         providerAdapters,
+       });
+       if (linkedQuestionRefusal !== undefined) {
+diff --git a/apps/server/src/orchestration-v2/ThreadForkService.test.ts b/apps/server/src/orchestration-v2/ThreadForkService.test.ts
+index f9f6ff25b2f0a1e1d48b46f3719c80cb7ffe04d8..34d6967f1005630a85eb24e72c28a400f6686789 100644
+--- a/apps/server/src/orchestration-v2/ThreadForkService.test.ts
++++ b/apps/server/src/orchestration-v2/ThreadForkService.test.ts
+@@ -13,6 +13,7 @@ import {
+   ProviderThreadId,
+   RunId,
+   ThreadId,
++  threadLinkedQuestionsChoice,
+   type ThreadPullRequestLink,
+ } from "@t3tools/contracts";
+ import * as DateTime from "effect/DateTime";
+@@ -144,6 +145,7 @@ it.effect("resets a fork's pin, snooze, settle and delegation state but keeps it
+       pinOrderKey: "a0",
+       activeOrderKey: "a1",
+       autoSettleDisabledAt: snoozedAt,
++      linkedQuestionsDisabledAt: snoozedAt,
+       delegatedFrom: {
+         environmentId: EnvironmentId.make("linked-environment"),
+         threadId: ThreadId.make("linked-parent"),
+@@ -166,6 +168,7 @@ it.effect("resets a fork's pin, snooze, settle and delegation state but keeps it
+     assert.isNull(result.targetThread.pinOrderKey);
+     assert.isNull(result.targetThread.activeOrderKey);
+     assert.isNull(result.targetThread.autoSettleDisabledAt);
++    assert.isNull(threadLinkedQuestionsChoice(result.targetThread));
+     assert.isUndefined(result.targetThread.delegatedFrom);
+     assert.equal(result.targetThread.historyOrigin, "v1_import");
+     assert.deepEqual(result.targetThread.linkOrigin, linkOrigin);
+diff --git a/apps/server/src/orchestration-v2/ThreadForkService.ts b/apps/server/src/orchestration-v2/ThreadForkService.ts
+index b15e23d7d73f174617f20860ad68d376b8b8c5fa..5d169115da3440f3780dbc5678774acede15c238 100644
+--- a/apps/server/src/orchestration-v2/ThreadForkService.ts
++++ b/apps/server/src/orchestration-v2/ThreadForkService.ts
+@@ -150,6 +150,7 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
+         activeOrderKey: null,
+         autoSettleDisabledAt: null,
+         linkedQuestionsEnabledAt: null,
++        linkedQuestionsDisabledAt: null,
+         // A guest link belongs to the thread it was made for.
+         guestShare: null,
+         lastVisitedAt: null,
+diff --git a/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts b/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts
+index 747f863ee2ed4f621caf7f084e1171260a7b3a82..c01101175414e32ea3eaf41809f2c83c96ff3db2 100644
+--- a/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts
++++ b/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts
+@@ -215,6 +215,7 @@ function makeHarness(options: HarnessOptions = {}) {
+       create: () => Effect.die("unused"),
+       bootstrap: () => Effect.die("unused"),
+       update: () => Effect.die("unused"),
++      setLinkedQuestions: () => Effect.die("unused"),
+       delete: () => Effect.die("unused"),
+       listPage: () => Effect.die("unused"),
+       getById: (id) =>
+diff --git a/apps/server/src/orchestration-v2/linkedQuestionFailures.ts b/apps/server/src/orchestration-v2/linkedQuestionFailures.ts
+index bccf0d9fb40ab374722a4979e0d98f23035dffb6..9553020677d147a51f7ee3c17c65e24e309abf34 100644
+--- a/apps/server/src/orchestration-v2/linkedQuestionFailures.ts
++++ b/apps/server/src/orchestration-v2/linkedQuestionFailures.ts
+@@ -1,7 +1,17 @@
+-import type { OrchestrationV2Run, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
++import {
++  type LinkedQuestionsChoice,
++  type LinkedQuestionsThread,
++  type OrchestrationV2Run,
++  type OrchestrationV2ThreadShell,
++  type ThreadId,
++  threadAnswersLinkedQuestions,
++} from "@t3tools/contracts";
+ import * as Effect from "effect/Effect";
++import * as Option from "effect/Option";
+ import * as Schema from "effect/Schema";
+ 
++import type { ProjectService } from "../project/ProjectService.ts";
++import type { ServerSettingsService } from "../serverSettings.ts";
+ import type { ProjectionStoreV2Shape } from "./ProjectionStore.ts";
+ import type { ProviderAdapterRegistryV2Shape } from "./ProviderAdapterRegistry.ts";
+ 
+@@ -25,31 +35,59 @@ export class LinkedQuestionStartRefusedError extends Schema.TaggedError<LinkedQu
+ 
+ export const isLinkedQuestionStartRefusedError = Schema.is(LinkedQuestionStartRefusedError);
+ 
+-export const answersLinkedQuestions = <
+-  Thread extends Pick<
+-    OrchestrationV2ThreadShell,
+-    "deletedAt" | "archivedAt" | "linkedQuestionsEnabledAt"
+-  >,
+->(
+-  thread: Thread | null,
+-): thread is Thread =>
+-  thread !== null &&
+-  thread.deletedAt === null &&
+-  thread.archivedAt === null &&
+-  thread.linkedQuestionsEnabledAt != null;
++const answersLinkedQuestions = (input: {
++  readonly thread: LinkedQuestionsThread &
++    Pick<OrchestrationV2ThreadShell, "deletedAt" | "archivedAt">;
++  readonly project: LinkedQuestionsChoice | null;
++  readonly machine: boolean;
++}): boolean =>
++  input.thread.deletedAt === null &&
++  input.thread.archivedAt === null &&
++  threadAnswersLinkedQuestions(input);
++
++export interface LinkedQuestionsReaders {
++  readonly projectionStore: Pick<ProjectionStoreV2Shape, "getThreadShell">;
++  readonly projects: Pick<ProjectService["Service"], "getShell">;
++  readonly settings: Pick<ServerSettingsService["Service"], "getSettings">;
++}
++
++export const readAnsweringThread = Effect.fn("readAnsweringThread")(function* (
++  readers: LinkedQuestionsReaders,
++  threadId: ThreadId,
++) {
++  const thread = yield* readers.projectionStore.getThreadShell(threadId);
++  if (thread === null) return null;
++  const project = yield* readers.projects.getShell(thread.projectId);
++  const settings = yield* readers.settings.getSettings;
++  const answers = answersLinkedQuestions({
++    thread,
++    project: Option.match(project, {
++      onNone: () => null,
++      onSome: (shell) => shell.linkedQuestions ?? null,
++    }),
++    machine: settings.linkedQuestionsAnswerByDefault,
++  });
++  return answers ? thread : null;
++});
++
++// The gates before an answer: a project or setting they cannot read refuses rather than answers.
++const readAnsweringThreadAtGate = (readers: LinkedQuestionsReaders, askedThreadId: ThreadId) =>
++  readAnsweringThread(readers, askedThreadId).pipe(
++    Effect.catchTags({
++      ProjectOperationError: () => Effect.succeed(null),
++      ServerSettingsError: () => Effect.succeed(null),
++    }),
++  );
++
++const optedOut = () => new LinkedQuestionStartRefusedError({ reason: "optedOut" });
+ 
+ export const assertAskedThreadAnswers = (
+-  projectionStore: Pick<ProjectionStoreV2Shape, "getThreadShell">,
++  readers: LinkedQuestionsReaders,
+   askedThreadId: ThreadId,
+ ) =>
+-  projectionStore
+-    .getThreadShell(askedThreadId)
+-    .pipe(
+-      Effect.filterOrFail(
+-        answersLinkedQuestions,
+-        () => new LinkedQuestionStartRefusedError({ reason: "optedOut" }),
+-      ),
+-    );
++  readAnsweringThreadAtGate(readers, askedThreadId).pipe(
++    Effect.filterOrFail((thread) => thread !== null, optedOut),
++  );
+ 
+ class LinkedQuestionOutsideItsThreadError extends Schema.TaggedError<LinkedQuestionOutsideItsThreadError>()(
+   "LinkedQuestionOutsideItsThreadError",
+@@ -86,7 +124,7 @@ export const linkedQuestionStartRefusal = Effect.fn("linkedQuestionStartRefusal"
+   function* (input: {
+     readonly run: Pick<OrchestrationV2Run, "toolless" | "modelSelection">;
+     readonly askedThreadId: ThreadId | undefined;
+-    readonly projectionStore: Pick<ProjectionStoreV2Shape, "getThreadShell">;
++    readonly readers: LinkedQuestionsReaders;
+     readonly providerAdapters: Pick<ProviderAdapterRegistryV2Shape, "get">;
+   }) {
+     if (input.askedThreadId === undefined) {
+@@ -99,7 +137,7 @@ export const linkedQuestionStartRefusal = Effect.fn("linkedQuestionStartRefusal"
+           }
+         : undefined;
+     }
+-    if (!answersLinkedQuestions(yield* input.projectionStore.getThreadShell(input.askedThreadId))) {
++    if ((yield* readAnsweringThreadAtGate(input.readers, input.askedThreadId)) === null) {
+       return linkedQuestionStartFailure("optedOut");
+     }
+     const answersWithoutTools = yield* input.providerAdapters
+diff --git a/apps/server/src/peer/LinkedQuestions.test.ts b/apps/server/src/peer/LinkedQuestions.test.ts
+index 245cb6cd6b0be234bd569fe65a11d7eb766c8581..a4c013ad9a475556a2e087d32bb7de0d00f216b6 100644
+--- a/apps/server/src/peer/LinkedQuestions.test.ts
++++ b/apps/server/src/peer/LinkedQuestions.test.ts
+@@ -1,5 +1,6 @@
+ import {
+   CommandId,
++  DEFAULT_SERVER_SETTINGS,
+   EnvironmentId,
+   MessageId,
+   ProjectId,
+@@ -19,6 +20,8 @@ import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
+ import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+ import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
+ import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
++import * as ProjectService from "../project/ProjectService.ts";
++import * as ServerSettings from "../serverSettings.ts";
+ import * as LinkedQuestions from "./LinkedQuestions.ts";
+ 
+ const threadId = ThreadId.make("thread:answers");
+@@ -34,14 +37,31 @@ const askLink = (sessionId: string) =>
+     issuedAt: 0,
+   }) satisfies McpInvocationScope;
+ 
++const askedThread = {
++  id: threadId,
++  projectId,
++  providerInstanceId: ProviderInstanceId.make("claude"),
++  modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "haiku" },
++  worktreePath: null,
++  deletedAt: null,
++  archivedAt: null,
++  lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
++  linkedQuestionsEnabledAt: "2026-11-23T00:00:00.000Z",
++};
++
+ const layerQuestions = (threads: Partial<ThreadManagement.ThreadManagementService["Service"]>) =>
+   LinkedQuestions.layer.pipe(
+     Layer.provide(
+       Layer.mergeAll(
+         Layer.mock(ThreadManagement.ThreadManagementService)(threads),
+         Layer.mock(ProjectionStore.ProjectionStoreV2)({
++          getThreadShell: () => Effect.succeed(askedThread as never),
+           getLinkedQuestionLoad: () => Effect.succeed({ answering: 0, unarchived: 0 }),
+         }),
++        Layer.mock(ProjectService.ProjectService)({ getShell: () => Effect.succeedNone }),
++        Layer.mock(ServerSettings.ServerSettingsService)({
++          getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
++        }),
+         Layer.succeed(ServerConfig.ServerConfig, { baseDir: "/t3-home" } as never),
+         Path.layer,
+         Layer.mock(ServerEnvironment.ServerEnvironment)({}),
+@@ -94,17 +114,7 @@ it.effect(
+       const questions = yield* LinkedQuestions.LinkedQuestions.pipe(
+         Effect.provide(
+           layerQuestions({
+-            getThreadShell: () =>
+-              Effect.succeed({
+-                id: threadId,
+-                projectId,
+-                providerInstanceId: ProviderInstanceId.make("claude"),
+-                modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "haiku" },
+-                worktreePath: null,
+-                deletedAt: null,
+-                archivedAt: null,
+-                linkedQuestionsEnabledAt: "2026-11-23T00:00:00.000Z",
+-              } as never),
++            getThreadShell: () => Effect.succeed(askedThread as never),
+             hasAcceptedReceipt: (commandId: CommandId, receiptThreadId: ThreadId) =>
+               Effect.succeed(accepted.get(commandId) === receiptThreadId),
+             assertProviderInstanceEnabled: () => Effect.void,
+diff --git a/apps/server/src/peer/LinkedQuestions.ts b/apps/server/src/peer/LinkedQuestions.ts
+index b5039c95fcd29d969b94d3ac52b4ee019c33ed84..32b8ef02544ceacda2f9c57de86f1216e57850fe 100644
+--- a/apps/server/src/peer/LinkedQuestions.ts
++++ b/apps/server/src/peer/LinkedQuestions.ts
+@@ -2,9 +2,11 @@
+ import * as NodeCrypto from "node:crypto";
+ 
+ import {
++  ASK_LIST_MAX_THREADS,
+   CommandId,
+   MessageId,
+   OrchestratorMcpFailure,
++  type OrchestratorMcpAskListInput,
+   type OrchestratorMcpAskListResult,
+   type OrchestratorMcpAskSendInput,
+   type OrchestratorMcpAskSendResult,
+@@ -16,6 +18,7 @@ import {
+   type OrchestrationV2ThreadShell,
+   type ProjectId,
+   ThreadId,
++  threadAnswersLinkedQuestions,
+ } from "@t3tools/contracts";
+ import * as Clock from "effect/Clock";
+ import * as Context from "effect/Context";
+@@ -34,12 +37,14 @@ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+ import { callerLinkOrigin } from "../mcp/linkOrigin.ts";
+ import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
+ import {
+-  answersLinkedQuestions,
+   LINKED_QUESTION_FAILURES,
++  readAnsweringThread,
+ } from "../orchestration-v2/linkedQuestionFailures.ts";
+ import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+ import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
+ import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
++import * as ProjectService from "../project/ProjectService.ts";
++import * as ServerSettings from "../serverSettings.ts";
+ import { withoutWebhookUrlToken } from "../scheduledTasks/webhookUrlToken.ts";
+ import { latestRootProviderFailure } from "@t3tools/shared/orchestrationV2ThreadError";
+ 
+@@ -156,6 +161,7 @@ export class LinkedQuestions extends Context.Service<
+   {
+     readonly list: (
+       scope: McpInvocationScope,
++      input: Omit<OrchestratorMcpAskListInput, "environmentId">,
+     ) => Effect.Effect<OrchestratorMcpAskListResult, OrchestratorMcpFailure>;
+     readonly send: (
+       scope: McpInvocationScope,
+@@ -173,6 +179,9 @@ const make = Effect.gen(function* () {
+   const projections = yield* ProjectionStore.ProjectionStoreV2;
+   const environment = yield* ServerEnvironment.ServerEnvironment;
+   const providers = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
++  const projects = yield* ProjectService.ProjectService;
++  const settings = yield* ServerSettings.ServerSettingsService;
++  const readers = { projectionStore: projections, projects, settings };
+   const fileSystem = yield* FileSystem.FileSystem;
+   const random = yield* SecureRandom.SecureRandom;
+   const accepting = yield* Semaphore.make(1);
+@@ -185,8 +194,10 @@ const make = Effect.gen(function* () {
+   const answeringThread = Effect.fn("LinkedQuestions.answeringThread")(function* (
+     threadId: ThreadId,
+   ) {
+-    const shell = yield* threads.getThreadShell(threadId).pipe(Effect.mapError(() => unavailable));
+-    if (!answersLinkedQuestions(shell)) return yield* noSuchThread(threadId);
++    const shell = yield* readAnsweringThread(readers, threadId).pipe(
++      Effect.mapError(() => unavailable),
++    );
++    if (shell === null) return yield* noSuchThread(threadId);
+     return shell;
+   });
+ 
+@@ -215,20 +226,48 @@ const make = Effect.gen(function* () {
+     return { now, recent };
+   });
+ 
+-  const list = Effect.fn("LinkedQuestions.list")(function* (scope: McpInvocationScope) {
++  const list = Effect.fn("LinkedQuestions.list")(function* (
++    scope: McpInvocationScope,
++    input: Omit<OrchestratorMcpAskListInput, "environmentId">,
++  ) {
+     yield* askingLink(scope);
+     const machine = (yield* environment.getDescriptor).label;
+-    const listed = yield* projections
+-      .listLinkedQuestionThreads()
+-      .pipe(Effect.mapError(() => unavailable));
+-    return {
+-      environmentId: scope.environmentId,
+-      machine,
+-      threads: listed.map((thread) => ({
++    const [candidates, projectShells, current] = yield* Effect.all([
++      projections.listLinkedQuestionCandidates(),
++      projects.listShells(),
++      settings.getSettings,
++    ]).pipe(Effect.mapError(() => unavailable));
++    const projectById = new Map(projectShells.map((project) => [project.id, project]));
++    const needle = input.titleContains?.toLocaleLowerCase();
++    const matched = candidates.flatMap((thread) => {
++      const project = projectById.get(thread.projectId);
++      if (
++        !threadAnswersLinkedQuestions({
++          thread,
++          project: project?.linkedQuestions ?? null,
++          machine: current.linkedQuestionsAnswerByDefault,
++        })
++      ) {
++        return [];
++      }
++      const row = {
+         threadId: thread.threadId,
+         title: withoutWebhookUrlToken(thread.title),
++        project: withoutWebhookUrlToken(project?.title ?? ""),
+         machine,
+-      })),
++      };
++      return needle === undefined ||
++        row.title.toLocaleLowerCase().includes(needle) ||
++        row.project.toLocaleLowerCase().includes(needle)
++        ? [row]
++        : [];
++    });
++    return {
++      environmentId: scope.environmentId,
++      machine,
++      threads: matched.slice(0, ASK_LIST_MAX_THREADS),
++      total: matched.length,
++      truncated: matched.length > ASK_LIST_MAX_THREADS,
+     } satisfies OrchestratorMcpAskListResult;
+   });
+ 
+diff --git a/apps/server/src/policy/ManagedPolicy.test.ts b/apps/server/src/policy/ManagedPolicy.test.ts
+index eb2bc6439fa6e031d3dc615c2b0e267b8afaf5a0..e86129143d0295b123f97ae9c99de417bd0257a7 100644
+--- a/apps/server/src/policy/ManagedPolicy.test.ts
++++ b/apps/server/src/policy/ManagedPolicy.test.ts
+@@ -45,13 +45,18 @@ it.layer(NodeServices.layer)("ManagedPolicy.load", (it) => {
+             "storageCleanup.logsAfterDays": { value: 30, locked: true },
+             defaultRuntimeMode: { value: "approval-required", locked: false },
+             linkedEnvironmentsInboundMaxAccess: { value: "ask", locked: true },
++            linkedQuestionsAnswerByDefault: { value: true, locked: true },
+           },
+         }),
+       );
+       assert.deepEqual(policy.summary, {
+         organization: "Example Corp",
+         supportUrl: "https://it.example/t3",
+-        lockedSettings: ["storageCleanup.logsAfterDays", "linkedEnvironmentsInboundMaxAccess"],
++        lockedSettings: [
++          "storageCleanup.logsAfterDays",
++          "linkedEnvironmentsInboundMaxAccess",
++          "linkedQuestionsAnswerByDefault",
++        ],
+       });
+     }),
+   );
+@@ -61,6 +66,7 @@ it.layer(NodeServices.layer)("ManagedPolicy.load", (it) => {
+     const paths = listed.map(([path]) => path);
+     assert.include(paths, "storageCleanup.logsAfterDays");
+     assert.include(paths, "linkedEnvironmentsInboundMaxAccess");
++    assert.include(paths, "linkedQuestionsAnswerByDefault");
+     assert.include(paths, "backgroundActivity.baseProfile");
+     assert.include(paths, "backgroundActivity.overrides.pauseWhenOnBattery");
+     assert.notInclude(paths, "backgroundActivity.overrides");
+diff --git a/apps/server/src/project/ProjectMutation.test.ts b/apps/server/src/project/ProjectMutation.test.ts
+index 9e4e075f06ea0cb7e192a1f253a1ec38961fd39a..c1b7d6c26bd7693258ecb9f100623d436ec941b4 100644
+--- a/apps/server/src/project/ProjectMutation.test.ts
++++ b/apps/server/src/project/ProjectMutation.test.ts
+@@ -32,6 +32,7 @@ describe("mutateProjectWithClone", () => {
+         {
+           create: () => Effect.die("unused"),
+           update: () => Effect.die("unused"),
++          setLinkedQuestions: () => Effect.die("unused"),
+           delete: () => Effect.fail(rejected),
+         },
+         { discard: () => Effect.die("must not discard a project that still exists") },
+@@ -50,6 +51,7 @@ describe("mutateProjectWithClone", () => {
+       const projects = {
+         create: () => Effect.die("unused"),
+         update: () => Effect.die("unused"),
++        setLinkedQuestions: () => Effect.die("unused"),
+         // The delete event is already durable while its post-commit cleanup runs.
+         delete: () =>
+           Deferred.succeed(committed, undefined).pipe(
+diff --git a/apps/server/src/project/ProjectMutation.ts b/apps/server/src/project/ProjectMutation.ts
+index 8c615e7528ea85de54a493535533fac9f60c0ca9..190dcacb72de868c43581e71eceba68dce0a6d1a 100644
+--- a/apps/server/src/project/ProjectMutation.ts
++++ b/apps/server/src/project/ProjectMutation.ts
+@@ -4,7 +4,10 @@ import * as Effect from "effect/Effect";
+ import { type ProjectCloneTracker } from "./ProjectCloneTracker.ts";
+ import { type ProjectService } from "./ProjectService.ts";
+ 
+-type ProjectMutations = Pick<ProjectService["Service"], "create" | "delete" | "update">;
++type ProjectMutations = Pick<
++  ProjectService["Service"],
++  "create" | "delete" | "update" | "setLinkedQuestions"
++>;
+ 
+ export const projectMutationOperation = Effect.fn("projectMutationOperation")(function* (
+   projects: ProjectMutations,
+@@ -56,6 +59,13 @@ export const projectMutationOperation = Effect.fn("projectMutationOperation")(fu
+         ...(mutation.archived === undefined ? {} : { archived: mutation.archived }),
+       });
+ 
++    case "project.linked-questions.set":
++      return yield* projects.setLinkedQuestions({
++        commandId: mutation.commandId,
++        projectId: mutation.projectId,
++        enabled: mutation.enabled,
++      });
++
+     case "project.delete":
+       return yield* projects.delete({
+         commandId: mutation.commandId,
+diff --git a/apps/server/src/project/ProjectService.test.ts b/apps/server/src/project/ProjectService.test.ts
+index a643d7b5adcf97300e62032a6957b9483d99ed96..12441472dbdfd04f3d04b5fb4cdef7b67b8aa1e8 100644
+--- a/apps/server/src/project/ProjectService.test.ts
++++ b/apps/server/src/project/ProjectService.test.ts
+@@ -348,6 +348,52 @@ it.layer(layerTest)("ProjectService", (it) => {
+     }),
+   );
+ 
++  it.effect("keeps a project's linked-questions choice only from its own command", () =>
++    Effect.gen(function* () {
++      const service = yield* ProjectService.ProjectService;
++      const fileSystem = yield* FileSystem.FileSystem;
++      const path = yield* Path.Path;
++      const projectId = ProjectId.make("project:linked-questions");
++      const workspaceRoot = yield* fileSystem.makeTempDirectoryScoped({
++        prefix: "t3-linked-questions-",
++      });
++      yield* fileSystem.writeFileString(
++        path.join(workspaceRoot, "t3.json"),
++        JSON.stringify({ linkedQuestions: "on", linkedQuestionsAnswerByDefault: true }),
++      );
++      yield* service.create({
++        commandId: CommandId.make("command:linked-questions:create"),
++        projectId,
++        title: "Cloned",
++        workspaceRoot,
++      });
++      const choice = service
++        .getShell(projectId)
++        .pipe(Effect.map((shell) => Option.getOrThrow(shell).linkedQuestions));
++      assert.isNull(yield* choice);
++
++      for (const [enabled, expected] of [
++        [true, "on"],
++        [false, "off"],
++        [null, null],
++      ] as const) {
++        yield* service.setLinkedQuestions({
++          commandId: CommandId.make(`command:linked-questions:${enabled}`),
++          projectId,
++          enabled,
++        });
++        assert.equal(yield* choice, expected);
++      }
++      yield* service.update({
++        commandId: CommandId.make("command:linked-questions:update"),
++        projectId,
++        title: "Renamed",
++        ...({ linkedQuestions: "on" } as object),
++      });
++      assert.isNull(yield* choice);
++    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
++  );
++
+   it.effect("keeps a valid tracked folder list and refuses the others", () =>
+     Effect.gen(function* () {
+       const service = yield* ProjectService.ProjectService;
+diff --git a/apps/server/src/project/ProjectService.ts b/apps/server/src/project/ProjectService.ts
+index c5e67e2ea1aa7c166c9925d9b5eb5accc6317265..00936a672d39828a9ec3162bc18dee3e985de3ca 100644
+--- a/apps/server/src/project/ProjectService.ts
++++ b/apps/server/src/project/ProjectService.ts
+@@ -67,6 +67,12 @@ export interface ProjectUpdateInput extends ProjectUpdatePayload {
+   readonly untrackFolders?: ReadonlyArray<string> | undefined;
+ }
+ 
++export interface ProjectLinkedQuestionsInput {
++  readonly commandId: CommandId;
++  readonly projectId: ProjectId;
++  readonly enabled: boolean | null;
++}
++
+ export interface ProjectBootstrapInput extends ProjectCreateInput {}
+ 
+ export interface ProjectDeleteInput {
+@@ -155,6 +161,9 @@ export class ProjectService extends Context.Service<
+       ProjectServiceError
+     >;
+     readonly update: (input: ProjectUpdateInput) => Effect.Effect<Project, ProjectServiceError>;
++    readonly setLinkedQuestions: (
++      input: ProjectLinkedQuestionsInput,
++    ) => Effect.Effect<Project, ProjectServiceError>;
+     readonly delete: (input: ProjectDeleteInput) => Effect.Effect<Project, ProjectServiceError>;
+     readonly getById: (
+       projectId: ProjectId,
+@@ -701,6 +710,21 @@ export const make = Effect.gen(function* () {
+     },
+   );
+ 
++  const setLinkedQuestions: ProjectService["Service"]["setLinkedQuestions"] = Effect.fn(
++    "ProjectService.setLinkedQuestions",
++  )(function* (input) {
++    if (Option.isNone(yield* readRow(input.projectId))) {
++      return yield* new ProjectNotFoundError({ projectId: input.projectId });
++    }
++    yield* commit({
++      type: "project.meta.update",
++      commandId: input.commandId,
++      projectId: input.projectId,
++      linkedQuestions: input.enabled === null ? null : input.enabled ? "on" : "off",
++    });
++    return yield* readCommitted(input.projectId);
++  });
++
+   const bootstrap: ProjectService["Service"]["bootstrap"] = Effect.fn("ProjectService.bootstrap")(
+     function* (input) {
+       const existing = yield* getByWorkspaceRoot(input.workspaceRoot);
+@@ -908,6 +932,7 @@ export const make = Effect.gen(function* () {
+     create,
+     bootstrap,
+     update,
++    setLinkedQuestions,
+     delete: deleteProject,
+     getById,
+     getByWorkspaceRoot,
+diff --git a/apps/server/src/provider/agentContextBudget.json b/apps/server/src/provider/agentContextBudget.json
+index 1bd17fb07ef55a573e07f7a7e140a1863d666eea..f3604d07d87ceca930721ff26b5e24da6bbcccfc 100644
+--- a/apps/server/src/provider/agentContextBudget.json
++++ b/apps/server/src/provider/agentContextBudget.json
+@@ -1,5 +1,5 @@
+ {
+   "claudeSystemAppendBytes": 6245,
+   "codexAdditionalContextBytes": 7639,
+-  "mcpToolListJsonBytes": 63042
++  "mcpToolListJsonBytes": 63192
+ }
+diff --git a/apps/server/src/relay/AgentAwarenessRelay.test.ts b/apps/server/src/relay/AgentAwarenessRelay.test.ts
+index 9b5018adffaf43f4f95d61188bddaeaa68780876..92ef3ba2830c33ab2508d51c48157d9a78109035 100644
+--- a/apps/server/src/relay/AgentAwarenessRelay.test.ts
++++ b/apps/server/src/relay/AgentAwarenessRelay.test.ts
+@@ -325,6 +325,7 @@ const makeTestRelay = Effect.fnUntraced(function* (
+       create: unused,
+       bootstrap: unused,
+       update: unused,
++      setLinkedQuestions: unused,
+       delete: unused,
+       getByWorkspaceRoot: unused,
+       workspaceScanDirectory: unused,
+diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
+index b5f15a51ccc9146ed9e7be4779e26d95db35af68..3a51f5cc3149d39bd4184bcfa2ad15934dd53f7b 100644
+--- a/apps/web/src/components/ChatView.tsx
++++ b/apps/web/src/components/ChatView.tsx
+@@ -87,6 +87,7 @@ import {
+   ProviderInteractionMode,
+   resolveIdleCompaction,
+   RuntimeMode,
++  threadAnswersLinkedQuestions,
+ } from "@t3tools/contracts";
+ import {
+   canResumeThread,
+@@ -3599,7 +3600,12 @@ export default function ChatView(props: ChatViewProps) {
+               activeThreadTitle={activeThread.title}
+               activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
+               activeThreadAnswersLinkedQuestions={
+-                activeThreadShell?.linkedQuestionsEnabledAt != null
++                activeThreadShell != null &&
++                threadAnswersLinkedQuestions({
++                  thread: activeThreadShell,
++                  project: activeProject?.linkedQuestions ?? null,
++                  machine: serverConfig?.settings.linkedQuestionsAnswerByDefault === true,
++                })
+               }
+               activeProject={activeProject ?? null}
+               parentThreadLink={headerParentThreadLink}
+diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
+index 1067d80f983a3bb5515042081497d549e61ce134..e3fb405226248bd6d3dab6e35b8fc16adeae793d 100644
+--- a/apps/web/src/components/Sidebar.tsx
++++ b/apps/web/src/components/Sidebar.tsx
+@@ -143,12 +143,13 @@ import {
+ import {
+   canSetThreadLinkedQuestions,
+   canTurnThreadIntoProject,
++  readThreadLinkedQuestionsMenu,
+   readThreadReadAction,
+   useAcknowledgeThreadWoke,
+   useThreadActions,
+ } from "../hooks/useThreadActions";
+ import { useHandleNewThread } from "../hooks/useHandleNewThread";
+-import { useProjectPin } from "../hooks/useProjectGroupUpdate";
++import { useProjectLinkedQuestions, useProjectPin } from "../hooks/useProjectGroupUpdate";
+ import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
+ import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
+ import { registerSettleAndAdvance } from "../settleAndAdvance";
+@@ -191,8 +192,11 @@ import type { SidebarThreadSummary } from "../types";
+ import { cn } from "~/lib/utils";
+ import {
+   buildDraftActionMenuItems,
++  buildLinkedQuestionsMenuItem,
+   buildThreadActionMenuItems,
++  linkedQuestionsEnabledFor,
+   threadActionRequiresOperate,
++  threadLinkedQuestionsEnabledFor,
+ } from "./threadActionMenu.logic";
+ import {
+   applySidebarThreadDrop,
+@@ -1409,6 +1413,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+     setProjectGroupPinned,
+     toggleProjectGroupPin,
+   } = useProjectPin();
++  const { projectGroupLinkedQuestionsMenu, setProjectGroupLinkedQuestions } =
++    useProjectLinkedQuestions();
+   const openSidebarSettings = useStableCallback(() => {
+     if (isMobile) setOpenMobile(false);
+     void router.navigate({ to: "/settings/labs", hash: searchableSetting("boring-sidebar").id });
+@@ -1443,6 +1449,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+     ) => {
+       const api = readLocalApi();
+       if (!api) return;
++      const linkedQuestionsMenu = projectGroupLinkedQuestionsMenu(group);
+       void (async () => {
+         const clicked = await settlePromise(() =>
+           api.contextMenu.show(
+@@ -1456,6 +1463,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                       : { id: "pin", label: gt("Pin project"), icon: "pin" },
+                   ]
+                 : []),
++              ...(linkedQuestionsMenu
++                ? [buildLinkedQuestionsMenuItem("linked-questions", linkedQuestionsMenu)]
++                : []),
+               { id: "project-settings", label: gt("Project settings"), icon: "settings" },
+             ],
+             position,
+@@ -1474,6 +1484,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+           case "unpin":
+             setProjectGroupPinned(group, clicked.value === "pin");
+             return;
++          case "linked-questions:default":
++          case "linked-questions:on":
++          case "linked-questions:off":
++            void setProjectGroupLinkedQuestions(group, linkedQuestionsEnabledFor(clicked.value));
++            return;
+           case "project-settings":
+             openProjectSettings(group);
+             return;
+@@ -2904,7 +2919,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+               isPinned,
+               isSettled,
+               autoSettleEnabled: thread.autoSettleDisabledAt == null,
+-              linkedQuestionsEnabled: thread.linkedQuestionsEnabledAt != null,
++              linkedQuestions: readThreadLinkedQuestionsMenu(thread),
+               isLinkedQuestion: thread.linkedQuestionOf != null,
+               isSnoozed,
+               canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
+@@ -3039,10 +3054,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+             }
+             return;
+           }
+-          case "linked-questions": {
++          case "linked-questions":
++          case "linked-questions:default":
++          case "linked-questions:on":
++          case "linked-questions:off": {
+             const result = await setThreadLinkedQuestions(
+               threadRef,
+-              thread.linkedQuestionsEnabledAt == null,
++              threadLinkedQuestionsEnabledFor(clicked.value, thread),
+             );
+             if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+               const error = squashAtomCommandFailure(result);
+diff --git a/apps/web/src/components/settings/LinkedEnvironmentsSettings.tsx b/apps/web/src/components/settings/LinkedEnvironmentsSettings.tsx
+index 229e685a6fc1e27aa1249c6a6f513ccd5b626b99..0ee202cea8c8bdc7c63b5aae37ad06c7e1cfc861 100644
+--- a/apps/web/src/components/settings/LinkedEnvironmentsSettings.tsx
++++ b/apps/web/src/components/settings/LinkedEnvironmentsSettings.tsx
+@@ -58,6 +58,7 @@ import {
+ } from "../ui/dialog";
+ import { Input } from "../ui/input";
+ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
++import { Switch } from "../ui/switch";
+ import { stackedThreadToast, toastManager } from "../ui/toast";
+ import { ITEM_ROW_CLASSNAME, ITEM_ROW_INNER_CLASSNAME } from "./itemRows";
+ import { LinkAccessPicker } from "./LinkAccessPicker";
+@@ -124,6 +125,7 @@ export function LinkedEnvironmentsSettings({
+       }
+     >
+       <InboundCapRow environmentId={environmentId} isSearchTarget={isSearchTarget} />
++      <AnswerByDefaultRow environmentId={environmentId} isSearchTarget={isSearchTarget} />
+       {links.error ? (
+         <SettingsRow title={gt("Could not load linked environments")} description={links.error} />
+       ) : !links.data ? (
+@@ -208,6 +210,48 @@ function InboundCapRow({
+   );
+ }
+ 
++function AnswerByDefaultRow({
++  environmentId,
++  isSearchTarget,
++}: {
++  readonly environmentId: EnvironmentId;
++  readonly isSearchTarget: boolean;
++}) {
++  const searchableSetting = useSearchableSetting();
++  const gt = useGT();
++  const serverConfig = useEnvironment(environmentId)?.serverConfig;
++  const policy = useManagedPolicy(environmentId);
++  const canChange = useEnvironmentScope(environmentId, AuthAccessWriteScope);
++  const updateSettings = useUpdateEnvironmentSettings(environmentId);
++  const setting = searchableSetting("linked-questions-answer-by-default");
++  if (serverConfig?.environment.capabilities.linkedQuestionLevels !== true) return null;
++  return (
++    <SettingsRow
++      {...(isSearchTarget ? { id: setting.id } : {})}
++      title={setting.title}
++      description={
++        <T>
++          Threads on this machine answer questions from linked machines unless their project or the
++          thread says otherwise. An answer is built from that thread's conversation.
++        </T>
++      }
++      managed={
++        policy && isManagedSettingPath(policy, "linkedQuestionsAnswerByDefault")
++          ? gt("Managed by {organization}.", { organization: policy.organization })
++          : undefined
++      }
++      control={
++        <Switch
++          aria-label={setting.title}
++          checked={serverConfig.settings.linkedQuestionsAnswerByDefault}
++          disabled={!canChange}
++          onCheckedChange={(checked) => updateSettings({ linkedQuestionsAnswerByDefault: checked })}
++        />
++      }
++    />
++  );
++}
++
+ function LinkedEnvironmentRow({
+   environmentId,
+   link,
+diff --git a/apps/web/src/components/settings/ProjectSettingsPanel.tsx b/apps/web/src/components/settings/ProjectSettingsPanel.tsx
+index fa977091ca4afd211d07743de2f2075b87665dfd..12754778fe20290776c157555ea488d2eab6b2e2 100644
+--- a/apps/web/src/components/settings/ProjectSettingsPanel.tsx
++++ b/apps/web/src/components/settings/ProjectSettingsPanel.tsx
+@@ -12,6 +12,7 @@ import {
+   checkProjectAccess,
+   reportProjectFailure,
+   useProjectGroupUpdate,
++  useProjectLinkedQuestions,
+   type ProjectGroupUpdate,
+ } from "../../hooks/useProjectGroupUpdate";
+ import { Navigate, useLocation, useNavigate } from "@tanstack/react-router";
+@@ -34,6 +35,7 @@ import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environmen
+ import { useThreadShells, waitForProjectRemoval } from "../../state/entities";
+ import { refreshProjectFaviconUrl } from "../../state/assets";
+ import { projectEnvironment } from "../../state/projects";
++import { linkedQuestionsChoices } from "../threadActionMenu.logic";
+ import { ProjectFavicon } from "../ProjectFavicon";
+ import { closeThreadRemoteTerminals } from "../terminal/remoteTerminalClose";
+ import { Alert, AlertDescription } from "../ui/alert";
+@@ -151,6 +153,52 @@ function CheckoutGroupingSelect({ member }: { member: SidebarProjectGroupMember
+   );
+ }
+ 
++function ProjectLinkedQuestionsRow({
++  group,
++}: {
++  readonly group: { readonly memberProjects: ReadonlyArray<SidebarProjectGroupMember> };
++}) {
++  const gt = useGT();
++  const { projectGroupLinkedQuestionsMenu, setProjectGroupLinkedQuestions } =
++    useProjectLinkedQuestions();
++  const menu = projectGroupLinkedQuestionsMenu(group);
++  if (!menu) return null;
++  const choices = linkedQuestionsChoices(menu);
++  const selected = choices.find((candidate) => candidate.checked);
++  return (
++    <SettingsRow
++      title={gt("Answer linked questions")}
++      description={gt(
++        "Threads in this project answer questions from linked machines unless a thread says otherwise.",
++      )}
++      control={
++        <Select
++          value={selected?.choice}
++          onValueChange={(value) => {
++            const picked = choices.find((candidate) => candidate.choice === value);
++            if (!picked) return;
++            void setProjectGroupLinkedQuestions(
++              group,
++              picked.choice === "default" ? null : picked.choice === "on",
++            );
++          }}
++        >
++          <SelectTrigger size="sm" aria-label={gt("Answer linked questions")}>
++            <SelectValue>{selected?.label}</SelectValue>
++          </SelectTrigger>
++          <SelectPopup align="end" alignItemWithTrigger={false}>
++            {choices.map(({ choice, label }) => (
++              <SelectItem hideIndicator key={choice} value={choice}>
++                {label}
++              </SelectItem>
++            ))}
++          </SelectPopup>
++        </Select>
++      }
++    />
++  );
++}
++
+ export type ProjectSettingsCategory = "general" | "source-control" | "project";
+ 
+ interface ProjectSelection {
+@@ -694,6 +742,7 @@ function ProjectDetail({
+               />
+             </>
+           ) : null}
++          <ProjectLinkedQuestionsRow group={group} />
+         </SettingsSection>
+         <ProjectDefaultsSettings category="project" />
+         <ProjectActionsSettings />
+diff --git a/apps/web/src/components/settings/settingsSearch.test.ts b/apps/web/src/components/settings/settingsSearch.test.ts
+index b6778b3f99991b30be74c6e1ee48613a3ac37867..755d4c0d3fb1dd5add438a65731ada29959abaa1 100644
+--- a/apps/web/src/components/settings/settingsSearch.test.ts
++++ b/apps/web/src/components/settings/settingsSearch.test.ts
+@@ -172,6 +172,7 @@ describe("searchSettings", () => {
+       "linked-environments",
+       "agent-feedback",
+       "linked-environments-inbound-cap",
++      "linked-questions-answer-by-default",
+     ]);
+     expect(available.map((item) => item.id).filter((id) => gatedIds.has(id))).toEqual([]);
+   });
+@@ -205,6 +206,12 @@ describe("searchSettings", () => {
+         filterAvailableSettingsSearchItems({ ...availability, hasPeerLinkHost: true }),
+       )[0],
+     ).toMatchObject({ id: "linked-environments-inbound-cap", to: "/settings/connections" });
++    expect(
++      searchSettings(
++        "answer linked questions",
++        filterAvailableSettingsSearchItems({ ...availability, hasPeerLinkHost: true }),
++      )[0],
++    ).toMatchObject({ id: "linked-questions-answer-by-default", to: "/settings/connections" });
+   });
+ 
+   it("finds the Welcome page only where a primary computer can open it", () => {
+diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
+index ccf62de87a3356c2b0bac291880bcca8e749c423..6d8d4952612f9aee3a84c2c8ad787b3782c7182f 100644
+--- a/apps/web/src/components/settings/settingsSearch.ts
++++ b/apps/web/src/components/settings/settingsSearch.ts
+@@ -1488,6 +1488,13 @@ export const SETTINGS_SEARCH_ITEMS = [
+     to: "/settings/connections",
+     searchTerms: [msg("link access limit cap inbound ask only read only peer machine")],
+   },
++  {
++    id: "linked-questions-answer-by-default",
++    peerLinksOnly: true,
++    title: msg("Answer linked questions in every thread"),
++    to: "/settings/connections",
++    searchTerms: [msg("linked questions ask answer threads default machine peer link")],
++  },
+   {
+     id: "remote-environments",
+     title: msg("Environments"),
+diff --git a/apps/web/src/components/threadActionMenu.logic.test.ts b/apps/web/src/components/threadActionMenu.logic.test.ts
+index a0e683adc53441323b27ecda4e7d514f67b8a4fb..7b4dd9d446c29bd932cf8a3306dac6b5262e80c1 100644
+--- a/apps/web/src/components/threadActionMenu.logic.test.ts
++++ b/apps/web/src/components/threadActionMenu.logic.test.ts
+@@ -1,6 +1,12 @@
++import { type LinkedQuestionsControl, threadLinkedQuestionsControl } from "@t3tools/contracts";
+ import { describe, expect, it } from "vite-plus/test";
+ 
+-import { buildThreadActionMenuItems, type ThreadActionMenuState } from "./threadActionMenu.logic";
++import {
++  buildLinkedQuestionsMenuItem,
++  buildThreadActionMenuItems,
++  projectLinkedQuestionsMenu,
++  type ThreadActionMenuState,
++} from "./threadActionMenu.logic";
+ 
+ const baseState: ThreadActionMenuState = {
+   canOperate: true,
+@@ -9,7 +15,11 @@ const baseState: ThreadActionMenuState = {
+   isPinned: false,
+   isSettled: false,
+   autoSettleEnabled: true,
+-  linkedQuestionsEnabled: false,
++  linkedQuestions: {
++    kind: "levels",
++    choice: null,
++    inherited: { answers: false, from: "machine" },
++  },
+   isLinkedQuestion: false,
+   isSnoozed: false,
+   canSnoozeNow: true,
+@@ -92,14 +102,87 @@ describe("buildThreadActionMenuItems", () => {
+ 
+   it("offers a linked question's thread neither the opt-in nor turning into a project", () => {
+     const ids = (isLinkedQuestion: boolean) =>
+-      buildThreadActionMenuItems({ ...baseState, isLinkedQuestion, canTurnIntoProject: true }).map(
+-        (item) => item.id,
+-      );
++      buildThreadActionMenuItems({
++        ...baseState,
++        isLinkedQuestion,
++        linkedQuestions: threadLinkedQuestionsControl({
++          thread: {
++            lineage: { relationshipToParent: null },
++            linkedQuestionOf: isLinkedQuestion ? "thread:asked" : null,
++          },
++          project: null,
++          machine: true,
++          levels: true,
++        }),
++        canTurnIntoProject: true,
++      }).map((item) => item.id);
+     expect(ids(false)).toEqual(expect.arrayContaining(["linked-questions", "turn-into-project"]));
+     expect(ids(true)).not.toContain("linked-questions");
+     expect(ids(true)).not.toContain("turn-into-project");
+   });
+ 
++  it("offers threads and projects three choices, naming what not set resolves to now", () => {
++    const choices = (menu: LinkedQuestionsControl | null) =>
++      menu?.kind === "levels"
++        ? buildLinkedQuestionsMenuItem("linked-questions", menu).children?.map((child) => [
++            child.id,
++            child.label,
++            child.checked,
++          ])
++        : menu;
++    const thread = (relationshipToParent: "fork" | "subagent" | null, sideChat = false) =>
++      threadLinkedQuestionsControl({
++        thread: {
++          lineage: { relationshipToParent, sideChat },
++          linkedQuestionsDisabledAt: "2026-11-24T00:00:00.000Z",
++        },
++        project: "on",
++        machine: false,
++        levels: true,
++      });
++    expect(choices(thread("fork"))).toEqual([
++      ["linked-questions:default", "Default (on, from the project)", false],
++      ["linked-questions:on", "On", false],
++      ["linked-questions:off", "Off", true],
++    ]);
++    expect(thread("subagent")).toBeNull();
++    expect(thread("fork", true)).toBeNull();
++    const project = (input: { project: "on" | null; machine: boolean; levels?: boolean }) =>
++      projectLinkedQuestionsMenu({ levels: true, ...input });
++    expect(project({ project: "on", machine: true, levels: false })).toBeNull();
++    expect(choices(project({ project: null, machine: true }))).toEqual([
++      ["linked-questions:default", "Default (on, from this machine)", true],
++      ["linked-questions:on", "On", false],
++      ["linked-questions:off", "Off", false],
++    ]);
++    expect(choices(project({ project: "on", machine: false }))).toContainEqual([
++      "linked-questions:default",
++      "Default (off, from this machine)",
++      false,
++    ]);
++  });
++
++  it("offers a server without linked-question levels only the thread's on/off switch", () => {
++    const entry = (levels: boolean, linkedQuestionsEnabledAt?: string) =>
++      buildThreadActionMenuItems({
++        ...baseState,
++        linkedQuestions: threadLinkedQuestionsControl({
++          thread: { lineage: { relationshipToParent: null }, linkedQuestionsEnabledAt },
++          project: null,
++          machine: false,
++          levels,
++        }),
++      }).find((item) => item.id === "linked-questions");
++    expect(entry(false)).toMatchObject({ checked: false });
++    expect(entry(false)?.children).toBeUndefined();
++    expect(entry(false, "2026-11-24T00:00:00.000Z")).toMatchObject({ checked: true });
++    expect(entry(true)?.children?.map((child) => child.id)).toEqual([
++      "linked-questions:default",
++      "linked-questions:on",
++      "linked-questions:off",
++    ]);
++  });
++
+   it("disables only rename where no inline title editor exists", () => {
+     const items = buildThreadActionMenuItems({ ...baseState, canRename: false });
+     expect(items.filter((item) => item.disabled).map((item) => item.id)).toEqual(["rename"]);
+diff --git a/apps/web/src/components/threadActionMenu.logic.ts b/apps/web/src/components/threadActionMenu.logic.ts
+index 0e559d507b8579543ddd1a86785ec489d9aaedf8..695665380117fd7016cf352e9d81e41ffcd00666 100644
+--- a/apps/web/src/components/threadActionMenu.logic.ts
++++ b/apps/web/src/components/threadActionMenu.logic.ts
+@@ -1,4 +1,9 @@
+-import type { ContextMenuItem } from "@t3tools/contracts";
++import {
++  type ContextMenuItem,
++  type LinkedQuestionsChoice,
++  type LinkedQuestionsControl,
++  resolveLinkedQuestions,
++} from "@t3tools/contracts";
+ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
+ import { msg } from "gt-react";
+ 
+@@ -19,6 +24,7 @@ export type ThreadActionMenuId =
+   | "auto-settle:enabled"
+   | "auto-settle:disabled"
+   | "linked-questions"
++  | `linked-questions:${LinkedQuestionsMenuChoice}`
+   | "snooze"
+   | `snooze:${string}`
+   | "unsnooze"
+@@ -96,6 +102,103 @@ export function buildDraftActionMenuItems(
+   ];
+ }
+ 
++export type LinkedQuestionsMenuChoice = "default" | LinkedQuestionsChoice;
++
++export type LinkedQuestionsMenu = Extract<LinkedQuestionsControl, { readonly kind: "levels" }>;
++
++export function projectLinkedQuestionsMenu(input: {
++  readonly project: LinkedQuestionsChoice | null;
++  readonly machine: boolean;
++  readonly levels: boolean;
++}): LinkedQuestionsMenu | null {
++  if (!input.levels) return null;
++  return {
++    kind: "levels",
++    choice: input.project,
++    inherited: resolveLinkedQuestions({ thread: null, project: null, machine: input.machine }),
++  };
++}
++
++const LINKED_QUESTIONS_DEFAULT_LABELS = {
++  project: {
++    on: msg("Default (on, from the project)"),
++    off: msg("Default (off, from the project)"),
++  },
++  machine: {
++    on: msg("Default (on, from this machine)"),
++    off: msg("Default (off, from this machine)"),
++  },
++} as const;
++
++export function linkedQuestionsChoices(
++  menu: LinkedQuestionsMenu,
++  resolve: MessageResolver = m,
++): ReadonlyArray<{
++  readonly choice: LinkedQuestionsMenuChoice;
++  readonly label: string;
++  readonly checked: boolean;
++}> {
++  const from = menu.inherited.from === "project" ? "project" : "machine";
++  return [
++    {
++      choice: "default",
++      label: resolve(LINKED_QUESTIONS_DEFAULT_LABELS[from][menu.inherited.answers ? "on" : "off"]),
++      checked: menu.choice === null,
++    },
++    {
++      choice: "on",
++      label: resolve(msg("On", { $context: "answer linked questions" })),
++      checked: menu.choice === "on",
++    },
++    {
++      choice: "off",
++      label: resolve(msg("Off", { $context: "answer linked questions" })),
++      checked: menu.choice === "off",
++    },
++  ];
++}
++
++export function buildLinkedQuestionsMenuItem<Id extends string>(
++  id: Id,
++  menu: LinkedQuestionsMenu,
++  resolve: MessageResolver = m,
++): ContextMenuItem<Id | `${Id}:${LinkedQuestionsMenuChoice}`> {
++  return {
++    id,
++    label: resolve(msg("Answer linked questions")),
++    children: linkedQuestionsChoices(menu, resolve).map(({ choice, label, checked }) => ({
++      id: `${id}:${choice}` as const,
++      label,
++      checked,
++    })),
++  };
++}
++
++function buildThreadLinkedQuestionsMenuItem(
++  control: LinkedQuestionsControl,
++  resolve: MessageResolver,
++): ContextMenuItem<ThreadActionMenuId> {
++  return control.kind === "levels"
++    ? buildLinkedQuestionsMenuItem("linked-questions", control, resolve)
++    : {
++        id: "linked-questions",
++        label: resolve(msg("Answer linked questions")),
++        checked: control.enabled,
++      };
++}
++
++export const linkedQuestionsEnabledFor = (
++  id: `${string}:${LinkedQuestionsMenuChoice}`,
++): boolean | null => (id.endsWith(":default") ? null : id.endsWith(":on"));
++
++export const threadLinkedQuestionsEnabledFor = (
++  id: "linked-questions" | `linked-questions:${LinkedQuestionsMenuChoice}`,
++  thread: { readonly linkedQuestionsEnabledAt?: unknown },
++): boolean | null =>
++  id === "linked-questions"
++    ? thread.linkedQuestionsEnabledAt == null
++    : linkedQuestionsEnabledFor(id);
++
+ export interface ThreadActionMenuState {
+   readonly canOperate: boolean;
+   readonly canFind?: boolean;
+@@ -109,7 +212,7 @@ export interface ThreadActionMenuState {
+   readonly isPinned: boolean;
+   readonly isSettled: boolean;
+   readonly autoSettleEnabled: boolean;
+-  readonly linkedQuestionsEnabled: boolean;
++  readonly linkedQuestions: LinkedQuestionsControl | null;
+   readonly isLinkedQuestion: boolean;
+   readonly isSnoozed: boolean;
+   readonly canSnoozeNow: boolean;
+@@ -285,14 +388,8 @@ export function buildThreadActionMenuItems(
+           },
+         ]
+       : []),
+-    ...(state.supports.linkedQuestions && !state.isLinkedQuestion
+-      ? [
+-          {
+-            id: "linked-questions" as const,
+-            label: resolve(msg("Answer linked questions")),
+-            checked: state.linkedQuestionsEnabled,
+-          },
+-        ]
++    ...(state.supports.linkedQuestions && state.linkedQuestions !== null
++      ? [buildThreadLinkedQuestionsMenuItem(state.linkedQuestions, resolve)]
+       : []),
+     {
+       id: "copy",
+diff --git a/apps/web/src/hooks/useProjectGroupUpdate.ts b/apps/web/src/hooks/useProjectGroupUpdate.ts
+index b210958b4622097913054d91cb5dd734b01c8a63..e5cc96e20be5efc18a3803cd615e42764ddbdaef 100644
+--- a/apps/web/src/hooks/useProjectGroupUpdate.ts
++++ b/apps/web/src/hooks/useProjectGroupUpdate.ts
+@@ -10,6 +10,7 @@ import { AsyncResult } from "effect/reactivity";
+ import * as Cause from "effect/Cause";
+ import { msg } from "gt-react";
+ 
++import { projectLinkedQuestionsMenu } from "../components/threadActionMenu.logic";
+ import { stackedThreadToast, toastManager } from "../components/ui/toast";
+ import { m } from "../i18n/messages";
+ import type { SidebarProjectGroupMember } from "../sidebarProjectGrouping";
+@@ -18,6 +19,11 @@ import { readEnvironment } from "../state/environments";
+ import { projectEnvironment } from "../state/projects";
+ import { readEnvironmentScope, useEnvironmentsWithScope } from "../state/session";
+ import { useOrchestrationCommand } from "../state/use-orchestration-command";
++import {
++  canSetProjectLinkedQuestions,
++  readAnswersLinkedQuestionsByDefault,
++  supportsLinkedQuestionLevels,
++} from "./useThreadActions";
+ 
+ export type ProjectGroupUpdate = Partial<{
+   title: string;
+@@ -141,6 +147,50 @@ export function useProjectPin() {
+   };
+ }
+ 
++type LinkedQuestionsGroup = {
++  readonly memberProjects: ReadonlyArray<
++    Pick<SidebarProjectGroupMember, "environmentId" | "id" | "linkedQuestions">
++  >;
++};
++
++/** A project's own linked-questions choice, written to each of its checkouts. */
++export function useProjectLinkedQuestions() {
++  const setLinkedQuestions = useOrchestrationCommand(projectEnvironment.setLinkedQuestions, {
++    reportFailure: false,
++  });
++  // Machines can disagree; the menu shows the first checkout's machine and choice.
++  const projectGroupLinkedQuestionsMenu = (group: LinkedQuestionsGroup) => {
++    const [first] = group.memberProjects;
++    const everyCheckout = (holds: typeof canSetProjectLinkedQuestions) =>
++      group.memberProjects.every((member) => holds(member.environmentId));
++    if (!first || !everyCheckout(canSetProjectLinkedQuestions)) return null;
++    return projectLinkedQuestionsMenu({
++      project: first.linkedQuestions ?? null,
++      machine: readAnswersLinkedQuestionsByDefault(first.environmentId),
++      levels: everyCheckout(supportsLinkedQuestionLevels),
++    });
++  };
++  const setProjectGroupLinkedQuestions = async (
++    group: LinkedQuestionsGroup,
++    enabled: boolean | null,
++  ) => {
++    for (const member of group.memberProjects) {
++      const result = await setLinkedQuestions({
++        environmentId: member.environmentId,
++        input: { projectId: member.id, enabled },
++      });
++      if (result._tag === "Failure") {
++        reportProjectFailure(m(msg("Failed to update linked questions")), result);
++        return;
++      }
++    }
++  };
++  return {
++    projectGroupLinkedQuestionsMenu,
++    setProjectGroupLinkedQuestions,
++  };
++}
++
+ /** Reports the first member this connection cannot change, and returns that failure. */
+ export function checkProjectAccess(
+   members: ReadonlyArray<ProjectGroupMember>,
+diff --git a/apps/web/src/hooks/useThreadActionMenu.test.ts b/apps/web/src/hooks/useThreadActionMenu.test.ts
+index 381e9d965b838f90f41f216d938be06e86c36b03..c76225ffdbb66f4612ecb05f99c0ebe619e3fee6 100644
+--- a/apps/web/src/hooks/useThreadActionMenu.test.ts
++++ b/apps/web/src/hooks/useThreadActionMenu.test.ts
+@@ -121,6 +121,10 @@ vi.mock("./useSettings", () => ({
+ vi.mock("./useThreadActions", () => ({
+   canSetThreadLinkedQuestions: () => true,
+   canTurnThreadIntoProject: () => false,
++  readThreadLinkedQuestionsMenu: () => ({
++    choice: null,
++    inherited: { answers: false, from: "machine" },
++  }),
+   readThreadReadAction: () => null,
+   useThreadActions: () =>
+     Object.fromEntries(
+@@ -176,7 +180,7 @@ describe("thread menu permissions", () => {
+     "pin",
+     "settle",
+     "archive",
+-    "linked-questions",
++    "linked-questions:on",
+   ] as const)("%s rechecks after the native menu closes", async (action) => {
+     state.granted.add("secondary");
+     const choice = deferred<ThreadActionMenuId | null>();
+diff --git a/apps/web/src/hooks/useThreadActionMenu.ts b/apps/web/src/hooks/useThreadActionMenu.ts
+index 8add53e16d60a5d423f05b4f6bdb8b9b04bff598..0ed8dac31dfcc89ea4e9ecf98050c4235fd46523 100644
+--- a/apps/web/src/hooks/useThreadActionMenu.ts
++++ b/apps/web/src/hooks/useThreadActionMenu.ts
+@@ -22,6 +22,7 @@ import { pickSnoozePreset, resolveSnoozePresets } from "../components/Sidebar.sn
+ import {
+   buildThreadActionMenuItems,
+   threadActionRequiresOperate,
++  threadLinkedQuestionsEnabledFor,
+   type ThreadActionMenuId,
+ } from "../components/threadActionMenu.logic";
+ import { titleRegenerationToast } from "../components/threadTitleRegenerationToast";
+@@ -54,6 +55,7 @@ import { useClientSettings } from "./useSettings";
+ import {
+   canSetThreadLinkedQuestions,
+   canTurnThreadIntoProject,
++  readThreadLinkedQuestionsMenu,
+   readThreadReadAction,
+   useThreadActions,
+ } from "./useThreadActions";
+@@ -155,7 +157,7 @@ export function useThreadActionMenu(input: {
+         isPinned: thread.pinnedAt != null,
+         isSettled: supports.settlement && thread.settledOverride === "settled",
+         autoSettleEnabled: thread.autoSettleDisabledAt == null,
+-        linkedQuestionsEnabled: thread.linkedQuestionsEnabledAt != null,
++        linkedQuestions: readThreadLinkedQuestionsMenu(thread),
+         isLinkedQuestion: thread.linkedQuestionOf != null,
+         isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
+         canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
+@@ -266,8 +268,11 @@ export function useThreadActionMenu(input: {
+           );
+           return;
+         case "linked-questions":
++        case "linked-questions:default":
++        case "linked-questions:on":
++        case "linked-questions:off":
+           await reportFailure(m(msg("Failed to update linked questions")), () =>
+-            setThreadLinkedQuestions(threadRef, thread.linkedQuestionsEnabledAt == null),
++            setThreadLinkedQuestions(threadRef, threadLinkedQuestionsEnabledFor(action, thread)),
+           );
+           return;
+         case "rename":
+diff --git a/apps/web/src/hooks/useThreadActions.ts b/apps/web/src/hooks/useThreadActions.ts
+index 67b45b1015ed549a95b374870ed604507c148315..c79b804eadd2592e4f4e0c77f84d7e7b23cd0ad3 100644
+--- a/apps/web/src/hooks/useThreadActions.ts
++++ b/apps/web/src/hooks/useThreadActions.ts
+@@ -7,7 +7,10 @@ import {
+ } from "@t3tools/client-runtime/environment";
+ import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+ import { canSnooze, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
+-import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
++import {
++  type EnvironmentThreadShell,
++  threadRuntimeCanArchive,
++} from "@t3tools/client-runtime/state/models";
+ import {
+   AuthOrchestrationOperateScope,
+   AuthSourceControlWriteScope,
+@@ -16,6 +19,7 @@ import {
+   type ScopedThreadRef,
+   ThreadId,
+   sessionGrantsScope,
++  threadLinkedQuestionsControl,
+ } from "@t3tools/contracts";
+ import { resolveWorktreeCleanup } from "@t3tools/shared/projectSettings";
+ import * as Cause from "effect/Cause";
+@@ -315,14 +319,43 @@ function clearDeletedThreadPanelState(ref: ScopedThreadRef) {
+   usePreviewMiniPlayerStore.getState().removeThread(ref);
+ }
+ 
++const environmentCapabilities = (environmentId: EnvironmentId) =>
++  appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities;
++
++const supportsAskLinks = (environmentId: EnvironmentId) =>
++  environmentCapabilities(environmentId)?.askLinks === true;
++
++export const supportsLinkedQuestionLevels = (environmentId: EnvironmentId) =>
++  environmentCapabilities(environmentId)?.linkedQuestionLevels === true;
++
+ export function canSetThreadLinkedQuestions(environmentId: EnvironmentId): boolean {
+   return (
+-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+-      .askLinks === true &&
++    supportsAskLinks(environmentId) &&
+     appAtomRegistry.get(threadEnvironment.setLinkedQuestions.permissionAtom(environmentId))
+   );
+ }
+ 
++export function canSetProjectLinkedQuestions(environmentId: EnvironmentId): boolean {
++  return appAtomRegistry.get(projectEnvironment.setLinkedQuestions.permissionAtom(environmentId));
++}
++
++export function readAnswersLinkedQuestionsByDefault(environmentId: EnvironmentId): boolean {
++  return (
++    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.settings
++      .linkedQuestionsAnswerByDefault === true
++  );
++}
++
++export function readThreadLinkedQuestionsMenu(thread: EnvironmentThreadShell) {
++  return threadLinkedQuestionsControl({
++    thread,
++    project:
++      readProject(scopeProjectRef(thread.environmentId, thread.projectId))?.linkedQuestions ?? null,
++    machine: readAnswersLinkedQuestionsByDefault(thread.environmentId),
++    levels: supportsLinkedQuestionLevels(thread.environmentId),
++  });
++}
++
+ /** A No project thread that already has its own folder, on a server that can promote it. */
+ export function canTurnThreadIntoProject(threadRef: ScopedThreadRef): boolean {
+   const thread = readThreadShell(threadRef);
+@@ -834,7 +867,7 @@ export function useThreadActions() {
+     });
+   };
+ 
+-  const setThreadLinkedQuestions = (target: ScopedThreadRef, enabled: boolean) =>
++  const setThreadLinkedQuestions = (target: ScopedThreadRef, enabled: boolean | null) =>
+     setThreadLinkedQuestionsMutation({
+       environmentId: target.environmentId,
+       input: { threadId: target.threadId, enabled },
+diff --git a/docs/internals/05_remote.md b/docs/internals/05_remote.md
+index 6a1916bd3cba396e47b2337fe52c3fe619fb12cd..aa046e7d40f83b215a9063c0e888f4c5656f35a1 100644
+--- a/docs/internals/05_remote.md
++++ b/docs/internals/05_remote.md
+@@ -41,7 +41,7 @@ side lists and revokes it in Sharing & access like any other session, and owns i
+ - **Clients read linked threads as standard thread streams.**
+   [`PeerThreadRelay`](../../apps/server/src/peer/PeerThreadRelay.ts) proxies the same stream format
+   read-only so there is no second transcript schema to maintain. `ask` links cannot open them.
+-- **`ask` links reach only opted-in threads, and the answers run without tools.**
++- **`ask` links reach only threads that answer, and the answers run without tools.**
+   [`McpHttpServer`](../../apps/server/src/mcp/McpHttpServer.ts) hides every tool not declared with
+   `McpToolAccess.asks` from an `ask` session, including tools registered by hand.
+   [`LinkedQuestions`](../../apps/server/src/peer/LinkedQuestions.ts) answers each question in its
+@@ -52,7 +52,7 @@ side lists and revokes it in Sharing & access like any other session, and owns i
+   never offer to delete as a worktree. Its one message keeps a message-level `linkOrigin`, which
+   keeps the question inert (no slash, skill, `/goal`, or compaction command). The run is
+   `toolless`: turn start passes `runtimePolicy.tools: "none"` only to a provider session that
+-  reports `tools.supportsToollessTurns`, refuses any other, rereads the asked thread's opt-in at the
++  reports `tools.supportsToollessTurns`, refuses any other, rechecks the asked thread answers at the
+   last gate, and fails a `toolless` run outside a question thread. The prompt carries the newest of
+   the asked thread's owner and assistant messages that fit 32,000 characters, read at turn start
+   and never stored; only messages the owner typed in a client stay in, so wakes, agent sends,
+diff --git a/docs/user/remote-access.md b/docs/user/remote-access.md
+index 66dc29fc94b3e7adab7154c75b3e240809c5e0eb..b1bf4d4a8deedd234193339ebe45f3273ec321e3 100644
+--- a/docs/user/remote-access.md
++++ b/docs/user/remote-access.md
+@@ -574,17 +574,34 @@ any other thread on web and desktop, and a shorter read-only list on mobile.
+ 
+ ### Let linked machines ask a thread
+ 
+-A thread answers questions from linked machines only after you turn on **Answer
+-linked questions** in its thread menu. It is off by default. Only a session that
+-manages access can change it; agents, links and scheduled tasks cannot. While it
+-is on, the thread's header shows **Answers linked questions**.
++Whether a thread answers questions from linked machines is set at three levels,
++and the nearest one that is set wins:
++
++1. The thread: **Answer linked questions** in its thread menu.
++2. Its project: **Answer linked questions** in **Settings → Projects**, or in the
++   project folder's menu in the sidebar. It applies to every thread of the
++   project that has no choice of its own.
++3. The machine: **Answer linked questions in every thread** in **Settings →
++   Environments → Linked environments** (the **List** view). It is off by
++   default.
++
++The thread and project menus offer **Default**, **On** and **Off**; **Default**
++names what the thread or project follows right now, for example
++**Default (off, from this machine)**. Choose it to return to that. Only a session
++that manages access can change any level; agents, links and scheduled tasks
++cannot, and no file in a project folder can switch it on. Question threads,
++subagents, side chats and a workflow's agent steps never answer, and a fork
++starts at **Default**. While a thread answers, its header shows **Answers linked
++questions**.
+ 
+ - Agents on a linked machine list these threads with `t3_ask_list`, ask one with
+   `t3_ask_send` and read the reply with `t3_ask_wait`. A link at any level can
+-  ask; an **Ask only** link can do nothing else.
++  ask; an **Ask only** link can do nothing else. The list shows the 50 threads
++  with the newest activity and each one's project; agents narrow it by thread or
++  project name.
+ - Each question is answered in its own new thread in the same project, marked
+   **From** and the asking machine's name. The question is its title, so it also
+-  shows in notifications. Nothing is added to the thread you opted in, and its
++  shows in notifications. Nothing is added to the thread that was asked, and its
+   queue, snooze and settled state stay as they were.
+ - The answer sees the newest of that thread's messages that fit a limit, the
+   ones you typed and its replies, and nothing else from it: no files, command
+@@ -604,7 +621,8 @@ is on, the thread's header shows **Answers linked questions**.
+   time, and refuses more while 20 of its question threads are not archived.
+ - A question stopped by a usage limit or a restart fails and is not resumed. Ask
+   again later.
+-- Turning the setting off refuses questions that have not started yet.
++- Turning answering off at any level refuses questions that have not started
++  yet.
+ 
+ ### Limit links into a machine
+ 
+@@ -614,7 +632,10 @@ It defaults to Full access. A pairing above it fails and names the limit. A link
+ already above it stops working and stays stopped even if you raise the limit
+ later; link it again within the limit. A [managed policy](./managed-policy.md#settings)
+ can set and lock it with the key `linkedEnvironmentsInboundMaxAccess`, for
+-example `{ "value": "ask", "locked": true }`.
++example `{ "value": "ask", "locked": true }`, and the machine level of
++**Answer linked questions in every thread** with the key
++`linkedQuestionsAnswerByDefault`. Locking that key fixes the machine level only;
++projects and threads can still choose.
+ 
+ ## Manage or revoke access
+ 
+diff --git a/evals/mcp-tool-use/cases/linked-questions.ndjson b/evals/mcp-tool-use/cases/linked-questions.ndjson
+index 9c5eec22b9409a761a13b187e118bc001ead5c24..16fe1b04289b2f7de7e839fe5bb8cf8088200a5f 100644
+--- a/evals/mcp-tool-use/cases/linked-questions.ndjson
++++ b/evals/mcp-tool-use/cases/linked-questions.ndjson
+@@ -1,2 +1,3 @@
+-{"id": "ask-link-uses-ask-tools", "area": "linked-questions", "kind": "guard", "pattern": "a link paired to ask questions only", "experience": "A link paired at the ask level refuses every tool but t3_ask_list, t3_ask_send and t3_ask_wait. An agent that reaches for t3_thread_send or t3_thread_launch there gets a refusal instead of an answer.", "rule": "ask: only t3_ask_list, t3_ask_send and t3_ask_wait.", "privacy": "commit-safe", "setup": {"role": "top", "linkedEnvironments": true, "mocks": {"t3_environment_links": {"environmentId": "environment-laptop", "links": [{"environmentId": "environment-studio", "label": "Studio Mac", "status": "reachable", "access": "ask", "expiresAt": "2026-12-01T00:00:00.000Z", "lastError": null}], "notListed": "Not listed: not linked yet. Call t3_environment_link with a hint from the user's words."}, "t3_ask_list": {"environmentId": "environment-studio", "machine": "Studio Mac", "threads": [{"threadId": "thread-release-notes", "title": "Release notes for 4.2", "machine": "Studio Mac"}]}, "t3_ask_send": {"environmentId": "environment-studio", "threadId": "thread-release-notes", "questionId": "message:ask:session:release-branch", "status": "answering"}, "t3_ask_wait": {"status": "answered", "answer": "4.2 shipped from release/4.2, cut from main at a1b2c3d."}}}, "prompt": "Ask the release notes thread on my Studio Mac which branch 4.2 shipped from.", "expect": {"calls": [{"tool": "t3_ask_send", "args": {"environmentId": "environment-studio", "threadId": "thread-release-notes"}}], "notCalls": ["t3_thread_send", "t3_thread_launch", "t3_thread_read", "delegate_task"]}, "source": {"request": "t3-ask-link spec: threads on fleet machines ask threads on the main machine questions"}}
++{"id": "ask-link-uses-ask-tools", "area": "linked-questions", "kind": "guard", "pattern": "a link paired to ask questions only", "experience": "A link paired at the ask level refuses every tool but t3_ask_list, t3_ask_send and t3_ask_wait. An agent that reaches for t3_thread_send or t3_thread_launch there gets a refusal instead of an answer.", "rule": "ask: only t3_ask_list, t3_ask_send and t3_ask_wait.", "privacy": "commit-safe", "setup": {"role": "top", "linkedEnvironments": true, "mocks": {"t3_environment_links": {"environmentId": "environment-laptop", "links": [{"environmentId": "environment-studio", "label": "Studio Mac", "status": "reachable", "access": "ask", "expiresAt": "2026-12-01T00:00:00.000Z", "lastError": null}], "notListed": "Not listed: not linked yet. Call t3_environment_link with a hint from the user's words."}, "t3_ask_list": {"environmentId": "environment-studio", "machine": "Studio Mac", "threads": [{"threadId": "thread-release-notes", "title": "Release notes for 4.2", "machine": "Studio Mac", "project": "acme/app"}], "total": 1, "truncated": false}, "t3_ask_send": {"environmentId": "environment-studio", "threadId": "thread-release-notes", "questionId": "message:ask:session:release-branch", "status": "answering"}, "t3_ask_wait": {"status": "answered", "answer": "4.2 shipped from release/4.2, cut from main at a1b2c3d."}}}, "prompt": "Ask the release notes thread on my Studio Mac which branch 4.2 shipped from.", "expect": {"calls": [{"tool": "t3_ask_send", "args": {"environmentId": "environment-studio", "threadId": "thread-release-notes"}}], "notCalls": ["t3_thread_send", "t3_thread_launch", "t3_thread_read", "delegate_task"]}, "source": {"request": "t3-ask-link spec: threads on fleet machines ask threads on the main machine questions"}}
+ {"id": "full-access-link-uses-thread-send", "area": "linked-questions", "kind": "control", "pattern": "a full-access link keeps the ordinary thread tools", "experience": "A full-access link still takes t3_thread_send; the ask tools are only for threads that answer linked questions.", "rule": "ask: only t3_ask_list, t3_ask_send and t3_ask_wait.", "privacy": "commit-safe", "setup": {"role": "top", "linkedEnvironments": true, "mocks": {"t3_environment_links": {"environmentId": "environment-laptop", "links": [{"environmentId": "environment-vps", "label": "Hetzner VPS", "status": "reachable", "access": "full-access", "expiresAt": "2026-12-01T00:00:00.000Z", "lastError": null}], "notListed": "Not listed: not linked yet. Call t3_environment_link with a hint from the user's words."}, "t3_thread_list": {"environmentId": "environment-vps", "threads": [{"threadId": "thread-deploy-api", "title": "Deploy the API", "status": "idle"}], "total": 1}, "t3_thread_send": {"threadId": "thread-deploy-api", "status": "started", "delivery": "started"}}}, "prompt": "Tell the Deploy the API thread on my Hetzner VPS to rerun the health check.", "expect": {"calls": [{"tool": "t3_thread_send", "args": {"environmentId": "environment-vps"}}], "notCalls": ["t3_ask_send"]}, "source": {"request": "t3-ask-link spec: control for ask-link-uses-ask-tools"}}
++{"id": "ask-list-filters-a-busy-machine", "area": "linked-questions", "kind": "guard", "pattern": "a linked machine where hundreds of threads answer", "experience": "t3_ask_list returns the 50 threads with the newest activity. An agent that reads only that page does not find an older thread by name and gives up or asks the wrong one; titleContains finds it.", "rule": "t3_ask_list: to find a thread or project by name, pass titleContains.", "privacy": "commit-safe", "setup": {"role": "top", "linkedEnvironments": true, "mocks": {"t3_environment_links": {"environmentId": "environment-laptop", "links": [{"environmentId": "environment-studio", "label": "Studio Mac", "status": "reachable", "access": "ask", "expiresAt": "2026-12-01T00:00:00.000Z", "lastError": null}], "notListed": "Not listed: not linked yet. Call t3_environment_link with a hint from the user's words."}, "t3_ask_list": {"environmentId": "environment-studio", "machine": "Studio Mac", "threads": [{"threadId": "thread-billing-backfill", "title": "Billing migration backfill", "project": "payments", "machine": "Studio Mac"}], "total": 1, "truncated": false}, "t3_ask_send": {"environmentId": "environment-studio", "threadId": "thread-billing-backfill", "questionId": "message:ask:session:backfill", "status": "answering"}, "t3_ask_wait": {"status": "answered", "answer": "The backfill finished at 02:10 with no errors."}}}, "prompt": "On my Studio Mac, hundreds of threads answer questions. Ask the billing migration thread in the payments project whether the backfill finished.", "expect": {"calls": [{"tool": "t3_ask_list", "args": {"environmentId": "environment-studio", "titleContains": "re:[Bb]illing|[Pp]ayments|[Bb]ackfill"}}, {"tool": "t3_ask_send", "args": {"threadId": "thread-billing-backfill"}}]}, "source": {"request": "t3-ask-link: answering set by machine, project and thread; t3_ask_list pages at 50 threads"}}
+diff --git a/packages/client-runtime/src/operations/commands.ts b/packages/client-runtime/src/operations/commands.ts
+index 4de0667876d07e05b1c0be4fbcad5c311c1f73fe..ab9355d04bad96539d6d817a01a56a0f0a7eab90 100644
+--- a/packages/client-runtime/src/operations/commands.ts
++++ b/packages/client-runtime/src/operations/commands.ts
+@@ -85,6 +85,11 @@ export interface UpdateProjectInput extends CommandMetadata {
+   readonly archived?: boolean;
+ }
+ 
++export interface SetProjectLinkedQuestionsInput extends CommandMetadata {
++  readonly projectId: ProjectId;
++  readonly enabled: boolean | null;
++}
++
+ export interface DeleteProjectInput extends CommandMetadata {
+   readonly projectId: ProjectId;
+   readonly force?: boolean;
+@@ -434,6 +439,12 @@ const mutateProject = Effect.fn("EnvironmentCommands.mutateProject")(function* (
+         readonly trackFolders?: ReadonlyArray<ProjectTrackedFolder>;
+         readonly untrackFolders?: ReadonlyArray<string>;
+       }
++    | {
++        readonly type: "project.linked-questions.set";
++        readonly commandId: CommandId;
++        readonly projectId: ProjectId;
++        readonly enabled: boolean | null;
++      }
+     | {
+         readonly type: "project.delete";
+         readonly commandId: CommandId;
+@@ -491,6 +502,17 @@ export const updateProject = Effect.fn("EnvironmentCommands.updateProject")(func
+   });
+ });
+ 
++export const setProjectLinkedQuestions = Effect.fn("EnvironmentCommands.setProjectLinkedQuestions")(
++  function* (input: SetProjectLinkedQuestionsInput) {
++    return yield* mutateProject({
++      type: "project.linked-questions.set",
++      commandId: yield* allocateCommandId(input),
++      projectId: input.projectId,
++      enabled: input.enabled,
++    });
++  },
++);
++
+ export const deleteProject = Effect.fn("EnvironmentCommands.deleteProject")(function* (
+   input: DeleteProjectInput,
+ ) {
+@@ -631,7 +653,7 @@ export const setThreadAutoSettle = Effect.fn("EnvironmentCommands.setThreadAutoS
+ });
+ 
+ export interface SetThreadLinkedQuestionsInput extends ThreadCommandInput {
+-  readonly enabled: boolean;
++  readonly enabled: boolean | null;
+ }
+ export const setThreadLinkedQuestions = Effect.fn("EnvironmentCommands.setThreadLinkedQuestions")(
+   function* (input: SetThreadLinkedQuestionsInput) {
+diff --git a/packages/client-runtime/src/state/commandPermissions.test.ts b/packages/client-runtime/src/state/commandPermissions.test.ts
+index c413f384f69cd1e6a88c5ed64f36172537326117..5975fc93ba9013f66cc0f0a7d80d294457be77c1 100644
+--- a/packages/client-runtime/src/state/commandPermissions.test.ts
++++ b/packages/client-runtime/src/state/commandPermissions.test.ts
+@@ -20,6 +20,7 @@ import {
+   ThreadId,
+   EnvironmentId,
+   ORCHESTRATION_V2_WS_METHODS,
++  ProjectId,
+   ScheduledTaskId,
+   WS_METHODS,
+   type AuthEnvironmentScope,
+@@ -30,6 +31,7 @@ import * as Cause from "effect/Cause";
+ import * as SecureRandom from "effect/crypto/SecureRandom";
+ import * as DateTime from "effect/DateTime";
+ import * as Effect from "effect/Effect";
++import * as Exit from "effect/Exit";
+ import * as Fiber from "effect/Fiber";
+ import * as Layer from "effect/Layer";
+ import { Atom, AtomRegistry, AsyncResult } from "effect/reactivity";
+@@ -38,6 +40,7 @@ import { createCommandPermissions } from "./commandPermissions.ts";
+ import { createEnvironmentRpcCommand, runAtomCommand } from "./runtime.ts";
+ import { AVAILABLE_CONNECTION_STATE, BearerConnectionTarget } from "../connection/model.ts";
+ import { createPeerLinkEnvironmentAtoms } from "./peerLinks.ts";
++import { createProjectEnvironmentAtoms } from "./projectCommands.ts";
+ import { createThreadEnvironmentAtoms } from "./threadCommands.ts";
+ 
+ vi.mock("./session.ts", () => ({
+@@ -545,7 +548,7 @@ it.effect(
+     }),
+ );
+ 
+-it.effect("switches a thread's linked questions only with operate and access management", () =>
++it.effect("switches linked questions only with operate and access management", () =>
+   Effect.gen(function* () {
+     const registry = yield* setup;
+     const dispatched: Array<unknown> = [];
+@@ -555,6 +558,11 @@ it.effect("switches a thread's linked questions only with operate and access man
+           dispatched.push(command);
+           return { sequence: 1 };
+         }),
++      [WS_METHODS.projectsMutate]: (mutation: unknown) =>
++        Effect.sync(() => {
++          dispatched.push(mutation);
++          return {};
++        }),
+     };
+     const supervisor = {
+       target: new BearerConnectionTarget({
+@@ -568,17 +576,16 @@ it.effect("switches a thread's linked questions only with operate and access man
+         phase: "connected" as const,
+       }),
+     } as EnvironmentSupervisor["Service"];
+-    const threads = createThreadEnvironmentAtoms(
+-      Atom.runtime(
+-        Layer.merge(
+-          Layer.succeed(EnvironmentRegistry, {
+-            run: (_id, effect) => Effect.provideService(effect, EnvironmentSupervisor, supervisor),
+-          } as EnvironmentRegistry["Service"]),
+-          SecureRandom.layerWebCrypto,
+-        ),
++    const runtime = Atom.runtime(
++      Layer.merge(
++        Layer.succeed(EnvironmentRegistry, {
++          run: (_id, effect) => Effect.provideService(effect, EnvironmentSupervisor, supervisor),
++        } as EnvironmentRegistry["Service"]),
++        SecureRandom.layerWebCrypto,
+       ),
+-      () => Atom.make(null),
+     );
++    const threads = createThreadEnvironmentAtoms(runtime, () => Atom.make(null));
++    const projects = createProjectEnvironmentAtoms(runtime, { projectAtom: () => Atom.make(null) });
+     const setScopes = (scopes: ReadonlyArray<AuthEnvironmentScope>) =>
+       registry.set(
+         sessions(env),
+@@ -590,13 +597,20 @@ it.effect("switches a thread's linked questions only with operate and access man
+         input: { threadId: ThreadId.make("thread"), enabled: true },
+       }),
+     );
++    const projectFollowsMachine = Effect.exit(
++      projects.setLinkedQuestions.run(registry, {
++        environmentId: env,
++        input: { projectId: ProjectId.make("project"), enabled: null },
++      }),
++    );
+ 
+     setScopes([AuthOrchestrationOperateScope]);
+     expect(registry.get(threads.setLinkedQuestions.permissionAtom(env))).toBe(false);
+-    const denied = yield* optIn;
+-    expect(denied._tag).toBe("Failure");
+-    if (denied._tag === "Failure") {
+-      expect(Cause.squash(denied.cause)).toMatchObject({
++    expect(registry.get(projects.setLinkedQuestions.permissionAtom(env))).toBe(false);
++    const failureOf = (exit: Exit.Exit<unknown, unknown>) =>
++      exit._tag === "Failure" ? Cause.squash(exit.cause) : exit;
++    for (const denied of [yield* optIn, yield* projectFollowsMachine]) {
++      expect(failureOf(denied)).toMatchObject({
+         _tag: "EnvironmentAuthorizationError",
+         requiredPermission: AuthAccessWriteScope,
+       });
+@@ -605,8 +619,13 @@ it.effect("switches a thread's linked questions only with operate and access man
+ 
+     setScopes([AuthOrchestrationOperateScope, AuthAccessWriteScope]);
+     expect(registry.get(threads.setLinkedQuestions.permissionAtom(env))).toBe(true);
++    expect(registry.get(projects.setLinkedQuestions.permissionAtom(env))).toBe(true);
+     expect((yield* optIn)._tag).toBe("Success");
+-    expect(dispatched).toMatchObject([{ type: "thread.linked-questions.set", enabled: true }]);
++    expect((yield* projectFollowsMachine)._tag).toBe("Success");
++    expect(dispatched).toMatchObject([
++      { type: "thread.linked-questions.set", enabled: true },
++      { type: "project.linked-questions.set", projectId: "project", enabled: null },
++    ]);
+   }),
+ );
+ 
+diff --git a/packages/client-runtime/src/state/models.ts b/packages/client-runtime/src/state/models.ts
+index ce5ff551d9404b84048239391775e38f460be435..c49f4b3d492540f5377e2875705dce00f46df5ef 100644
+--- a/packages/client-runtime/src/state/models.ts
++++ b/packages/client-runtime/src/state/models.ts
+@@ -203,6 +203,7 @@ export interface EnvironmentThreadShell {
+   readonly pinnedAt: string | null;
+   readonly autoSettleDisabledAt?: string | null;
+   readonly linkedQuestionsEnabledAt?: string | null;
++  readonly linkedQuestionsDisabledAt?: string | null;
+   readonly pinOrderKey: string | null;
+   readonly activeOrderKey: string | null;
+   readonly pullRequests: ReadonlyArray<import("@t3tools/contracts").ThreadPullRequestLink>;
+@@ -364,6 +365,7 @@ export function presentThreadShell(
+     pinnedAt: nullableIso(thread.pinnedAt ?? null),
+     autoSettleDisabledAt: nullableIso(thread.autoSettleDisabledAt ?? null),
+     linkedQuestionsEnabledAt: nullableIso(thread.linkedQuestionsEnabledAt ?? null),
++    linkedQuestionsDisabledAt: nullableIso(thread.linkedQuestionsDisabledAt ?? null),
+     pinOrderKey: thread.pinOrderKey ?? null,
+     activeOrderKey: thread.activeOrderKey ?? null,
+     ...(thread.lastVisitedAt === undefined
+diff --git a/packages/client-runtime/src/state/projectCommands.ts b/packages/client-runtime/src/state/projectCommands.ts
+index b2930759d5cb8c78f42515d89050d6cca77c6a06..7218c250675cb6b0369627e346adfe18294c0f21 100644
+--- a/packages/client-runtime/src/state/projectCommands.ts
++++ b/packages/client-runtime/src/state/projectCommands.ts
+@@ -25,10 +25,16 @@ import type { EnvironmentProject } from "./models.ts";
+ import {
+   createAtomCommandScheduler,
+   createEnvironmentCommand,
++  createGuardedEnvironmentCommand,
+   createEnvironmentRpcCommand,
+   createEnvironmentRpcQueryAtomFamily,
+ } from "./runtime.ts";
+-import { createProject, deleteProject, updateProject } from "../operations/commands.ts";
++import {
++  createProject,
++  deleteProject,
++  setProjectLinkedQuestions,
++  updateProject,
++} from "../operations/commands.ts";
+ import type { EnvironmentRegistry } from "../connection/registry.ts";
+ import { createFileMetadataAtoms } from "./fileMetadata.ts";
+ import { resolveWorkspaceFilePath } from "@t3tools/shared/path";
+@@ -36,6 +42,7 @@ import { resolveWorkspaceFilePath } from "@t3tools/shared/path";
+ export type {
+   CreateProjectInput,
+   DeleteProjectInput,
++  SetProjectLinkedQuestionsInput,
+   UpdateProjectInput,
+ } from "../operations/commands.ts";
+ 
+@@ -185,6 +192,14 @@ export function createProjectEnvironmentAtoms<R, E>(
+       scheduler: projectScheduler,
+       concurrency: projectConcurrency,
+     }),
++    setLinkedQuestions: createGuardedEnvironmentCommand(runtime, {
++      label: "environment-data:commands:project:set-linked-questions",
++      tag: WS_METHODS.projectsMutate,
++      permissionInput: { type: "project.linked-questions.set" },
++      execute: setProjectLinkedQuestions,
++      scheduler: projectScheduler,
++      concurrency: projectConcurrency,
++    }),
+     delete: createEnvironmentCommand(runtime, {
+       label: "environment-data:commands:project:delete",
+       execute: deleteProject,
+diff --git a/packages/client-runtime/src/state/threadCommands.ts b/packages/client-runtime/src/state/threadCommands.ts
+index b4056d736e1d734dac814d9cc2bf785f31e62fcd..bf5c452f125a77946802eb20edc1a0667c1fcd09 100644
+--- a/packages/client-runtime/src/state/threadCommands.ts
++++ b/packages/client-runtime/src/state/threadCommands.ts
+@@ -606,7 +606,10 @@ export function createThreadEnvironmentAtoms<R, E>(
+     setLinkedQuestions: {
+       ...optimistic.wrap(commands.setLinkedQuestions, (thread, input, now) => ({
+         ...thread,
+-        linkedQuestionsEnabledAt: input.enabled ? (thread.linkedQuestionsEnabledAt ?? now) : null,
++        linkedQuestionsEnabledAt:
++          input.enabled === true ? (thread.linkedQuestionsEnabledAt ?? now) : null,
++        linkedQuestionsDisabledAt:
++          input.enabled === false ? (thread.linkedQuestionsDisabledAt ?? now) : null,
+       })),
+       permissionAtom: commands.setLinkedQuestions.permissionAtom,
+     },
+diff --git a/packages/contracts/src/applicationEvent.ts b/packages/contracts/src/applicationEvent.ts
+index 30079a711638c14bd1e68eccad6bedbb32b05cf8..8bb76265369b10fa97f84dece75bdfa2dc153b99 100644
+--- a/packages/contracts/src/applicationEvent.ts
++++ b/packages/contracts/src/applicationEvent.ts
+@@ -13,6 +13,7 @@ import {
+ } from "./baseSchemas.ts";
+ import { RepositoryIdentity, ThreadEnvMode } from "./environment.ts";
+ import { ModelSelection } from "./modelSelection.ts";
++import { LinkedQuestionsChoice } from "./linkedQuestions.ts";
+ import type { OrchestrationV2StoredEvent } from "./orchestrationV2.ts";
+ import { ProjectScript, ProjectTrackedFolders, StoredProjectIcon } from "./project.ts";
+ 
+@@ -64,6 +65,7 @@ export const ApplicationProjectMetaUpdatedPayload = Schema.Struct({
+   trackedFolders: Schema.optional(ProjectTrackedFolders),
+   pinnedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+   archivedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
++  linkedQuestions: Schema.optional(Schema.NullOr(LinkedQuestionsChoice)),
+   updatedAt: IsoDateTime,
+ });
+ export type ApplicationProjectMetaUpdatedPayload = typeof ApplicationProjectMetaUpdatedPayload.Type;
+diff --git a/packages/contracts/src/clientRpcPermissions.ts b/packages/contracts/src/clientRpcPermissions.ts
+index 9bcccbe9f2b17531a8d298be5b2aef556ca2be09..e6d98e4a715fb02089cc7425ec5060947569c02c 100644
+--- a/packages/contracts/src/clientRpcPermissions.ts
++++ b/packages/contracts/src/clientRpcPermissions.ts
+@@ -135,10 +135,12 @@ export function clientRpcRequiredScopes(
+   if (method === WS_METHODS.guestShareCreate) {
+     return [AuthAccessWriteScope, AuthOrchestrationReadScope];
+   }
+-  // Opting a thread in lets linked machines ask it questions: an access decision.
++  // Opting a thread or project in lets linked machines ask it questions: an access decision.
++  const type = (input as { readonly type?: unknown } | undefined)?.type;
+   if (
+-    method === ORCHESTRATION_V2_WS_METHODS.dispatchCommand &&
+-    (input as { readonly type?: unknown } | undefined)?.type === "thread.linked-questions.set"
++    (method === ORCHESTRATION_V2_WS_METHODS.dispatchCommand &&
++      type === "thread.linked-questions.set") ||
++    (method === WS_METHODS.projectsMutate && type === "project.linked-questions.set")
+   )
+     return [AuthOrchestrationOperateScope, AuthAccessWriteScope];
+   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
+diff --git a/packages/contracts/src/environment.ts b/packages/contracts/src/environment.ts
+index b3cd16e3838e0ad04855c6defa9322119ede3d7c..bb7a9f895b1d24397b7f210266270ac90f45cb64 100644
+--- a/packages/contracts/src/environment.ts
++++ b/packages/contracts/src/environment.ts
+@@ -198,6 +198,9 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
+   linkPairingForLink: Schema.optionalKey(Schema.Boolean),
+   /** Takes `ask` links: answers linked questions from opted-in threads and refuses them all else. */
+   askLinks: Schema.optionalKey(Schema.Boolean),
++  /** Thread and project choices of on, off or not set (`project.linked-questions.set`,
++      `enabled: null`); without it a client offers a thread only the on/off switch. */
++  linkedQuestionLevels: Schema.optionalKey(Schema.Boolean),
+   /** Mints pairing codes that approve one agent sign-in at a set level (`AUTO-…`). */
+   mcpApprovalCodes: Schema.optionalKey(Schema.Boolean),
+   peerLinkPairingCodes: Schema.optionalKey(Schema.Boolean),
+diff --git a/packages/contracts/src/index.ts b/packages/contracts/src/index.ts
+index 58863aaebd5e5ff780602231e6c996695899d643..18cc211978c4afe61e0e320aff8f9c48d711736e 100644
+--- a/packages/contracts/src/index.ts
++++ b/packages/contracts/src/index.ts
+@@ -40,6 +40,7 @@ export * from "./issue.ts";
+ export * from "./orchestrationDispatch.ts";
+ export * from "./orchestrationProject.ts";
+ export * from "./orchestrationV2.ts";
++export * from "./linkedQuestions.ts";
+ export * from "./guestShare.ts";
+ export * from "./guestStream.ts";
+ export * from "./applicationEvent.ts";
+diff --git a/packages/contracts/src/linkedQuestions.test.ts b/packages/contracts/src/linkedQuestions.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0c74ec94eaf9b24892f0030d2fb6eac1d96def8d
+--- /dev/null
++++ b/packages/contracts/src/linkedQuestions.test.ts
+@@ -0,0 +1,101 @@
++import { describe, expect, it } from "vite-plus/test";
++import * as Schema from "effect/Schema";
++
++import {
++  type LinkedQuestionsChoice,
++  type LinkedQuestionsThread,
++  resolveLinkedQuestions,
++  threadAnswersLinkedQuestions,
++  threadLinkedQuestionsChoice,
++} from "./linkedQuestions.ts";
++import { PROJECT_SCOPED_SERVER_SETTING_KEYS, ProjectSettingsOverrides } from "./settings.ts";
++import { T3ProjectFile } from "./t3ProjectFile.ts";
++
++const decodeProjectFile = Schema.decodeUnknownSync(T3ProjectFile);
++const decodeProjectSettings = Schema.decodeUnknownSync(ProjectSettingsOverrides);
++const lineage = { relationshipToParent: null };
++const kinds: ReadonlyArray<readonly [string, LinkedQuestionsThread, boolean]> = [
++  ["a thread", { lineage }, true],
++  ["a fork", { lineage: { relationshipToParent: "fork" } }, true],
++  ["a question thread", { lineage, linkedQuestionOf: "thread:asked" }, false],
++  ["a subagent", { lineage: { relationshipToParent: "subagent" } }, false],
++  ["a side chat", { lineage: { relationshipToParent: "fork", sideChat: true } }, false],
++  [
++    "a workflow's agent step",
++    { lineage: { relationshipToParent: null, workflowStep: true } },
++    false,
++  ],
++];
++const stored = (thread: LinkedQuestionsChoice | null) =>
++  thread === "on"
++    ? { linkedQuestionsEnabledAt: "2026-11-24T00:00:00.000Z" }
++    : thread === "off"
++      ? { linkedQuestionsDisabledAt: "2026-11-24T00:00:00.000Z" }
++      : {};
++
++describe("threadAnswersLinkedQuestions", () => {
++  it.each([
++    [false, null, null, false],
++    [false, null, "on", true],
++    [false, null, "off", false],
++    [false, "on", null, true],
++    [false, "on", "on", true],
++    [false, "on", "off", false],
++    [false, "off", null, false],
++    [false, "off", "on", true],
++    [false, "off", "off", false],
++    [true, null, null, true],
++    [true, null, "on", true],
++    [true, null, "off", false],
++    [true, "on", null, true],
++    [true, "on", "on", true],
++    [true, "on", "off", false],
++    [true, "off", null, false],
++    [true, "off", "on", true],
++    [true, "off", "off", false],
++  ] as const)(
++    "machine %s, project %s, thread %s: answers %s, except threads that never answer",
++    (machine, project, thread, expected) => {
++      for (const [kind, shape, takesQuestions] of kinds) {
++        expect(
++          threadAnswersLinkedQuestions({
++            thread: { ...shape, ...stored(thread) },
++            project,
++            machine,
++          }),
++          kind,
++        ).toBe(takesQuestions && expected);
++      }
++    },
++  );
++
++  it("names the level the answer comes from", () => {
++    expect(resolveLinkedQuestions({ thread: "off", project: "on", machine: true })).toEqual({
++      answers: false,
++      from: "thread",
++    });
++    expect(resolveLinkedQuestions({ thread: null, project: "on", machine: false })).toEqual({
++      answers: true,
++      from: "project",
++    });
++    expect(resolveLinkedQuestions({ thread: null, project: null, machine: true })).toEqual({
++      answers: true,
++      from: "machine",
++    });
++  });
++
++  it("reads a thread stored as on as on, and any other stored thread as not set", () => {
++    expect(threadLinkedQuestionsChoice({ linkedQuestionsEnabledAt: "2026-11-23T00:00:00Z" })).toBe(
++      "on",
++    );
++    expect(threadLinkedQuestionsChoice({ linkedQuestionsEnabledAt: null })).toBeNull();
++    expect(threadLinkedQuestionsChoice({})).toBeNull();
++  });
++
++  it("is never carried by a project file or by project settings", () => {
++    const carried = { linkedQuestions: "on", linkedQuestionsAnswerByDefault: true };
++    expect(decodeProjectFile(carried)).toEqual({});
++    expect(decodeProjectSettings(carried)).toEqual({});
++    expect(PROJECT_SCOPED_SERVER_SETTING_KEYS).not.toContain("linkedQuestionsAnswerByDefault");
++  });
++});
+diff --git a/packages/contracts/src/linkedQuestions.ts b/packages/contracts/src/linkedQuestions.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4124ac38b4d9fec8775c89165d527a7d69be068c
+--- /dev/null
++++ b/packages/contracts/src/linkedQuestions.ts
+@@ -0,0 +1,101 @@
++import * as Schema from "effect/Schema";
++
++import type { OrchestrationV2AppThreadLineage } from "./orchestrationV2.ts";
++
++export const LinkedQuestionsChoice = Schema.Literals(["on", "off"]);
++export type LinkedQuestionsChoice = typeof LinkedQuestionsChoice.Type;
++
++export type LinkedQuestionsLevel = "thread" | "project" | "machine";
++
++export interface LinkedQuestionsLevels {
++  readonly thread: LinkedQuestionsChoice | null;
++  readonly project: LinkedQuestionsChoice | null;
++  readonly machine: boolean;
++}
++
++export interface ResolvedLinkedQuestions {
++  readonly answers: boolean;
++  readonly from: LinkedQuestionsLevel;
++}
++
++export function resolveLinkedQuestions(levels: LinkedQuestionsLevels): ResolvedLinkedQuestions {
++  if (levels.thread !== null) return { answers: levels.thread === "on", from: "thread" };
++  if (levels.project !== null) return { answers: levels.project === "on", from: "project" };
++  return { answers: levels.machine, from: "machine" };
++}
++
++export function threadLinkedQuestionsChoice(thread: {
++  readonly linkedQuestionsEnabledAt?: unknown;
++  readonly linkedQuestionsDisabledAt?: unknown;
++}): LinkedQuestionsChoice | null {
++  if (thread.linkedQuestionsEnabledAt != null) return "on";
++  return thread.linkedQuestionsDisabledAt != null ? "off" : null;
++}
++
++export interface LinkedQuestionsThread {
++  readonly lineage: Pick<
++    OrchestrationV2AppThreadLineage,
++    "relationshipToParent" | "sideChat" | "workflowStep"
++  >;
++  readonly linkedQuestionOf?: unknown;
++  readonly linkedQuestionsEnabledAt?: unknown;
++  readonly linkedQuestionsDisabledAt?: unknown;
++}
++
++// The lineage half is isListedThreadLineage, which an import here would make a cycle: a thread
++// the owner has no list row and no menu for never answers.
++const canAnswerLinkedQuestions = (thread: LinkedQuestionsThread): boolean =>
++  thread.linkedQuestionOf == null &&
++  thread.lineage.relationshipToParent !== "subagent" &&
++  thread.lineage.sideChat !== true &&
++  thread.lineage.workflowStep !== true;
++
++export function threadAnswersLinkedQuestions(input: {
++  readonly thread: LinkedQuestionsThread;
++  readonly project: LinkedQuestionsChoice | null;
++  readonly machine: boolean;
++}): boolean {
++  return (
++    canAnswerLinkedQuestions(input.thread) &&
++    resolveLinkedQuestions({
++      thread: threadLinkedQuestionsChoice(input.thread),
++      project: input.project,
++      machine: input.machine,
++    }).answers
++  );
++}
++
++export type LinkedQuestionsControl =
++  | {
++      readonly kind: "levels";
++      readonly choice: LinkedQuestionsChoice | null;
++      readonly inherited: ResolvedLinkedQuestions;
++    }
++  | { readonly kind: "switch"; readonly enabled: boolean };
++
++/**
++ * Null for threads that never answer. A server without `linkedQuestionLevels` takes only on and
++ * off for a thread, so it gets the switch it had.
++ */
++export function threadLinkedQuestionsControl(input: {
++  readonly thread: LinkedQuestionsThread;
++  readonly project: LinkedQuestionsChoice | null;
++  readonly machine: boolean;
++  readonly levels: boolean;
++}): LinkedQuestionsControl | null {
++  if (!input.levels) {
++    return input.thread.linkedQuestionOf == null
++      ? { kind: "switch", enabled: input.thread.linkedQuestionsEnabledAt != null }
++      : null;
++  }
++  if (!canAnswerLinkedQuestions(input.thread)) return null;
++  return {
++    kind: "levels",
++    choice: threadLinkedQuestionsChoice(input.thread),
++    inherited: resolveLinkedQuestions({
++      thread: null,
++      project: input.project,
++      machine: input.machine,
++    }),
++  };
++}
+diff --git a/packages/contracts/src/orchestrationProject.ts b/packages/contracts/src/orchestrationProject.ts
+index e060c7da8059e05df33e7a0e82adb72dabf94aba..3a3f9644ea781c183457d3ef9f78557dfd88cf35 100644
+--- a/packages/contracts/src/orchestrationProject.ts
++++ b/packages/contracts/src/orchestrationProject.ts
+@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
+ import { IsoDateTime, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+ import { RepositoryIdentity, ThreadEnvMode } from "./environment.ts";
+ import { ModelSelection } from "./modelSelection.ts";
++import { LinkedQuestionsChoice } from "./linkedQuestions.ts";
+ import { ProjectScript, ProjectTrackedFolders, ReceivedProjectIcon } from "./project.ts";
+ 
+ export const OrchestrationProjectShell = Schema.Struct({
+@@ -25,6 +26,8 @@ export const OrchestrationProjectShell = Schema.Struct({
+   // Pinned projects lead project pickers; archived ones leave them. Optional so older servers decode.
+   pinnedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+   archivedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
++  /** Absent from older servers, which have no project level. */
++  linkedQuestions: Schema.optional(Schema.NullOr(LinkedQuestionsChoice)),
+   createdAt: IsoDateTime,
+   updatedAt: IsoDateTime,
+ });
+diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
+index ca996eee5abbdadb90f033636aca31b3301d030b..29513575dab59cd50c4e5bbfd65610866ceec83f 100644
+--- a/packages/contracts/src/orchestrationV2.ts
++++ b/packages/contracts/src/orchestrationV2.ts
+@@ -552,6 +552,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
+   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
+   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
+   linkedQuestionsEnabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
++  linkedQuestionsDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
+   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+   /** Absent on threads written before tags existed; read as empty. */
+@@ -2489,6 +2490,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
+   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
+   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
+   linkedQuestionsEnabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
++  linkedQuestionsDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
+   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+   /** Absent on threads written before tags existed; read as empty. */
+@@ -2663,6 +2665,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
+   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
+   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
+   linkedQuestionsEnabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
++  linkedQuestionsDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
+   lastVisitedAt: Schema.NullOr(Schema.DateTimeUtcFromString).pipe(
+     Schema.withDecodingDefault(Effect.succeed(null)),
+   ),
+@@ -3126,6 +3129,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
+   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
+   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
+   linkedQuestionsEnabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
++  linkedQuestionsDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
+   lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
+   titleRegeneration: Schema.optional(
+     Schema.NullOr(
+@@ -3454,7 +3458,8 @@ export const OrchestrationV2Command = Schema.Union([
+     type: Schema.Literal("thread.linked-questions.set"),
+     commandId: CommandId,
+     threadId: ThreadId,
+-    enabled: Schema.Boolean,
++    /** Null follows the project, then the machine. */
++    enabled: Schema.NullOr(Schema.Boolean),
+   }),
+   Schema.Struct({
+     type: Schema.Literal("thread.pin"),
+diff --git a/packages/contracts/src/orchestratorMcp.test.ts b/packages/contracts/src/orchestratorMcp.test.ts
+index d2908fa42db8cd8b4afbae4c5a47b65926e0be85..ff2a3f772d767741c9fa701a643f19f675c5e069 100644
+--- a/packages/contracts/src/orchestratorMcp.test.ts
++++ b/packages/contracts/src/orchestratorMcp.test.ts
+@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
+ import * as Schema from "effect/Schema";
+ 
+ import {
++  OrchestratorMcpAskListResult,
+   OrchestratorMcpDelegateTaskInput,
+   OrchestratorMcpDelegateTaskResult,
+   OrchestratorMcpThreadWaitResult,
+@@ -10,6 +11,9 @@ import {
+ const decodeDelegateTaskInput = Schema.decodeUnknownSync(OrchestratorMcpDelegateTaskInput);
+ const decodeDelegateTaskResult = Schema.decodeUnknownSync(OrchestratorMcpDelegateTaskResult);
+ const decodeThreadWaitResult = Schema.decodeUnknownSync(OrchestratorMcpThreadWaitResult);
++const decodeAskListReply = Schema.decodeUnknownSync(
++  Schema.fromJsonString(OrchestratorMcpAskListResult),
++);
+ 
+ describe("orchestrator MCP contracts", () => {
+   it("decodes cross-provider delegated task requests and durable results", () => {
+@@ -81,4 +85,26 @@ describe("orchestrator MCP contracts", () => {
+       }).next,
+     ).toBe(next);
+   });
++
++  it("decodes a thread list from a machine on the previous build", () => {
++    const thread = { threadId: "thread-1", title: "Release notes", machine: "studio" };
++    expect(
++      decodeAskListReply(
++        JSON.stringify({
++          environmentId: "environment-1",
++          machine: "studio",
++          threads: [thread, { ...thread, threadId: "thread-2" }],
++        }),
++      ),
++    ).toEqual({
++      environmentId: "environment-1",
++      machine: "studio",
++      threads: [
++        { ...thread, project: "" },
++        { ...thread, threadId: "thread-2", project: "" },
++      ],
++      total: 2,
++      truncated: false,
++    });
++  });
+ });
+diff --git a/packages/contracts/src/orchestratorMcp.ts b/packages/contracts/src/orchestratorMcp.ts
+index 3e35153db442162d37ca3032939dcf3df4354cb4..88921e15eba8d6a6480ecd91ff93fdded9ef2515 100644
+--- a/packages/contracts/src/orchestratorMcp.ts
++++ b/packages/contracts/src/orchestratorMcp.ts
+@@ -615,23 +615,52 @@ export const OrchestratorMcpThreadWaitResult = Schema.Struct({
+ });
+ export type OrchestratorMcpThreadWaitResult = typeof OrchestratorMcpThreadWaitResult.Type;
+ 
++export const ASK_LIST_MAX_THREADS = 50;
++
+ export const OrchestratorMcpAskListInput = Schema.Struct({
+   environmentId: OrchestratorMcpEnvironmentTarget,
++  titleContains: Schema.optional(
++    TrimmedNonEmptyString.check(Schema.isMaxLength(256)).annotate({
++      description: "Case-insensitive; matches the thread title or its project name.",
++    }),
++  ),
+ });
+ export type OrchestratorMcpAskListInput = typeof OrchestratorMcpAskListInput.Type;
+ 
++// A machine on an earlier build replies without project, total and truncated, and without a cap.
+ export const OrchestratorMcpAskThread = Schema.Struct({
+   threadId: ThreadId,
+   title: Schema.String,
++  project: Schema.String.pipe(Schema.withDecodingDefaultKey(Effect.succeed(""))),
+   machine: Schema.String,
+ });
+ export type OrchestratorMcpAskThread = typeof OrchestratorMcpAskThread.Type;
+ 
+-export const OrchestratorMcpAskListResult = Schema.Struct({
++const askListResultFields = {
+   environmentId: EnvironmentId,
+   machine: Schema.String,
+   threads: Schema.Array(OrchestratorMcpAskThread),
+-});
++};
++
++export const OrchestratorMcpAskListResult = Schema.Struct({
++  ...askListResultFields,
++  total: Schema.optionalKey(NonNegativeInt),
++  truncated: Schema.optionalKey(Schema.Boolean),
++}).pipe(
++  Schema.decodeTo(
++    Schema.toType(
++      Schema.Struct({ ...askListResultFields, total: NonNegativeInt, truncated: Schema.Boolean }),
++    ),
++    SchemaTransformation.transform({
++      decode: (result) => ({
++        ...result,
++        total: result.total ?? result.threads.length,
++        truncated: result.truncated ?? false,
++      }),
++      encode: (result) => result,
++    }),
++  ),
++);
+ export type OrchestratorMcpAskListResult = typeof OrchestratorMcpAskListResult.Type;
+ 
+ export const OrchestratorMcpAskSendInput = Schema.Struct({
+diff --git a/packages/contracts/src/project.ts b/packages/contracts/src/project.ts
+index 0077ef78020d84b9be700761ecc6e3649b9e63b5..c3a286eb73dc28cbf9f797d447a519f239b9e972 100644
+--- a/packages/contracts/src/project.ts
++++ b/packages/contracts/src/project.ts
+@@ -255,6 +255,13 @@ export const ProjectMutation = Schema.Union([
+     trackFolders: Schema.optional(ProjectAddedFolders),
+     untrackFolders: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+   }),
++  Schema.Struct({
++    type: Schema.Literal("project.linked-questions.set"),
++    commandId: CommandId,
++    projectId: ProjectId,
++    /** Null follows the machine. */
++    enabled: Schema.NullOr(Schema.Boolean),
++  }),
+   Schema.Struct({
+     type: Schema.Literal("project.delete"),
+     commandId: CommandId,
+diff --git a/packages/contracts/src/settings.test.ts b/packages/contracts/src/settings.test.ts
+index 771e102d2b25467839ce623f83e76d9085c10e63..b6262b5c5788ffcf4376d801b6ecff75a0da8102 100644
+--- a/packages/contracts/src/settings.test.ts
++++ b/packages/contracts/src/settings.test.ts
+@@ -524,6 +524,16 @@ describe("requiredScopesForProjectMutation", () => {
+         scripts: [],
+       }),
+     ).toEqual(["orchestration:operate", "settings:write"]);
++    for (const enabled of [true, false, null]) {
++      expect(
++        requiredScopesForProjectMutation({
++          type: "project.linked-questions.set",
++          commandId,
++          projectId,
++          enabled,
++        }),
++      ).toEqual(["orchestration:operate", "access:write"]);
++    }
+   });
+ });
+ 
+diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
+index d8b22aa2acd971e0aafd02e24f07563b82506cbd..9d551fb67d7dc07a6c6ab4f9a366d6e084448cac 100644
+--- a/packages/contracts/src/settings.ts
++++ b/packages/contracts/src/settings.ts
+@@ -1516,6 +1516,10 @@ export const ServerSettings = Schema.Struct({
+   linkedEnvironmentsInboundMaxAccess: AuthMcpClientAccess.pipe(
+     Schema.withDecodingDefault(Effect.succeed("full-access" as const)),
+   ),
++  /** Whether threads here answer linked questions when neither their project nor the thread says. */
++  linkedQuestionsAnswerByDefault: Schema.Boolean.pipe(
++    Schema.withDecodingDefault(Effect.succeed(false)),
++  ),
+   /** Beta: Claude and Codex predict the next prompt after completed turns. Codex follows a change at once; open Claude threads after they restart. */
+   promptSuggestionsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+   sidebarAutoSettleKeepPullRequests: Schema.Boolean.pipe(
+@@ -1955,6 +1959,7 @@ export const ServerSettingsPatch = Schema.Struct({
+   linkedEnvironmentsEnabled: Schema.optionalKey(Schema.Boolean),
+   workflowsEnabled: Schema.optionalKey(Schema.Boolean),
+   linkedEnvironmentsInboundMaxAccess: Schema.optionalKey(AuthMcpClientAccess),
++  linkedQuestionsAnswerByDefault: Schema.optionalKey(Schema.Boolean),
+   promptSuggestionsEnabled: Schema.optionalKey(Schema.Boolean),
+   backgroundActivity: Schema.optionalKey(
+     Schema.Struct({
+@@ -2058,7 +2063,8 @@ export function requiredScopesForServerSettingsPatch(
+     if (
+       key === "requireConnectDeviceApproval" ||
+       key === "enablePreviewTunnel" ||
+-      key === "linkedEnvironmentsInboundMaxAccess"
++      key === "linkedEnvironmentsInboundMaxAccess" ||
++      key === "linkedQuestionsAnswerByDefault"
+     ) {
+       changesAccess = true;
+     } else if (
+@@ -2092,6 +2098,10 @@ export function requiredScopesForServerSettingsPatch(
+ export function requiredScopesForProjectMutation(
+   mutation: ProjectMutation,
+ ): ReadonlyArray<AuthEnvironmentScope> {
++  // Letting linked machines ask a project's threads is an access decision, as for one thread.
++  if (mutation.type === "project.linked-questions.set") {
++    return [AuthOrchestrationOperateScope, AuthAccessWriteScope];
++  }
+   if (mutation.type === "project.delete" || mutation.scripts === undefined) {
+     return [AuthOrchestrationOperateScope];
+   }
+diff --git a/packages/provider-core/src/server/subagentProjection.ts b/packages/provider-core/src/server/subagentProjection.ts
+index 5c2e363a2a6b7dfebcb0287a2a2a8b953a9ddced..00294efabeb96def6fc7328f5b9fa805cd5380fe 100644
+--- a/packages/provider-core/src/server/subagentProjection.ts
++++ b/packages/provider-core/src/server/subagentProjection.ts
+@@ -103,6 +103,7 @@ export function makeSubagentChildThread(input: {
+     pinOrderKey: null,
+     autoSettleDisabledAt: null,
+     linkedQuestionsEnabledAt: null,
++    linkedQuestionsDisabledAt: null,
+     // A guest link belongs to the thread it was made for.
+     guestShare: null,
+     lastVisitedAt: null,

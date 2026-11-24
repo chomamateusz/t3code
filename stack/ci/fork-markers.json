@@ -9,7 +9,8 @@
     { "name": "usage cache import floor", "pattern": "SPEED_COMPATIBLE_SINCE_VERSION = 4;" },
     { "name": "terminal origin environment", "pattern": "originEnvironmentId: [\\w$]+\\.originEnvironmentId \\?\\? null" },
     { "name": "queued run merge command", "pattern": "queued-run\\.merge" },
-    { "name": "ask link default refusal", "pattern": "paired to ask questions only" }
+    { "name": "ask link default refusal", "pattern": "paired to ask questions only" },
+    { "name": "linked questions machine level", "pattern": "linkedQuestionsAnswerByDefault" }
   ],
   "serverAbsent": ["CACHE_RETENTION_DAYS"],
   "web": [
@@ -36,6 +37,7 @@
     { "name": "reorder pinned in grouped sidebar", "pattern": "sidebar-marker-pinned" },
     { "name": "pin from sidebar card", "pattern": "group-has-\\[:focus-visible\\]/sidebar-row:inline-flex" },
     { "name": "answer linked questions opt-in", "pattern": "Answer linked questions" },
+    { "name": "linked questions machine level row", "pattern": "Answer linked questions in every thread" },
     { "name": "GPT model OpenAI logo", "pattern": "/\\^gpt\\[\\\\s\\\\d-\\]/i" }
   ]
 }
