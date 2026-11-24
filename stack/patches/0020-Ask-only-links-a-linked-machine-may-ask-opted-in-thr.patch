@@ -93,6 +93,8 @@ Port to 21b52875ea: the translation catalog hunks (apps/mobile and apps/web i18n
 
 Port to d63b9c4c76: upstream 780db269df (#41330) rewrote docs/internals into numbered pages under new documentation rules, deleting adding-a-provider.md, environment-auth.md and remote.md. The three internal hunks move, shortened to constraints: the tools.supportsToollessTurns rule joins the capabilities bullet of 03_providers.md, the ask grant becomes a bullet in 04_environment-auth.md, and 05_remote.md's peer links gain the ask-link and inbound-cap bullets and the note that ask links cannot open linked thread streams. Code applied without conflicts.
 
+Port to 85aaef42d4: upstream 7dd35d324d (#41742) makes a link code from a linked environment require access:write plus the scopes of the access it hands out. clientRpcRequiredScopes takes those scopes from mcpApprovalScopes, so an ask code needs orchestration:read, as approving an ask link does, and every other level needs exactly what upstream requires; RpcAuthorization.test.ts adds the ask row to upstream's case and 04_environment-auth.md's ask bullet names the link code. Upstream e65b19d15e (#30773) runs setup for a worktree a send recreated before dispatch; a question takes no such checkout, which stays for the next ordinary turn's setup, and ProviderTurnStartService.ts keeps both error classes and both restore helpers. ProviderTurnStartService.test.ts adds that case. Upstream e3ac310920 (#41362) ends a run as completed when its provider turn ends, without a waiting state, so ClaudeAutomaticDelivery.integration.test.ts's linked-question case waits for completed runs.
+
 Files:
 - apps/mobile:
   src/features/home/HomeRouteScreen.tsx, src/features/home/HomeScreen.tsx,
@@ -217,7 +219,7 @@ Tests:
  apps/server/src/auth/EnvironmentAuth.ts       |  29 +-
  apps/server/src/auth/McpOAuth.test.ts         |  53 +-
  apps/server/src/auth/McpOAuth.ts              |  86 ++-
- apps/server/src/auth/RpcAuthorization.test.ts |  33 +-
+ apps/server/src/auth/RpcAuthorization.test.ts |  38 +-
  apps/server/src/auth/RpcAuthorization.ts      |   3 +-
  apps/server/src/auth/SessionStore.ts          |   2 +
  apps/server/src/auth/http.ts                  |   4 +-
@@ -245,8 +247,8 @@ Tests:
  .../src/orchestration-v2/ProjectionStore.ts   |  38 ++
  .../orchestration-v2/ProviderEventIngestor.ts |  56 +-
  .../ProviderTurnControlService.test.ts        |   1 +
- .../ProviderTurnStartService.test.ts          | 149 ++++-
- .../ProviderTurnStartService.ts               |  92 ++-
+ .../ProviderTurnStartService.test.ts          | 167 +++++-
+ .../ProviderTurnStartService.ts               |  94 ++-
  .../RestartBackgroundNote.test.ts             |   4 +
  .../orchestration-v2/RestartBackgroundNote.ts |   4 +-
  .../src/orchestration-v2/ThreadForkService.ts |   1 +
@@ -305,7 +307,7 @@ Tests:
  apps/web/src/session-logic.ts                 |   1 +
  apps/web/src/types.ts                         |   2 +
  docs/internals/03_providers.md                |   5 +-
- docs/internals/04_environment-auth.md         |   4 +
+ docs/internals/04_environment-auth.md         |   5 +
  docs/internals/05_remote.md                   |  16 +-
  docs/user/remote-access.md                    |  37 ++
  .../cases/linked-questions.ndjson             |   2 +
@@ -317,7 +319,7 @@ Tests:
  packages/client-runtime/src/state/runtime.ts  |  37 ++
  .../src/state/threadCommands.ts               |  18 +
  packages/contracts/src/auth.ts                |  46 +-
- .../contracts/src/clientRpcPermissions.ts     |   6 +
+ .../contracts/src/clientRpcPermissions.ts     |  10 +-
  packages/contracts/src/environment.ts         |   2 +
  .../contracts/src/orchestrationV2.test.ts     |  12 +
  packages/contracts/src/orchestrationV2.ts     |  37 +-
@@ -325,7 +327,7 @@ Tests:
  packages/contracts/src/settings.ts            |  12 +-
  .../src/server/ProviderAdapter.ts             |   2 +
  .../shared/src/orchestrationV2ThreadError.ts  |  39 ++
- 126 files changed, 4646 insertions(+), 390 deletions(-)
+ 126 files changed, 4673 insertions(+), 393 deletions(-)
  create mode 100644 apps/server/src/mcp/toolkits/ask/handlers.ts
  create mode 100644 apps/server/src/mcp/toolkits/ask/tools.ts
  create mode 100644 apps/server/src/orchestration-v2/linkedQuestionFailures.ts
@@ -506,10 +508,10 @@ index 1ee34663431b81e5fd1379b0e6ba32426bf7e886..a77a55661ab15e7b0d24f652e89cd77e
          )}
          {error !== null ? (
 diff --git a/apps/mobile/src/features/threads/ThreadFeed.tsx b/apps/mobile/src/features/threads/ThreadFeed.tsx
-index 005a6fb8f30c158195681fc1f727f963f5b35d7b..0eed7d15cffc5fb9311b9b038bde73ba6bed74e5 100644
+index c24b70c575139b6a6c55f34bd46c8e65db6e7dcc..7828ffcfe5ef3cda7a125da6cb2a4672fcb9a84e 100644
 --- a/apps/mobile/src/features/threads/ThreadFeed.tsx
 +++ b/apps/mobile/src/features/threads/ThreadFeed.tsx
-@@ -2400,6 +2400,11 @@ function renderFeedEntry(
+@@ -2393,6 +2393,11 @@ function renderFeedEntry(
            {presentation.guestName !== undefined ? (
              <GuestMessageName name={presentation.guestName} />
            ) : null}
@@ -589,7 +591,7 @@ index 4f5b799f82879d2b4434010370dea435c2dda0ba..464ca1ae53006f54d28a2ec7d95ef381
          });
          const title =
 diff --git a/apps/mobile/src/features/threads/thread-list-v2-items.tsx b/apps/mobile/src/features/threads/thread-list-v2-items.tsx
-index 7a18e1429934e0e07c3dad031d37537ecb80fce3..f10839239b6c5f6395eeee4ca5609de50064ece4 100644
+index 120270cb140723bed32e93d228a4f07b9c21d493..82229452fe26b3e326c5e5fc77c87d339817567f 100644
 --- a/apps/mobile/src/features/threads/thread-list-v2-items.tsx
 +++ b/apps/mobile/src/features/threads/thread-list-v2-items.tsx
 @@ -10,6 +10,7 @@ import {
@@ -664,7 +666,7 @@ index 7a18e1429934e0e07c3dad031d37537ecb80fce3..f10839239b6c5f6395eeee4ca5609de5
    const canTurnIntoProject = canTurnThreadIntoProject(thread);
    const titleMenuItems = useMemo<MenuAction[]>(
      () => [
-@@ -1124,6 +1149,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+@@ -1127,6 +1152,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
            secondary: [
              ...titleMenuItems,
              ...autoSettleMenuItems,
@@ -672,7 +674,7 @@ index 7a18e1429934e0e07c3dad031d37537ecb80fce3..f10839239b6c5f6395eeee4ca5609de5
              localized(LEGACY_MENU_ACTIONS[0]!),
              localized(SNOOZED_MENU_ACTIONS[1]!),
            ],
-@@ -1155,6 +1181,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+@@ -1158,6 +1184,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
            secondary: [
              ...titleMenuItems,
              ...autoSettleMenuItems,
@@ -680,7 +682,7 @@ index 7a18e1429934e0e07c3dad031d37537ecb80fce3..f10839239b6c5f6395eeee4ca5609de5
              localized(LEGACY_MENU_ACTIONS[0]!),
              localized(SLIM_MENU_ACTIONS[1]!),
            ],
-@@ -1184,6 +1211,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+@@ -1187,6 +1214,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
          secondary: [
            ...titleMenuItems,
            ...autoSettleMenuItems,
@@ -688,7 +690,7 @@ index 7a18e1429934e0e07c3dad031d37537ecb80fce3..f10839239b6c5f6395eeee4ca5609de5
            localized(LEGACY_MENU_ACTIONS[0]!),
            localized(CARD_MENU_ACTIONS[1]!),
          ],
-@@ -1192,6 +1220,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+@@ -1195,6 +1223,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
      );
    }, [
      autoSettleMenuItems,
@@ -696,7 +698,7 @@ index 7a18e1429934e0e07c3dad031d37537ecb80fce3..f10839239b6c5f6395eeee4ca5609de5
      canShareWithGuest,
      canUnsettle,
      pinMenuItems,
-@@ -1215,6 +1244,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+@@ -1218,6 +1247,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
        if (nativeEvent.event === "unpin") handleUnpin();
        if (nativeEvent.event === "auto-settle:enabled") handleSetAutoSettle(true);
        if (nativeEvent.event === "auto-settle:disabled") handleSetAutoSettle(false);
@@ -704,7 +706,7 @@ index 7a18e1429934e0e07c3dad031d37537ecb80fce3..f10839239b6c5f6395eeee4ca5609de5
        if (nativeEvent.event === "arrange") appAtomRegistry.set(threadArrangementOpenAtom, true);
        if (nativeEvent.event === "move-up") handleMoveUp();
        if (nativeEvent.event === "move-down") handleMoveDown();
-@@ -1284,6 +1314,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+@@ -1287,6 +1317,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
        handleSettle,
        handleSnooze,
        handleSetAutoSettle,
@@ -813,10 +815,10 @@ index 50a004d679003439f65b0730423fbc522ced6594..53b2d27537e49b8065ffedce6982e380
      dismissAccessibilityLabel: REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL,
      // Editing and sending keep the original text so quoted citations stay linked.
 diff --git a/apps/mobile/src/lib/threadActivity.ts b/apps/mobile/src/lib/threadActivity.ts
-index e180927aa3c90ee5e9cea75312542a0e1db4f1ba..54e2ea0831fd4a726f78f0468c9506bbd4061d7c 100644
+index 13bfc8cfaeae71fc32fe2c1e93e9a5022dbea051..958d9b2a842c7c9178d9797664567fe59504ddc6 100644
 --- a/apps/mobile/src/lib/threadActivity.ts
 +++ b/apps/mobile/src/lib/threadActivity.ts
-@@ -151,6 +151,7 @@ export interface ThreadFeedMessage {
+@@ -149,6 +149,7 @@ export interface ThreadFeedMessage {
    readonly scheduledTaskId?: ScheduledTaskId;
    readonly senderThreadId?: ThreadId;
    readonly linkedSender?: import("@t3tools/contracts").OrchestrationV2LinkedSender;
@@ -824,7 +826,7 @@ index e180927aa3c90ee5e9cea75312542a0e1db4f1ba..54e2ea0831fd4a726f78f0468c9506bb
    readonly idleCompaction?: import("@t3tools/contracts").OrchestrationV2IdleCompaction;
    readonly visibility: OrchestrationV2ProjectedTurnItem["visibility"];
    readonly sourceThreadId: ThreadId;
-@@ -2736,6 +2737,7 @@ export function buildThreadFeed(
+@@ -2671,6 +2672,7 @@ export function buildThreadFeed(
                  ...(item.scheduledTaskId ? { scheduledTaskId: item.scheduledTaskId } : {}),
                  ...(item.senderThreadId ? { senderThreadId: item.senderThreadId } : {}),
                  ...(item.linkedSender ? { linkedSender: item.linkedSender } : {}),
@@ -994,7 +996,7 @@ index fa812562669268c566934e9a5a5179403c26cab9..025c1c6c2a1397796e14738a95c683f6
      }).pipe(
        Effect.catchTags({
 diff --git a/apps/server/src/auth/McpOAuth.test.ts b/apps/server/src/auth/McpOAuth.test.ts
-index f66d0b1c6e81c2002774cdc627a1311801d30a61..443cd3d670f18967d4d00774d0aa59abd24d4bfc 100644
+index c21b707bad889ca12891566dabe0ae76551af92d..f8258d25de11ed649d4e7cd151ee1567298e1fc8 100644
 --- a/apps/server/src/auth/McpOAuth.test.ts
 +++ b/apps/server/src/auth/McpOAuth.test.ts
 @@ -7,7 +7,7 @@ import {
@@ -1006,7 +1008,7 @@ index f66d0b1c6e81c2002774cdc627a1311801d30a61..443cd3d670f18967d4d00774d0aa59ab
  } from "@t3tools/contracts";
  import { expect, it } from "@effect/vitest";
  import * as Clock from "effect/Clock";
-@@ -35,6 +35,7 @@ import * as McpOAuthHttp from "./mcpOAuthHttp.ts";
+@@ -36,6 +36,7 @@ import * as McpOAuthHttp from "./mcpOAuthHttp.ts";
  import * as ServerSecretStore from "./ServerSecretStore.ts";
  import * as AuthHttp from "./http.ts";
  import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
@@ -1014,7 +1016,7 @@ index f66d0b1c6e81c2002774cdc627a1311801d30a61..443cd3d670f18967d4d00774d0aa59ab
  
  class AuthTestApi extends HttpApi.make("environment")
    .add(EnvironmentHttpApi.groups.auth)
-@@ -68,6 +69,11 @@ const makeLayerRoutes = (
+@@ -69,6 +70,11 @@ const makeLayerRoutes = (
        Layer.provide(
          McpOAuthHttp.layer.pipe(
            Layer.provide(McpOAuth.layer),
@@ -1026,7 +1028,7 @@ index f66d0b1c6e81c2002774cdc627a1311801d30a61..443cd3d670f18967d4d00774d0aa59ab
            Layer.provide(ServerSettings.layerTest({ linkedEnvironmentsEnabled: true })),
            Layer.provide(
              Layer.mock(CloudLink.CloudLink)({ linkState: () => Effect.succeed(linkState) }),
-@@ -622,6 +628,46 @@ it.live(
+@@ -644,6 +650,46 @@ it.live(
            ),
          );
          expect(readOnlyClient.access).toBe("read-only");
@@ -1073,7 +1075,7 @@ index f66d0b1c6e81c2002774cdc627a1311801d30a61..443cd3d670f18967d4d00774d0aa59ab
        }),
      ),
  );
-@@ -631,13 +677,14 @@ it.live("a code minted with an access level's scopes approves that access", () =
+@@ -653,13 +699,14 @@ it.live("a code minted with an access level's scopes approves that access", () =
      Effect.gen(function* () {
        const params = authorizeParams(yield* registeredClientId(handler));
        for (const access of AuthMcpClientAccess.literals) {
@@ -1274,10 +1276,22 @@ index e63c600ae1b2d67542476f6bf0fd69550b9e540c..6f86f7a2cc07defd44e5c0e7b2795301
            );
          },
 diff --git a/apps/server/src/auth/RpcAuthorization.test.ts b/apps/server/src/auth/RpcAuthorization.test.ts
-index 750ff136ac07d7fa8c9612a7fb0fe5e1f6e49948..bdb0d87a3813a96fcbd4d90c33bbbc3c4c785b71 100644
+index 15ddfb90b08a59549e6b7d6dd08869a55625e525..494b2d9c5222e3c0fc96a39a484f5161bdc470c4 100644
 --- a/apps/server/src/auth/RpcAuthorization.test.ts
 +++ b/apps/server/src/auth/RpcAuthorization.test.ts
-@@ -513,6 +513,11 @@ describe("settings mutation authorization", () => {
+@@ -399,6 +399,11 @@ it.effect("hands out a link code or a guest link only within what the session it
+         Effect.flip,
+       ),
+     ).toMatchObject({ requiredPermission: AuthOrchestrationReadScope });
++    expect(
++      yield* manager[WS_METHODS.peerLinksPairLink]({ environmentId, access: "ask" }).pipe(
++        Effect.flip,
++      ),
++    ).toMatchObject({ requiredPermission: AuthOrchestrationReadScope });
+     expect(
+       yield* manager[WS_METHODS.guestShareCreate]({ threadId }).pipe(Effect.flip),
+     ).toMatchObject({ requiredPermission: AuthOrchestrationReadScope });
+@@ -583,6 +588,11 @@ describe("settings mutation authorization", () => {
              patch: { requireConnectDeviceApproval: false },
            }).pipe(Effect.flip),
          ).toMatchObject({ requiredPermission: AuthAccessWriteScope });
@@ -1289,7 +1303,7 @@ index 750ff136ac07d7fa8c9612a7fb0fe5e1f6e49948..bdb0d87a3813a96fcbd4d90c33bbbc3c
          // A reference names any secret the store holds, and the host entry names where it goes.
          expect(
            yield* client[WS_METHODS.serverUpdateSettings]({
-@@ -815,7 +820,14 @@ it.effect("requires provider management to send /logout through chat", () =>
+@@ -885,7 +895,14 @@ it.effect("requires provider management to send /logout through chat", () =>
      yield* dispatch({ ...edit("attached-edit"), attachments });
      // This edit keeps the queued attachments; message intake decides it.
      yield* dispatch(edit("kept-attachments-edit"));
@@ -1305,7 +1319,7 @@ index 750ff136ac07d7fa8c9612a7fb0fe5e1f6e49948..bdb0d87a3813a96fcbd4d90c33bbbc3c
        expect(yield* dispatch(command).pipe(Effect.flip)).toMatchObject({
          requiredPermission: AuthProvidersManageScope,
        });
-@@ -829,12 +841,31 @@ it.effect("requires provider management to send /logout through chat", () =>
+@@ -899,12 +916,31 @@ it.effect("requires provider management to send /logout through chat", () =>
        ),
      );
      yield* manager[ORCHESTRATION_V2_WS_METHODS.dispatchCommand](message("manager", "/logout"));
@@ -1421,10 +1435,10 @@ index c9ffde0ecda999c1e5da327d9762d9587dc169c4..0e6c189643efc0c6304532537f9658df
            };
          }),
 diff --git a/apps/server/src/cli/environment.ts b/apps/server/src/cli/environment.ts
-index 9243d0340eabf5f1a69e5cecdd36ee8c6a2c5a65..ba3071d4ff669c78c956e013acbc9317db68e75e 100644
+index a4b47ebbe8c55d35ed178650f03c520e6dbb8681..d54dafff613880837dacde1364aa7e20969bdb71 100644
 --- a/apps/server/src/cli/environment.ts
 +++ b/apps/server/src/cli/environment.ts
-@@ -228,7 +228,7 @@ const environmentLinkCommand = Command.make("link", {
+@@ -229,7 +229,7 @@ const environmentLinkCommand = Command.make("link", {
    ),
    access: Flag.Literals("access", AuthMcpClientAccess.literals).pipe(
      Flag.withDescription(
@@ -1849,7 +1863,7 @@ index 3b2cb665b35480ecb83bb3c4f0673fed1ac4b2ae..348cfd71877ce4b4905caf5342b6049c
      ).pipe(Effect.provide(NodeHttpServer.layerTest)),
  );
 diff --git a/apps/server/src/mcp/McpHttpServer.ts b/apps/server/src/mcp/McpHttpServer.ts
-index be41f8630b7dda0ea01dae56ed85ce66ad455fbd..e9e9fc7f9e522677e2911c609c3bb821f460accf 100644
+index 2b1deed86f03706e1525d3bcb0a3fbf1b0b9dfd3..2ad50f3f96d90adcdd8aa381537c188858e9cb76 100644
 --- a/apps/server/src/mcp/McpHttpServer.ts
 +++ b/apps/server/src/mcp/McpHttpServer.ts
 @@ -34,6 +34,7 @@ import { parseBearerToken } from "../auth/EnvironmentAuth.ts";
@@ -1860,7 +1874,7 @@ index be41f8630b7dda0ea01dae56ed85ce66ad455fbd..e9e9fc7f9e522677e2911c609c3bb821
  import * as DeviceService from "../device/DeviceService.ts";
  import * as HtmlRender from "../htmlRender/HtmlRender.ts";
  import * as MilestoneEvents from "../milestones/MilestoneEvents.ts";
-@@ -78,6 +79,9 @@ import * as ThreadHandlers from "./toolkits/thread/handlers.ts";
+@@ -81,6 +82,9 @@ import * as ThreadHandlers from "./toolkits/thread/handlers.ts";
  import * as ThreadMetadataMcpService from "./ThreadMetadataMcpService.ts";
  import * as McpSessionRegistry from "./McpSessionRegistry.ts";
  import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
@@ -1870,7 +1884,7 @@ index be41f8630b7dda0ea01dae56ed85ce66ad455fbd..e9e9fc7f9e522677e2911c609c3bb821
  import * as OrchestratorHandlers from "./toolkits/orchestrator/handlers.ts";
  import { OrchestratorToolkit } from "./toolkits/orchestrator/tools.ts";
  import * as PreviewHandlers from "./toolkits/preview/handlers.ts";
-@@ -151,7 +155,10 @@ export class McpClientAuthenticator extends Context.Service<
+@@ -154,7 +158,10 @@ export class McpClientAuthenticator extends Context.Service<
    {
      readonly authenticate: (
        request: HttpServerRequest.HttpServerRequest,
@@ -1882,7 +1896,7 @@ index be41f8630b7dda0ea01dae56ed85ce66ad455fbd..e9e9fc7f9e522677e2911c609c3bb821
    }
  >()("t3/mcp/McpHttpServer/McpClientAuthenticator") {}
  
-@@ -392,7 +399,12 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
+@@ -395,7 +402,12 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
      const request = yield* HttpServerRequest.HttpServerRequest;
      // The transport allows no browser Origin; refuse it before credentials, as the MCP spec requires.
      if (request.headers.origin !== undefined) return HttpServerResponse.empty({ status: 403 });
@@ -1896,7 +1910,7 @@ index be41f8630b7dda0ea01dae56ed85ce66ad455fbd..e9e9fc7f9e522677e2911c609c3bb821
      if (HttpServerResponse.isHttpServerResponse(admitted)) return admitted;
      if (yield* isUndefinedNotification(request)) return HttpServerResponse.empty({ status: 202 });
      const linkExpiresAt = admitted.client?.linkExpiresAt;
-@@ -1396,6 +1408,10 @@ export const layerPullRequestsToolkit = toolkitRegistration(
+@@ -1462,6 +1474,10 @@ export const layerPullRequestsToolkit = toolkitRegistration(
  
  const layerIssuesToolkit = toolkitRegistration(IssuesToolkit, IssuesHandlers.layer);
  
@@ -1907,7 +1921,7 @@ index be41f8630b7dda0ea01dae56ed85ce66ad455fbd..e9e9fc7f9e522677e2911c609c3bb821
  const layerDeviceStandardToolkitRegistration = toolkitRegistration(
    DeviceStandardToolkit,
    DeviceHandlers.layerStandard,
-@@ -1430,6 +1446,18 @@ export const layerInProcessMcpServer = McpServer.middleware<{
+@@ -1496,6 +1512,18 @@ export const layerInProcessMcpServer = McpServer.middleware<{
    { global: true },
  ).pipe(Layer.provideMerge(McpServer.McpServer.layer));
  
@@ -1926,7 +1940,7 @@ index be41f8630b7dda0ea01dae56ed85ce66ad455fbd..e9e9fc7f9e522677e2911c609c3bb821
  export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE, RR>) =>
    McpServer.layerHttp({
      name: "T3 Code",
-@@ -1437,7 +1465,7 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
+@@ -1503,7 +1531,7 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
      path: MCP_HTTP_PATH,
      protocols: mcpProtocols,
      allowSessionTermination: true,
@@ -1935,7 +1949,7 @@ index be41f8630b7dda0ea01dae56ed85ce66ad455fbd..e9e9fc7f9e522677e2911c609c3bb821
    }).pipe(Layer.provide(layerMcpAuthMiddleware));
  
  /** Every tool the T3 MCP server advertises. AgentContextBudget.test.ts measures this set. */
-@@ -1458,6 +1486,7 @@ export const layerTools = Layer.mergeAll(
+@@ -1524,6 +1552,7 @@ export const layerTools = Layer.mergeAll(
    layerDeviceToolkit,
    layerHtmlToolkit,
    layerMessageToolkit,
@@ -3040,7 +3054,7 @@ index 49f6c1c5c6b5af3ee6ba1a9c91e7c08602a00579..b48b27712879b48520eb0cd26d430913
  );
  
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index 6c143b52e29910f6a621ddfd16dfb1bc6fd5d9ce..050c38cf8b8f39d9f465b942bc8868fdc6214de3 100644
+index df58b80756769c0565b5ae61e60ac8f92ca4e463..21d2393739d5a27f840bc64b1e0563d8a6619fd2 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -702,6 +702,62 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
@@ -3491,7 +3505,7 @@ index 6c143b52e29910f6a621ddfd16dfb1bc6fd5d9ce..050c38cf8b8f39d9f465b942bc8868fd
  
  describe("ClaudeAdapterV2 MCP credential channel", () => {
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696cbe76f0a 100644
+index b37071222677944204eaaf45800afa52280bb807..eff95c31b519ad63bda12f86d17962e6da2da1a0 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -201,6 +201,7 @@ import { signalProcessGroup } from "@t3tools/provider-core/server/processGroup";
@@ -3557,7 +3571,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
  export class ClaudeAppendSystemPromptFileError extends Schema.TaggedError<ClaudeAppendSystemPromptFileError>()(
    "ClaudeAppendSystemPromptFileError",
    {
-@@ -1793,29 +1828,41 @@ export const layerQueryRunner: Layer.Layer<
+@@ -1838,29 +1873,41 @@ export const layerQueryRunner: Layer.Layer<
            Effect.tap((queryRuntime) =>
              restore(
                Effect.gen(function* () {
@@ -3620,7 +3634,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
                    // Errors and mcp_status can echo headers; log only server names.
                    const failed = yield* Effect.tryPromise({
                      try: () => queryRuntime.setMcpServers(mcpServers),
-@@ -2443,6 +2490,8 @@ export function makeClaudeQueryOptions(input: {
+@@ -2488,6 +2535,8 @@ export function makeClaudeQueryOptions(input: {
    readonly appendSystemPromptFileText?: string;
    // Flag settings, because a user's settings.json env beats the process env in Claude Code.
    readonly toolSearchOverride?: "true";
@@ -3629,7 +3643,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
  }): ClaudeAgentSdkQueryOptions {
    const compiledSelection = compileClaudeModelSelection(input.modelSelection, input.modelCatalog);
    const {
-@@ -2474,9 +2523,20 @@ export function makeClaudeQueryOptions(input: {
+@@ -2519,9 +2568,20 @@ export function makeClaudeQueryOptions(input: {
      extraArgs["thinking-display"] = "summarized";
    }
    const pluginDirectories =
@@ -3651,7 +3665,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
    const threadIdentity: ClaudeAgentSdkThreadIdentity = input.resume
      ? { resume: input.nativeThreadId }
      : { sessionId: input.nativeThreadId };
-@@ -2540,10 +2600,13 @@ export function makeClaudeQueryOptions(input: {
+@@ -2585,10 +2645,13 @@ export function makeClaudeQueryOptions(input: {
      ...(input.title === undefined ? {} : { title: input.title }),
      tools: claudeAgentSdkQueryToolsForSdk(selectedTools),
      permissionMode:
@@ -3669,7 +3683,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
      includePartialMessages: true,
      promptSuggestions: input.promptSuggestions === true,
      ...(compiledSelection.effort === undefined
-@@ -2616,7 +2679,7 @@ export function makeClaudeQueryOptions(input: {
+@@ -2661,7 +2724,7 @@ export function makeClaudeQueryOptions(input: {
      ...(pluginDirectories.length === 0
        ? {}
        : { plugins: pluginDirectories.map((path) => ({ type: "local" as const, path })) }),
@@ -3678,7 +3692,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
    };
    const additionalDirectories = [
      ...(input.cwd === null ? [] : [input.cwd]),
-@@ -3597,6 +3660,9 @@ function readOnlyPolicyAllowsGlobalReads(
+@@ -3642,6 +3705,9 @@ function readOnlyPolicyAllowsGlobalReads(
  function permissionModeForClaudeRuntimePolicy(
    runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
  ): PermissionMode {
@@ -3688,7 +3702,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
    if (runtimePolicy.interactionMode === "plan") {
      return "plan";
    }
-@@ -3649,8 +3715,16 @@ export interface ClaudeRuntimeQueryPolicy {
+@@ -3694,8 +3760,16 @@ export interface ClaudeRuntimeQueryPolicy {
    readonly allowedTools?: ReadonlyArray<string>;
    readonly allowDangerouslySkipPermissions?: true;
    readonly installPermissionCallback: boolean;
@@ -3705,7 +3719,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
  interface ClaudeBypassAvailability {
    readonly bypassDisabled: boolean;
    readonly autoDisabled: boolean;
-@@ -3665,6 +3739,9 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
+@@ -3710,6 +3784,9 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
    runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
    availability: ClaudeBypassAvailability = CLAUDE_BYPASS_FULLY_AVAILABLE,
  ): ClaudeRuntimeQueryPolicy {
@@ -3715,7 +3729,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
    const requestedMode = permissionModeForClaudeRuntimePolicy(runtimePolicy);
    const downgraded = requestedMode === "bypassPermissions" && availability.bypassDisabled;
    const permissionMode = downgraded
-@@ -3813,6 +3890,7 @@ function claudeRuntimeQueryPolicyKey(policy: ClaudeRuntimeQueryPolicy): string {
+@@ -3858,6 +3935,7 @@ function claudeRuntimeQueryPolicyKey(policy: ClaudeRuntimeQueryPolicy): string {
      allowedTools: policy.allowedTools,
      allowDangerouslySkipPermissions: policy.allowDangerouslySkipPermissions,
      installPermissionCallback: policy.installPermissionCallback,
@@ -3723,7 +3737,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
    });
  }
  
-@@ -12035,7 +12113,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12088,7 +12166,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
            }
  
            const toolPresentations = claudeToolPresentationsFromAssistantMessage(message);
@@ -3736,7 +3750,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
              const nativeToolInput = claudeNativeToolInputFromUnknown(toolUse.input);
              if (toolUse.name === "Agent") {
                rememberClaudeSubagentLaunch(
-@@ -12760,6 +12842,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12813,6 +12895,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                toolUseID: callbackOptions.toolUseID,
              } satisfies PermissionResult;
            }
@@ -3753,7 +3767,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
  
            const nativeRequestId = callbackOptions.toolUseID;
            const nativeToolInput = claudeNativeToolInputFromRecord(toolInput);
-@@ -13300,13 +13392,25 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13420,13 +13512,25 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
            nativeThreadId: string,
            queryPolicy: Effect.Success<ReturnType<typeof queryPolicyForTurn>>,
          ) {
@@ -3781,7 +3795,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
                  const pendingWake = (yield* mcpSessions.read(turnInput.threadId))?.hasPendingWake;
                  return pendingWake !== undefined && (yield* pendingWake) ? { continue: false } : {};
                }),
-@@ -13331,7 +13435,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13451,7 +13555,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              existing !== null &&
              existing.nativeThreadId === nativeThreadId &&
              !existing.stopping &&
@@ -3792,7 +3806,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
            ) {
              return existing;
            }
-@@ -13511,6 +13617,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13662,6 +13768,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              supportedDialogKinds: ["resume_return"],
              ...(appendSystemPromptFileText === undefined ? {} : { appendSystemPromptFileText }),
              ...(toolSearchOverride === undefined ? {} : { toolSearchOverride }),
@@ -3800,7 +3814,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
            });
            const resolvedTurnCwd = yield* fileSystem
              .realPath(turnInput.runtimePolicy.cwd ?? ".")
-@@ -13792,7 +13899,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13952,7 +14059,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              }
              const [skills, queryPolicy] = yield* Effect.all(
                [
@@ -3810,7 +3824,7 @@ index 0d57ca34fe305fd26a8a7f25028125f4f95bdca3..0220102fea3d5a8819746b38a10fc696
                    : userInvocableSkills(turnInput.runtimePolicy.cwd),
                  queryPolicyForTurn(turnInput),
 diff --git a/apps/server/src/orchestration-v2/ClaudeAutomaticDelivery.integration.test.ts b/apps/server/src/orchestration-v2/ClaudeAutomaticDelivery.integration.test.ts
-index de951ab234775c6c6af4f54983a664c8b4151970..521d7021e4db0736cef766ae85a559a3ba4ffbca 100644
+index 46f4728a4a18d3b0085d22865850c04eff33a89e..226534f5e4eef01a0891add86b888236291d51f2 100644
 --- a/apps/server/src/orchestration-v2/ClaudeAutomaticDelivery.integration.test.ts
 +++ b/apps/server/src/orchestration-v2/ClaudeAutomaticDelivery.integration.test.ts
 @@ -5,6 +5,7 @@ import { assert, it } from "@effect/vitest";
@@ -3839,7 +3853,7 @@ index de951ab234775c6c6af4f54983a664c8b4151970..521d7021e4db0736cef766ae85a559a3
  import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
  import * as ProviderSessionManager from "./ProviderSessionManager.ts";
  import * as ThreadLaunchService from "./ThreadLaunchService.ts";
-@@ -1641,3 +1646,326 @@ it.effect("wakes the agent when Claude empties its roster before stopping awaite
+@@ -1639,3 +1644,326 @@ it.effect("wakes the agent when Claude empties its roster before stopping awaite
  it.effect("records but does not wake for an unawaited shell lost when Claude's process exits", () =>
    exitWhileIdle({ awaited: false, signal: "SIGKILL" }),
  );
@@ -3908,12 +3922,12 @@ index de951ab234775c6c6af4f54983a664c8b4151970..521d7021e4db0736cef766ae85a559a3
 +        watch(
 +          (event) => event.type === "provider-turn.updated" && event.payload.status === "running",
 +        );
-+      const runWaiting = (runId: RunId) =>
++      const runCompleted = (runId: RunId) =>
 +        watch(
 +          (event) =>
 +            event.type === "run.updated" &&
 +            event.payload.id === runId &&
-+            event.payload.status === "waiting",
++            event.payload.status === "completed",
 +        );
 +      const answer = (uuid: string, text: string) =>
 +        frame({
@@ -3967,7 +3981,7 @@ index de951ab234775c6c6af4f54983a664c8b4151970..521d7021e4db0736cef766ae85a559a3
 +      yield* worker.drain();
 +      yield* Fiber.join(ownerRunning);
 +      const owner = (yield* orchestrator.getThreadProjection(threadId)).runs[0]!;
-+      const ownerDone = yield* runWaiting(owner.id);
++      const ownerDone = yield* runCompleted(owner.id);
 +      yield* Queue.offer(sdkMessages, result("owner-done", false));
 +      yield* Fiber.join(ownerDone);
 +      yield* worker.drain();
@@ -4118,7 +4132,7 @@ index de951ab234775c6c6af4f54983a664c8b4151970..521d7021e4db0736cef766ae85a559a3
 +      }
 +      assert.lengthOf(offers, offeredToQuestion);
 +
-+      const answered = yield* runWaiting(question.id);
++      const answered = yield* runCompleted(question.id);
 +      yield* Queue.offer(sdkMessages, answer("question-answer", "Two tests are left."));
 +      yield* Queue.offer(sdkMessages, result("question-done", false));
 +      yield* Fiber.join(answered);
@@ -4266,7 +4280,7 @@ index 6c805cfc4592f310b0400d1f306679d3c1747ce8..e662f4dc6c5b3101c2b8069ec4db2b90
                        .pipe(
                          // A disabled instance cannot retry this completed turn; its result stands.
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058d497c0d7 100644
+index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d5df1a84dc9e210ddb9248b978bba06df8b32571 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -12,6 +12,7 @@ import {
@@ -4285,7 +4299,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
    CommandPolicyV2,
    followUpOwnerRun,
    goalCommandStopsActiveRun,
-@@ -657,6 +659,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
+@@ -658,6 +660,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
      case "thread.snooze":
      case "thread.unsnooze":
      case "thread.auto-settle.set":
@@ -4293,7 +4307,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
      case "thread.pin":
      case "thread.unpin":
      case "thread.pin.reorder":
-@@ -1094,38 +1097,6 @@ function queueTailModelSelection(
+@@ -1095,38 +1098,6 @@ function queueTailModelSelection(
    );
  }
  
@@ -4332,7 +4346,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
  function pullRequestSnapshotEndsWatch(
    snapshot: ThreadPullRequestLink["snapshot"],
    watchStartedAt: ThreadPullRequestWatch["startedAt"],
-@@ -1640,6 +1611,16 @@ const hasRunningDelegatedTasks = (subagents: ReadonlyArray<OrchestrationV2Subage
+@@ -1650,6 +1621,16 @@ const hasRunningDelegatedTasks = (subagents: ReadonlyArray<OrchestrationV2Subage
        isOrchestrationV2WorkActive(task.status),
    );
  
@@ -4349,7 +4363,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
  const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(function* () {
    const checkpointService = yield* CheckpointServiceV2;
    const commandPolicy = yield* CommandPolicyV2;
-@@ -3145,6 +3126,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -3171,6 +3152,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            ...(queuedMessage.linkedSender === undefined
              ? {}
              : { linkedSender: queuedMessage.linkedSender }),
@@ -4359,7 +4373,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
            ...(queuedMessage.idleCompaction === undefined
              ? {}
              : { idleCompaction: queuedMessage.idleCompaction }),
-@@ -3637,6 +3621,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -3692,6 +3676,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : { scheduledTaskId: message.scheduledTaskId }),
          ...(message.senderThreadId === undefined ? {} : { senderThreadId: message.senderThreadId }),
          ...(message.linkedSender === undefined ? {} : { linkedSender: message.linkedSender }),
@@ -4367,7 +4381,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
        }).pipe(
          Effect.catchCause((cause) =>
            Effect.logWarning("Failed to requeue an unread steer", {
-@@ -4405,6 +4390,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4460,6 +4445,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            | "thread.snooze"
            | "thread.unsnooze"
            | "thread.auto-settle.set"
@@ -4375,7 +4389,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
            | "thread.pin"
            | "thread.unpin"
            | "thread.pin.reorder"
-@@ -4568,6 +4554,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4623,6 +4609,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          command.type === "thread.snooze" ||
          command.type === "thread.unsnooze" ||
          command.type === "thread.auto-settle.set" ||
@@ -4383,7 +4397,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
          command.type === "thread.pin" ||
          command.type === "thread.unpin" ||
          command.type === "thread.pin.reorder" ||
-@@ -5069,6 +5056,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5124,6 +5111,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
              updatedAt: unchanged ? thread.updatedAt : now,
            };
          }
@@ -4400,7 +4414,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
          case "thread.pin": {
            const alreadyPinned = thread.pinnedAt != null;
            const promotes = thread.settledOverride === "settled" || thread.snoozedUntil != null;
-@@ -5581,6 +5578,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5636,6 +5633,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            return "thread.unsnoozed" as const;
          case "thread.auto-settle.set":
            return "thread.auto-settle-set" as const;
@@ -4409,7 +4423,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
          case "thread.pin":
            return "thread.pinned" as const;
          case "thread.unpin":
-@@ -7218,6 +7217,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -7302,6 +7301,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            }
          : undefined,
      );
@@ -4430,7 +4444,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
      if (command.steerFollowUpOfRunId !== undefined) {
        const source = projection.runs.find((run) => run.id === command.steerFollowUpOfRunId);
        if (
-@@ -7629,8 +7642,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -7718,8 +7731,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        });
      }
      const output = outputSchema === undefined ? {} : { outputSchema };
@@ -4445,7 +4459,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
        (dispatchMode.type === "steer_active" || dispatchMode.type === "restart_active")
      ) {
        dispatchMode = { type: "queue_after_active" };
-@@ -7806,6 +7824,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -7898,6 +7916,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        );
        if (
          active !== undefined &&
@@ -4453,7 +4467,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
          activeTurn !== undefined &&
          providerThread?.providerSessionId != null &&
          (!commandNotice || providerThread.goal?.status === "active") &&
-@@ -8215,6 +8234,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8312,6 +8331,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          ...(continuedTaskId === undefined ? {} : { delegatedTaskId: continuedTaskId }),
          ...(freshContext ? { freshContext: true } : {}),
          ...output,
@@ -4461,7 +4475,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
        };
        const attempt: OrchestrationV2RunAttempt = {
          id: attemptId,
-@@ -8254,6 +8274,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8351,6 +8371,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : { scheduledTaskId: command.scheduledTaskId }),
          ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
          ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4469,7 +4483,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
          ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
          ...(followsThreadSelection ? { followsThreadSelection: true as const } : {}),
          id: command.messageId,
-@@ -8642,6 +8663,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8739,6 +8760,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          ...wakeWorkStartedAt(projection, command),
          ...(freshContext ? { freshContext: true } : {}),
          ...output,
@@ -4477,7 +4491,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
        };
        const attempt: OrchestrationV2RunAttempt = {
          id: attemptId,
-@@ -8681,6 +8703,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8778,6 +8800,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : { scheduledTaskId: command.scheduledTaskId }),
          ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
          ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4485,7 +4499,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
          ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
          ...(followsThreadSelection ? { followsThreadSelection: true as const } : {}),
          id: command.messageId,
-@@ -8705,6 +8728,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8802,6 +8825,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : { scheduledTaskId: command.scheduledTaskId }),
          ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
          ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4493,7 +4507,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
          ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
          id: idAllocator.derive.userTurnItem({ messageId: command.messageId }),
          threadId: command.threadId,
-@@ -9454,6 +9478,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -9551,6 +9575,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        ...(continuedTaskId === undefined ? {} : { delegatedTaskId: continuedTaskId }),
        ...wakeWorkStartedAt(projection, command),
        ...output,
@@ -4501,7 +4515,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
      };
      const attempt: OrchestrationV2RunAttempt = {
        id: attemptId,
-@@ -9493,6 +9518,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -9590,6 +9615,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          : { scheduledTaskId: command.scheduledTaskId }),
        ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
        ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4509,7 +4523,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
        ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
        id: command.messageId,
        threadId: command.threadId,
-@@ -9516,6 +9542,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -9613,6 +9639,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          : { scheduledTaskId: command.scheduledTaskId }),
        ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
        ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4517,7 +4531,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
        ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
        id: idAllocator.derive.userTurnItem({ messageId: command.messageId }),
        threadId: command.threadId,
-@@ -12006,6 +12033,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12121,6 +12148,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: "Automatic completion deliveries cannot be promoted to Steer.",
        });
      }
@@ -4531,7 +4545,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
  
      const now = yield* DateTime.now;
      const emitEvent = emit(events, command);
-@@ -12068,8 +12102,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12183,8 +12217,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: "A message that asks for a result can't steer the current turn.",
        });
      }
@@ -4547,7 +4561,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
        if (goalCommand !== null) {
          yield* ensureGoalCommandSupported(command, queuedMessage, modelSelection.instanceId);
        }
-@@ -12455,6 +12494,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12577,6 +12616,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: "A guest's message cannot be edited. Cancel it instead.",
        });
      }
@@ -4562,7 +4576,7 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
      yield* ensureGoalCommandSupported(
        command,
        { text: command.text, attachments: command.attachments ?? queuedMessage.attachments },
-@@ -16098,6 +16145,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16221,6 +16268,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "thread.snooze":
        case "thread.unsnooze":
        case "thread.auto-settle.set":
@@ -4571,10 +4585,10 @@ index 032aaab874d8b379a72072c3ffe2087d770de993..5e3deb2d61bf0b33344d7d0cd0845058
        case "thread.unpin":
        case "thread.pin.reorder":
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.ts b/apps/server/src/orchestration-v2/ProjectionStore.ts
-index 84458e644e50927df51d237c508430d8261ae577..1151f855beba05e5a2660e1b770de7bf4928827f 100644
+index 69848d6a44f74f4d6c1621d2d266006e63cd3607..b3a6871a2dd74ef59e68f9fefe1c23c31a03d532 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.ts
-@@ -660,6 +660,15 @@ export interface ProjectionStoreV2Shape {
+@@ -661,6 +661,15 @@ export interface ProjectionStoreV2Shape {
    readonly getThreadShell: (
      threadId: ThreadId,
    ) => Effect.Effect<OrchestrationV2ThreadShell | null, ProjectionStoreV2Error>;
@@ -4590,7 +4604,7 @@ index 84458e644e50927df51d237c508430d8261ae577..1151f855beba05e5a2660e1b770de7bf
    /** The thread whose current guest share has this id. Scans thread rows; only redeem uses it. */
    readonly findGuestShareThreadId: (
      shareId: GuestShareId,
-@@ -1060,6 +1069,7 @@ export function applyToProjection(
+@@ -1061,6 +1070,7 @@ export function applyToProjection(
      case "thread.snoozed":
      case "thread.unsnoozed":
      case "thread.auto-settle-set":
@@ -4598,7 +4612,7 @@ index 84458e644e50927df51d237c508430d8261ae577..1151f855beba05e5a2660e1b770de7bf
      case "thread.pinned":
      case "thread.unpinned":
      case "thread.pin-reordered":
-@@ -2016,6 +2026,7 @@ export function threadShellFromProjection(
+@@ -2018,6 +2028,7 @@ export function threadShellFromProjection(
      pinnedAt: projection.thread.pinnedAt ?? null,
  
      autoSettleDisabledAt: projection.thread.autoSettleDisabledAt ?? null,
@@ -4606,7 +4620,7 @@ index 84458e644e50927df51d237c508430d8261ae577..1151f855beba05e5a2660e1b770de7bf
      pinOrderKey: projection.thread.pinOrderKey ?? null,
      ...(projection.thread.tags?.length ? { tags: projection.thread.tags } : {}),
      lastVisitedAt: projection.thread.lastVisitedAt,
-@@ -2317,6 +2328,7 @@ function shellFromState(input: {
+@@ -2319,6 +2330,7 @@ function shellFromState(input: {
      pinnedAt: input.state.thread.pinnedAt ?? null,
  
      autoSettleDisabledAt: input.state.thread.autoSettleDisabledAt ?? null,
@@ -4614,7 +4628,7 @@ index 84458e644e50927df51d237c508430d8261ae577..1151f855beba05e5a2660e1b770de7bf
      pinOrderKey: input.state.thread.pinOrderKey ?? null,
      ...(input.state.thread.tags?.length ? { tags: input.state.thread.tags } : {}),
      lastVisitedAt: input.state.thread.lastVisitedAt,
-@@ -2519,6 +2531,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -2521,6 +2533,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
              case "thread.snoozed":
              case "thread.unsnoozed":
              case "thread.auto-settle-set":
@@ -4622,7 +4636,7 @@ index 84458e644e50927df51d237c508430d8261ae577..1151f855beba05e5a2660e1b770de7bf
              case "thread.pinned":
              case "thread.unpinned":
              case "thread.pin-reordered":
-@@ -3372,6 +3385,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -3374,6 +3387,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
              event.type !== "thread.snoozed" &&
              event.type !== "thread.unsnoozed" &&
              event.type !== "thread.auto-settle-set" &&
@@ -4630,7 +4644,7 @@ index 84458e644e50927df51d237c508430d8261ae577..1151f855beba05e5a2660e1b770de7bf
              event.type !== "thread.pinned" &&
              event.type !== "thread.unpinned" &&
              event.type !== "thread.pin-reordered" &&
-@@ -9740,6 +9754,29 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -9748,6 +9762,29 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        return rows[0] === undefined ? null : ThreadId.make(rows[0].thread_id);
      }, Effect.mapError(shellSnapshotReadError));
  
@@ -4660,7 +4674,7 @@ index 84458e644e50927df51d237c508430d8261ae577..1151f855beba05e5a2660e1b770de7bf
      const listOlderSettledThreads: ProjectionStoreV2Shape["listOlderSettledThreads"] = Effect.fn(
        "ProjectionStore.listOlderSettledThreads",
      )(function* ({ before, projectIds, limit }) {
-@@ -9893,6 +9930,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -9901,6 +9938,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        readShellSnapshot: readOnReader(readShellSnapshot),
        listOlderSettledThreads: readOnReader(listOlderSettledThreads),
        getThreadShell: readOnReader(getThreadShell),
@@ -4788,10 +4802,10 @@ index 51c38efa8a41a7d0b3fbeb83edda13d9f0341035..f458583810dcf5f2db691907d5c76778
        getThread: () => Effect.die("unused getThread"),
        findThread: () => Effect.die("unused findThread"),
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.test.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.test.ts
-index ef9bd2bb32712d8949700a237613cb402c33a5d1..f4583219c05c1d82aab5bc9b4784ee7e09d4d860 100644
+index f21e645d0a1aadcf80dbd2d831860556b9e32c22..45151635d4c447a3d15b815e4c3b5543bde291b4 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnStartService.test.ts
 +++ b/apps/server/src/orchestration-v2/ProviderTurnStartService.test.ts
-@@ -81,7 +81,9 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+@@ -82,7 +82,9 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
  import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
  import * as ProjectionStore from "./ProjectionStore.ts";
  import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -4801,7 +4815,7 @@ index ef9bd2bb32712d8949700a237613cb402c33a5d1..f4583219c05c1d82aab5bc9b4784ee7e
  import * as ProviderTurnStart from "./ProviderTurnStartService.ts";
  import * as RunExecutionService from "./RunExecutionService.ts";
  import * as ProviderUsageAnalytics from "../telemetry/ProviderUsageAnalytics.ts";
-@@ -223,6 +225,7 @@ function startWithMissingWorktree(
+@@ -234,6 +236,7 @@ function startWithMissingWorktree(
            },
          }),
          Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({}),
@@ -4809,7 +4823,7 @@ index ef9bd2bb32712d8949700a237613cb402c33a5d1..f4583219c05c1d82aab5bc9b4784ee7e
          Layer.mock(ProviderAuthService.ProviderAuthService)({
            tryHandlePromptCommand: () => Effect.succeed(false),
          }),
-@@ -455,6 +458,8 @@ it.each([
+@@ -470,6 +473,8 @@ it.each([
    expect(makeDirectory).toHaveBeenCalledTimes(input.recreated ? 1 : 0);
  });
  
@@ -4818,7 +4832,7 @@ index ef9bd2bb32712d8949700a237613cb402c33a5d1..f4583219c05c1d82aab5bc9b4784ee7e
  function makeLocalCommandHarness(input: {
    readonly text: string;
    readonly manualContinuation?: boolean;
-@@ -484,6 +489,10 @@ function makeLocalCommandHarness(input: {
+@@ -501,6 +506,10 @@ function makeLocalCommandHarness(input: {
    readonly failReadsAfterRunning?: boolean;
    readonly missingProviderSession?: boolean;
    readonly recoveryReadFailure?: string;
@@ -4829,7 +4843,7 @@ index ef9bd2bb32712d8949700a237613cb402c33a5d1..f4583219c05c1d82aab5bc9b4784ee7e
    readonly previousTurn?: {
      readonly runStatus: "failed" | "completed" | "interrupted";
      readonly turnStatus: "running" | "completed" | "interrupted";
-@@ -527,6 +536,7 @@ function makeLocalCommandHarness(input: {
+@@ -544,6 +553,7 @@ function makeLocalCommandHarness(input: {
    const messageId = MessageId.make("message-native-account-command");
    const run: OrchestrationV2ThreadProjection["runs"][number] = {
      ...(input.manualContinuation ? { manualContinuationOfRunId: RunId.make("stopped-run") } : {}),
@@ -4837,7 +4851,7 @@ index ef9bd2bb32712d8949700a237613cb402c33a5d1..f4583219c05c1d82aab5bc9b4784ee7e
      id: runId,
      threadId,
      ordinal: 2,
-@@ -571,9 +581,13 @@ function makeLocalCommandHarness(input: {
+@@ -588,9 +598,13 @@ function makeLocalCommandHarness(input: {
      text: input.text,
      attachments: [],
      streaming: false,
@@ -4853,7 +4867,7 @@ index ef9bd2bb32712d8949700a237613cb402c33a5d1..f4583219c05c1d82aab5bc9b4784ee7e
      createdAt: now,
      updatedAt: now,
    };
-@@ -585,6 +599,13 @@ function makeLocalCommandHarness(input: {
+@@ -604,6 +618,13 @@ function makeLocalCommandHarness(input: {
        branch: input.worktreePath === undefined ? null : "feature/restore",
        worktreePath: input.worktreePath ?? null,
        lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
@@ -4867,7 +4881,7 @@ index ef9bd2bb32712d8949700a237613cb402c33a5d1..f4583219c05c1d82aab5bc9b4784ee7e
      } as OrchestrationV2ThreadProjection["thread"],
      runs: [
        ...(input.previousNativeSession
-@@ -1129,6 +1150,12 @@ function makeLocalCommandHarness(input: {
+@@ -1148,6 +1169,12 @@ function makeLocalCommandHarness(input: {
            input.exposesNativeTurnId ?? CodexProviderCapabilitiesV2.turns.exposesNativeTurnId,
          ...(input.nativeGoals === undefined ? {} : { supportsNativeGoals: input.nativeGoals }),
        },
@@ -4880,7 +4894,7 @@ index ef9bd2bb32712d8949700a237613cb402c33a5d1..f4583219c05c1d82aab5bc9b4784ee7e
      },
      createdAt: now,
      updatedAt: now,
-@@ -1172,9 +1199,18 @@ function makeLocalCommandHarness(input: {
+@@ -1191,9 +1218,18 @@ function makeLocalCommandHarness(input: {
        : (input: ProviderAdapter.ProviderAdapterV2ResumeTurnInput) =>
            startTurn(ProviderAdapter.resumeTurnInput(input)),
    };
@@ -4902,7 +4916,7 @@ index ef9bd2bb32712d8949700a237613cb402c33a5d1..f4583219c05c1d82aab5bc9b4784ee7e
        : input.interruptOpen === true
          ? Effect.interrupt
          : "historyReadFailureAfterFallback" in input || "resumeFailure" in input
-@@ -1209,7 +1245,7 @@ function makeLocalCommandHarness(input: {
+@@ -1228,7 +1264,7 @@ function makeLocalCommandHarness(input: {
        input: RunExecutionService.RunExecutionServiceV2StartRootRunInput,
      ) => Effect.Effect<void, RunExecutionService.RunExecutionServiceV2Error>
    >((runInput) =>
@@ -4911,7 +4925,7 @@ index ef9bd2bb32712d8949700a237613cb402c33a5d1..f4583219c05c1d82aab5bc9b4784ee7e
        ? (runInput.resume
            ? runInput.session.resumeTurn!({
                ...runInput,
-@@ -1272,6 +1308,9 @@ function makeLocalCommandHarness(input: {
+@@ -1291,6 +1327,9 @@ function makeLocalCommandHarness(input: {
        Effect.succeed({
          cwd: thread.worktreePath ?? "/tmp/native-account-command",
          runtimeMode: thread.runtimeMode,
@@ -4921,7 +4935,7 @@ index ef9bd2bb32712d8949700a237613cb402c33a5d1..f4583219c05c1d82aab5bc9b4784ee7e
        } as never),
    );
    const createWorktree = vi.fn<GitWorkflow.GitWorkflowService["Service"]["createWorktree"]>(() =>
-@@ -1382,6 +1421,12 @@ function makeLocalCommandHarness(input: {
+@@ -1418,6 +1457,12 @@ function makeLocalCommandHarness(input: {
                    }),
                  ),
          }),
@@ -4934,7 +4948,7 @@ index ef9bd2bb32712d8949700a237613cb402c33a5d1..f4583219c05c1d82aab5bc9b4784ee7e
          Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({
            open,
            get: () =>
-@@ -3094,6 +3139,98 @@ effectIt.effect("starts another provider in the same checkout while a turn is pe
+@@ -3220,6 +3265,116 @@ effectIt.effect("starts another provider in the same checkout while a turn is pe
    }),
  );
  
@@ -5030,26 +5044,40 @@ index ef9bd2bb32712d8949700a237613cb402c33a5d1..f4583219c05c1d82aab5bc9b4784ee7e
 +  }),
 +);
 +
++effectIt.effect("leaves a worktree a send recreated for the next ordinary turn's setup", () =>
++  Effect.gen(function* () {
++    const runSetup = vi.fn(() => Effect.succeed({ status: "no-script" as const }));
++    const harness = makeLocalCommandHarness({
++      text: "Which branch is deployed?",
++      linkedQuestion: { toollessTurns: true },
++      worktreePath: "/tmp/native-account-worktrees/feature-restore",
++      recreatedBeforeDispatch: true,
++      runSetup,
++    });
++
++    yield* harness.start;
++
++    expect(runSetup).not.toHaveBeenCalled();
++    expect(harness.startTurn).toHaveBeenCalledOnce();
++  }),
++);
++
  effectIt.effect("fails a starting run when its recovery state cannot be read", () =>
    Effect.gen(function* () {
      const harness = makeLocalCommandHarness({
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c28840a542 100644
+index 1f069cfca990d4e726f0c55477f3ee5a50d68320..9098603a7522c6089d2f54eed39836a09bc2031f 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
 +++ b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-@@ -44,7 +44,10 @@ import * as GitWorkflowService from "../git/GitWorkflowService.ts";
- import * as ProjectService from "../project/ProjectService.ts";
- import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
- import * as ServerSettings from "../serverSettings.ts";
--import { makeRestoreMissingWorktree } from "../workspace/restoreMissingWorktree.ts";
-+import {
-+  makeRestoreMissingWorktree,
+@@ -48,6 +48,7 @@ import * as ServerSettings from "../serverSettings.ts";
+ import {
+   makeRestoreMissingWorktree,
+   ThreadWorktreeRestore,
 +  makeWorkspaceIsPresent,
-+} from "../workspace/restoreMissingWorktree.ts";
+ } from "../workspace/restoreMissingWorktree.ts";
  import type * as TaskFolders from "../workspace/TaskFolders.ts";
  import * as EventSink from "./EventSink.ts";
- import * as ProviderUsageAnalytics from "../telemetry/ProviderUsageAnalytics.ts";
-@@ -66,11 +69,13 @@ import {
+@@ -70,11 +71,13 @@ import {
    isSlashCommandMessage,
    withInlineContext,
  } from "./ContextHandoffDelivery.ts";
@@ -5063,9 +5091,9 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
  import * as ProviderSessionManager from "./ProviderSessionManager.ts";
  import {
    ContextHandoffBackgroundWorkError,
-@@ -98,6 +103,15 @@ export class ProviderTurnStartError extends Schema.TaggedError<ProviderTurnStart
-   },
- ) {}
+@@ -111,6 +114,15 @@ class WorktreeSetupScriptFailedError extends Schema.TaggedError<WorktreeSetupScr
+   }
+ }
  
 +class LinkedQuestionStartRefusedError extends Schema.TaggedError<LinkedQuestionStartRefusedError>()(
 +  "LinkedQuestionStartRefusedError",
@@ -5079,15 +5107,15 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
  /** Runs that ended without completing: their provider turn may still project as running. */
  const NON_COMPLETING_TERMINAL_RUN_STATUSES: ReadonlySet<OrchestrationV2Run["status"]> = new Set([
    "failed",
-@@ -283,6 +297,7 @@ export const layer: Layer.Layer<
-   | ProjectService.ProjectService
+@@ -299,6 +311,7 @@ export const layer: Layer.Layer<
+   | ProjectSetupScriptRunner.ProjectSetupScriptRunner
    | ProviderAuthService.ProviderAuthService
    | ProjectionStore.ProjectionStoreV2
 +  | ProviderAdapterRegistry.ProviderAdapterRegistryV2
    | ProviderSessionManager.ProviderSessionManagerV2
    | RunExecutionService.RunExecutionServiceV2
    | RuntimePolicy.RuntimePolicyV2
-@@ -301,9 +316,11 @@ export const layer: Layer.Layer<
+@@ -319,10 +332,12 @@ export const layer: Layer.Layer<
      const providerAuth = yield* ProviderAuthService.ProviderAuthService;
      const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
      const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
@@ -5095,11 +5123,12 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
      const runExecution = yield* RunExecutionService.RunExecutionServiceV2;
      const runtimePolicy = yield* RuntimePolicy.RuntimePolicyV2;
      const restoreMissingWorktree = yield* makeRestoreMissingWorktree;
+     const worktreeRestore = yield* ThreadWorktreeRestore;
 +    const workspaceIsPresent = yield* makeWorkspaceIsPresent;
      const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
  
      // Build draining callbacks outside startup scope so they cannot retain full thread history.
-@@ -706,6 +723,34 @@ export const layer: Layer.Layer<
+@@ -725,6 +740,34 @@ export const layer: Layer.Layer<
            });
          },
        );
@@ -5134,7 +5163,7 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
        if (
          expandAssistantCitationsForProvider(providerMessage.text).length >
          PROVIDER_SEND_TURN_MAX_INPUT_CHARS
-@@ -732,6 +777,7 @@ export const layer: Layer.Layer<
+@@ -751,6 +794,7 @@ export const layer: Layer.Layer<
          return;
        }
        if (
@@ -5142,7 +5171,7 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
          providerMessage.attachments.length === 0 &&
          providerMessage.text.trimStart().startsWith("/")
        ) {
-@@ -832,8 +878,14 @@ export const layer: Layer.Layer<
+@@ -851,8 +895,14 @@ export const layer: Layer.Layer<
            return;
          }
        }
@@ -5159,7 +5188,21 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
          if (input.willRetry === true) return yield* recreateResult.failure;
          yield* settleStartFailure({
            signal: "worktree-recreate-failure",
-@@ -896,6 +948,10 @@ export const layer: Layer.Layer<
+@@ -862,9 +912,11 @@ export const layer: Layer.Layer<
+         });
+         return;
+       }
+-      const recreatedBeforeDispatch = yield* worktreeRestore.takeRecreated(projection.thread.id);
++      const recreatedBeforeDispatch = toolless
++        ? undefined
++        : yield* worktreeRestore.takeRecreated(projection.thread.id);
+       const recreated =
+-        recreateResult.success ??
++        recreateResult?.success ??
+         (recreatedBeforeDispatch?.worktreePath === projection.thread.worktreePath
+           ? recreatedBeforeDispatch
+           : undefined);
+@@ -959,6 +1011,10 @@ export const layer: Layer.Layer<
          return;
        }
        const resolvedRuntimePolicy = resolvedPolicy.success;
@@ -5170,7 +5213,7 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
        if (!(yield* isCurrentAttemptInStatus("starting"))) return;
        const existingSessionProjection = projection.providerSessions.find(
          (candidate) => candidate.id === providerSessionId,
-@@ -1000,6 +1056,10 @@ export const layer: Layer.Layer<
+@@ -1063,6 +1119,10 @@ export const layer: Layer.Layer<
        }
        const session = sessionResult.success;
        if (!(yield* isCurrentAttemptInStatus("starting"))) return;
@@ -5181,7 +5224,7 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
        const loadFromProvider = Effect.fn("ProviderTurnStartService.loadFromProvider")(function* (
          load: Effect.Effect<OrchestrationV2ProviderThread, ProviderAdapter.ProviderAdapterV2Error>,
        ) {
-@@ -1019,10 +1079,12 @@ export const layer: Layer.Layer<
+@@ -1082,10 +1142,12 @@ export const layer: Layer.Layer<
        let resumeFellBack = false;
        const messageText = withMessageSenderNote(
          providerMessage,
@@ -5198,7 +5241,7 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
        );
        const slashCommand = isSlashCommandMessage(providerMessage);
        const goalDriver =
-@@ -1064,7 +1126,7 @@ export const layer: Layer.Layer<
+@@ -1127,7 +1189,7 @@ export const layer: Layer.Layer<
          )
          .map((source) => source.id);
        const stoppedTasks =
@@ -5207,7 +5250,7 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
            ? []
            : pendingStoppedDelegatedTasks({
                providerThreadId: run.providerThreadId,
-@@ -1426,7 +1488,7 @@ export const layer: Layer.Layer<
+@@ -1489,7 +1551,7 @@ export const layer: Layer.Layer<
                  ),
                  targetThreadId: projection.thread.id,
                  modelSelection: run.modelSelection,
@@ -5216,7 +5259,7 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
                  ...(sourceProviderTurn === undefined
                    ? {}
                    : { providerTurnId: sourceProviderTurn.id }),
-@@ -1485,7 +1547,7 @@ export const layer: Layer.Layer<
+@@ -1548,7 +1610,7 @@ export const layer: Layer.Layer<
                threadId: projection.thread.id,
                title: projection.thread.title,
                modelSelection: run.modelSelection,
@@ -5225,7 +5268,7 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
                providerSessionId,
                existingProviderThread: nativeForkFailed
                  ? { ...providerThread, nativeThreadRef: null, forkedFrom: null }
-@@ -1574,7 +1636,7 @@ export const layer: Layer.Layer<
+@@ -1637,7 +1699,7 @@ export const layer: Layer.Layer<
                threadId: projection.thread.id,
                title: projection.thread.title,
                modelSelection: run.modelSelection,
@@ -5234,7 +5277,7 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
                providerSessionId,
                existingProviderThread: providerThread,
              }),
-@@ -1687,7 +1749,7 @@ export const layer: Layer.Layer<
+@@ -1750,7 +1812,7 @@ export const layer: Layer.Layer<
                  providerThread,
                  threadId: projection.thread.id,
                  modelSelection: run.modelSelection,
@@ -5243,7 +5286,7 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
                  importedNativeSession,
                }),
          );
-@@ -1757,7 +1819,7 @@ export const layer: Layer.Layer<
+@@ -1820,7 +1882,7 @@ export const layer: Layer.Layer<
              threadId: projection.thread.id,
              title: projection.thread.title,
              modelSelection: run.modelSelection,
@@ -5252,7 +5295,7 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
              providerSessionId,
              // Clear the native ref to force a fresh session while preserving row identity.
              existingProviderThread: { ...providerThread, nativeThreadRef: null },
-@@ -1780,7 +1842,7 @@ export const layer: Layer.Layer<
+@@ -1843,7 +1905,7 @@ export const layer: Layer.Layer<
              threadId: projection.thread.id,
              providerThread: replacement,
              modelSelection: run.modelSelection,
@@ -5261,7 +5304,7 @@ index 1cb77e387f950bc38723ac383a43e7e74f254907..707683fafc892b641a217ee9602d56c2
            });
            yield* settleStartFailure({
              signal: "provider-thread-load-failure",
-@@ -2300,7 +2362,7 @@ export const layer: Layer.Layer<
+@@ -2367,7 +2429,7 @@ export const layer: Layer.Layer<
              : { senderThreadId: message.senderThreadId }),
          },
          modelSelection: run.modelSelection,
@@ -5318,7 +5361,7 @@ index 2981b4ccfb51993fdba7a404629dd7bbfe6787bb..04374b7280ce5fb46b71bdb95f559057
          guestShare: null,
          lastVisitedAt: null,
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.test.ts b/apps/server/src/orchestration-v2/ThreadManagementService.test.ts
-index eb137e4c506100205300e559822f8473e331e118..22ea9c50a15cae9dfa40243c0d302c15d34f02be 100644
+index 42a8d7eae9cff728ded81277ef0a5b30a4e736eb..b1735b97e83a178f8bb76dafa296ff22f562d50e 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.test.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.test.ts
 @@ -95,6 +95,24 @@ it("stamps authoritative provenance on commands that create threads or messages"
@@ -5347,7 +5390,7 @@ index eb137e4c506100205300e559822f8473e331e118..22ea9c50a15cae9dfa40243c0d302c15
  
  const layerReceiptsTest = CommandReceiptStore.layer.pipe(
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index 0acb07029f35d54621a7fa130cf296378b572ccc..b8ee1511257fce5bbf4974d11ee0bc78cb23c194 100644
+index dfddf29474b6b011c6f10f6f2f5751408a3a46e7..bdc85b421d23c6f3b656782228a60539c0f0da35 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
 @@ -28,6 +28,7 @@ import {
@@ -5433,7 +5476,7 @@ index 0acb07029f35d54621a7fa130cf296378b572ccc..b8ee1511257fce5bbf4974d11ee0bc78
        attachments: input.attachments,
        ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
 diff --git a/apps/server/src/orchestration-v2/ThreadSettlementService.test.ts b/apps/server/src/orchestration-v2/ThreadSettlementService.test.ts
-index 80783a05f57eab450a24b7640962648f751f9a2f..af3e43d12d7c9a7db34cf61f8c79d7c6d46e985d 100644
+index be8a300872944b5267d83fc08fafbb80b7ef1206..9b6fb4e5cc759ad226fb2df3abe7cbb8e5fc61b5 100644
 --- a/apps/server/src/orchestration-v2/ThreadSettlementService.test.ts
 +++ b/apps/server/src/orchestration-v2/ThreadSettlementService.test.ts
 @@ -675,6 +675,7 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
@@ -5482,10 +5525,10 @@ index 20d76ecff009db00e5ff19de5bbc8fb55e6c6fc9..de5580a697f9a4a6499fabedaff1ec52
      parseGoalCommand(message) !== null);
  
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index 673916ebf06c438da04bae4ece71b1ffa19904cb..4bed588abec4200140920b34006b30f898fe9039 100644
+index 0a76d0ec7bb4fcad28e482045fb218750f2c557f..14bd4e2451c3fa1a51ed091f4314d6cdf6280bea 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-@@ -8019,6 +8019,125 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -8023,6 +8023,125 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
      }),
    );
  
@@ -5612,7 +5655,7 @@ index 673916ebf06c438da04bae4ece71b1ffa19904cb..4bed588abec4200140920b34006b30f8
      Effect.gen(function* () {
        const orchestrator = yield* Orchestrator.OrchestratorV2;
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.ts b/apps/server/src/orchestration-v2/runtimeLayer.ts
-index c4eed74b274cf274ac785f7cdf364865779c7aee..42c57829b7831b6b0075aa1a611f26e05af1c971 100644
+index 427458295cd5642c515e5a097540638bd7380acb..211393823dfd6e85d7d33fdf14a3b16675c34b48 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.ts
 @@ -191,6 +191,7 @@ const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pip
@@ -5624,7 +5667,7 @@ index c4eed74b274cf274ac785f7cdf364865779c7aee..42c57829b7831b6b0075aa1a611f26e0
        layerRunExecutionServiceProvided,
        layerRuntimePolicyProvided,
 diff --git a/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts b/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
-index 952162d2f11872ba8ad9119263d47ebdc3f8e038..d678e3cf7f6eca62ea4db1754a3c48da607bf57c 100644
+index 5c1390de0696bb68e8f01e2b823917f4c7506a4f..681c191932d1e02c7c35cafcd17b6610d8f65d59 100644
 --- a/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
 +++ b/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
 @@ -150,6 +150,7 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
@@ -5636,10 +5679,10 @@ index 952162d2f11872ba8ad9119263d47ebdc3f8e038..d678e3cf7f6eca62ea4db1754a3c48da
      case "thread.unpin":
      case "thread.pin.reorder":
 diff --git a/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts b/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
-index ccd4c69710d81ef1dbbf828058162e9955037deb..3d6ee505bce69a113fa39b5705049a0c0fbea7f2 100644
+index d10e7675bd9cac640e301f55471c6c72cbbf0cb9..6af38767c18101dfa4c84f8c67766a7f7d727e36 100644
 --- a/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
 +++ b/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
-@@ -484,6 +484,7 @@ export function layerWithRegistry<Error>(
+@@ -485,6 +485,7 @@ export function layerWithRegistry<Error>(
          IdAllocator.layer,
          layerStores,
          layerProviderSessionManagerProvided,
@@ -6069,7 +6112,7 @@ index 0000000000000000000000000000000000000000..6339d7ad2c8989d96f0e9bffb58bdc3a
 +
 +export const layer = Layer.effect(LinkedQuestions, make);
 diff --git a/apps/server/src/peer/PeerClientPairing.test.ts b/apps/server/src/peer/PeerClientPairing.test.ts
-index 17a5df1cb75ff989c5dae30ffe261012093bef59..0c1924df3232d9060926dec338e105c4ecfd3de2 100644
+index 8dacc53f7f07e46cf6a3b53486424d899f2ec99b..68dffcb330948d69f2bdc7ea09861bd094ba6669 100644
 --- a/apps/server/src/peer/PeerClientPairing.test.ts
 +++ b/apps/server/src/peer/PeerClientPairing.test.ts
 @@ -46,6 +46,7 @@ const laptop = descriptorOf("environment-laptop", "Laptop");
@@ -6103,7 +6146,7 @@ index 17a5df1cb75ff989c5dae30ffe261012093bef59..0c1924df3232d9060926dec338e105c4
    ).pipe(Effect.provide(NodeHttpServer.layerTest)),
  );
 diff --git a/apps/server/src/peer/PeerForwarding.test.ts b/apps/server/src/peer/PeerForwarding.test.ts
-index 1d3f563f35b0808d457b08e32d9aebd911e289cc..27d5e4ade3d5fd163817b616533d16573ff157ee 100644
+index 8ea7d49eb33815ca010df2a4d854230056a16d24..d9bb04b22bbe18affe8a2490da92ac15c3f86426 100644
 --- a/apps/server/src/peer/PeerForwarding.test.ts
 +++ b/apps/server/src/peer/PeerForwarding.test.ts
 @@ -48,7 +48,7 @@ import * as PeerLinkRequests from "./PeerLinkRequests.ts";
@@ -6115,7 +6158,7 @@ index 1d3f563f35b0808d457b08e32d9aebd911e289cc..27d5e4ade3d5fd163817b616533d1657
  const boxProject = ProjectId.make("project:box");
  const boxThread = ThreadId.make("thread:box-auto");
  const boxRun = RunId.make("run:box-auto");
-@@ -737,6 +737,28 @@ it.effect("refuses what a linked environment cannot take before anything leaves"
+@@ -753,6 +753,28 @@ it.effect("refuses what a linked environment cannot take before anything leaves"
          expect(failureOf(relayed), name).toMatchObject({ code: "capability_denied" });
        }
        expect(yield* Ref.get(b.bearers)).toEqual([]);
@@ -6145,7 +6188,7 @@ index 1d3f563f35b0808d457b08e32d9aebd911e289cc..27d5e4ade3d5fd163817b616533d1657
    ).pipe(Effect.provide(NodeHttpServer.layerTest)),
  );
 diff --git a/apps/server/src/peer/PeerForwarding.ts b/apps/server/src/peer/PeerForwarding.ts
-index d60ebcd8f42d753373bbc1c3b9381d462648c112..a9b054658fbc8aa4d68b43f8d3df55505ce827fd 100644
+index 17ef4f233f82156170558e1e0e88d4992c14a3b8..895cd1d7a6fb9472bdf7dc9d8df039f8560b91df 100644
 --- a/apps/server/src/peer/PeerForwarding.ts
 +++ b/apps/server/src/peer/PeerForwarding.ts
 @@ -22,6 +22,7 @@ import * as Schema from "effect/Schema";
@@ -6218,7 +6261,7 @@ index a33bb47d7ec17b4ec62d084cb7a066d2db80d5de..60e314d3f440bc76f06d3ec492a5bab8
            source: { kind: "background_task" },
            outcome: "completed",
 diff --git a/apps/server/src/peer/PeerLinks.test.ts b/apps/server/src/peer/PeerLinks.test.ts
-index 8f1d6cc381d63a3174aeef4dee4f37173667464d..90f8cb55c2df8fcfa6c909eea59a1ecb15150bef 100644
+index 3861fbb97b07468b8fa560dbed79ae46d3d56551..a9c8f6934a48d8c40c26f77fc5886fd527f3f6ee 100644
 --- a/apps/server/src/peer/PeerLinks.test.ts
 +++ b/apps/server/src/peer/PeerLinks.test.ts
 @@ -22,6 +22,7 @@ import * as TestClock from "effect/testing/TestClock";
@@ -7051,10 +7094,10 @@ index ad8593c387528bb9fe22253fbd1d3cd1c2e693f3..3897bce94d4bf14162ea570091565aa9
  
  const claudeSystemAppend = () => {
 diff --git a/apps/server/src/provider/ProviderRegistry.test.ts b/apps/server/src/provider/ProviderRegistry.test.ts
-index 4fe6da7f791a9a42498f4dda8df9f88087c54d87..24ef0fbf3a9cf3065dc791aa34d6e76a1c30f01f 100644
+index 31ce877de6f728abd51650f554e1812d9f229aef..cd1c0c7ad8df7443f7eb3b144b96f6d93f5594d3 100644
 --- a/apps/server/src/provider/ProviderRegistry.test.ts
 +++ b/apps/server/src/provider/ProviderRegistry.test.ts
-@@ -457,6 +457,7 @@ function makeMutableServerSettingsService(
+@@ -466,6 +466,7 @@ function makeMutableServerSettingsService(
            Effect.map((subscription) => Stream.fromSubscription(subscription)),
          );
        },
@@ -7086,7 +7129,7 @@ index 2eed87a8033bdc7c8a31f88334d2e0161d1817bd..8774a1175b76711bf2d268e1557cf201
      case "thread.unpinned":
      case "thread.pin-reordered":
 diff --git a/apps/server/src/serverSettings.ts b/apps/server/src/serverSettings.ts
-index 14a64a1aa783c430e16a8b5c08fa4436712113e4..d520282b5ea114cf8c2cefa9179d1b32c79d78bf 100644
+index 822254afcca14b27e8c73055b6507af8f4d17444..e1088b8f97b3f065ee98c255de8484b573c60c3a 100644
 --- a/apps/server/src/serverSettings.ts
 +++ b/apps/server/src/serverSettings.ts
 @@ -1,5 +1,7 @@
@@ -7229,7 +7272,7 @@ index 14a64a1aa783c430e16a8b5c08fa4436712113e4..d520282b5ea114cf8c2cefa9179d1b32
    } satisfies ServerSettingsService["Service"];
  });
  
-@@ -738,8 +830,11 @@ const make = Effect.gen(function* () {
+@@ -742,8 +834,11 @@ const make = Effect.gen(function* () {
    const watcherScope = yield* Scope.make("sequential");
    yield* Effect.addFinalizer(() => Scope.close(watcherScope, Exit.void));
  
@@ -7242,7 +7285,7 @@ index 14a64a1aa783c430e16a8b5c08fa4436712113e4..d520282b5ea114cf8c2cefa9179d1b32
  
    const readConfigExists = fs.exists(settingsPath).pipe(
      Effect.mapError(
-@@ -1423,7 +1518,7 @@ const make = Effect.gen(function* () {
+@@ -1427,7 +1522,7 @@ const make = Effect.gen(function* () {
  
      const startup = Effect.gen(function* () {
        yield* startWatcher;
@@ -7251,7 +7294,7 @@ index 14a64a1aa783c430e16a8b5c08fa4436712113e4..d520282b5ea114cf8c2cefa9179d1b32
      });
  
      const startupExit = yield* Effect.exit(startup);
-@@ -1464,6 +1559,7 @@ const make = Effect.gen(function* () {
+@@ -1468,6 +1563,7 @@ const make = Effect.gen(function* () {
          Effect.map((subscription) => materializeChanges(Stream.fromSubscription(subscription))),
        );
      },
@@ -7260,10 +7303,10 @@ index 14a64a1aa783c430e16a8b5c08fa4436712113e4..d520282b5ea114cf8c2cefa9179d1b32
  });
  
 diff --git a/apps/server/src/workspace/restoreMissingWorktree.ts b/apps/server/src/workspace/restoreMissingWorktree.ts
-index 6aa4b11350efb5b82a76b3b6b9700f2289f62034..7bf256b68af7e445b471f6f9d7d7eb427f156fc2 100644
+index ea803cbdac6808e88baa3b15c13bb15a728d54a2..21a6f396c31c62980c47b2a66cc44c9618c47276 100644
 --- a/apps/server/src/workspace/restoreMissingWorktree.ts
 +++ b/apps/server/src/workspace/restoreMissingWorktree.ts
-@@ -243,6 +243,29 @@ export const makeRestoreMissingWorktree = Effect.gen(function* () {
+@@ -254,6 +254,29 @@ export const makeRestoreMissingWorktree = Effect.gen(function* () {
    });
  });
  
@@ -7294,7 +7337,7 @@ index 6aa4b11350efb5b82a76b3b6b9700f2289f62034..7bf256b68af7e445b471f6f9d7d7eb42
    ThreadWorktreeRestore,
    {
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 1178ade462cbb4775b0dcc82e0ec6d2ded8fe455..09792ed56a9906acf7e5403821b9e0f2f4c47413 100644
+index 56cbb0da444fce307a6a992826d4f4a02a6ac352..a1e914b175cc46cea622ee5ef3dd075e9837fc9a 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
 @@ -3567,6 +3567,9 @@ export default function ChatView(props: ChatViewProps) {
@@ -7308,10 +7351,10 @@ index 1178ade462cbb4775b0dcc82e0ec6d2ded8fe455..09792ed56a9906acf7e5403821b9e0f2
                parentThreadLink={headerParentThreadLink}
                onOpenThread={onOpenRelatedThreadStable}
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 79a19c7b0ae93b54aef2c803ff34821730cb9a56..f16fa08f50ed56bcd6a68420951faa9e7ac6b5fa 100644
+index 56fe0ce2adb6a910d68143006582cde412571e90..12d35b939625e5e42e8ad84d0786aa7d43517e27 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -140,6 +140,7 @@ import {
+@@ -141,6 +141,7 @@ import {
    useThreadSelectionStore,
  } from "../threadSelectionStore";
  import {
@@ -7319,7 +7362,7 @@ index 79a19c7b0ae93b54aef2c803ff34821730cb9a56..f16fa08f50ed56bcd6a68420951faa9e
    canTurnThreadIntoProject,
    readThreadReadAction,
    useAcknowledgeThreadWoke,
-@@ -987,6 +988,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -988,6 +989,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      unpinThread,
      confirmAndUnpinThread,
      setThreadAutoSettle,
@@ -7327,7 +7370,7 @@ index 79a19c7b0ae93b54aef2c803ff34821730cb9a56..f16fa08f50ed56bcd6a68420951faa9e
      turnThreadIntoProject,
      reorderPinnedThread,
      reorderActiveThread,
-@@ -2886,6 +2888,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2895,6 +2897,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                isPinned,
                isSettled,
                autoSettleEnabled: thread.autoSettleDisabledAt == null,
@@ -7335,7 +7378,7 @@ index 79a19c7b0ae93b54aef2c803ff34821730cb9a56..f16fa08f50ed56bcd6a68420951faa9e
                isSnoozed,
                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
                isRegeneratingTitle,
-@@ -2899,6 +2902,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2908,6 +2911,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                supports: {
                  settlement: configLoaded,
                  autoSettleOptOut: supportsAutoSettleOptOut,
@@ -7343,7 +7386,7 @@ index 79a19c7b0ae93b54aef2c803ff34821730cb9a56..f16fa08f50ed56bcd6a68420951faa9e
                  snooze: configLoaded,
                  pinning: configLoaded,
                  titleRegeneration: configLoaded,
-@@ -3018,6 +3022,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3027,6 +3031,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              }
              return;
            }
@@ -7440,10 +7483,10 @@ index cc7c1f6e219de5627d7c2260277eef396915f463..4de276a297576ca3aa13b8d5e0c9b4bc
      ? undefined
      : managedRuntimeModeCeilingMessage(ceiling.organization, ceiling.maxRuntimeMode, resolve);
 diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
-index 133c80f304d0aa058c39a2d003409ba7c5c570d5..115550c0f21809e7286d37658fe328818de8b0b2 100644
+index 2a7d337d8e8b6294f9d4b6bd4821341af7fe4ce7..9f1a2ed1085d367f7cc97d713bea302aa64f6233 100644
 --- a/apps/web/src/components/chat/ChatHeader.tsx
 +++ b/apps/web/src/components/chat/ChatHeader.tsx
-@@ -11,7 +11,7 @@ import {
+@@ -12,7 +12,7 @@ import {
    squashAtomCommandFailure,
  } from "@t3tools/client-runtime/state/runtime";
  import { T, useGT, Var } from "gt-react";
@@ -7452,7 +7495,7 @@ index 133c80f304d0aa058c39a2d003409ba7c5c570d5..115550c0f21809e7286d37658fe32881
  import {
    memo,
    useEffect,
-@@ -50,6 +50,7 @@ interface ChatHeaderProps {
+@@ -51,6 +51,7 @@ interface ChatHeaderProps {
    activeThreadId: ThreadId;
    activeThreadTitle: string;
    activeThreadLinkOrigin?: string | null | undefined;
@@ -7460,7 +7503,7 @@ index 133c80f304d0aa058c39a2d003409ba7c5c570d5..115550c0f21809e7286d37658fe32881
    isServerThread: boolean;
    activeProject: EnvironmentProject | null;
    parentThreadLink: { threadId: ThreadId; title: string } | null;
-@@ -75,6 +76,7 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -76,6 +77,7 @@ export const ChatHeader = memo(function ChatHeader({
    activeThreadId,
    activeThreadTitle,
    activeThreadLinkOrigin,
@@ -7468,7 +7511,7 @@ index 133c80f304d0aa058c39a2d003409ba7c5c570d5..115550c0f21809e7286d37658fe32881
    isServerThread,
    activeProject,
    parentThreadLink,
-@@ -409,6 +411,20 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -411,6 +413,20 @@ export const ChatHeader = memo(function ChatHeader({
                </TooltipPopup>
              </Tooltip>
            ) : null}
@@ -7724,7 +7767,7 @@ index 95741d7a12a174567a3aa63744f654fb0083dfab..962f0e5f780f549c45b7564acb16f9f5
      </div>
    );
 diff --git a/apps/web/src/components/settings/LinkedEnvironmentsSettings.tsx b/apps/web/src/components/settings/LinkedEnvironmentsSettings.tsx
-index 5ab6debec72557af2cbc8368c8d9da86b2114fcf..853740c07849bf4659408401b27b3060dc69e398 100644
+index 71afddaa33b3229202c059c9e3c6803849436716..656aa2a3ec02465a4beb5962d4cf886fe712396b 100644
 --- a/apps/web/src/components/settings/LinkedEnvironmentsSettings.tsx
 +++ b/apps/web/src/components/settings/LinkedEnvironmentsSettings.tsx
 @@ -7,8 +7,9 @@ import {
@@ -8051,10 +8094,10 @@ index f6fb32fa0d353d2c736e27a599358351249f7fc0..381e9d965b838f90f41f216d938be06e
    it("offers find only to a header that can open it, without task permission", async () => {
      createMenu().openMenu(position);
 diff --git a/apps/web/src/hooks/useThreadActionMenu.ts b/apps/web/src/hooks/useThreadActionMenu.ts
-index 5ac975e9e7d6186f4969d0600cfcf355bc13a218..0cfe85669fd3091c5e4d8f0104d2f304da0c3447 100644
+index 04c2d96db36419e03ebf1ba2eec7e1ff2b5666fb..b10c916e04fe506bac3af64065e903fe3b3ed3a9 100644
 --- a/apps/web/src/hooks/useThreadActionMenu.ts
 +++ b/apps/web/src/hooks/useThreadActionMenu.ts
-@@ -51,6 +51,7 @@ import { useCopyToClipboard } from "./useCopyToClipboard";
+@@ -52,6 +52,7 @@ import { useCopyToClipboard } from "./useCopyToClipboard";
  import { useNewThreadHandler } from "./useHandleNewThread";
  import { useClientSettings } from "./useSettings";
  import {
@@ -8062,7 +8105,7 @@ index 5ac975e9e7d6186f4969d0600cfcf355bc13a218..0cfe85669fd3091c5e4d8f0104d2f304
    canTurnThreadIntoProject,
    readThreadReadAction,
    useThreadActions,
-@@ -91,6 +92,7 @@ export function useThreadActionMenu(input: {
+@@ -92,6 +93,7 @@ export function useThreadActionMenu(input: {
      pinThread,
      confirmAndUnpinThread,
      setThreadAutoSettle,
@@ -8070,7 +8113,7 @@ index 5ac975e9e7d6186f4969d0600cfcf355bc13a218..0cfe85669fd3091c5e4d8f0104d2f304
      archiveThread,
      deleteThread,
      markThreadUnread,
-@@ -137,6 +139,7 @@ export function useThreadActionMenu(input: {
+@@ -138,6 +140,7 @@ export function useThreadActionMenu(input: {
        const supports = {
          settlement: configLoaded,
          autoSettleOptOut: readEnvironmentSupportsAutoSettleOptOut(threadRef.environmentId),
@@ -8078,7 +8121,7 @@ index 5ac975e9e7d6186f4969d0600cfcf355bc13a218..0cfe85669fd3091c5e4d8f0104d2f304
          snooze: configLoaded,
          pinning: configLoaded,
          titleRegeneration: configLoaded,
-@@ -151,6 +154,7 @@ export function useThreadActionMenu(input: {
+@@ -152,6 +155,7 @@ export function useThreadActionMenu(input: {
          isPinned: thread.pinnedAt != null,
          isSettled: supports.settlement && thread.settledOverride === "settled",
          autoSettleEnabled: thread.autoSettleDisabledAt == null,
@@ -8086,7 +8129,7 @@ index 5ac975e9e7d6186f4969d0600cfcf355bc13a218..0cfe85669fd3091c5e4d8f0104d2f304
          isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
          canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
          isRegeneratingTitle,
-@@ -259,6 +263,11 @@ export function useThreadActionMenu(input: {
+@@ -260,6 +264,11 @@ export function useThreadActionMenu(input: {
              setThreadAutoSettle(threadRef, action === "auto-settle:enabled"),
            );
            return;
@@ -8218,17 +8261,18 @@ index 69206d8458c616ad54f6145270d0b09fe1bfda1e..1d5b3b6357810549810b21c8949c49dc
    not fake a mode by auto-answering approvals in T3. Unoffered stored modes fall back to Supervised.
    Pass native approval and question option IDs through unchanged, and ensure every request can be
 diff --git a/docs/internals/04_environment-auth.md b/docs/internals/04_environment-auth.md
-index 53c9f60d8f7c6facba9f74114379bce21c3c2e29..c1db24c76d6f093edc341799d0aef4e71a8945d9 100644
+index 8b80c65860d6036005f2d560fccbf3ec2ffb1ff3..240b030b28283efef1cd3a27448d2343c14a4625 100644
 --- a/docs/internals/04_environment-auth.md
 +++ b/docs/internals/04_environment-auth.md
-@@ -45,6 +45,10 @@ model.
+@@ -49,6 +49,11 @@ model.
    [peer links](./05_remote.md#peer-links)). Every MCP tool must statically declare its access level in
    [`McpToolAccess.ts`](../../apps/server/src/mcp/McpToolAccess.ts), and thread-only tools must still
    refuse outside callers in handlers—hiding from tool listings is only discovery.
 +- **An `ask` grant holds no RPC or route scope.** A peer link paired to ask questions only holds
 +  `orchestration:ask` alone. On `/mcp` only tools declared with `McpToolAccess.asks` run for it, so
-+  a new tool stays closed to it by default. Approving one needs `orchestration:read`
-+  (`mcpApprovalScopes`), since the grant holds no scope an approver could match.
++  a new tool stays closed to it by default. Approving one, or getting an ask link code through a
++  linked environment, needs `orchestration:read` (`mcpApprovalScopes`), since the grant holds no
++  scope an approver could match.
  - **Peer-link client pairing.** Only a full-access peer link may mint a one-time client pairing on
    the linked environment (since full-access agents can already run `t3 auth pairing create`). The
    linked side enforces this itself, and the operation stays a human-triggered RPC/HTTP route rather
@@ -8260,10 +8304,10 @@ index 13ef6dffb9374ce8f5b557ae5c03ad5c364bced0..f0edafdc555fbf9a99716d148a22ef85
  ## Hosted web is a client
  
 diff --git a/docs/user/remote-access.md b/docs/user/remote-access.md
-index e9280e18f7628988d818fc8ee0d4cfce02017521..3a7039a7adadf07ec730814a54205de785403cb4 100644
+index 9d6da2b4ccb53f6529bcdd662e33142aaca0fbd4..e572302bdca8ccecc4bbb34c719e58a37d000a59 100644
 --- a/docs/user/remote-access.md
 +++ b/docs/user/remote-access.md
-@@ -462,6 +462,9 @@ an address you trust: the code is sent there.
+@@ -463,6 +463,9 @@ an address you trust: the code is sent there.
  
  - The access you pick is the most agents from this machine may do there. An
    agent also never gets more there than its own mode here.
@@ -8273,7 +8317,7 @@ index e9280e18f7628988d818fc8ee0d4cfce02017521..3a7039a7adadf07ec730814a54205de7
  - Threads a link starts are marked **From** and this machine's name there.
  - A full-access link works there like that machine's own agents. Below full
    access, the link's agents can change only threads it started, not that
-@@ -558,6 +561,40 @@ any other thread on web and desktop, and a shorter read-only list on mobile.
+@@ -560,6 +563,40 @@ any other thread on web and desktop, and a shorter read-only list on mobile.
  - You need permission to read threads on the machine you are connected to, and
    Linked environments must be on there. Both machines need a version of T3 Code
    that has this view.
@@ -8497,10 +8541,10 @@ index d936fa7726df250750869576ad1a18dc1dc74bd7..496de9e9059ac5715c51a782e5b26e01
      case "thread.unpinned":
      case "thread.pin-reordered":
 diff --git a/packages/client-runtime/src/state/runtime.ts b/packages/client-runtime/src/state/runtime.ts
-index f91f838db78b0afbc2df6721d9f2ed3998303ad7..1d9dfe1c64568530a95edd51b585b898421f95f1 100644
+index b4674a07cb469fbfe4b7fa5a1731cb03feb5edc5..ab15273299290e171c418109a4110f5cd92582a7 100644
 --- a/packages/client-runtime/src/state/runtime.ts
 +++ b/packages/client-runtime/src/state/runtime.ts
-@@ -1102,6 +1102,43 @@ export function createEnvironmentRpcSubscriptionAtomFamily<
+@@ -1104,6 +1104,43 @@ export function createEnvironmentRpcSubscriptionAtomFamily<
    });
  }
  
@@ -8695,12 +8739,28 @@ index 5a630a6b7abe989984b2e7d86acc504f18bc8e9b..93892d155e0c20af3c85c918ab7121e6
    "approval-required": "SUPERVISED",
    "auto-accept-edits": "EDITS",
 diff --git a/packages/contracts/src/clientRpcPermissions.ts b/packages/contracts/src/clientRpcPermissions.ts
-index b23b4650b20a9e5efcd3c03673160af9cb447840..9c96f6d7b7f2fa82870deadfcedb85fa5b39e84c 100644
+index eb61fff1c0abdc475bf6e8264f41f719fe3ce913..9bcccbe9f2b17531a8d298be5b2aef556ca2be09 100644
 --- a/packages/contracts/src/clientRpcPermissions.ts
 +++ b/packages/contracts/src/clientRpcPermissions.ts
-@@ -124,6 +124,12 @@ export function clientRpcRequiredScopes(
-     )
-       return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
+@@ -11,7 +11,7 @@ import {
+   AuthSourceControlWriteScope,
+   AuthTerminalOperateScope,
+   type AuthEnvironmentScope,
+-  mcpClientScopes,
++  mcpApprovalScopes,
+ } from "./auth.ts";
+ import { PeerLinkLinkPairingInput } from "./peerLink.ts";
+ import { ORCHESTRATION_V2_WS_METHODS } from "./orchestrationV2.ts";
+@@ -129,12 +129,18 @@ export function clientRpcRequiredScopes(
+   }
+   // Handing out access takes holding it: the caller gets back a credential it can spend itself.
+   if (method === WS_METHODS.peerLinksPairLink && input !== undefined) {
+-    const held = mcpClientScopes(decodeLinkPairing(input).access);
++    const held = mcpApprovalScopes(decodeLinkPairing(input).access);
+     return [AuthAccessWriteScope, ...held];
+   }
+   if (method === WS_METHODS.guestShareCreate) {
+     return [AuthAccessWriteScope, AuthOrchestrationReadScope];
    }
 +  // Opting a thread in lets linked machines ask it questions: an access decision.
 +  if (
@@ -8748,7 +8808,7 @@ index 5e16fb4a545ad44fe26b332d9a994ac139c9d815..e3428784ece01607c6017bde4da2bd4f
      expect(withMessageSenderNote(message, text)).toBe(expected);
    });
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index b9c265e542b3607937757aeadc4ce0db9e09332c..f352361ce4b771931e7b12ed5c79e77077579c4c 100644
+index 94fed99ca735633ede65168b9bb0853fdf05b5f9..ea450eb1ea6170b61e93f2d49fed229e748b56a4 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
 @@ -359,6 +359,8 @@ export const OrchestrationV2ToolCapabilities = Schema.Struct({
@@ -8833,7 +8893,7 @@ index b9c265e542b3607937757aeadc4ce0db9e09332c..f352361ce4b771931e7b12ed5c79e770
    /**
     * Its own field, written by its own event: lifecycle writers hold a copy of the run from when
     * the turn started, and their updates must not put an unanswered run back.
-@@ -1524,6 +1538,8 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
+@@ -1528,6 +1542,8 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
    followsThreadSelection: Schema.optional(Schema.Literal(true)),
    senderThreadId: Schema.optional(ThreadId),
    linkedSender: Schema.optional(OrchestrationV2LinkedSender),
@@ -8842,7 +8902,7 @@ index b9c265e542b3607937757aeadc4ce0db9e09332c..f352361ce4b771931e7b12ed5c79e770
    idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
    /**
     * The message is the script a provider-native workflow run executes, not prose. Clients show
-@@ -1904,6 +1920,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
+@@ -1908,6 +1924,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
      scheduledTaskId: Schema.optional(ScheduledTaskId),
      senderThreadId: Schema.optional(ThreadId),
      linkedSender: Schema.optional(OrchestrationV2LinkedSender),
@@ -8850,7 +8910,7 @@ index b9c265e542b3607937757aeadc4ce0db9e09332c..f352361ce4b771931e7b12ed5c79e770
      idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
      workflowScript: OrchestrationV2ConversationMessage.fields.workflowScript,
      freshContext: OrchestrationV2Run.fields.freshContext,
-@@ -2188,6 +2205,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
+@@ -2194,6 +2211,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
        "thread.unsnoozed",
        "thread.pinned",
        "thread.auto-settle-set",
@@ -8858,7 +8918,7 @@ index b9c265e542b3607937757aeadc4ce0db9e09332c..f352361ce4b771931e7b12ed5c79e770
        "thread.unpinned",
        "thread.pin-reordered",
        "thread.active-reordered",
-@@ -2460,6 +2478,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
+@@ -2466,6 +2484,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
    limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -8866,7 +8926,7 @@ index b9c265e542b3607937757aeadc4ce0db9e09332c..f352361ce4b771931e7b12ed5c79e770
    pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    /** Absent on threads written before tags existed; read as empty. */
-@@ -2633,6 +2652,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
+@@ -2639,6 +2658,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
    lastSnoozeWakeAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
@@ -8874,7 +8934,7 @@ index b9c265e542b3607937757aeadc4ce0db9e09332c..f352361ce4b771931e7b12ed5c79e770
    lastVisitedAt: Schema.NullOr(Schema.DateTimeUtcFromString).pipe(
      Schema.withDecodingDefault(Effect.succeed(null)),
    ),
-@@ -2806,6 +2826,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
+@@ -2812,6 +2832,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
      scheduledTaskId: Schema.optional(ScheduledTaskId),
      senderThreadId: Schema.optional(ThreadId),
      linkedSender: Schema.optional(OrchestrationV2LinkedSender),
@@ -8882,7 +8942,7 @@ index b9c265e542b3607937757aeadc4ce0db9e09332c..f352361ce4b771931e7b12ed5c79e770
      idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
      workflowScript: OrchestrationV2ConversationMessage.fields.workflowScript,
      freshContext: OrchestrationV2Run.fields.freshContext,
-@@ -3093,6 +3114,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
+@@ -3101,6 +3122,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
    snoozedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
@@ -8890,7 +8950,7 @@ index b9c265e542b3607937757aeadc4ce0db9e09332c..f352361ce4b771931e7b12ed5c79e770
    lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    titleRegeneration: Schema.optional(
      Schema.NullOr(
-@@ -3146,6 +3168,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
+@@ -3154,6 +3176,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
        "thread.unsnoozed",
        "thread.pinned",
        "thread.auto-settle-set",
@@ -8898,7 +8958,7 @@ index b9c265e542b3607937757aeadc4ce0db9e09332c..f352361ce4b771931e7b12ed5c79e770
        "thread.unpinned",
        "thread.pin-reordered",
        "thread.active-reordered",
-@@ -3414,6 +3437,12 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3422,6 +3445,12 @@ export const OrchestrationV2Command = Schema.Union([
      threadId: ThreadId,
      enabled: Schema.Boolean,
    }),
@@ -8911,7 +8971,7 @@ index b9c265e542b3607937757aeadc4ce0db9e09332c..f352361ce4b771931e7b12ed5c79e770
    Schema.Struct({
      type: Schema.Literal("thread.pin"),
      commandId: CommandId,
-@@ -3593,6 +3622,8 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3601,6 +3630,8 @@ export const OrchestrationV2Command = Schema.Union([
      scheduledTaskId: Schema.optional(ScheduledTaskId),
      senderThreadId: Schema.optional(ThreadId),
      linkedSender: Schema.optional(OrchestrationV2LinkedSender),
@@ -9043,7 +9103,7 @@ index e09345e859909de8880af623e766063a871f51a3..46dbf4da0dd99d7c0013294ae00632b5
      } else if (
        key === "providers" ||
 diff --git a/packages/provider-core/src/server/ProviderAdapter.ts b/packages/provider-core/src/server/ProviderAdapter.ts
-index 015a68f48982b426f8cbb39205889eed5ec44372..ddf032b6d501ba297531af241b5002f2638f12e2 100644
+index 5cefa6da97fab74a98c6044f0543541c5cc4f68a..71cef5b37ba9fc935baa84ec9f55f0a84232b6f0 100644
 --- a/packages/provider-core/src/server/ProviderAdapter.ts
 +++ b/packages/provider-core/src/server/ProviderAdapter.ts
 @@ -74,6 +74,8 @@ export const ProviderAdapterV2RuntimePolicy = Schema.Struct({

@@ -122,7 +122,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code;
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
 diff --git a/apps/server/src/serverSettings.test.ts b/apps/server/src/serverSettings.test.ts
-index 5d46c916c3990400ca3c442506509d9f09b44c02..9e83aac3e598cfcd527aba0c41056f3e5588c13b 100644
+index e8efe5d2f91bc13d0b4fbd7e0bcd798096ae2d34..5b26d478940393a8365cd94d3382db7aac3ab76f 100644
 --- a/apps/server/src/serverSettings.test.ts
 +++ b/apps/server/src/serverSettings.test.ts
 @@ -650,7 +650,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
@@ -1015,7 +1015,7 @@ index cc6068b72f164eca21f8bb29ba3587da1ca7d3ba..466638aaa010d61c54300d39f6387258
    // Snapshot now: the encoding runs later, while the file is written.
    return (cache, extra) => encode([...cache], extra);
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index 9d03b7ab72e4871e06f865682771a2dc62ff8225..eb7d19f90f03a1bd05b45c0f067e6a0a41c864f3 100644
+index 441aa9615361a252c9d56cbf99928648afd70df9..bf5a3285a2913ed665d9a83583b69bbbb6aab1fd 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 @@ -29,7 +29,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
@@ -1029,7 +1029,7 @@ index 9d03b7ab72e4871e06f865682771a2dc62ff8225..eb7d19f90f03a1bd05b45c0f067e6a0a
    ].map((command, index) => [command, index]),
  );
  
-@@ -503,7 +505,9 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+@@ -516,7 +518,9 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
  
  // Whole labels: search titles keep the encoded message, which cannot nest another one.
  const USAGE_COMMAND_LABELS: Record<

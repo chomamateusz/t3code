@@ -103,7 +103,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  9 files changed, 206 insertions(+), 18 deletions(-)
 
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index 90325012a811f10f35a454f4ec326a51943fa6a2..e1c884adc9765a59141ac43475acca01911401f4 100644
+index fb3c72fb55460f67786f28573b29f9a463a656fd..e8f0bb7625a225174c7a917946e8becca6083891 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
 @@ -1,7 +1,7 @@
@@ -124,7 +124,7 @@ index 90325012a811f10f35a454f4ec326a51943fa6a2..e1c884adc9765a59141ac43475acca01
    const webContentsListeners = new Map<string, (...args: readonly unknown[]) => void>();
    let zoomLevel = 0;
    const webContents = {
-@@ -239,6 +239,7 @@ function layerTest(input: {
+@@ -241,6 +241,7 @@ function layerTest(input: {
    readonly mainWindow: Ref.Ref<Option.Option<Electron.BrowserWindow>>;
    readonly createdWindowOptions?: Electron.BrowserWindowConstructorOptions[];
    readonly desktopSettings?: DesktopAppSettings.DesktopSettings;
@@ -132,7 +132,7 @@ index 90325012a811f10f35a454f4ec326a51943fa6a2..e1c884adc9765a59141ac43475acca01
    readonly mainWindowBoundsUpdates?: DesktopAppSettings.DesktopWindowBounds[];
    readonly mainWindowMaximizedUpdates?: boolean[];
    readonly beforeMainWindowBoundsUpdate?: (
-@@ -344,7 +345,9 @@ function layerTest(input: {
+@@ -346,7 +347,9 @@ function layerTest(input: {
            ? layerDesktopEnvironment
            : layerDesktopEnvironmentFor(input.platform),
          layerDesktopAppSettings,
@@ -143,7 +143,7 @@ index 90325012a811f10f35a454f4ec326a51943fa6a2..e1c884adc9765a59141ac43475acca01
          layerDesktopServerExposure,
          DesktopState.layer,
          layerElectronApp,
-@@ -1443,7 +1446,17 @@ describe("DesktopWindow", () => {
+@@ -1446,7 +1449,17 @@ describe("DesktopWindow", () => {
        const fakeWindow = makeFakeBrowserWindow();
        const createCount = yield* Ref.make(0);
        const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
@@ -162,7 +162,7 @@ index 90325012a811f10f35a454f4ec326a51943fa6a2..e1c884adc9765a59141ac43475acca01
  
        yield* Effect.gen(function* () {
          const desktopWindow = yield* DesktopWindow.DesktopWindow;
-@@ -1451,22 +1464,55 @@ describe("DesktopWindow", () => {
+@@ -1454,22 +1467,55 @@ describe("DesktopWindow", () => {
          const swipe = fakeWindow.windowListeners.get("swipe");
          assert.isDefined(swipe);
          if (!swipe) return;
@@ -227,10 +227,10 @@ index 90325012a811f10f35a454f4ec326a51943fa6a2..e1c884adc9765a59141ac43475acca01
      }),
    );
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index c99fbb52c49e2effbf8bf4948743ff718a279076..c96a6d9078b901432048ea00c6bcff24cf8f2697 100644
+index ebf64c7540507402607e352d45cd2d65e0943844..12e7078ec7985f563e19f1b940cd828d198c1223 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
-@@ -867,9 +867,27 @@ export const make = Effect.gen(function* () {
+@@ -874,9 +874,27 @@ export const make = Effect.gen(function* () {
      if (environment.platform === "darwin") {
        // Mouse drivers can deliver Back/Forward as macOS swipe gestures instead of buttons.
        window.on("swipe", (_event, direction) => {

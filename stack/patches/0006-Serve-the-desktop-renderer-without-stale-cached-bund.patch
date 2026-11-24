@@ -66,7 +66,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  7 files changed, 187 insertions(+), 11 deletions(-)
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index ba09871ee1c5aea886840610e18d6b10bb151439..f7c077f8a9b02f5df0cbde8c877cb6b340229fb7 100644
+index e5d95fbaee295f7597cc3947a73feee65dc564df..70ce17f88c4779e2f8ebb76d9c12544a1bbb7c43 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
 @@ -208,6 +208,22 @@ const startLocalBackend = Effect.gen(function* () {
@@ -460,10 +460,10 @@ index bb704b949ee81d95945e50adbd2878398076b08a..9cbd73efc3291d1419ded15f845af019
            setServerExposureMode: () => Effect.die("unexpected server exposure update"),
            setTailscaleServe: () => Effect.die("unexpected Tailscale Serve update"),
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index e4e426b1975ae67b0563b25cef926361945f228f..90325012a811f10f35a454f4ec326a51943fa6a2 100644
+index 28a2cde19d0cc049f2c9704548840453e35f7d5a..fb3c72fb55460f67786f28573b29f9a463a656fd 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
-@@ -266,6 +266,7 @@ function layerTest(input: {
+@@ -268,6 +268,7 @@ function layerTest(input: {
    const layerDesktopAppSettings = Layer.succeed(DesktopAppSettings.DesktopAppSettings, {
      get: Effect.sync(() => desktopSettings),
      load: Effect.sync(() => desktopSettings),

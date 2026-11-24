@@ -1631,10 +1631,10 @@ index 0000000000000000000000000000000000000000..a487da04636c707c54cf9c41f54f698b
 +  },
 +);
 diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
-index 6ded8e851ddbbf5c9be5dffa1c09a7a246b555f6..d6262e10736062002975685a98ada3f94cb1bab9 100644
+index 4866dd32d08f9c244ec848d6d4751162a89ff78c..d5413723f749e647fb0a4fb244bf3062ca31e136 100644
 --- a/apps/desktop/vite.config.ts
 +++ b/apps/desktop/vite.config.ts
-@@ -21,6 +21,11 @@ const devElectronCommand =
+@@ -22,6 +22,11 @@ const devElectronCommand =
      ? "node scripts/dev-electron.mjs"
      : "exec node scripts/dev-electron.mjs";
  const publicConfigDefine = {

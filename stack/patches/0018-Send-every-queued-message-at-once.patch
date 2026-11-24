@@ -244,7 +244,7 @@ index 7ea6f95a7a5159dc636b48f8aa020f543ec653a8..646cee832d6d4372a0132985fe4811f7
  );
  
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index b95f618d8c1df5fd761a82de96475fb4d2436b21..032aaab874d8b379a72072c3ffe2087d770de993 100644
+index 7dc93dc5c196e12d383ff56e28a050cd86d281fd..a5850e18e2dd9badc4df9fb56fcf0b1911342833 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -32,6 +32,7 @@ import {
@@ -263,7 +263,7 @@ index b95f618d8c1df5fd761a82de96475fb4d2436b21..032aaab874d8b379a72072c3ffe2087d
  import {
    backgroundWorkHoldsCompletion,
    derivePendingBackgroundWork,
-@@ -224,6 +226,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
+@@ -225,6 +227,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
  import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import * as ServerSettings from "../serverSettings.ts";
  
@@ -271,7 +271,7 @@ index b95f618d8c1df5fd761a82de96475fb4d2436b21..032aaab874d8b379a72072c3ffe2087d
  const isMessageQuestionAnswer = Schema.is(
    Schema.Union([TrimmedNonEmptyString, Schema.NonEmptyArray(TrimmedNonEmptyString)]),
  );
-@@ -692,6 +695,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
+@@ -693,6 +696,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
      case "queued-run.reorder":
      case "queued-run.cancel":
      case "queued-run.edit":
@@ -279,7 +279,7 @@ index b95f618d8c1df5fd761a82de96475fb4d2436b21..032aaab874d8b379a72072c3ffe2087d
      case "runtime-request.respond":
      case "runtime-request.delivery.fail":
      case "thread.user-input.dismiss":
-@@ -12470,46 +12474,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12592,46 +12596,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: editProblem,
        });
      }
@@ -335,8 +335,8 @@ index b95f618d8c1df5fd761a82de96475fb4d2436b21..032aaab874d8b379a72072c3ffe2087d
      // A command cannot steer, so an edit into one keeps it queued where it is.
      if (
        queuedRun.steerWhenReadyRunId !== undefined &&
-@@ -12519,13 +12495,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
-       })
+@@ -12642,13 +12618,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         (yield* limitForbidsParkedSteer))
      ) {
        const { steerWhenReadyRunId: _, ...queued } = queuedRun;
 -      yield* emitEvent({
@@ -354,7 +354,7 @@ index b95f618d8c1df5fd761a82de96475fb4d2436b21..032aaab874d8b379a72072c3ffe2087d
          payload: queued,
        });
      }
-@@ -12553,6 +12532,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12676,6 +12655,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
      }
    });
  
@@ -483,7 +483,7 @@ index b95f618d8c1df5fd761a82de96475fb4d2436b21..032aaab874d8b379a72072c3ffe2087d
    const subagentCount = (threadId: ThreadId) =>
      projectionStore
        .getSubagentCount(threadId)
-@@ -16225,6 +16326,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16348,6 +16449,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "run.output.submit":
          yield* dispatchRunOutputSubmit(command, events);
          break;
@@ -493,7 +493,7 @@ index b95f618d8c1df5fd761a82de96475fb4d2436b21..032aaab874d8b379a72072c3ffe2087d
        case "checkpoint.rollback":
          yield* dispatchCheckpointRollback(command, events, effects);
          break;
-@@ -16465,7 +16569,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16588,7 +16692,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                ),
              );
            if (
@@ -503,7 +503,7 @@ index b95f618d8c1df5fd761a82de96475fb4d2436b21..032aaab874d8b379a72072c3ffe2087d
              cause._tag === "OrchestratorDispatchError"
            ) {
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index 8dcb4f946fb0eee687c8f9b1b73d5aef5d984cb0..673916ebf06c438da04bae4ece71b1ffa19904cb 100644
+index 0eb5d0e4b463a7fe4142afdf4699a47e579f0da0..0a76d0ec7bb4fcad28e482045fb218750f2c557f 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 @@ -10,6 +10,8 @@ import { assert, it } from "@effect/vitest";
@@ -523,7 +523,7 @@ index 8dcb4f946fb0eee687c8f9b1b73d5aef5d984cb0..673916ebf06c438da04bae4ece71b1ff
    type OrchestrationV2DomainEvent,
    type OrchestrationV2Run,
    type OrchestrationV2ShellSnapshot,
-@@ -12018,6 +12021,312 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -12022,6 +12025,312 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
        assert.equal(cancelAgainError._tag, "OrchestratorDispatchError");
      }),
    );
@@ -837,7 +837,7 @@ index 8dcb4f946fb0eee687c8f9b1b73d5aef5d984cb0..673916ebf06c438da04bae4ece71b1ff
  
  it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (it) => {
 diff --git a/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts b/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
-index 15ac7ecb8d3fe8a2e2b0ef65df5cbfd32e5ef243..952162d2f11872ba8ad9119263d47ebdc3f8e038 100644
+index 199ad9022f8d2a2e51270856e20840a7b9e15483..5c1390de0696bb68e8f01e2b823917f4c7506a4f 100644
 --- a/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
 +++ b/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
 @@ -184,6 +184,7 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
@@ -873,7 +873,7 @@ index b6922b9e90996d8e03ce0e656abc2deeec5dc7cc..58a95e810148cfc08c6ac8e7a6f1081a
            secretReferences: true,
            secretRequestReferences: true,
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 10cbb215c9e0f03ce96a269924ccfbd73a9f8d8f..1178ade462cbb4775b0dcc82e0ec6d2ded8fe455 100644
+index c409788e8707cea713875a54e4cf92feac92726f..56cbb0da444fce307a6a992826d4f4a02a6ac352 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
 @@ -2942,6 +2942,8 @@ export default function ChatView(props: ChatViewProps) {
@@ -1429,10 +1429,10 @@ index 5ad406da5ef9157fda913409481016f6f535186d..d300fd3e7f0bd450e3d749f97a9a2389
                providerThreads: [],
                providerSessions: [
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index eb7d19f90f03a1bd05b45c0f067e6a0a41c864f3..e9a5fa2b2a0b7d15d8d908ea33042fbc77786399 100644
+index bf5a3285a2913ed665d9a83583b69bbbb6aab1fd..552220dab53f71072e84a4b0556f64e1037100a5 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-@@ -448,6 +448,7 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+@@ -461,6 +461,7 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
    "composer.dictation": msg("Composer: Start or Finish Dictation"),
    "thread.steerQueuedMessage": msg("Queue: Send First Queued Message"),
    "thread.editQueuedMessage": msg("Queue: Edit Last Queued Message"),
@@ -1981,10 +1981,10 @@ index eda5138b760b9b3d028d89d9b4b7a0c0b7c8075b..56f521670e72594a00b8737a97486206
    "thread.next",
    "thread.copyReference",
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index a25842bd99391db26b0b9d2f4cd838b8b0bb1d8f..b9c265e542b3607937757aeadc4ce0db9e09332c 100644
+index dfde87c009f664e1b6ec92f855d0456058e0f5b4..94fed99ca735633ede65168b9bb0853fdf05b5f9 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
-@@ -3720,6 +3720,13 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3728,6 +3728,13 @@ export const OrchestrationV2Command = Schema.Union([
      // Replaces all attachments; absent preserves them for older clients editing text.
      attachments: Schema.optional(Schema.Array(ChatAttachment)),
    }),
@@ -2011,10 +2011,10 @@ index 1e7042600149522b1591eb9a733be473e22668c5..55e320b58d1d50b94813b7ecdc94fe4f
    secretProviderSettings: Schema.optionalKey(Schema.Boolean),
    /** Secret settings may point at a secret provider; older servers drop the reference. */
 diff --git a/packages/shared/package.json b/packages/shared/package.json
-index d12cd9b0039824ecb0c6d0411c8f2afbbd4b5d15..f08ab9c9fb22dacb6eae81c59d6a678852dfbd19 100644
+index f51761a9f81887ad21d731417eb370b3191476f5..0cf2b86d262d5c722c1399150a5ce1f73b4ecae2 100644
 --- a/packages/shared/package.json
 +++ b/packages/shared/package.json
-@@ -311,6 +311,14 @@
+@@ -315,6 +315,14 @@
        "types": "./src/composerContextReferences.ts",
        "import": "./src/composerContextReferences.ts"
      },

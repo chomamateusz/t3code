@@ -147,7 +147,7 @@ index 4057cbdb4540c3d2672b9ff56145873131bba9fa..3f454241cafb0c89c265cb4cba7cbc25
  
  const SessionClaims = Schema.Struct({
 diff --git a/docs/user/remote-access.md b/docs/user/remote-access.md
-index 051445f03eb0768af00edd40c9c8efdec9dd3512..e9280e18f7628988d818fc8ee0d4cfce02017521 100644
+index 3518382d2026e6db7803a86f8922da45234b9a30..9d6da2b4ccb53f6529bcdd662e33142aaca0fbd4 100644
 --- a/docs/user/remote-access.md
 +++ b/docs/user/remote-access.md
 @@ -128,7 +128,7 @@ Android app then trusts it.

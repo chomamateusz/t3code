@@ -70,6 +70,8 @@ Port to def64e3a54: upstream dbb5bdb582 (#33057) removes the header's Add projec
 
 Port to d63b9c4c76: upstream 780db269df (#41330) deleted docs/operations/scenarios.md and its example scenario (docs/internals/15_testing.md describes scenarios without one), so that hunk is dropped; scripts/scenarios/add-project-tab-reaches-submit.e2e.ts still taps the Add project button; code unchanged.
 
+Port to 85aaef42d4: uiStateStore.ts and uiStateStore.test.ts follow upstream 1c6d41a9ba (#41317) without the changed-files expansion state; Sidebar.tsx keeps upstream 1c9ccc7127's (#41554) buildSidebarProjectPickerEntries import where this commit drops projectGroupsSpanEnvironments. The change itself is unchanged.
+
 Files:
 apps/web:
 - apps/web/src/components/ProjectComboboxRow.tsx
@@ -1044,7 +1046,7 @@ index e1732d642fcc84a127d97ecb86790f682a071742..a2b1d06a850333b97d1a3c3ac42cb01f
    thread: Pick<SidebarThreadSummary, "latestRun" | "runtime">,
  ): string | null {
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5d8dcf9d2 100644
+index 44ba228d204679117eea089fb0a8b55ab0f2b6d9..0c41d6d67f9ab45e4dc79a4518c7a4aabfc72410 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -68,18 +68,10 @@ import {
@@ -1067,10 +1069,10 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
    useRef,
    useState,
    useSyncExternalStore,
-@@ -114,19 +106,27 @@ import {
-   selectProjectGroupingSettings,
+@@ -115,19 +107,27 @@ import {
  } from "@t3tools/client-runtime/state/project-grouping";
  import {
+   buildSidebarProjectPickerEntries,
 -  projectGroupsSpanEnvironments,
    resolveSidebarProjectScopeKeys,
    getSidebarProjectSettingsKey,
@@ -1098,7 +1100,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
  import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
  import {
    getThreadKeysToDeselectAfterDelete,
-@@ -138,7 +138,6 @@ import {
+@@ -139,7 +139,6 @@ import {
    useThreadActions,
  } from "../hooks/useThreadActions";
  import { useHandleNewThread } from "../hooks/useHandleNewThread";
@@ -1106,7 +1108,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
  import { useProjectPin } from "../hooks/useProjectGroupUpdate";
  import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
  import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
-@@ -180,8 +179,6 @@ import {
+@@ -181,8 +180,6 @@ import {
  } from "../threadRoutes";
  import type { SidebarThreadSummary } from "../types";
  import { cn } from "~/lib/utils";
@@ -1115,7 +1117,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
  import {
    buildDraftActionMenuItems,
    buildThreadActionMenuItems,
-@@ -195,21 +192,19 @@ import {
+@@ -196,21 +193,19 @@ import {
    buildBulkTitleRegenerationContextMenuItem,
    buildBulkUnpinContextMenuItem,
    deleteSelectedThreadEntries,
@@ -1138,7 +1140,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
    searchSidebarThreads,
    shouldCreateNewThreadInCurrentProject,
    resolveScopedNewThreadProjectRef,
-@@ -240,7 +235,6 @@ import {
+@@ -241,7 +236,6 @@ import {
    snoozeWakeLabel,
    type SnoozePreset,
  } from "./Sidebar.snooze";
@@ -1146,7 +1148,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
  import { deriveProviderEntriesByEnvironment } from "../providerInstances";
  import { useStableCallback } from "../hooks/useStableCallback";
  import {
-@@ -252,21 +246,10 @@ import { stackedThreadToast, toastManager } from "./ui/toast";
+@@ -253,21 +247,10 @@ import { stackedThreadToast, toastManager } from "./ui/toast";
  import { titleRegenerationToast } from "./threadTitleRegenerationToast";
  import { copyThreadReference } from "../lib/copyThreadReference";
  import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
@@ -1170,7 +1172,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
  import { TooltipProvider } from "./ui/tooltip";
  import {
    composerDraftHasUserContent,
-@@ -714,8 +697,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
+@@ -715,8 +698,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
        );
      } else {
        const section = resolveSidebarThreadSection({
@@ -1180,7 +1182,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
          pinned: thread.pinnedAt != null,
        });
        (section === "snoozed"
-@@ -886,19 +868,6 @@ function useSidebarLookups() {
+@@ -887,19 +869,6 @@ function useSidebarLookups() {
    };
  }
  
@@ -1200,7 +1202,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
  function canOperateThreads(
    threads: ReadonlyArray<Pick<SidebarThreadSummary, "environmentId">>,
  ): boolean {
-@@ -941,6 +910,7 @@ function readRouteThreadKey(router: AnyRouter): string | null {
+@@ -942,6 +911,7 @@ function readRouteThreadKey(router: AnyRouter): string | null {
  
  export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReveal }) {
    const gt = useGT();
@@ -1208,7 +1210,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
    const messages = useMessages();
    const {
      projects,
-@@ -1043,17 +1013,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1044,17 +1014,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const projectGroupsRef = useRef(projectGroups);
    const persistedProjectScopeKeys = useUiStateStore((store) => store.sidebarProjectScopeKeys);
    const setPersistedProjectScopeKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
@@ -1231,7 +1233,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
    const chosenEnvironmentScope = resolveSidebarEnvironmentScope({
      environments,
      keys: persistedEnvironmentScopeKeys,
-@@ -1064,9 +1034,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1065,9 +1035,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
        : new Set(chosenEnvironmentScope.map((environment) => environment.environmentId));
    const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
    const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
@@ -1241,7 +1243,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
    // Hold dropped rows until server placement is confirmed; block another pickup from replacing the hold.
    const [optimisticDrop, setOptimisticDrop] = useState<SidebarOptimisticDrop | null>(null);
    const threadSearchInputRef = useRef<HTMLInputElement>(null);
-@@ -1136,29 +1103,40 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1137,29 +1104,40 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      chosenEnvironmentIds,
      { projects, settings: projectGroupingSettings, primaryEnvironmentId },
    );
@@ -1303,7 +1305,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
    const threads = useQuietThreadShells();
    const promotingDraftThreadKeys = usePromotingDraftThreadKeys();
    const listedThreads =
-@@ -1195,59 +1173,119 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1196,59 +1174,119 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      delegatedUnderParent,
      findThread: (key) => threads.find((candidate) => threadShellKey(candidate) === key),
    });
@@ -1461,7 +1463,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
    };
    const revealActiveRow = useActiveRowReveal(routeReveal, routeRowThreadKey, routeKeyInPlace);
    const [departingThreadKey, setDepartingThreadKey] = useState<string | null>(null);
-@@ -1257,36 +1295,24 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1258,36 +1296,24 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const departRouteThread = (threadKey: string) => setDepartingThreadKey(threadKey);
    const stayOnRouteThread = (threadKey: string) =>
      setDepartingThreadKey((current) => (current === threadKey ? null : current));
@@ -1506,7 +1508,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
        ? {}
        : { projectIds: scopedProjectRefs.map((projectRef) => projectRef.projectId) },
    );
-@@ -1335,15 +1361,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1336,15 +1362,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      setProjectGroupPinned,
      toggleProjectGroupPin,
    } = useProjectPin();
@@ -1527,7 +1529,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
        openProjectSettings(projectGroup);
      },
    );
-@@ -1446,12 +1474,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1455,12 +1483,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      routeRowThreadKey,
      departingThreadKey,
      folderGroups: boringSidebarEnabled
@@ -1544,7 +1546,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
        : null,
      keepEmptyFolders: (group) =>
        scopedProjectGroups.length > 0 || (group.pinned && !group.archived),
-@@ -2785,12 +2811,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2794,12 +2820,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                  AuthOrchestrationOperateScope,
                ),
                branch: thread.branch ?? null,
@@ -1560,7 +1562,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
                      }
                    : null,
                isPinned,
-@@ -2837,9 +2864,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2847,9 +2874,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            case "filter-by-project":
              if (threadProjectGroup) {
                setProjectScopeKeys(
@@ -1576,7 +1578,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
                );
              }
              return;
-@@ -3156,228 +3186,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3166,228 +3196,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    onChange={setEnvironmentScopeKeys}
                  />
                }
@@ -1821,7 +1823,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
                onNewThread={handleNewThreadClick}
                newThreadDisabled={projects.length === 0}
                newThreadShortcutLabel={newThreadShortcutLabel}
-@@ -3531,7 +3356,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3541,7 +3366,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    </span>
                    <button
                      type="button"
@@ -1830,7 +1832,7 @@ index 0c4b3372eb233a9dacb10bfd4af32929d6aefed4..ba084a145bcd7cc5ee2d7facbccf74c5
                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
                    >
                      <T>Show all projects</T>
-@@ -3539,7 +3364,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3549,7 +3374,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                  </>
                ) : (
                  sidebarEmptyThreadsLabel(
@@ -5636,7 +5638,7 @@ index 0000000000000000000000000000000000000000..e232ff826e46a094b2a857cafe249656
 +  };
 +}
 diff --git a/apps/web/src/uiStateStore.test.ts b/apps/web/src/uiStateStore.test.ts
-index bfbc1ce4322545fc74e8b9b8a08c1946dfc9dae2..decd8c5166ee13116dc32d9bd36e4062e4de9da9 100644
+index 730855ee1dd28727eab20ab54c1a8ef939035633..c71b7551bc25241e037d708f2f84135058ec3d48 100644
 --- a/apps/web/src/uiStateStore.test.ts
 +++ b/apps/web/src/uiStateStore.test.ts
 @@ -10,8 +10,13 @@ import {
@@ -5661,9 +5663,9 @@ index bfbc1ce4322545fc74e8b9b8a08c1946dfc9dae2..decd8c5166ee13116dc32d9bd36e4062
 +    sidebarProjectFilterMode: "include",
 +    sidebarProjectIconOrder: "name",
      threadLastVisitedAtById: {},
-     threadChangedFilesExpandedById: {},
      defaultAdvertisedEndpointKey: null,
-@@ -29,7 +37,113 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
+     pullRequestMergeMethod: "merge",
+@@ -28,7 +36,113 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
    };
  }
  
@@ -5777,7 +5779,7 @@ index bfbc1ce4322545fc74e8b9b8a08c1946dfc9dae2..decd8c5166ee13116dc32d9bd36e4062
    it("stores server timestamps without moving visit state backwards", () => {
      const threadId = ThreadId.make("thread-1");
      const initialState = makeUiState();
-@@ -113,6 +227,51 @@ describe("parsePersistedState", () => {
+@@ -112,6 +226,51 @@ describe("parsePersistedState", () => {
      ).toEqual(expected);
    });
  
@@ -5829,7 +5831,7 @@ index bfbc1ce4322545fc74e8b9b8a08c1946dfc9dae2..decd8c5166ee13116dc32d9bd36e4062
    it("hydrates raw UI-owned state without server entities", () => {
      const parsed = parsePersistedState({
        projectExpandedById: {
-@@ -145,6 +304,9 @@ describe("parsePersistedState", () => {
+@@ -137,6 +296,9 @@ describe("parsePersistedState", () => {
        defaultAdvertisedEndpointKey: "desktop-core:lan:http",
        sidebarProjectScopeKeys: [],
        sidebarEnvironmentScopeKeys: [],
@@ -5837,17 +5839,17 @@ index bfbc1ce4322545fc74e8b9b8a08c1946dfc9dae2..decd8c5166ee13116dc32d9bd36e4062
 +      sidebarProjectFilterMode: "include",
 +      sidebarProjectIconOrder: "name",
        pullRequestMergeMethod: "merge",
-       threadChangedFilesExpandedById: {
-         "environment:thread-1": {
-@@ -239,6 +401,7 @@ describe("uiStateStore persistence", () => {
-         },
+     });
+   });
+@@ -206,6 +368,7 @@ describe("uiStateStore persistence", () => {
+         "environment:thread-1": "2026-02-25T12:35:00.000Z",
        },
        defaultAdvertisedEndpointKey: "desktop-core:lan:http",
 +      sidebarProjectIconOrder: "activity",
      });
  
      persistState(state);
-@@ -256,8 +419,11 @@ describe("uiStateStore persistence", () => {
+@@ -223,8 +386,11 @@ describe("uiStateStore persistence", () => {
        },
        defaultAdvertisedEndpointKey: "desktop-core:lan:http",
        sidebarProjectScopeKeys: [],
@@ -5857,10 +5859,10 @@ index bfbc1ce4322545fc74e8b9b8a08c1946dfc9dae2..decd8c5166ee13116dc32d9bd36e4062
 +      sidebarProjectExcludeKeys: [],
 +      sidebarProjectFilterMode: "include",
 +      sidebarProjectIconOrder: "activity",
-       threadChangedFilesExpansionVersion: 2,
-       threadChangedFilesExpandedById: {
-         "environment:thread-1": {
-@@ -272,24 +438,80 @@ describe("uiStateStore persistence", () => {
+       pullRequestMergeMethod: "merge",
+     });
+     expect(parsePersistedState(persisted)).toEqual({
+@@ -232,24 +398,80 @@ describe("uiStateStore persistence", () => {
      });
    });
  
@@ -5960,7 +5962,7 @@ index bfbc1ce4322545fc74e8b9b8a08c1946dfc9dae2..decd8c5166ee13116dc32d9bd36e4062
    it("keeps a single-project scope readable by older clients", () => {
      persistState(makeUiState({ sidebarProjectScopeKeys: ["github.com/pingdotgg/t3code"] }));
 diff --git a/apps/web/src/uiStateStore.ts b/apps/web/src/uiStateStore.ts
-index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b130156c7b 100644
+index bde94d9548673ed4e0ce0cd40cb6a2002cac884f..e3ffc3e67a01a790eafe05fd5955b99dc2682c46 100644
 --- a/apps/web/src/uiStateStore.ts
 +++ b/apps/web/src/uiStateStore.ts
 @@ -2,7 +2,16 @@ import { Debouncer } from "@tanstack/react-pacer";
@@ -5980,8 +5982,8 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
 +} from "./sidebarProjectRow";
  
  export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
- const THREAD_CHANGED_FILES_EXPANSION_VERSION = 2;
-@@ -31,6 +40,10 @@ export interface PersistedUiState {
+ const LEGACY_PERSISTED_STATE_KEYS = [
+@@ -30,6 +39,10 @@ export interface PersistedUiState {
    sidebarProjectScopeKeys?: string[];
    sidebarEnvironmentScopeKey?: string | null;
    sidebarEnvironmentScopeKeys?: string[];
@@ -5989,10 +5991,10 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
 +  sidebarProjectFilterMode?: SidebarProjectFilterMode;
 +  sidebarProjectIconOrder?: SidebarProjectIconOrder;
 +  sidebarProjectScopesByEnvironment?: Record<string, SidebarProjectSelection>;
-   threadChangedFilesExpansionVersion?: number;
-   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
    pullRequestMergeMethod?: string;
-@@ -41,6 +54,9 @@ export interface UiProjectState {
+ }
+ 
+@@ -38,6 +51,9 @@ export interface UiProjectState {
    projectOrder: string[];
    sidebarProjectScopeKeys: string[];
    sidebarEnvironmentScopeKeys: string[];
@@ -6002,7 +6004,7 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
  }
  
  export interface UiThreadState {
-@@ -64,19 +80,19 @@ const initialState: UiState = {
+@@ -60,18 +76,18 @@ const initialState: UiState = {
    projectOrder: [],
    sidebarProjectScopeKeys: [],
    sidebarEnvironmentScopeKeys: [],
@@ -6010,7 +6012,6 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
 +  sidebarProjectFilterMode: "include",
 +  sidebarProjectIconOrder: "name",
    threadLastVisitedAtById: {},
-   threadChangedFilesExpandedById: {},
    defaultAdvertisedEndpointKey: null,
    pullRequestMergeMethod: "merge",
  };
@@ -6026,7 +6027,7 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
  
  function sanitizeStringArray(value: unknown): string[] {
    if (!Array.isArray(value)) {
-@@ -89,6 +105,24 @@ function sanitizeStringArray(value: unknown): string[] {
+@@ -84,6 +100,24 @@ function sanitizeStringArray(value: unknown): string[] {
    ];
  }
  
@@ -6051,7 +6052,7 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
  function sanitizeBooleanRecord(value: unknown): Record<string, boolean> {
    if (!value || typeof value !== "object") {
      return {};
-@@ -145,6 +179,27 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
+@@ -140,17 +174,45 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
        ? sanitizeStringArray(parsed.projectOrderCwds).map(legacyProjectCwdPreferenceKey)
        : sanitizeStringArray(parsed.projectOrder);
  
@@ -6079,9 +6080,7 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
    return {
      projectExpandedById,
      projectOrder,
-@@ -154,12 +209,19 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
-         ? sanitizePersistedThreadChangedFilesExpanded(parsed.threadChangedFilesExpandedById)
-         : {},
+     threadLastVisitedAtById: sanitizeTimestampRecord(parsed.threadLastVisitedAtById),
      defaultAdvertisedEndpointKey: sanitizeOptionalKey(parsed.defaultAdvertisedEndpointKey),
 -    sidebarProjectScopeKeys: sanitizeStringArray(
 -      parsed.sidebarProjectScopeKeys ?? [parsed.sidebarProjectScopeKey],
@@ -6105,7 +6104,7 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
      pullRequestMergeMethod: isPullRequestMergeMethod(parsed.pullRequestMergeMethod)
        ? parsed.pullRequestMergeMethod
        : initialState.pullRequestMergeMethod,
-@@ -229,12 +291,15 @@ export function persistState(state: UiState): void {
+@@ -192,12 +254,15 @@ export function persistState(state: UiState): void {
          threadLastVisitedAtById: state.threadLastVisitedAtById,
          defaultAdvertisedEndpointKey: state.defaultAdvertisedEndpointKey,
          sidebarProjectScopeKeys: state.sidebarProjectScopeKeys,
@@ -6119,10 +6118,10 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
 +        sidebarProjectExcludeKeys: state.sidebarProjectExcludeKeys,
 +        sidebarProjectFilterMode: state.sidebarProjectFilterMode,
 +        sidebarProjectIconOrder: state.sidebarProjectIconOrder,
-         threadChangedFilesExpansionVersion: THREAD_CHANGED_FILES_EXPANSION_VERSION,
-         threadChangedFilesExpandedById: state.threadChangedFilesExpandedById,
          pullRequestMergeMethod: state.pullRequestMergeMethod,
-@@ -333,7 +398,16 @@ function setDefaultAdvertisedEndpointKey(state: UiState, key: string | null): Ui
+       } satisfies PersistedUiState),
+     );
+@@ -271,7 +336,16 @@ function setDefaultAdvertisedEndpointKey(state: UiState, key: string | null): Ui
    };
  }
  
@@ -6140,7 +6139,7 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
    const nextKeys = sanitizeStringArray(projectKeys);
    if (
      nextKeys.length === state.sidebarProjectScopeKeys.length &&
-@@ -347,15 +421,101 @@ function setSidebarProjectScopeKeys(state: UiState, projectKeys: readonly string
+@@ -285,15 +359,101 @@ function setSidebarProjectScopeKeys(state: UiState, projectKeys: readonly string
    };
  }
  
@@ -6247,8 +6246,8 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
  }
  
  function setPullRequestMergeMethod(state: UiState, method: PullRequestMergeMethod): UiState {
-@@ -447,6 +607,18 @@ interface UiStateStore extends UiState {
-   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
+@@ -384,6 +544,18 @@ interface UiStateStore extends UiState {
+   markThreadUnread: (threadId: string, latestTurnCompletedAt: string | null | undefined) => void;
    setDefaultAdvertisedEndpointKey: (key: string | null) => void;
    setSidebarProjectScopeKeys: (projectKeys: readonly string[]) => void;
 +  setSidebarProjectExcludeKeys: (projectKeys: readonly string[]) => void;
@@ -6266,7 +6265,7 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
    setSidebarEnvironmentScopeKeys: (environmentKeys: readonly string[]) => void;
    setPullRequestMergeMethod: (method: PullRequestMergeMethod) => void;
    setProjectExpanded: (projectIds: string | readonly string[], expanded: boolean) => void;
-@@ -469,6 +641,21 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
+@@ -404,6 +576,21 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
      set((state) => setDefaultAdvertisedEndpointKey(state, key)),
    setSidebarProjectScopeKeys: (projectKeys) =>
      set((state) => setSidebarProjectScopeKeys(state, projectKeys)),
@@ -6289,7 +6288,7 @@ index c4b5601db4543017617abd17de11472accca6754..c8ef7801ceb8ffcbc677d6c7e43227b1
      set((state) => setSidebarEnvironmentScopeKeys(state, environmentKeys)),
    setPullRequestMergeMethod: (method) => set((state) => setPullRequestMergeMethod(state, method)),
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 6c63f1b9c342d2f95d11b7b3365c7282caa3cadb..980063f1f5fe7c78efa7d159c5b50dfce82629a8 100644
+index fdf30614421ec3f805c17218715afa0959fbf196..e8110d4b407c1ba681486e370503454a35e1e67a 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -151,6 +151,60 @@ choice.
