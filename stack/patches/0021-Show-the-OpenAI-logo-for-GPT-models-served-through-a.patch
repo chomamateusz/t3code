@@ -59,10 +59,10 @@ Model/harness: Claude Opus 5.5 / Claude Code
  create mode 100644 apps/web/src/components/chat/providerIconUtils.test.ts
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index a1e914b175cc46cea622ee5ef3dd075e9837fc9a..42e4ffb83fe1de56af4665672224eacd9a1a6804 100644
+index 44a91e97ac8c685ee44af34809f449e92d340f1c..4eabb4de0edbf00ef48149d6850fe960dcdfd01d 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -3813,6 +3813,11 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3817,6 +3817,11 @@ export default function ChatView(props: ChatViewProps) {
                                      providerInstanceEntries,
                                    )
                                  }
