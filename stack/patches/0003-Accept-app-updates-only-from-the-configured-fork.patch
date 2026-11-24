@@ -968,10 +968,10 @@ index ce2f23ab3e781e724be26ae1f9fec05770d72e94..b1d31456e37d20885db7f9f005f6ef13
              yield* publishReport(state, { outcome: "up-to-date" }, request.requestId);
              return;
 diff --git a/apps/desktop/src/updates/DesktopUpdates.ts b/apps/desktop/src/updates/DesktopUpdates.ts
-index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb467de3090 100644
+index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917b170834e 100644
 --- a/apps/desktop/src/updates/DesktopUpdates.ts
 +++ b/apps/desktop/src/updates/DesktopUpdates.ts
-@@ -285,9 +285,21 @@ export function describeUpdateErrorCause(cause: unknown): string {
+@@ -287,9 +287,21 @@ export function describeUpdateErrorCause(cause: unknown): string {
    }
  }
  
@@ -994,7 +994,7 @@ index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb4
      const match = line.match(/^(\w+):\s*(.+)$/);
      if (match?.[1] && match[2]) {
        entries[match[1]] = match[2].trim();
-@@ -394,6 +406,32 @@ export const make = Effect.gen(function* () {
+@@ -396,6 +408,32 @@ export const make = Effect.gen(function* () {
    // Any user can set the mock flag, so it never replaces an administrator's update source.
    const mockUpdates = config.mockUpdates && policy.message === null;
  
@@ -1027,7 +1027,7 @@ index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb4
    const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
    const activeUpdateActionRef = yield* Ref.make<Option.Option<UpdateAction>>(Option.none());
    const installRunningBackendsRef = yield* Ref.make<
-@@ -455,7 +493,7 @@ export const make = Effect.gen(function* () {
+@@ -458,7 +496,7 @@ export const make = Effect.gen(function* () {
      Effect.flatMap(
        Option.match({
          onNone: () => Effect.succeed(Option.none<AppUpdateYmlConfig>()),
@@ -1036,7 +1036,7 @@ index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb4
        }),
      ),
    );
-@@ -478,7 +516,32 @@ export const make = Effect.gen(function* () {
+@@ -481,7 +519,32 @@ export const make = Effect.gen(function* () {
      ),
    );
  
@@ -1069,7 +1069,7 @@ index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb4
      const hasFeedConfig = yield* hasUpdateFeedConfig;
      return Option.fromNullishOr(
        getAutoUpdateDisabledReason({
-@@ -570,6 +633,7 @@ export const make = Effect.gen(function* () {
+@@ -573,6 +636,7 @@ export const make = Effect.gen(function* () {
      channel: DesktopUpdateChannel,
    ) {
      yield* Effect.annotateCurrentSpan({ channel });
@@ -1077,7 +1077,7 @@ index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb4
      const allowsPrerelease = channel === "nightly";
      yield* electronUpdater.setChannel(channel);
      yield* electronUpdater.setAllowPrerelease(allowsPrerelease);
-@@ -603,6 +667,7 @@ export const make = Effect.gen(function* () {
+@@ -606,6 +670,7 @@ export const make = Effect.gen(function* () {
      yield* Effect.annotateCurrentSpan({ reason });
      if (yield* Ref.get(desktopState.quitting)) return false;
      if (!(yield* Ref.get(updaterConfiguredRef))) return false;
@@ -1085,7 +1085,7 @@ index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb4
  
      const state = yield* Ref.get(updateStateRef);
      // A configured updater is disabled only by a channel the managed policy blocks.
-@@ -657,6 +722,7 @@ export const make = Effect.gen(function* () {
+@@ -660,6 +725,7 @@ export const make = Effect.gen(function* () {
    const downloadAvailableUpdate = Effect.fn("desktop.updates.downloadAvailableUpdate")(function* (
      refresh: boolean,
    ) {
@@ -1093,7 +1093,7 @@ index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb4
      const admission = yield* Effect.scoped(
        admitAfterCheck(
          Effect.gen(function* () {
-@@ -708,6 +774,7 @@ export const make = Effect.gen(function* () {
+@@ -711,6 +777,7 @@ export const make = Effect.gen(function* () {
          isArm64HostRunningIntelBuild(environment.runtimeInfo),
        );
        yield* logUpdaterInfo("downloading update");
@@ -1101,7 +1101,7 @@ index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb4
        yield* electronUpdater.downloadUpdate;
        return { accepted: true, completed: true };
      }).pipe(
-@@ -894,6 +961,7 @@ export const make = Effect.gen(function* () {
+@@ -897,6 +964,7 @@ export const make = Effect.gen(function* () {
    const installDownloadedUpdate = (expectedVersion?: string) =>
      Effect.scoped(
        Effect.gen(function* () {
@@ -1109,7 +1109,7 @@ index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb4
          const admission = yield* admitAfterCheck(
            Effect.gen(function* () {
              const state = yield* Ref.get(updateStateRef);
-@@ -927,6 +995,10 @@ export const make = Effect.gen(function* () {
+@@ -930,6 +998,10 @@ export const make = Effect.gen(function* () {
            return { accepted: false, completed: false, failed: false };
          }
  
@@ -1120,7 +1120,7 @@ index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb4
          yield* Ref.set(desktopState.quitting, true);
          yield* Ref.set(installRunningBackendsRef, []);
  
-@@ -954,6 +1026,12 @@ export const make = Effect.gen(function* () {
+@@ -957,6 +1029,12 @@ export const make = Effect.gen(function* () {
              ],
              { concurrency: "unbounded" },
            );
@@ -1133,7 +1133,7 @@ index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb4
            yield* electronUpdater.quitAndInstall({
              isSilent: true,
              isForceRunAfter: true,
-@@ -1299,7 +1377,7 @@ export const make = Effect.gen(function* () {
+@@ -1337,7 +1415,7 @@ export const make = Effect.gen(function* () {
          });
        }
  
@@ -1142,7 +1142,7 @@ index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb4
          yield* electronUpdater.setFeedURL({
            provider: "generic",
            url: `http://localhost:${config.mockUpdateServerPort}`,
-@@ -1316,10 +1394,11 @@ export const make = Effect.gen(function* () {
+@@ -1354,10 +1432,11 @@ export const make = Effect.gen(function* () {
        const disabledReason = yield* resolveDisabledReason;
        // A blocked nightly channel still lets the user switch back to stable, so it stays updatable.
        yield* Ref.set(desktopState.canInstallUpdates, Option.isNone(disabledReason));
@@ -1156,7 +1156,7 @@ index 7976503d9e761e6faba40cb87ec2c6c5b323288f..483dbbace8b78472d5b4691fdd72fcb4
          ),
        );
        if (Option.isSome(disabledReason)) {
-@@ -1369,6 +1448,9 @@ export const make = Effect.gen(function* () {
+@@ -1407,6 +1486,9 @@ export const make = Effect.gen(function* () {
        nextChannel: DesktopUpdateChannel,
        options?: { readonly minimumVersion?: string | undefined },
      ) {
@@ -1526,7 +1526,7 @@ index 1d9588315559c3bc4e649c934ab9fb1c7e025f7e..6ff186138b736486e3dbda3fe5f57932
    }
    // Reinstalling a failed version disrupts threads without updating; retries require the local user.
 diff --git a/apps/desktop/src/updates/updatesTestHarness.ts b/apps/desktop/src/updates/updatesTestHarness.ts
-index b118d15ced674981744cdfade5d62f97bd784e3c..bb704b949ee81d95945e50adbd2878398076b08a 100644
+index 9b8f78e19000c03aa8c566fb154f712c2e1008d1..c5e91cf924ba766efec8b9effcb789c10618b2e1 100644
 --- a/apps/desktop/src/updates/updatesTestHarness.ts
 +++ b/apps/desktop/src/updates/updatesTestHarness.ts
 @@ -21,6 +21,8 @@ import * as DesktopUpdates from "./DesktopUpdates.ts";
@@ -1572,7 +1572,7 @@ index b118d15ced674981744cdfade5d62f97bd784e3c..bb704b949ee81d95945e50adbd287839
      allowDowngrade: Effect.sync(() => allowDowngrade),
      setAllowDowngrade: (value) =>
        Effect.sync(() => {
-@@ -251,6 +263,12 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+@@ -252,6 +264,12 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
      path.endsWith(DesktopUpdates.DESKTOP_UPDATE_INSTALL_RECORD_FILE);
    const layerFileSystem = FileSystem.layerNoop({
      readFileString: (path) => {
@@ -1585,7 +1585,7 @@ index b118d15ced674981744cdfade5d62f97bd784e3c..bb704b949ee81d95945e50adbd287839
        const installRecord = isInstallRecord(path)
          ? (installRecords.get(path) ?? previousInstallRecord)
          : undefined;
-@@ -326,6 +344,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+@@ -330,6 +348,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
      fullChangelog: () => fullChangelog,
      /** Whether each feed check could offer an older release, and the flag now. */
      checkAllowedDowngrade,
@@ -1915,7 +1915,7 @@ index 1a961de85c5c2c5edb1566caf9a911fbd4db2ae3..d79f3a305be595122a964eefca427b2c
    const found = local.downloadedVersion ?? local.availableVersion;
    if (
 diff --git a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
-index 156e89364670c9f6c955d4f18a1c973976adf682..38dca254fc4ec93ad75851274155568b9e575af1 100644
+index 396db469d308f37ebe03d81d99175fae4b5509a2..c331d97940031e742535b37e89bc14b39a19eede 100644
 --- a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
 +++ b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
 @@ -178,16 +178,16 @@ export async function installLocalUpdate(
@@ -1942,7 +1942,7 @@ index 156e89364670c9f6c955d4f18a1c973976adf682..38dca254fc4ec93ad75851274155568b
      reportError(
        m(msg("Could not install update")),
 diff --git a/apps/web/src/lib/bootError.ts b/apps/web/src/lib/bootError.ts
-index 49fd3aec52ca984fc19ce03c2d111fa225a7a41a..b6494976d4c80ee1baabc82b1c7e4316e3990123 100644
+index d2852e2d70efb48f88fb15ecefa8915ea93a99d6..2180ceb122bc5495062e6c395ae36947e09a496c 100644
 --- a/apps/web/src/lib/bootError.ts
 +++ b/apps/web/src/lib/bootError.ts
 @@ -1,7 +1,8 @@
@@ -1955,7 +1955,7 @@ index 49fd3aec52ca984fc19ce03c2d111fa225a7a41a..b6494976d4c80ee1baabc82b1c7e4316
  const ISSUE_URL = "https://github.com/pingdotgg/t3code/issues/new";
  const LAST_FAILURE_KEY = "t3code:boot-failed-at";
  const REPEAT_FAILURE_MS = 5 * 60_000;
-@@ -362,7 +363,7 @@ export function showBootError(error: unknown) {
+@@ -365,7 +366,7 @@ export function showBootError(error: unknown) {
      ...(bridge
        ? [
            link(

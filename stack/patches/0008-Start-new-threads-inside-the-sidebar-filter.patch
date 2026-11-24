@@ -47,6 +47,8 @@ Port to def64e3a54: upstream a3323d4a43 (#41070) opens a new thread's draft with
 
 Port to 85aaef42d4: Sidebar.browser.test.tsx only: the entities import adds readProjects next to upstream 1c9ccc7127's (#41554) state/environments import. The folder New thread keeps upstream's new viewed-machine choice, since folder pens keep their upstream behaviour.
 
+Port to 54ba2408f4: CommandPalette.browser.test.tsx only: upstream's cases for a fresh, unmodified Backspace leaving a submenu (ccdafe1f61, #42205) and a held Esc stopping on the palette after file search (51a721da44, #42279) sit before this commit's restricted-picker cases and run on this commit's setup; this commit's Backspace widening goes through upstream's guarded Backspace branch, so a held or modified Backspace no longer widens a restricted picker either.
+
 Files:
 apps/web:
 - apps/web/src/commandPaletteBus.ts
@@ -104,7 +106,7 @@ Tests:
 Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
 ---
  apps/web/src/commandPaletteBus.ts             |   7 +-
- .../CommandPalette.browser.test.tsx           | 276 +++++++++-
+ .../CommandPalette.browser.test.tsx           | 278 +++++++++-
  ...ommandPalette.composition.browser.test.tsx |   1 +
  .../src/components/CommandPalette.logic.ts    |  17 +-
  apps/web/src/components/CommandPalette.tsx    | 170 ++++--
@@ -124,7 +126,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .../src/shortcuts/chatRouteCommands.test.ts   |   5 +-
  apps/web/src/shortcuts/chatRouteCommands.ts   |  30 +-
  docs/user/thread-sidebar.md                   |  33 +-
- 21 files changed, 1953 insertions(+), 153 deletions(-)
+ 21 files changed, 1954 insertions(+), 154 deletions(-)
  create mode 100644 apps/web/src/components/sidebar/SidebarThreadHeader.browser.test.tsx
  create mode 100644 apps/web/src/newThreadActions.ts
  create mode 100644 apps/web/src/newThreadTarget.test.ts
@@ -164,7 +166,7 @@ index 2766f6db6b391e14eb5988ca536156b5383ae736..c2fb1d186370659f7ece7467c07b8932
      dispatchCommandPalette({ _tag: "OpenAddProject" });
    } else if (detail.query !== undefined) {
 diff --git a/apps/web/src/components/CommandPalette.browser.test.tsx b/apps/web/src/components/CommandPalette.browser.test.tsx
-index f29feada58e0a4cb348a895da125ba854dd3a430..af51db255847054730c501ace4a46d836bca038d 100644
+index 8415145f5f31df04bce78d412f2bb3f4f8f09cc6..b92ac36c59bf884b23a3964695a1f066adb1c19c 100644
 --- a/apps/web/src/components/CommandPalette.browser.test.tsx
 +++ b/apps/web/src/components/CommandPalette.browser.test.tsx
 @@ -3,20 +3,24 @@ import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
@@ -175,7 +177,7 @@ index f29feada58e0a4cb348a895da125ba854dd3a430..af51db255847054730c501ace4a46d83
 +import type { Project, Thread } from "../types";
  import { act, render } from "../../test/render";
  import { openCommandPalette } from "../commandPaletteBus";
- import { useCommandPaletteStore } from "../commandPaletteStore";
+ import { dispatchCommandPalette, useCommandPaletteStore } from "../commandPaletteStore";
  import { LAST_USED_PROJECT_STORAGE_KEY } from "../hooks/useHandleNewThread";
  import { removeLocalStorageItem } from "../hooks/useLocalStorage";
 -import { makeThreadFixture } from "../test-fixtures";
@@ -215,12 +217,13 @@ index f29feada58e0a4cb348a895da125ba854dd3a430..af51db255847054730c501ace4a46d83
 -  useVisibleThreadShells: () => entities.threads,
 -  useDelegatedUnderParent: () => entities.delegatedUnderParent,
 -}));
+-
+-function setup(state: Partial<typeof entities> = {}) {
 +vi.mock("../state/entities", { spy: true });
 +vi.mock("../newThreadTargetState", { spy: true });
 +vi.mock("../hooks/useScratchProject", { spy: true });
 +vi.mock("./CommandPaletteLookups", { spy: true });
- 
--function setup(state: Partial<typeof entities> = {}) {
++
 +function setup(
 +  state: {
 +    projects?: ReadonlyArray<Project>;
@@ -435,7 +438,7 @@ index f29feada58e0a4cb348a895da125ba854dd3a430..af51db255847054730c501ace4a46d83
          environmentId: open.environmentId,
          projectId: open.id,
        }),
-@@ -302,10 +477,67 @@ describe("CommandPalette open intents", () => {
+@@ -302,7 +477,7 @@ describe("CommandPalette open intents", () => {
      await userEvent.keyboard("{Control>}1{/Control}");
  
      await vi.waitFor(() =>
@@ -444,7 +447,9 @@ index f29feada58e0a4cb348a895da125ba854dd3a430..af51db255847054730c501ace4a46d83
          environmentId: EnvironmentId.make("local"),
          projectId: ProjectId.make("lima"),
        }),
-     );
+@@ -384,4 +559,61 @@ describe("CommandPalette open intents", () => {
+     await userEvent.keyboard("{Escape}");
+     await expect.element(palette).not.toBeInTheDocument();
    });
 +
 +  it.each(["Backspace", "All projects…"])(
@@ -566,7 +571,7 @@ index 8fc6f18fa4bd28d2cffebe1b99811b1976623741..bfa6a200050bb0e492511d122bfa6b33
        return openWithIntent({ kind: "change-theme" });
    }
 diff --git a/apps/web/src/components/CommandPalette.tsx b/apps/web/src/components/CommandPalette.tsx
-index 4610ef7542890054060870169a672d6f948cdc6e..c7053a03a00e710b4e97b9e94eac2e336ac7848f 100644
+index d58c79185e114e72675190c7d10374046bd649da..e9bcc69f04e6e18dabccc59fecb95b09f86d8daf 100644
 --- a/apps/web/src/components/CommandPalette.tsx
 +++ b/apps/web/src/components/CommandPalette.tsx
 @@ -103,6 +103,9 @@ import { useAtomValue } from "@effect/atom-react";
@@ -579,7 +584,7 @@ index 4610ef7542890054060870169a672d6f948cdc6e..c7053a03a00e710b4e97b9e94eac2e33
  import { useHandleNewThread } from "../hooks/useHandleNewThread";
  import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
  import { copyThreadReference } from "../lib/copyThreadReference";
-@@ -453,6 +456,11 @@ function OpenCommandPaletteDialog(props: {
+@@ -458,6 +461,11 @@ function OpenCommandPaletteDialog(props: {
    const linkedEnvironmentId = linkedThreadSearch?.linkedThreads?.environmentId ?? null;
    const hidingAnywhere = useAnyEnvironmentHiding();
    const linkedThreadRefs = useEnvironmentThreadRefs(linkedEnvironmentId);
@@ -591,7 +596,7 @@ index 4610ef7542890054060870169a672d6f948cdc6e..c7053a03a00e710b4e97b9e94eac2e33
    const [searchState, dispatchSearch] = useReducer(reduceCommandPaletteSearchState, null, () => {
      const view = props.initialContext ? null : openIntentView(props.openIntent, messages);
      return view
-@@ -559,6 +567,8 @@ function OpenCommandPaletteDialog(props: {
+@@ -564,6 +572,8 @@ function OpenCommandPaletteDialog(props: {
      query: deferredQuery,
    });
    const currentView = viewStack.at(-1)?.view ?? null;
@@ -600,7 +605,7 @@ index 4610ef7542890054060870169a672d6f948cdc6e..c7053a03a00e710b4e97b9e94eac2e33
    const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
    const [browseGeneration, setBrowseGeneration] = useState(0);
    const [browseNavigation] = useState(createBrowseNavigationCoordinator);
-@@ -597,11 +607,12 @@ function OpenCommandPaletteDialog(props: {
+@@ -602,11 +612,12 @@ function OpenCommandPaletteDialog(props: {
      ...targetProject,
      displayName: group.displayName,
    }));
@@ -618,7 +623,7 @@ index 4610ef7542890054060870169a672d6f948cdc6e..c7053a03a00e710b4e97b9e94eac2e33
    );
    const { canPinProjectGroup, toggleProjectGroupPin } = useProjectPin();
    // A row's target record can change when another machine's copy loads, so the kept
-@@ -707,7 +718,10 @@ function OpenCommandPaletteDialog(props: {
+@@ -712,7 +723,10 @@ function OpenCommandPaletteDialog(props: {
          )
        : "";
    const canBrowsePaths =
@@ -630,7 +635,7 @@ index 4610ef7542890054060870169a672d6f948cdc6e..c7053a03a00e710b4e97b9e94eac2e33
    const browsePath = getFilesystemBrowsePath(query, browseEnvironmentPlatform, canBrowsePaths);
    const isBrowsing = browsePath.isBrowsing;
    const browseDirectoryPath = browsePath.directoryPath;
-@@ -889,6 +903,22 @@ function OpenCommandPaletteDialog(props: {
+@@ -894,6 +908,22 @@ function OpenCommandPaletteDialog(props: {
      true,
    );
  
@@ -653,7 +658,7 @@ index 4610ef7542890054060870169a672d6f948cdc6e..c7053a03a00e710b4e97b9e94eac2e33
    const openingOrderThreadItems = useOrderWhileOpen(
      (() => {
        const isScratch = (project: CommandPaletteProject) =>
-@@ -923,7 +953,6 @@ function OpenCommandPaletteDialog(props: {
+@@ -928,7 +958,6 @@ function OpenCommandPaletteDialog(props: {
          },
        });
        if (scratchTargetEnvironmentId === null) return projectItems;
@@ -661,7 +666,7 @@ index 4610ef7542890054060870169a672d6f948cdc6e..c7053a03a00e710b4e97b9e94eac2e33
        const noProjectIndex = newThreadNoProjectIndex(
          projectPickerEntries.map(({ group, targetProject, isPreferred }) => ({
            isScratch: isScratchProject(
-@@ -952,14 +981,63 @@ function OpenCommandPaletteDialog(props: {
+@@ -957,14 +986,63 @@ function OpenCommandPaletteDialog(props: {
      true,
    );
    // Root search suggestions copy these numbers; the picker renumbers its shown rows below.
@@ -731,7 +736,7 @@ index 4610ef7542890054060870169a672d6f948cdc6e..c7053a03a00e710b4e97b9e94eac2e33
  
    const {
      threadItems: allThreadItems,
-@@ -990,6 +1068,10 @@ function OpenCommandPaletteDialog(props: {
+@@ -995,6 +1073,10 @@ function OpenCommandPaletteDialog(props: {
    });
  
    function popView(): void {
@@ -742,7 +747,7 @@ index 4610ef7542890054060870169a672d6f948cdc6e..c7053a03a00e710b4e97b9e94eac2e33
      browseNavigation.invalidate();
      setAddProjectCloneFlow(null);
      setNewProjectFlow(null);
-@@ -1380,7 +1462,7 @@ function OpenCommandPaletteDialog(props: {
+@@ -1385,7 +1467,7 @@ function OpenCommandPaletteDialog(props: {
        title: gt("New thread in..."),
        icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
        addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
@@ -751,7 +756,7 @@ index 4610ef7542890054060870169a672d6f948cdc6e..c7053a03a00e710b4e97b9e94eac2e33
      });
    }
  
-@@ -1902,21 +1984,22 @@ function OpenCommandPaletteDialog(props: {
+@@ -1907,21 +1989,22 @@ function OpenCommandPaletteDialog(props: {
        : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
          ? addProjectEntryGroups()
          : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
@@ -789,7 +794,7 @@ index 4610ef7542890054060870169a672d6f948cdc6e..c7053a03a00e710b4e97b9e94eac2e33
  
    const isLinkedThreadSearch =
      linkedThreadSearch?.linkedThreads !== undefined && deferredQuery === linkedThreadSearch.query;
-@@ -1925,7 +2008,7 @@ function OpenCommandPaletteDialog(props: {
+@@ -1930,7 +2013,7 @@ function OpenCommandPaletteDialog(props: {
        activeGroups,
        query: deferredQuery,
        isInSubmenu: currentView !== null,
@@ -798,7 +803,7 @@ index 4610ef7542890054060870169a672d6f948cdc6e..c7053a03a00e710b4e97b9e94eac2e33
          ? {
              allOptions: {
                rootGroups,
-@@ -1966,7 +2049,11 @@ function OpenCommandPaletteDialog(props: {
+@@ -1971,7 +2054,11 @@ function OpenCommandPaletteDialog(props: {
    );
    // Jump shortcuts number the project rows as shown, so a pin cannot move a number to another row.
    const filteredGroups = searchedGroups.map((group) => {
@@ -811,7 +816,7 @@ index 4610ef7542890054060870169a672d6f948cdc6e..c7053a03a00e710b4e97b9e94eac2e33
      const jumpItems = new Map(
        enumerateCommandPaletteItems(
          group.items.filter(
-@@ -2578,7 +2665,26 @@ function OpenCommandPaletteDialog(props: {
+@@ -2583,7 +2670,26 @@ function OpenCommandPaletteDialog(props: {
            },
          ];
  
@@ -2918,7 +2923,7 @@ index 90ccf9fc2023f7746f76e707d49689e80c3548fa..e7c8a555a40b4da28fd413c8106ba70f
        "preview.toggle": (event) => {
          claim(event);
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index e8110d4b407c1ba681486e370503454a35e1e67a..b1dff7cf21373d00428337b16e8d3510278efa1e 100644
+index 724df0c22590ac8951107533d7d8dd64b8debb80..7ae94c8141a52bd7ce61b650494137869cb83980 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -6,14 +6,27 @@ branch, so T3 Code refuses a branch switch there while one of them is working.

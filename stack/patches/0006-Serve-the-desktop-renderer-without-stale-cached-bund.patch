@@ -448,7 +448,7 @@ index e81da706606481dc9e86b924a81d247ac9cb9763..01fc5dff50fcf6f8d5bca2b5a59dc1a2
            function (bounds, isMaximized) {
              return update((settings) => setMainWindowBounds(settings, bounds, isMaximized));
 diff --git a/apps/desktop/src/updates/updatesTestHarness.ts b/apps/desktop/src/updates/updatesTestHarness.ts
-index bb704b949ee81d95945e50adbd2878398076b08a..9cbd73efc3291d1419ded15f845af019a6a51de5 100644
+index c5e91cf924ba766efec8b9effcb789c10618b2e1..09873fa3764166fc50d7199134c79ef9b8977113 100644
 --- a/apps/desktop/src/updates/updatesTestHarness.ts
 +++ b/apps/desktop/src/updates/updatesTestHarness.ts
 @@ -227,6 +227,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {

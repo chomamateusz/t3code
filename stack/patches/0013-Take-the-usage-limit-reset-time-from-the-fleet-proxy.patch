@@ -54,6 +54,8 @@ Port to 6b7027b1f4:
 
 Port to 29b42d409c: upstream #39018 (e8c4824b70) computes the turn status before finalizing, to hold a completed result while an unread steer is pending. ClaudeAdapterV2.ts now folds interruptedDuringLookup into that status, so a turn interrupted during the fleet proxy lookup still ends interrupted and is never held as a completed result.
 
+Port to 54ba2408f4: ClaudeSkills.ts: upstream 5b2299ca0a (#41972, Claude review guides use project launch settings and only their own tool list) adds readClaudeUserSettings next to the settings reader this commit splits into readClaudeApiSettings and readClaudeSettingsEnv; both stay, so review guides read the user settings file through upstream's reader while the usage-limit lookup keeps reading the proxy URL, key and apiKeyHelper through readClaudeApiSettings.
+
 Files:
 apps/server:
 - apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
@@ -94,7 +96,7 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 apps/server/src/provider/fleetProxyLimits.ts
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index faa96e372064527397a03240dce84c57542cb659..40d8214f3e0374c94952e50de65f995268149a78 100644
+index 26e5d04f10c4c4c5cc668c415176ddd03b2c96eb..039b9f25a47ed500437e6d850e4bf8f4eab90790 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -79,6 +79,7 @@ import * as Scope from "effect/Scope";
@@ -131,7 +133,7 @@ index faa96e372064527397a03240dce84c57542cb659..40d8214f3e0374c94952e50de65f9952
          continuationRequests: {
            offer: (request) =>
              Effect.sync(() => {
-@@ -10562,6 +10568,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -10664,6 +10670,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      ),
    );
  
@@ -305,7 +307,7 @@ index faa96e372064527397a03240dce84c57542cb659..40d8214f3e0374c94952e50de65f9952
      Effect.gen(function* () {
        const harness = yield* makeWakeHarness;
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index a4cb16c51d948834d002de739314e3c1312119ae..6a7eace9edaf515ad9bc23c37e78748a2711b97d 100644
+index 3d1ba5c73048cab302717c6875feb2fd2887392b..ec7de1dcf648c8f99249cc5215d93b4676a07a49 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -37,6 +37,7 @@ import {
@@ -324,7 +326,7 @@ index a4cb16c51d948834d002de739314e3c1312119ae..6a7eace9edaf515ad9bc23c37e78748a
  
  import { resolveAttachmentPath } from "../../attachmentStore.ts";
  import { snapshotMcpApp } from "../../mcpApps/McpAppSnapshot.ts";
-@@ -5931,6 +5933,7 @@ export interface ClaudeAdapterV2Options {
+@@ -5992,6 +5994,7 @@ export interface ClaudeAdapterV2Options {
      cwd: string | null,
      launchSettings?: ClaudeSdkSettings,
    ) => Effect.Effect<ClaudeModelCatalog>;
@@ -332,7 +334,7 @@ index a4cb16c51d948834d002de739314e3c1312119ae..6a7eace9edaf515ad9bc23c37e78748a
    readonly continuationRequests?: {
      readonly offer: (
        request: ProviderContinuationRequests.ProviderContinuationRequest,
-@@ -12556,15 +12559,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12627,15 +12630,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                resetTimes.length > 0 && resetTimes.every((time) => time !== null)
                  ? resetTimes.reduce((latest, time) => (time! > latest ? time! : latest), "")
                  : null;
@@ -380,7 +382,7 @@ index a4cb16c51d948834d002de739314e3c1312119ae..6a7eace9edaf515ad9bc23c37e78748a
              // Claude answers a steer it has not read yet as the next native turn, which echoes
              // the steer. A result without echoes cannot prove that turn will come.
              if (
-@@ -15489,7 +15516,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+@@ -15567,7 +15594,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
      input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
      hooks: Pick<
        ClaudeAdapterV2Options,
@@ -407,7 +409,7 @@ index a03c72c7de458e1bd12f2be39eed3713cebcd6c1..a56285785e215c12a43fd2d5a0c536dc
      ).pipe(
        Effect.mapError(
 diff --git a/apps/server/src/provider/Drivers/ClaudeSkills.ts b/apps/server/src/provider/Drivers/ClaudeSkills.ts
-index ae020bf40a8c177438d741a156c43464e127ebda..3f2d6f9269fcc211a93757df3358a41589e29517 100644
+index 05bb7f197c80f04a010bd9c7ff68781a3f0007aa..9f5a10f806d13eefceabd06a0711c1de857bcf16 100644
 --- a/apps/server/src/provider/Drivers/ClaudeSkills.ts
 +++ b/apps/server/src/provider/Drivers/ClaudeSkills.ts
 @@ -669,20 +669,29 @@ const SettingsEnv = Schema.Struct({
@@ -461,9 +463,9 @@ index ae020bf40a8c177438d741a156c43464e127ebda..3f2d6f9269fcc211a93757df3358a415
 +  environment: NodeJS.ProcessEnv,
 +) => readClaudeApiSettings(config, cwd, environment).pipe(Effect.map((settings) => settings.env));
 +
- /** The host of an `ANTHROPIC_BASE_URL` that is not Anthropic's own API. */
- export function customClaudeApiEndpointHost(baseUrl: string | undefined): string | undefined {
-   const endpoint = URL.parse(baseUrl?.trim() ?? "");
+ const decodeSettingsRecord = Schema.decodeUnknownEffect(
+   fromLenientJson(Schema.Record(Schema.String, Schema.Unknown)),
+ );
 diff --git a/apps/server/src/provider/fleetProxyLimits.fixture.json b/apps/server/src/provider/fleetProxyLimits.fixture.json
 new file mode 100644
 index 0000000000000000000000000000000000000000..73b7c86f220fe088215a92a70a58f2a448fcef3d

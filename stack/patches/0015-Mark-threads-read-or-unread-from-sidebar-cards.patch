@@ -277,7 +277,7 @@ index 39abba5e5b808c359db5300302d07018279ecb74..7707afbbb31d28cfcbfee4dd3e7380a1
        <li>Outside</li>
      </ul>
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index e5d0ff49d2dbc00a3a6653385066e5e471e1204f..e1ddcd5e745caaaa60de6353fa26a4874d36fc40 100644
+index ef7e23d2c10432e528fd9f4931404888fba58f07..c3fa051dd10bb28b0071856f3d7e7da4010d528c 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -50,6 +50,8 @@ import {
@@ -300,7 +300,7 @@ index e5d0ff49d2dbc00a3a6653385066e5e471e1204f..e1ddcd5e745caaaa60de6353fa26a487
    shouldRecedeSidebarThread,
    resolveWorkingStartedAt,
    useRetainedValue,
-@@ -469,6 +473,39 @@ function SnoozeMenuButton(props: {
+@@ -470,6 +474,39 @@ function SnoozeMenuButton(props: {
    );
  }
  
@@ -340,7 +340,7 @@ index e5d0ff49d2dbc00a3a6653385066e5e471e1204f..e1ddcd5e745caaaa60de6353fa26a487
  type SortableThreadRowBag = Pick<
    ReturnType<typeof useSortable>,
    "listeners" | "setNodeRef" | "transform" | "transition" | "isDragging"
-@@ -637,6 +674,7 @@ type SidebarThreadRowProps = {
+@@ -638,6 +675,7 @@ type SidebarThreadRowProps = {
    onUnsnooze: (threadRef: ScopedThreadRef) => void;
    onUnpin: (threadRef: ScopedThreadRef) => void;
    onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
@@ -348,7 +348,7 @@ index e5d0ff49d2dbc00a3a6653385066e5e471e1204f..e1ddcd5e745caaaa60de6353fa26a487
    onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
  };
  
-@@ -692,6 +730,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -693,6 +731,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      onContextMenu,
      onAcknowledgeWoke,
      onFileDropThreads,
@@ -356,7 +356,7 @@ index e5d0ff49d2dbc00a3a6653385066e5e471e1204f..e1ddcd5e745caaaa60de6353fa26a487
      onRenameTitleChange,
      onSettle,
      onActionSweepStart,
-@@ -788,6 +827,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -789,6 +828,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      isSelected,
    });
    const isWokeStatus = topStatus?.icon === "woke";
@@ -367,7 +367,7 @@ index e5d0ff49d2dbc00a3a6653385066e5e471e1204f..e1ddcd5e745caaaa60de6353fa26a487
  
    const branchMismatch = resolveLocalCheckoutBranchMismatch({
      effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
-@@ -882,6 +925,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -883,6 +926,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
          addFolders: () => {},
        })
      : null;
@@ -379,7 +379,7 @@ index e5d0ff49d2dbc00a3a6653385066e5e471e1204f..e1ddcd5e745caaaa60de6353fa26a487
    const handleSettleClick = (event: ReactMouseEvent) => {
      event.preventDefault();
      event.stopPropagation();
-@@ -1643,7 +1691,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1629,7 +1677,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                        <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
                      )}
                    </span>
@@ -391,7 +391,7 @@ index e5d0ff49d2dbc00a3a6653385066e5e471e1204f..e1ddcd5e745caaaa60de6353fa26a487
                      <span
                        className={cn(
                          // Mouse clicks leave Settle focused; focus-within would pin controls over
-@@ -1671,6 +1722,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1657,6 +1708,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                            </TooltipPopup>
                          </Tooltip>
                        ) : null}
@@ -686,7 +686,7 @@ index 2a591127044d129955e6e44b00f55da81c001cc4..c4528d2813e1a86614bd6d2fa3ae182b
      turnThreadIntoProject: (target: ScopedThreadRef) =>
        createProjectFromThread({
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index def4583b944c5947fec3911bc168f54e32af78d4..e3af0fa3a38377fd1edd387f5505d16dd348597d 100644
+index 66188f1bc40e556224a5b5b7d6834f3b8ae3394c..4fd5305e2d894403a5ec33a968f5626ea4b74789 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -85,6 +85,9 @@ viewing. Discarding an unsent draft from the sidebar works the same way: Undo br

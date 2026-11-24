@@ -1378,7 +1378,7 @@ index 43f4c94a19328be71934d655617849c609298754..71b56f04e81d22c312b9ef528b7c6ba4
  Press `Escape` to return to the previous page. Customize these shortcuts in
  **Settings → Keybindings**.
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 5b6ce48c888331264218cd0a9426efdb528f772f..d0135017d7cea7064711fe7744dd6add9585e324 100644
+index a99be293c2121c345ebe4f6c30945946c7068732..dd1675f78e5f89689f381f7dd8891666ae6b4160 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -1618,7 +1618,7 @@ export const ServerSettings = Schema.Struct({

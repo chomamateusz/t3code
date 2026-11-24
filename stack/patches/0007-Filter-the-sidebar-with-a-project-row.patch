@@ -3956,7 +3956,7 @@ index 89c0d2dc093cff288abe4aa353b5e44d15a410fe..0f1f2f8e6f55bb27681d8224db11257d
    tooltip = label,
    className,
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index ce66f0438c6ef433f2f8838dccabd407e37f4f22..532ecffcf1aba7050e2649b9b4483fb0ca393021 100644
+index 15adcb7bf11655266c7c35a8e79c939fc0dfe6cd..cded97af188b90509b5957d9ca7cef954a501d5c 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -83,7 +83,7 @@ import { vcsEnvironment, vcsBranchRevalidation } from "../../state/vcs";
@@ -3980,7 +3980,7 @@ index ce66f0438c6ef433f2f8838dccabd407e37f4f22..532ecffcf1aba7050e2649b9b4483fb0
    resolveThreadLastVisitedAt,
    shouldRecedeSidebarThread,
    resolveWorkingStartedAt,
-@@ -772,14 +771,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -773,14 +772,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      ? resolveThreadCurrentPullRequestLink(thread.pullRequests)
      : null;
  
@@ -4003,7 +4003,7 @@ index ce66f0438c6ef433f2f8838dccabd407e37f4f22..532ecffcf1aba7050e2649b9b4483fb0
    const shouldRecede = shouldRecedeSidebarThread({
      status,
      isUnread,
-@@ -787,67 +786,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -788,67 +787,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      isActive: props.isActive,
      isSelected,
    });
@@ -6288,7 +6288,7 @@ index bde94d9548673ed4e0ce0cd40cb6a2002cac884f..e3ffc3e67a01a790eafe05fd5955b99d
      set((state) => setSidebarEnvironmentScopeKeys(state, environmentKeys)),
    setPullRequestMergeMethod: (method) => set((state) => setPullRequestMergeMethod(state, method)),
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index fdf30614421ec3f805c17218715afa0959fbf196..e8110d4b407c1ba681486e370503454a35e1e67a 100644
+index 61c2b8e21bce73445bc0e88aecf4153dabd58cd6..724df0c22590ac8951107533d7d8dd64b8debb80 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -151,6 +151,60 @@ choice.

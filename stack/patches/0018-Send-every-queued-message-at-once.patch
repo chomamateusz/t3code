@@ -246,7 +246,7 @@ index 7ea6f95a7a5159dc636b48f8aa020f543ec653a8..646cee832d6d4372a0132985fe4811f7
  );
  
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 10a986269e9bb802ed6b46ab1b90d4fd98008722..02223a139b9dd4af8f6c4a0a16ab98d878844b4b 100644
+index 7a106478044b16d3481ee38768f202f87ff5c575..c2df634cb520a16bbab975ce292dc8536c16de6e 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -32,6 +32,7 @@ import {
@@ -257,7 +257,7 @@ index 10a986269e9bb802ed6b46ab1b90d4fd98008722..02223a139b9dd4af8f6c4a0a16ab98d8
    type NodeId,
    type ModelSelection,
    OrchestrationV2Command,
-@@ -94,6 +95,7 @@ import { combinePullRequestWatchWakes, type PullRequestWatchWake } from "./pullR
+@@ -98,6 +99,7 @@ import { combinePullRequestWatchWakes, type PullRequestWatchWake } from "./pullR
  import { outputRequestProblem } from "./runOutput.ts";
  import { recordThreadOpen } from "@t3tools/shared/paletteSearch";
  import { isSlashCommand } from "@t3tools/shared/composerTrigger";
@@ -265,7 +265,7 @@ index 10a986269e9bb802ed6b46ab1b90d4fd98008722..02223a139b9dd4af8f6c4a0a16ab98d8
  import {
    backgroundWorkHoldsCompletion,
    derivePendingBackgroundWork,
-@@ -225,6 +227,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
+@@ -229,6 +231,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
  import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import * as ServerSettings from "../serverSettings.ts";
  
@@ -273,7 +273,7 @@ index 10a986269e9bb802ed6b46ab1b90d4fd98008722..02223a139b9dd4af8f6c4a0a16ab98d8
  const isMessageQuestionAnswer = Schema.is(
    Schema.Union([TrimmedNonEmptyString, Schema.NonEmptyArray(TrimmedNonEmptyString)]),
  );
-@@ -693,6 +696,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
+@@ -697,6 +700,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
      case "queued-run.reorder":
      case "queued-run.cancel":
      case "queued-run.edit":
@@ -281,7 +281,7 @@ index 10a986269e9bb802ed6b46ab1b90d4fd98008722..02223a139b9dd4af8f6c4a0a16ab98d8
      case "runtime-request.respond":
      case "runtime-request.delivery.fail":
      case "thread.user-input.dismiss":
-@@ -12609,12 +12613,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12622,12 +12626,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: editProblem,
        });
      }
@@ -294,7 +294,7 @@ index 10a986269e9bb802ed6b46ab1b90d4fd98008722..02223a139b9dd4af8f6c4a0a16ab98d8
      let updatedRun =
        command.modelSelection === undefined
          ? queuedRun
-@@ -12631,7 +12630,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12644,7 +12643,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        updatedRun = queued;
      }
      if (updatedRun !== queuedRun) {
@@ -306,7 +306,7 @@ index 10a986269e9bb802ed6b46ab1b90d4fd98008722..02223a139b9dd4af8f6c4a0a16ab98d8
          type: "run.updated",
          threadId: command.threadId,
          runId: queuedRun.id,
-@@ -12641,41 +12643,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12654,41 +12656,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          payload: updatedRun,
        });
      }
@@ -357,7 +357,7 @@ index 10a986269e9bb802ed6b46ab1b90d4fd98008722..02223a139b9dd4af8f6c4a0a16ab98d8
      // Thread deletion only cleans files the thread still references.
      const keptAttachmentIds = new Set(
        (command.attachments ?? queuedMessage.attachments).map((attachment) => attachment.id),
-@@ -12700,6 +12680,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12713,6 +12693,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
      }
    });
  
@@ -486,7 +486,7 @@ index 10a986269e9bb802ed6b46ab1b90d4fd98008722..02223a139b9dd4af8f6c4a0a16ab98d8
    const subagentCount = (threadId: ThreadId) =>
      projectionStore
        .getSubagentCount(threadId)
-@@ -16388,6 +16490,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16403,6 +16505,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "run.output.submit":
          yield* dispatchRunOutputSubmit(command, events);
          break;
@@ -496,7 +496,7 @@ index 10a986269e9bb802ed6b46ab1b90d4fd98008722..02223a139b9dd4af8f6c4a0a16ab98d8
        case "checkpoint.rollback":
          yield* dispatchCheckpointRollback(command, events, effects);
          break;
-@@ -16628,7 +16733,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16643,7 +16748,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                ),
              );
            if (
@@ -506,7 +506,7 @@ index 10a986269e9bb802ed6b46ab1b90d4fd98008722..02223a139b9dd4af8f6c4a0a16ab98d8
              cause._tag === "OrchestratorDispatchError"
            ) {
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index 27091a5027bcd983e56e18a95c2a2fb142ec81f8..0a617162d8ecbd413cc45fa7254564439fb6945a 100644
+index 370fd7deb9ade02b21cad173f5d5dce83936424e..7d45fdaad77580c0fa8d4f5337b09662664c212d 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 @@ -10,6 +10,8 @@ import { assert, it } from "@effect/vitest";
@@ -526,7 +526,7 @@ index 27091a5027bcd983e56e18a95c2a2fb142ec81f8..0a617162d8ecbd413cc45fa725456443
    type OrchestrationV2DomainEvent,
    type OrchestrationV2Run,
    type OrchestrationV2ShellSnapshot,
-@@ -12242,6 +12245,361 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -12283,6 +12286,361 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
        assert.equal(cancelAgainError._tag, "OrchestratorDispatchError");
      }),
    );
@@ -913,10 +913,10 @@ index 61fb57ada454ed0b1a9a309eb066ff03db841f86..33aa46863d0b7f36613f6f8b959933e7
    "thread.guest-message.dismiss": () => ({ feature: "guest_message.dismiss" }),
  };
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 583b1919aa5e0c615ec86a77e473ef9bb49394ba..18dbfb579a223310941aba5afb6095570cdf77a2 100644
+index 7ffce48991ee8d897bb697c1ee3c619dc197925b..e20271a508e9ffba303114caf04674f9596b2950 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
-@@ -1945,6 +1945,7 @@ export const layerWsRpc = (
+@@ -1951,6 +1951,7 @@ export const layerWsRpc = (
            threadSnapshotPagination: true,
            threadFind: true,
            threadFindProgressive: true,
@@ -950,7 +950,7 @@ index 357439cbdf0d640cc131315eabce5ad2731a44ea..7c546c3364cd7b6a95b92fda7297120e
            threadId={activeThread.id}
            optimisticMessages={optimisticUserMessages}
 diff --git a/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx b/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx
-index 4f4daf7c798b46ac677cae2e3d552f2cf71cd43a..e581d006b1e74a63bb3cf5b7e1d3f49b3dea33b1 100644
+index 7a927d6cd3b48b888ddd0d2894b0a42948c859dd..ed421de896f4ec5854b0d2093d9cceb8c8274f7b 100644
 --- a/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx
 +++ b/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx
 @@ -16,14 +16,16 @@ import * as Cause from "effect/Cause";
@@ -2063,10 +2063,10 @@ index 1e7042600149522b1591eb9a733be473e22668c5..55e320b58d1d50b94813b7ecdc94fe4f
    secretProviderSettings: Schema.optionalKey(Schema.Boolean),
    /** Secret settings may point at a secret provider; older servers drop the reference. */
 diff --git a/packages/shared/package.json b/packages/shared/package.json
-index ab4b4e69815a9b11c8679af5196df35c19eb17a2..a2ebea62d713602940ca3c28ab1f745e2f9120c0 100644
+index af45f2adb66f91714566da9b86162df6babb2ffa..117cecff0f93e7440880141c719b332772c42d64 100644
 --- a/packages/shared/package.json
 +++ b/packages/shared/package.json
-@@ -319,6 +319,14 @@
+@@ -323,6 +323,14 @@
        "types": "./src/composerContextReferences.ts",
        "import": "./src/composerContextReferences.ts"
      },

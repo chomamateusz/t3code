@@ -1212,10 +1212,10 @@ index 0000000000000000000000000000000000000000..db439e67964e4dea091c47376eead71c
 +    previous.badge?.description === next.badge?.description,
 +);
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 073d2cb64c75d4c79bc48c4e0e19054026780f62..e5d0ff49d2dbc00a3a6653385066e5e471e1204f 100644
+index ae2ae13455fb78042253d7f204c83587ace8811f..ef7e23d2c10432e528fd9f4931404888fba58f07 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -585,6 +585,7 @@ type SidebarThreadRowProps = {
+@@ -586,6 +586,7 @@ type SidebarThreadRowProps = {
    // "folder-multiline" adds the card's environment and PR line under it.
    variant: "card" | "slim" | "folder" | "folder-multiline";
    navigationParent?: string | undefined;
@@ -1223,7 +1223,7 @@ index 073d2cb64c75d4c79bc48c4e0e19054026780f62..e5d0ff49d2dbc00a3a6653385066e5e4
    variantAction: SidebarSweepAction;
    settlementSupported: boolean;
    snoozeSupported: boolean;
-@@ -1519,6 +1520,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1505,6 +1506,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
        className={cn(
          "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
          metaLineEmpty && "[contain-intrinsic-size:auto_60px]",
@@ -1232,7 +1232,7 @@ index 073d2cb64c75d4c79bc48c4e0e19054026780f62..e5d0ff49d2dbc00a3a6653385066e5e4
        )}
      >
 diff --git a/apps/web/src/index.css b/apps/web/src/index.css
-index 4441b65f8143fadb02406c7a29a9cd102978cf18..b0b2340856550cfa90669aeea14db38c2d7b9f4c 100644
+index 3a815a32a0ddf1c7c212cef1d2843c5678ba4922..2d1fb35c7fe59cfa48cc939bb1c9991f427214cf 100644
 --- a/apps/web/src/index.css
 +++ b/apps/web/src/index.css
 @@ -109,6 +109,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
@@ -1246,7 +1246,7 @@ index 4441b65f8143fadb02406c7a29a9cd102978cf18..b0b2340856550cfa90669aeea14db38c
    --command-content-inset: 1rem;
    --floating-content-inset: 0.75rem;
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index b1dff7cf21373d00428337b16e8d3510278efa1e..def4583b944c5947fec3911bc168f54e32af78d4 100644
+index 7ae94c8141a52bd7ce61b650494137869cb83980..66188f1bc40e556224a5b5b7d6834f3b8ae3394c 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -221,11 +221,15 @@ selections so the thread can appear, while keeping selections for unavailable pr

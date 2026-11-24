@@ -498,7 +498,7 @@ index 9dc56d7a6a02d95c0b3c89882cbbc4dff1739bd6..771e102d2b25467839ce623f83e76d90
    it("resolves instance enabled state with explicit false winning", () => {
      const grok = ProviderDriverKind.make("grok");
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index d0135017d7cea7064711fe7744dd6add9585e324..56d7473e23f23b7b24f11071369b43f77bc090c9 100644
+index dd1675f78e5f89689f381f7dd8891666ae6b4160..b4786dcafc2746e0bc296306c0c78f8710e63249 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -482,6 +482,7 @@ export const ClientSettingsSchema = Schema.Struct({
@@ -509,7 +509,7 @@ index d0135017d7cea7064711fe7744dd6add9585e324..56d7473e23f23b7b24f11071369b43f7
    confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
    confirmTerminalClose: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
    confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-@@ -2101,6 +2102,7 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2116,6 +2117,7 @@ export const ClientSettingsPatch = Schema.Struct({
    browserProfiles: Schema.optionalKey(Schema.Array(BrowserProfile)),
    browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),
    confirmQuit: Schema.optionalKey(QuitConfirmationMode),

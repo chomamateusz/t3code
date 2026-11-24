@@ -81,7 +81,7 @@ index edcb93154ca516a6e9d4fe0e2d3f17c2921332dd..54495976d3dea1ada2cefae2ab4fecba
  }
  
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index d199cf01e2fa74862ae575be76952729686405a7..8b5ff1ee42f04d0d30db750dad886d30708fff5f 100644
+index 6a42c4f008a64de95c0306dea9ab175ca094463e..efcc23f0fabb59d2a223722cd9dc097037cad6a6 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -174,8 +174,9 @@ On web and desktop, when two or more machines are known, the machine row below

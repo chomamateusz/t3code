@@ -893,10 +893,10 @@ index d873045d879c23add6a5b89a2875f6a71bcdcede..c1faf9880373dab824cf6d1cabbdf5da
                          <SidebarDraftBlock
                            key="draft-sessions"
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index e1ddcd5e745caaaa60de6353fa26a4874d36fc40..10a2fb6dd76225ca47547084a59c736ac0a79a22 100644
+index c3fa051dd10bb28b0071856f3d7e7da4010d528c..ebf97ad4f9ea7faa51c3438593157459b4a61f7a 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -431,6 +431,7 @@ function SnoozeMenuButton(props: {
+@@ -432,6 +432,7 @@ function SnoozeMenuButton(props: {
                    type="button"
                    aria-label={gt("Snooze thread")}
                    onClick={(event) => event.stopPropagation()}
@@ -904,7 +904,7 @@ index e1ddcd5e745caaaa60de6353fa26a4874d36fc40..10a2fb6dd76225ca47547084a59c736a
                    onDoubleClick={(event) => event.stopPropagation()}
                    className="inline-flex h-full cursor-pointer items-center gap-0.5 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
                  />
-@@ -1711,6 +1712,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1697,6 +1698,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                  type="button"
                                  aria-label={gt("Discard draft")}
                                  onClick={handleDiscardDraftClick}
@@ -913,7 +913,7 @@ index e1ddcd5e745caaaa60de6353fa26a4874d36fc40..10a2fb6dd76225ca47547084a59c736a
                                />
                              }
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index e3af0fa3a38377fd1edd387f5505d16dd348597d..5874c36d358e77f3be424d0ac30013ee77adae5f 100644
+index 4fd5305e2d894403a5ec33a968f5626ea4b74789..e98cb6e8f9b572e8a571d9c459424058ebdb6258 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -233,9 +233,12 @@ clicking, or press Alt+Enter on a focused folder, to close every folder when it
