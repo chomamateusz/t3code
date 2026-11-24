@@ -183,7 +183,7 @@ Tests:
  create mode 100644 apps/web/src/components/terminal/remoteTerminalClose.ts
 
 diff --git a/apps/server/src/terminal/Manager.test.ts b/apps/server/src/terminal/Manager.test.ts
-index aa0953142aac95175ba1dd7f1b3991dae6553d3b..c6125da2e350d1e911f3fa542ac41826c2d9227c 100644
+index f6284cc52c914757f86e1e6310b509f60e33ba17..5ff8c02249cbe5f49c3a54e35df8f86053cfa62c 100644
 --- a/apps/server/src/terminal/Manager.test.ts
 +++ b/apps/server/src/terminal/Manager.test.ts
 @@ -5,9 +5,11 @@ import { assert, it } from "@effect/vitest";
@@ -233,7 +233,7 @@ index aa0953142aac95175ba1dd7f1b3991dae6553d3b..c6125da2e350d1e911f3fa542ac41826
      Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) => fs.exists(filePath));
  
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index a27f6b1d034475e3365b72f6951f134a10dd22e3..01dca73ddd815c31d7278df35e6f68d26ae29a3c 100644
+index 968cbf4b3f78ac056b233970068d084fdc19432c..b7325a609bca7972f7584a1e1bcdd25d782185a2 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
 @@ -21,6 +21,7 @@ import {
@@ -244,7 +244,7 @@ index a27f6b1d034475e3365b72f6951f134a10dd22e3..01dca73ddd815c31d7278df35e6f68d2
    type TerminalAttachInput,
    type TerminalAttachStreamEvent,
    type TerminalClearInput,
-@@ -327,6 +328,7 @@ interface TerminalSessionState {
+@@ -328,6 +329,7 @@ interface TerminalSessionState {
    runtimeEnv: Record<string, string> | null;
    stopOnSettle: boolean;
    startupError: string | null;
@@ -252,7 +252,7 @@ index a27f6b1d034475e3365b72f6951f134a10dd22e3..01dca73ddd815c31d7278df35e6f68d2
  }
  
  interface TerminalGrid {
-@@ -440,6 +442,9 @@ function summary(session: TerminalSessionState): TerminalSummary {
+@@ -441,6 +443,9 @@ function summary(session: TerminalSessionState): TerminalSummary {
      hasRunningSubprocess: session.hasRunningSubprocess,
      label: terminalWireLabel(session),
      updatedAt: session.updatedAt,
@@ -262,7 +262,7 @@ index a27f6b1d034475e3365b72f6951f134a10dd22e3..01dca73ddd815c31d7278df35e6f68d2
    };
  }
  
-@@ -3381,6 +3386,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+@@ -3346,6 +3351,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
          runtimeEnv: normalizedRuntimeEnv(input.env),
          stopOnSettle: input.stopOnSettle ?? false,
          startupError: null,

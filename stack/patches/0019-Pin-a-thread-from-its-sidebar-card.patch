@@ -38,10 +38,10 @@ Model/harness: Claude Opus 5.5 / Claude Code
  4 files changed, 33 insertions(+), 1 deletion(-)
 
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 65fee5525d6b9020bef3c3ee1b9c65b44d232f12..56fe0ce2adb6a910d68143006582cde412571e90 100644
+index c1faf9880373dab824cf6d1cabbdf5da2c4e7ad0..fd89402cc7cf42ce4786c888df4a7a5e930691f8 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -3578,6 +3578,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3585,6 +3585,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              onUnsettle={attemptUnsettle}
                              onSnooze={attemptSnooze}
                              onUnsnooze={attemptUnsnooze}

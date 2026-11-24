@@ -192,7 +192,7 @@ index ca5b128aa4624eb3dea5d7e99e163ac3c758fac6..6908d7bdeb5e867e03c074e699c2d382
    // The shift guard drops pointer presses on a row that appeared under 500ms ago; keys pass.
    folder.element().focus();
 diff --git a/apps/web/src/components/Sidebar.logic.test.ts b/apps/web/src/components/Sidebar.logic.test.ts
-index 2b1058c7cd50ffe650ede642e41efcdb75205e37..b6ac554ce4acf50762fa7be86bdfc0b331c90695 100644
+index cbe45083459162fd5ce696accd73d8400251c59e..35cef3f781070f007e28bb1783ad77d8150dbccc 100644
 --- a/apps/web/src/components/Sidebar.logic.test.ts
 +++ b/apps/web/src/components/Sidebar.logic.test.ts
 @@ -19,6 +19,8 @@ import {
@@ -215,7 +215,7 @@ index 2b1058c7cd50ffe650ede642e41efcdb75205e37..b6ac554ce4acf50762fa7be86bdfc0b3
  } from "./Sidebar.logic";
  import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
  import {
-@@ -1725,6 +1727,53 @@ describe("sidebarFolderExpansionKeys", () => {
+@@ -1749,6 +1751,53 @@ describe("sidebarFolderExpansionKeys", () => {
      expect(resolveProjectExpanded({ [cwdKey]: false }, keys)).toBe(false);
      expect(resolveProjectExpanded({ [keys[0]!]: true, [cwdKey]: false }, keys)).toBe(true);
    });
@@ -269,7 +269,7 @@ index 2b1058c7cd50ffe650ede642e41efcdb75205e37..b6ac554ce4acf50762fa7be86bdfc0b3
  });
  
  describe("groupSidebarThreadsByProject", () => {
-@@ -1783,43 +1832,6 @@ describe("groupSidebarThreadsByProject", () => {
+@@ -1807,43 +1856,6 @@ describe("groupSidebarThreadsByProject", () => {
    });
  });
  
@@ -313,7 +313,7 @@ index 2b1058c7cd50ffe650ede642e41efcdb75205e37..b6ac554ce4acf50762fa7be86bdfc0b3
  describe("shouldCreateNewThreadInCurrentProject", () => {
    it("opens the picker when several projects are open, or only archived ones exist", () => {
      expect(shouldCreateNewThreadInCurrentProject(false, 2, 3)).toBe(false);
-@@ -2006,6 +2018,38 @@ describe("sidebar project thread badges", () => {
+@@ -2030,6 +2042,38 @@ describe("sidebar project thread badges", () => {
      expect(summarizeSidebarProjectBadge(many[1]!.counts)).toBeNull();
    });
  
@@ -352,7 +352,7 @@ index 2b1058c7cd50ffe650ede642e41efcdb75205e37..b6ac554ce4acf50762fa7be86bdfc0b3
    it("excludes settled, archived, deleted and still-snoozed threads but counts early wakes", () => {
      const thread = baseThread();
      const badges = buildSidebarProjectBadges(
-@@ -2157,6 +2201,13 @@ describe("sidebar project thread badges", () => {
+@@ -2181,6 +2225,13 @@ describe("sidebar project thread badges", () => {
        buildSidebarProjectBadges(groups, [legacyThread], { ...defaults, localLastVisitedAtById })[0]!
          .counts.woke,
      ).toBe(0);
@@ -513,7 +513,7 @@ index a2b1d06a850333b97d1a3c3ac42cb01f772ec65e..d31d96c9517b384b0ccf6a18b110a3a1
   * Boring sidebar folders. Folders follow `groups` order and threads keep their
   * input order. A project with no threads gets a folder only when `keepEmpty` says so.
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 86588e59dfd0ac35d2d93621093684ef8bd72977..1a261ccc5f708ab5f492f90a5ede73439a12cd46 100644
+index 0aa26fee3168b1517890db7c2a49817c78a6e2b6..17259e00cee7c476154b073110ef3eb1bd54154a 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -124,12 +124,18 @@ import {
@@ -583,7 +583,7 @@ index 86588e59dfd0ac35d2d93621093684ef8bd72977..1a261ccc5f708ab5f492f90a5ede7343
      renderedSettledThreads,
      visibleSnoozedThreads,
      visibleWorkingThreads,
-@@ -869,6 +886,34 @@ function useSidebarLookups() {
+@@ -872,6 +889,34 @@ function useSidebarLookups() {
    };
  }
  
@@ -618,7 +618,7 @@ index 86588e59dfd0ac35d2d93621093684ef8bd72977..1a261ccc5f708ab5f492f90a5ede7343
  function canOperateThreads(
    threads: ReadonlyArray<Pick<SidebarThreadSummary, "environmentId">>,
  ): boolean {
-@@ -992,7 +1037,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -995,7 +1040,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      },
    });
    const boringSidebarEnabled = useClientSettings((settings) => settings.boringSidebarEnabled);
@@ -626,7 +626,7 @@ index 86588e59dfd0ac35d2d93621093684ef8bd72977..1a261ccc5f708ab5f492f90a5ede7343
    const newThreadContext = useHandleNewThread();
    // Row callbacks capture only the handler; the rest of the context changes with the route.
    const { handleNewThread } = newThreadContext;
-@@ -1016,23 +1060,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1019,23 +1063,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const setPersistedProjectScopeKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
    const persistedProjectExcludeKeys = useUiStateStore((store) => store.sidebarProjectExcludeKeys);
    const projectFilterMode = useUiStateStore((store) => store.sidebarProjectFilterMode);
@@ -654,7 +654,7 @@ index 86588e59dfd0ac35d2d93621093684ef8bd72977..1a261ccc5f708ab5f492f90a5ede7343
    const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
    const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
    // Hold dropped rows until server placement is confirmed; block another pickup from replacing the hold.
-@@ -1099,11 +1136,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1102,11 +1139,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    // A scope whose project is gone reads as all projects once every snapshot has
    // loaded. The stored keys are left alone, so the scope returns with its project.
    const scopeGroups = pickableProjectGroups(projectGroups);
@@ -666,7 +666,7 @@ index 86588e59dfd0ac35d2d93621093684ef8bd72977..1a261ccc5f708ab5f492f90a5ede7343
    const storedProjectSelection = {
      include: persistedProjectScopeKeys,
      exclude: persistedProjectExcludeKeys,
-@@ -1459,6 +1491,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1462,6 +1494,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      toggleWorkingShelf,
      projectFolders,
      toggleProjectFolder,
@@ -674,7 +674,7 @@ index 86588e59dfd0ac35d2d93621093684ef8bd72977..1a261ccc5f708ab5f492f90a5ede7343
      renderedSettledThreads,
      visibleSnoozedThreads,
      visibleWorkingThreads,
-@@ -1484,7 +1517,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1487,7 +1520,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      departingThreadKey,
      folderGroups: boringSidebarEnabled
        ? [
@@ -688,7 +688,7 @@ index 86588e59dfd0ac35d2d93621093684ef8bd72977..1a261ccc5f708ab5f492f90a5ede7343
            ...visibleProjectGroups.filter((project) => project.archived),
          ]
        : null,
-@@ -3413,13 +3451,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3420,13 +3458,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                          const threadKey = scopedThreadKey(
                            scopeThreadRef(thread.environmentId, thread.id),
                          );
@@ -704,7 +704,7 @@ index 86588e59dfd0ac35d2d93621093684ef8bd72977..1a261ccc5f708ab5f492f90a5ede7343
                              ? "card"
                              : "slim";
                          return (
-@@ -3434,6 +3467,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3441,6 +3474,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              }
                              thread={thread}
                              variant={rowVariant}
@@ -712,7 +712,7 @@ index 86588e59dfd0ac35d2d93621093684ef8bd72977..1a261ccc5f708ab5f492f90a5ede7343
                              navigationParent={
                                folderRow ??
                                (section === "working" ||
-@@ -3554,6 +3588,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3561,6 +3595,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                  group={folder.group}
                                  collapsed={folder.collapsed}
                                  hiddenThreads={folder.hiddenThreads}
@@ -781,10 +781,10 @@ index 9fc233e2c476f1a8ff36c649a709f8feb2ad7e26..e0cbc4a3dba088a2253878142f7e277d
  function GuestLinksRowWithSignIn() {
    const searchableSetting = useSearchableSetting();
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 251f1fe54e7b5e2db2bff00198b92d13ae17e1f5..a38c930eb5d1a95759397e667ce08689170c047d 100644
+index 8955f7f4a61e71f89af7456f25925980f18c7c3d..e4c5683e65e587caf4d723b7e20849d77561076f 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -506,22 +506,13 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -512,22 +512,13 @@ export const SETTINGS_SEARCH_ITEMS = [
      to: "/settings/labs",
      searchTerms: [msg("beta folders project tree classic sidebar")],
    },
@@ -1232,7 +1232,7 @@ index 073d2cb64c75d4c79bc48c4e0e19054026780f62..e5d0ff49d2dbc00a3a6653385066e5e4
        )}
      >
 diff --git a/apps/web/src/index.css b/apps/web/src/index.css
-index 272c0269d9e280ad71b5d411dfd59fbb0c2e910e..fd4a9ed2d397783de2f44baaef111ff01c1ba5ab 100644
+index 4441b65f8143fadb02406c7a29a9cd102978cf18..b0b2340856550cfa90669aeea14db38c2d7b9f4c 100644
 --- a/apps/web/src/index.css
 +++ b/apps/web/src/index.css
 @@ -109,6 +109,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil

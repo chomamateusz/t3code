@@ -377,7 +377,7 @@ index 76f2c9bf3a3ec8ad6c0167baafe812aad4d80368..74570b265b8482f864f2b3c67821103a
        previous?.rects !== args.rects ||
        previous.activeIndex !== args.activeIndex ||
 diff --git a/apps/web/src/components/Sidebar.logic.test.ts b/apps/web/src/components/Sidebar.logic.test.ts
-index 7e4bd5658261b2d2128005b8aebc9b33697ba449..67c0023131e49fe69cb9159ea3b0fdd31c3fb7c7 100644
+index 34071e1328294e179170051e739e3866fa137349..f14b9f040e4cb8111142158f474028da47a6ad74 100644
 --- a/apps/web/src/components/Sidebar.logic.test.ts
 +++ b/apps/web/src/components/Sidebar.logic.test.ts
 @@ -33,6 +33,10 @@ import {
@@ -391,7 +391,7 @@ index 7e4bd5658261b2d2128005b8aebc9b33697ba449..67c0023131e49fe69cb9159ea3b0fdd3
    planSidebarThreadDrop,
    resolveSidebarReorderableThreadKeys,
    sortPinnedThreadsForSidebar,
-@@ -1287,6 +1291,153 @@ describe("Working shelf (beta)", () => {
+@@ -1288,6 +1292,153 @@ describe("Working shelf (beta)", () => {
        expect(above.kind === "move-active" && above.assignments[0]!.orderKey < "m").toBe(true);
      });
  
@@ -640,7 +640,7 @@ index 8160be91b63cc78e5d88525218283b060e9424d4..e4c77e610b894e67380bdc294b010045
    T extends Pick<
      SidebarThreadSummary,
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index e5fd4f39feb37fd2e0eb02d40186dc23b31070aa..65fee5525d6b9020bef3c3ee1b9c65b44d232f12 100644
+index d873045d879c23add6a5b89a2875f6a71bcdcede..c1faf9880373dab824cf6d1cabbdf5da2c4e7ad0 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -212,12 +212,15 @@ import {
@@ -712,7 +712,7 @@ index e5fd4f39feb37fd2e0eb02d40186dc23b31070aa..65fee5525d6b9020bef3c3ee1b9c65b4
      settledThreadKeys: new Set(settledThreads.map(threadShellKey)),
      snoozedThreadKeys: new Set(snoozedThreads.map(threadShellKey)),
      sectionByThreadKey,
-@@ -670,7 +674,6 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
+@@ -673,7 +677,6 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
      serverConfigs,
      optimisticDrop,
      workingShelfEnabled,
@@ -720,7 +720,7 @@ index e5fd4f39feb37fd2e0eb02d40186dc23b31070aa..65fee5525d6b9020bef3c3ee1b9c65b4
    } = input;
    const preciseNow = new Date().toISOString();
    const visible = filterSidebarV2VisibleThreads(
-@@ -732,11 +735,9 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
+@@ -735,11 +738,9 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
    }
    // Availability gates dragging only; sorting must stay consistent across clients.
    const sortedPinned = sortPinnedThreadsForSidebar(pinned);
@@ -735,7 +735,7 @@ index e5fd4f39feb37fd2e0eb02d40186dc23b31070aa..65fee5525d6b9020bef3c3ee1b9c65b4
    return {
      pinnedThreads:
        optimisticDrop?.section !== "pinned" || optimisticDrop.order === null
-@@ -1506,6 +1507,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1509,6 +1510,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      visibleWorkingThreads,
      orderedThreadKeys,
      threadByKey,
@@ -743,7 +743,7 @@ index e5fd4f39feb37fd2e0eb02d40186dc23b31070aa..65fee5525d6b9020bef3c3ee1b9c65b4
      settledThreadKeys,
      snoozedThreadKeys,
      sectionByThreadKey,
-@@ -1929,9 +1931,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1932,9 +1934,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      };
    };
  
@@ -758,7 +758,7 @@ index e5fd4f39feb37fd2e0eb02d40186dc23b31070aa..65fee5525d6b9020bef3c3ee1b9c65b4
      dragState?.contextDrag === true ||
      dragState?.activeSection === "working";
    const dragTargetSection = isContextDrag ? null : (dragState?.targetSection ?? null);
-@@ -2125,8 +2130,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2128,8 +2133,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      if (list && header) {
        const listRect = list.getBoundingClientRect();
        const scale = list.offsetWidth > 0 ? listRect.width / list.offsetWidth : 1;
@@ -771,7 +771,7 @@ index e5fd4f39feb37fd2e0eb02d40186dc23b31070aa..65fee5525d6b9020bef3c3ee1b9c65b4
      } else {
        dragLabelOffsetRef.current = 0;
      }
-@@ -2164,9 +2172,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2167,9 +2175,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      }
      const items: SidebarListItem[] = [{ kind: "marker", marker: "pinned-header" }];
      const pinnedRows = rowsOf(pinnedThreads, "pinned");
@@ -795,7 +795,7 @@ index e5fd4f39feb37fd2e0eb02d40186dc23b31070aa..65fee5525d6b9020bef3c3ee1b9c65b4
      items.push({ kind: "marker", marker: "active-placeholder" });
      items.push(...activeRows);
      if (workingThreads.length > 0) {
-@@ -2185,7 +2205,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2188,7 +2208,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    })();
    // Preserve the list while streamed updates leave order unchanged to retain row memoization.
    const sidebarListItemsKey = sidebarListItemsFresh
@@ -806,7 +806,7 @@ index e5fd4f39feb37fd2e0eb02d40186dc23b31070aa..65fee5525d6b9020bef3c3ee1b9c65b4
      .join("\n");
    const [sidebarListItemsState, setSidebarListItems] = useState(sidebarListItemsFresh);
    const [sidebarListItemsKeyState, setSidebarListItemsKeyState] = useState(sidebarListItemsKey);
-@@ -2230,9 +2252,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2233,9 +2255,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      previousShelfExpansionKeyRef.current = shelfExpansionKey;
      listMotionRef.current?.update(listMotionPass.animate && shelvesUnchanged);
    }, [listMotionPass, shelfExpansionKey]);
@@ -821,7 +821,7 @@ index e5fd4f39feb37fd2e0eb02d40186dc23b31070aa..65fee5525d6b9020bef3c3ee1b9c65b4
        : null;
      setDragState((current) =>
        current === null || current.activeKey !== String(event.active.id)
-@@ -2273,7 +2299,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2276,7 +2302,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      if (source === undefined) return createSidebarCollisionDetection(() => false);
      return createSidebarCollisionDetection(
        (id) => {
@@ -830,7 +830,7 @@ index e5fd4f39feb37fd2e0eb02d40186dc23b31070aa..65fee5525d6b9020bef3c3ee1b9c65b4
          if (target === null) return false;
          return (
            planSidebarThreadDrop({
-@@ -2300,13 +2326,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2303,13 +2329,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      );
    })();
    const handleThreadDragEnd = (event: DragEndEvent) => {
@@ -845,7 +845,7 @@ index e5fd4f39feb37fd2e0eb02d40186dc23b31070aa..65fee5525d6b9020bef3c3ee1b9c65b4
      const activeThread = threadByKey.get(activeKey);
      if (activeSection === undefined || target === null || activeThread === undefined) return;
      const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
-@@ -2336,13 +2358,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2339,13 +2361,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
          : plan.kind === "reorder-pinned" || plan.kind === "move-active"
            ? plan.assignments
            : [];
@@ -862,7 +862,7 @@ index e5fd4f39feb37fd2e0eb02d40186dc23b31070aa..65fee5525d6b9020bef3c3ee1b9c65b4
      )
        return;
      const drop = {
-@@ -2424,15 +2443,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2431,15 +2450,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
          case "reorder-pinned":
            break;
        }
@@ -880,7 +880,7 @@ index e5fd4f39feb37fd2e0eb02d40186dc23b31070aa..65fee5525d6b9020bef3c3ee1b9c65b4
              ),
              plan.kind === "move-active"
                ? gt("Failed to reorder active threads")
-@@ -3569,7 +3585,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3576,7 +3592,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                            />
                          );
                        };

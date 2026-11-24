@@ -68,7 +68,7 @@ Model/harness: Claude Opus 5.5 / Claude Code
  12 files changed, 253 insertions(+), 24 deletions(-)
 
 diff --git a/apps/web/src/components/Sidebar.logic.test.ts b/apps/web/src/components/Sidebar.logic.test.ts
-index b6ac554ce4acf50762fa7be86bdfc0b331c90695..7e4bd5658261b2d2128005b8aebc9b33697ba449 100644
+index 35cef3f781070f007e28bb1783ad77d8150dbccc..34071e1328294e179170051e739e3866fa137349 100644
 --- a/apps/web/src/components/Sidebar.logic.test.ts
 +++ b/apps/web/src/components/Sidebar.logic.test.ts
 @@ -18,6 +18,7 @@ import {
@@ -79,7 +79,7 @@ index b6ac554ce4acf50762fa7be86bdfc0b331c90695..7e4bd5658261b2d2128005b8aebc9b33
    buildSidebarProjectBadges,
    countSidebarProjectBadgeThreads,
    sidebarBadgeWakeClock,
-@@ -2210,6 +2211,79 @@ describe("sidebar project thread badges", () => {
+@@ -2234,6 +2235,79 @@ describe("sidebar project thread badges", () => {
      expect(sidebarBadgeWakeClock([stillSnoozed], now)).toBeNull();
    });
  
@@ -195,7 +195,7 @@ index d31d96c9517b384b0ccf6a18b110a3a1fc19a018..8160be91b63cc78e5d88525218283b06
    "approval",
    "input",
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 1a261ccc5f708ab5f492f90a5ede73439a12cd46..e5fd4f39feb37fd2e0eb02d40186dc23b31070aa 100644
+index 17259e00cee7c476154b073110ef3eb1bd54154a..d873045d879c23add6a5b89a2875f6a71bcdcede 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -142,6 +142,7 @@ import {
@@ -214,7 +214,7 @@ index 1a261ccc5f708ab5f492f90a5ede73439a12cd46..e5fd4f39feb37fd2e0eb02d40186dc23
  } from "./Sidebar.logic";
  import {
    createSidebarCollisionDetection,
-@@ -989,6 +991,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -992,6 +994,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      reorderPinnedThread,
      reorderActiveThread,
      markThreadUnread,
@@ -222,7 +222,7 @@ index 1a261ccc5f708ab5f492f90a5ede73439a12cd46..e5fd4f39feb37fd2e0eb02d40186dc23
      archiveThread,
      deleteThread,
    } = useThreadActions();
-@@ -1046,6 +1049,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1049,6 +1052,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
    const rangeSelectTo = useThreadSelectionStore((s) => s.rangeSelectTo);
    const acknowledgeWoke = useAcknowledgeThreadWoke();
@@ -235,7 +235,7 @@ index 1a261ccc5f708ab5f492f90a5ede73439a12cd46..e5fd4f39feb37fd2e0eb02d40186dc23
    // A Settings or Usage modal keeps the thread behind it current.
    const routeTarget = useShownThreadRouteTarget().shownTarget;
    const routeDraftThread = useComposerDraftStore((store) =>
-@@ -2873,8 +2882,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2880,8 +2889,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                isSnoozed,
                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
                isRegeneratingTitle,
@@ -245,7 +245,7 @@ index 1a261ccc5f708ab5f492f90a5ede73439a12cd46..e5fd4f39feb37fd2e0eb02d40186dc23
                canShareWithGuest: appAtomRegistry.get(
                  canShareWithGuestAtom(threadRef.environmentId),
                ),
-@@ -3019,8 +3028,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3026,8 +3035,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              if (toast) toastManager.add(toast);
              return;
            }
@@ -256,7 +256,7 @@ index 1a261ccc5f708ab5f492f90a5ede73439a12cd46..e5fd4f39feb37fd2e0eb02d40186dc23
              return;
            case "copy-path":
              if (!threadWorkspacePath) {
-@@ -3554,6 +3564,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3561,6 +3571,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              onUnsnooze={attemptUnsnooze}
                              onUnpin={attemptUnpin}
                              onAcknowledgeWoke={acknowledgeWoke}
@@ -536,7 +536,7 @@ index 0bf0568e2b460bf9cfb133a5d084393ab969d67a..61bd76ebfed27dcd4c13435ace590cd0
        ? [{ id: "share-guest" as const, label: resolve(msg("Share with guest")), icon: "user-plus" }]
        : []),
 diff --git a/apps/web/src/contextMenuFallback.ts b/apps/web/src/contextMenuFallback.ts
-index 0002e68d114a22ffb4045483025f63995294f319..582e6fe6ac71134fdc68119bc06d33cb7a7f4204 100644
+index 7754e191f472202d783cc2196e0181f6623ad122..8318bec39b48b9e58970401e7d3d933f0065c48b 100644
 --- a/apps/web/src/contextMenuFallback.ts
 +++ b/apps/web/src/contextMenuFallback.ts
 @@ -59,6 +59,11 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri

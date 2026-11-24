@@ -104,6 +104,8 @@ and t3_ask_wait have no rate limit of their own; the evals cases added under
 evals/mcp-tool-use were not run against a model; question text is the
 thread's title and shows in notifications.
 
+Port to a6c69be8df: McpOAuth.ts: upstream cc2e4c1704 (#41884, revoking all other sessions also ends sign-ins still in progress) reads the revocation count at the start of approve and mints the code with it; that read now comes before this commit's ask-only and inbound-cap checks, so an ask link's OAuth sign-in approved before "revoke all others" gets no session, like any other sign-in; both inbound-cap checks stay. McpOAuth.test.ts: upstream's case runs for an app and an ask link. ClaudeAdapterV2.ts: upstream ff6b10e0a0 (#41928) reports the mcp startup step inside this commit's mcpServers branch after the shared boot wait, so a tool-less question turn, which has no MCP servers, reports none and keeps its verbatim-prompts version check; its options (no tools, no MCP servers, no hooks) are unchanged next to upstream 74382f2530 (#39729) and e632155b3a (#41816). agentContextBudget.json: mcpToolListJsonBytes is 62907 as AgentContextBudget.test.ts measures it on upstream's smaller tool list (69d8f4217f, #41809).
+
 Files:
 - apps/mobile:
   src/features/home/HomeRouteScreen.tsx, src/features/home/HomeScreen.tsx,
@@ -226,7 +228,7 @@ Tests:
  apps/mobile/src/state/use-thread-selection.ts |   3 +
  apps/server/src/auth/EnvironmentAuth.test.ts  |  39 ++
  apps/server/src/auth/EnvironmentAuth.ts       |  62 +-
- apps/server/src/auth/McpOAuth.test.ts         |  53 +-
+ apps/server/src/auth/McpOAuth.test.ts         | 143 +++--
  apps/server/src/auth/McpOAuth.ts              |  86 ++-
  apps/server/src/auth/RpcAuthorization.test.ts |  45 +-
  apps/server/src/auth/RpcAuthorization.ts      |   3 +-
@@ -347,7 +349,7 @@ Tests:
  packages/contracts/src/settings.ts            |  12 +-
  .../src/server/ProviderAdapter.ts             |   2 +
  .../src/server/subagentProjection.ts          |  10 +-
- 135 files changed, 6181 insertions(+), 500 deletions(-)
+ 135 files changed, 6236 insertions(+), 535 deletions(-)
  create mode 100644 apps/server/src/mcp/toolkits/ask/handlers.ts
  create mode 100644 apps/server/src/mcp/toolkits/ask/tools.ts
  create mode 100644 apps/server/src/orchestration-v2/linkedQuestionFailures.ts
@@ -777,10 +779,10 @@ index 120270cb140723bed32e93d228a4f07b9c21d493..a0c122211a1c98bc604cc1d700b279b7
        handleUnsettle,
        handleUnsnooze,
 diff --git a/apps/mobile/src/features/threads/thread-provider-instance.test.ts b/apps/mobile/src/features/threads/thread-provider-instance.test.ts
-index 56ddec3ab1542fcbfaac1851faa0a36d7397efea..290d5addecef9d4e410ae43f9d77d03e16be2e11 100644
+index a8f8c7723356ea4a97e104c7153a2ccc0abd4ddd..d4a20944bd306394daf05bbca50d5fe0b3338de1 100644
 --- a/apps/mobile/src/features/threads/thread-provider-instance.test.ts
 +++ b/apps/mobile/src/features/threads/thread-provider-instance.test.ts
-@@ -300,3 +300,38 @@ describe("thread list reorder availability", () => {
+@@ -307,3 +307,38 @@ describe("thread list reorder availability", () => {
      },
    );
  });
@@ -891,7 +893,7 @@ index 35598d74bc36fd23eabb4833211b9fbb89e9b7ac..08be4a407e2f826f7d2f05a1b7d3d1ec
      pinOrderKey: thread.pinOrderKey,
      snoozedUntil: thread.snoozedUntil ?? null,
 diff --git a/apps/server/src/auth/EnvironmentAuth.test.ts b/apps/server/src/auth/EnvironmentAuth.test.ts
-index 513eb65433cc729c85e479203444da3c5a4a9919..c8f3422e4acf453effbbabe6167b3161cf730156 100644
+index cdd2473f83e91e63bd1b66f90a6933e62281e1cd..0440e4e590027f596bc08114a76e52d67adb0eb6 100644
 --- a/apps/server/src/auth/EnvironmentAuth.test.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.test.ts
 @@ -1,8 +1,10 @@
@@ -905,7 +907,7 @@ index 513eb65433cc729c85e479203444da3c5a4a9919..c8f3422e4acf453effbbabe6167b3161
    connectDeviceVerificationCode,
  } from "@t3tools/contracts";
  import { expect, it } from "@effect/vitest";
-@@ -727,6 +729,43 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
+@@ -728,6 +730,43 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
          expect(
            yield* serverAuth.consumeMcpApprovalCode(pairing.credential, "approval-required", true),
          ).toBe("approval-required");
@@ -950,7 +952,7 @@ index 513eb65433cc729c85e479203444da3c5a4a9919..c8f3422e4acf453effbbabe6167b3161
      );
  
 diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
-index fa812562669268c566934e9a5a5179403c26cab9..0b22ca73c576e750122aa21be30339be09fa68e7 100644
+index 1bffe47e824cc848464ad4fd8e68eceb2139830e..0f0c93ca558553a53e92316abe27ea2545def430 100644
 --- a/apps/server/src/auth/EnvironmentAuth.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.ts
 @@ -1,8 +1,11 @@
@@ -973,7 +975,7 @@ index fa812562669268c566934e9a5a5179403c26cab9..0b22ca73c576e750122aa21be30339be
    mcpClientScopes,
  } from "@t3tools/contracts";
  import { isLocalLoopbackHost } from "@t3tools/shared/hostClassification";
-@@ -53,7 +57,7 @@ import * as ManagedLimits from "../policy/managedLimits.ts";
+@@ -54,7 +58,7 @@ import * as ManagedLimits from "../policy/managedLimits.ts";
  import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
  import {
    MCP_APPROVAL_SUBJECT_PREFIX,
@@ -982,7 +984,7 @@ index fa812562669268c566934e9a5a5179403c26cab9..0b22ca73c576e750122aa21be30339be
  } from "../persistence/AuthPairingLinks.ts";
  import { requestUrl } from "../requestUrl.ts";
  
-@@ -103,6 +107,7 @@ export interface McpClientSession {
+@@ -104,6 +108,7 @@ export interface McpClientSession {
    readonly peerLink: boolean;
    /** When a peer link's session ends unless it is used again; the linking side keeps this. */
    readonly linkExpiresAt?: DateTime.Utc;
@@ -990,7 +992,7 @@ index fa812562669268c566934e9a5a5179403c26cab9..0b22ca73c576e750122aa21be30339be
  }
  
  export interface AuthenticatedSession {
-@@ -472,14 +477,23 @@ export class ServerAuthConnectApprovalPendingError extends Schema.TaggedError<Se
+@@ -473,14 +478,23 @@ export class ServerAuthConnectApprovalPendingError extends Schema.TaggedError<Se
  
  export class ServerAuthMcpApprovalCodeError extends Schema.TaggedError<ServerAuthMcpApprovalCodeError>()(
    "ServerAuthMcpApprovalCodeError",
@@ -1016,7 +1018,7 @@ index fa812562669268c566934e9a5a5179403c26cab9..0b22ca73c576e750122aa21be30339be
    }
  }
  
-@@ -1385,11 +1399,11 @@ export const make = Effect.gen(function* () {
+@@ -1422,11 +1436,11 @@ export const make = Effect.gen(function* () {
    const issuePairingCredential: EnvironmentAuth["Service"]["issuePairingCredential"] = (input) =>
      createPairingLink({
        scopes: input?.access
@@ -1030,7 +1032,7 @@ index fa812562669268c566934e9a5a5179403c26cab9..0b22ca73c576e750122aa21be30339be
            : "one-time-token",
        ...(input?.label ? { label: input.label } : {}),
        ...(input?.access && input.purpose !== "peer-link" ? { mcpApproval: input.access } : {}),
-@@ -1622,13 +1636,24 @@ export const make = Effect.gen(function* () {
+@@ -1664,13 +1678,24 @@ export const make = Effect.gen(function* () {
                diagnostic: "Only MCP client sessions are accepted here.",
              });
            }
@@ -1058,7 +1060,7 @@ index fa812562669268c566934e9a5a5179403c26cab9..0b22ca73c576e750122aa21be30339be
            } satisfies McpClientSession;
            if (session.peerLink !== true || session.expiresAt === undefined) return client;
            return {
-@@ -1666,7 +1691,9 @@ export const make = Effect.gen(function* () {
+@@ -1708,7 +1733,9 @@ export const make = Effect.gen(function* () {
          method: "bearer-access-token",
          scopes: mcpClientScopes(input.access),
          ttl: MCP_CLIENT_SESSION_TTL,
@@ -1069,7 +1071,7 @@ index fa812562669268c566934e9a5a5179403c26cab9..0b22ca73c576e750122aa21be30339be
          peerLink: input.peerLink,
          client: { ...input.client, label: input.label, deviceType: "bot" },
        })
-@@ -1684,10 +1711,14 @@ export const make = Effect.gen(function* () {
+@@ -1731,10 +1758,14 @@ export const make = Effect.gen(function* () {
      code,
      access,
      peerLink = false,
@@ -1088,7 +1090,7 @@ index fa812562669268c566934e9a5a5179403c26cab9..0b22ca73c576e750122aa21be30339be
      }).pipe(
        Effect.catchTags({
          ServerAuthInvalidCredentialError: () =>
-@@ -1700,10 +1731,13 @@ export const make = Effect.gen(function* () {
+@@ -1747,10 +1778,13 @@ export const make = Effect.gen(function* () {
        Effect.flatMap((grant) =>
          grant.method !== "one-time-token" && grant.method !== "reusable-dev-token"
            ? Effect.fail(new ServerAuthMcpApprovalCodeError({ reason: "not_a_pairing_code" }))
@@ -1104,7 +1106,7 @@ index fa812562669268c566934e9a5a5179403c26cab9..0b22ca73c576e750122aa21be30339be
    yield* revokePairedClientsThePolicyDisallows(managedPolicy, {
      sessions,
 diff --git a/apps/server/src/auth/McpOAuth.test.ts b/apps/server/src/auth/McpOAuth.test.ts
-index c21b707bad889ca12891566dabe0ae76551af92d..644f67f1b6b2f48b53022425c577187b19251a78 100644
+index ea321bcf0241c669593e8bd73945bf1fe4edb1bb..210a8d022857b83ce0eed6c9185b814c0d032b30 100644
 --- a/apps/server/src/auth/McpOAuth.test.ts
 +++ b/apps/server/src/auth/McpOAuth.test.ts
 @@ -7,7 +7,7 @@ import {
@@ -1136,7 +1138,105 @@ index c21b707bad889ca12891566dabe0ae76551af92d..644f67f1b6b2f48b53022425c577187b
            Layer.provide(ServerSettings.layerTest({ linkedEnvironmentsEnabled: true })),
            Layer.provide(
              Layer.mock(CloudLink.CloudLink)({ linkState: () => Effect.succeed(linkState) }),
-@@ -644,6 +650,46 @@ it.live(
+@@ -538,42 +544,62 @@ it.live("signs in Gemini, which registers six user-bound redirect URIs for one c
+   ),
+ );
+ 
+-it.live("issues no session for a sign-in approved before all other sessions were revoked", () =>
+-  withRoutes((handler, auth) =>
+-    Effect.gen(function* () {
+-      const clientId = yield* registeredClientId(handler);
+-      const params = authorizeParams(clientId);
+-      const approved = yield* decide(handler, params, {
+-        _tag: "pairing-code",
+-        access: "approval-required",
+-        code: (yield* auth.issuePairingCredential()).credential,
+-      });
+-      const code = new URL(approved.redirectTo!).searchParams.get("code")!;
+-      const owner = yield* auth.issueSession();
+-      yield* auth.revokeOtherClientSessions(owner.sessionId);
+-
+-      const response = yield* handler(
+-        at(
+-          "/oauth/mcp/token",
+-          form({
+-            grant_type: "authorization_code",
+-            code,
+-            redirect_uri: params.redirect_uri,
+-            client_id: clientId,
+-            code_verifier: verifier,
++it.live.each([
++  ["an app", undefined, "approval-required"],
++  ["an ask link", MCP_PEER_LINK_SOFTWARE_ID, "ask"],
++] as const)(
++  "issues no session for %s sign-in approved before all other sessions were revoked",
++  ([, softwareId, access]) =>
++    withRoutes((handler, auth) =>
++      Effect.gen(function* () {
++        const { client_id: clientId } = yield* handler(
++          at("/oauth/mcp/register", {
++            method: "POST",
++            headers: { "content-type": "application/json" },
++            body: encodeJson({
++              client_name: "T3 Code · Laptop",
++              redirect_uris: [REDIRECT],
++              ...(softwareId === undefined ? {} : { software_id: softwareId }),
++            }),
+           }),
+-        ),
+-      );
+-      expect(response.status).toBe(400);
+-      expect(yield* json<unknown>(response)).toEqual({
+-        error: "invalid_grant",
+-        error_description: "The authorization code is invalid or expired.",
+-      });
+-      expect((yield* auth.listSessions()).map((session) => session.sessionId)).toEqual([
+-        owner.sessionId,
+-      ]);
+-    }),
+-  ),
++        ).pipe(Effect.flatMap(json<{ client_id: string }>));
++        const params = authorizeParams(clientId);
++        const pairing =
++          access === "ask"
++            ? yield* auth.issuePairingCredential({ access, purpose: "peer-link" })
++            : yield* auth.issuePairingCredential();
++        const approved = yield* decide(handler, params, {
++          _tag: "pairing-code",
++          access,
++          code: pairing.credential,
++        });
++        expect(approved.status).toBe(200);
++        const code = new URL(approved.redirectTo!).searchParams.get("code")!;
++        const owner = yield* auth.issueSession();
++        yield* auth.revokeOtherClientSessions(owner.sessionId);
++
++        const response = yield* handler(
++          at(
++            "/oauth/mcp/token",
++            form({
++              grant_type: "authorization_code",
++              code,
++              redirect_uri: params.redirect_uri,
++              client_id: clientId,
++              code_verifier: verifier,
++            }),
++          ),
++        );
++        expect(response.status).toBe(400);
++        expect(yield* json<unknown>(response)).toEqual({
++          error: "invalid_grant",
++          error_description: "The authorization code is invalid or expired.",
++        });
++        expect((yield* auth.listSessions()).map((session) => session.sessionId)).toEqual([
++          owner.sessionId,
++        ]);
++      }),
++    ),
+ );
+ 
+ it.live("rejects a wrong PKCE verifier and spends the code", () =>
+@@ -682,6 +708,46 @@ it.live(
            ),
          );
          expect(readOnlyClient.access).toBe("read-only");
@@ -1183,7 +1283,7 @@ index c21b707bad889ca12891566dabe0ae76551af92d..644f67f1b6b2f48b53022425c577187b
        }),
      ),
  );
-@@ -653,13 +699,14 @@ it.live("a code minted with an access level's scopes approves that access", () =
+@@ -691,13 +757,14 @@ it.live("a code minted with an access level's scopes approves that access", () =
      Effect.gen(function* () {
        const params = authorizeParams(yield* registeredClientId(handler));
        for (const access of AuthMcpClientAccess.literals) {
@@ -1201,7 +1301,7 @@ index c21b707bad889ca12891566dabe0ae76551af92d..644f67f1b6b2f48b53022425c577187b
      }),
    ),
 diff --git a/apps/server/src/auth/McpOAuth.ts b/apps/server/src/auth/McpOAuth.ts
-index e63c600ae1b2d67542476f6bf0fd69550b9e540c..6f86f7a2cc07defd44e5c0e7b2795301ef77ff98 100644
+index 7c6cdc677cc3c7f04cb9abda874a9ef02b22c17e..59d0673028ae9def46fc6499e9c01e7d408633c8 100644
 --- a/apps/server/src/auth/McpOAuth.ts
 +++ b/apps/server/src/auth/McpOAuth.ts
 @@ -9,11 +9,12 @@ import {
@@ -1226,7 +1326,7 @@ index e63c600ae1b2d67542476f6bf0fd69550b9e540c..6f86f7a2cc07defd44e5c0e7b2795301
  import * as PayloadSigner from "./PayloadSigner.ts";
  import * as EnvironmentAuth from "./EnvironmentAuth.ts";
  import * as ServerSecretStore from "./ServerSecretStore.ts";
-@@ -221,6 +223,11 @@ export class McpOAuth extends Context.Service<
+@@ -222,6 +224,11 @@ export class McpOAuth extends Context.Service<
        | { readonly csrfToken: string; readonly scopes: ReadonlyArray<AuthEnvironmentScope> }
        | undefined
      >;
@@ -1238,7 +1338,7 @@ index e63c600ae1b2d67542476f6bf0fd69550b9e540c..6f86f7a2cc07defd44e5c0e7b2795301
      readonly approve: (input: {
        readonly request: HttpServerRequest.HttpServerRequest;
        readonly authorization: AuthorizationRequest;
-@@ -274,6 +281,30 @@ const make = Effect.gen(function* () {
+@@ -275,6 +282,30 @@ const make = Effect.gen(function* () {
      yield* secretStore.getOrCreateRandom(SIGNING_SECRET_NAME, 32).pipe(Effect.orDie),
    );
    const codes = yield* Ref.make<ReadonlyMap<string, PendingCode>>(new Map());
@@ -1269,7 +1369,7 @@ index e63c600ae1b2d67542476f6bf0fd69550b9e540c..6f86f7a2cc07defd44e5c0e7b2795301
  
    const sign = (domain: string, payload: string) => signer.sign(`${domain}.${payload}`);
  
-@@ -465,8 +496,29 @@ const make = Effect.gen(function* () {
+@@ -468,11 +499,32 @@ const make = Effect.gen(function* () {
      return code;
    });
  
@@ -1288,6 +1388,9 @@ index e63c600ae1b2d67542476f6bf0fd69550b9e540c..6f86f7a2cc07defd44e5c0e7b2795301
 +
    const approve: McpOAuth["Service"]["approve"] = Effect.fn("McpOAuth.approve")(function* (input) {
      const { decision } = input;
+     // Read before the approver is checked: "revoke all others" then ends this sign-in whether
+     // it lands before the check or after the code is handed out.
+     const approvedAtRevocationCount = yield* environmentAuth.otherSessionRevocationCount;
 +    const { peerLink } = input.authorization.client;
 +    if (decision.access === "ask" && !peerLink) {
 +      return yield* new McpOAuthPageError({
@@ -1299,7 +1402,7 @@ index e63c600ae1b2d67542476f6bf0fd69550b9e540c..6f86f7a2cc07defd44e5c0e7b2795301
      let access = decision.access;
      if (decision._tag === "pairing-code") {
        // An approval code is for one app's sign-in, never for linking another environment.
-@@ -495,13 +547,14 @@ const make = Effect.gen(function* () {
+@@ -501,13 +553,14 @@ const make = Effect.gen(function* () {
        if (
          session === undefined ||
          !timingSafeEqualBase64Url(decision.csrfToken, session.csrfToken) ||
@@ -1312,10 +1415,10 @@ index e63c600ae1b2d67542476f6bf0fd69550b9e540c..6f86f7a2cc07defd44e5c0e7b2795301
        }
      }
 +    yield* refuseAboveInboundCap(peerLink, access);
-     const code = yield* mintCode(input.authorization, access);
+     const code = yield* mintCode(input.authorization, access, approvedAtRevocationCount);
      yield* Effect.logInfo("Approved an MCP client sign-in.", {
        client: input.authorization.client.name,
-@@ -561,6 +614,8 @@ const make = Effect.gen(function* () {
+@@ -567,6 +620,8 @@ const make = Effect.gen(function* () {
        ) {
          return yield* fail("invalid_grant", "The authorization code is invalid or expired.");
        }
@@ -1324,7 +1427,7 @@ index e63c600ae1b2d67542476f6bf0fd69550b9e540c..6f86f7a2cc07defd44e5c0e7b2795301
        const issued = yield* environmentAuth
          .issueMcpClientSession({
            label: pending.clientName,
-@@ -596,6 +651,7 @@ const make = Effect.gen(function* () {
+@@ -605,6 +660,7 @@ const make = Effect.gen(function* () {
      register,
      validateAuthorization,
      approvingSession,
@@ -1332,7 +1435,7 @@ index e63c600ae1b2d67542476f6bf0fd69550b9e540c..6f86f7a2cc07defd44e5c0e7b2795301
      approve,
      deny,
      exchangeCode,
-@@ -609,6 +665,7 @@ export const layerMcpClientAuthenticator = Layer.effect(
+@@ -618,6 +674,7 @@ export const layerMcpClientAuthenticator = Layer.effect(
    Effect.gen(function* () {
      const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
      const environment = yield* ServerEnvironment.ServerEnvironment;
@@ -1340,7 +1443,7 @@ index e63c600ae1b2d67542476f6bf0fd69550b9e540c..6f86f7a2cc07defd44e5c0e7b2795301
      const environmentId = yield* environment.getEnvironmentId;
      const hostedAppUrl = yield* hostedAppUrlConfig.pipe(
        Effect.catch((cause) =>
-@@ -620,7 +677,10 @@ export const layerMcpClientAuthenticator = Layer.effect(
+@@ -629,7 +686,10 @@ export const layerMcpClientAuthenticator = Layer.effect(
      return McpHttpServer.McpClientAuthenticator.of({
        authenticate: Effect.fn("McpHttpServer.McpClientAuthenticator.authenticate")(
          function (request) {
@@ -1352,7 +1455,7 @@ index e63c600ae1b2d67542476f6bf0fd69550b9e540c..6f86f7a2cc07defd44e5c0e7b2795301
              Effect.flatMap((client) =>
                Clock.currentTimeMillis.pipe(
                  Effect.map((issuedAt): McpInvocationContext.McpInvocationScope => ({
-@@ -635,20 +695,20 @@ export const layerMcpClientAuthenticator = Layer.effect(
+@@ -644,20 +704,20 @@ export const layerMcpClientAuthenticator = Layer.effect(
                      linkExpiresAt: client.linkExpiresAt,
                      ...(client.peerLink ? {} : { hostedAppUrl }),
                    },
@@ -1384,7 +1487,7 @@ index e63c600ae1b2d67542476f6bf0fd69550b9e540c..6f86f7a2cc07defd44e5c0e7b2795301
            );
          },
 diff --git a/apps/server/src/auth/RpcAuthorization.test.ts b/apps/server/src/auth/RpcAuthorization.test.ts
-index 15ddfb90b08a59549e6b7d6dd08869a55625e525..975ecb613364db301a628703423e0cf7c7b211bf 100644
+index 1aa2a5b182ffab9fe37393aa88f97b7db872f2da..34cb446262ffa8c782ec34f313f01204dfa219a7 100644
 --- a/apps/server/src/auth/RpcAuthorization.test.ts
 +++ b/apps/server/src/auth/RpcAuthorization.test.ts
 @@ -399,6 +399,11 @@ it.effect("hands out a link code or a guest link only within what the session it
@@ -1426,7 +1529,7 @@ index 15ddfb90b08a59549e6b7d6dd08869a55625e525..975ecb613364db301a628703423e0cf7
          // A reference names any secret the store holds, and the host entry names where it goes.
          expect(
            yield* client[WS_METHODS.serverUpdateSettings]({
-@@ -885,7 +900,14 @@ it.effect("requires provider management to send /logout through chat", () =>
+@@ -946,7 +961,14 @@ it.effect("requires provider management to send /logout through chat", () =>
      yield* dispatch({ ...edit("attached-edit"), attachments });
      // This edit keeps the queued attachments; message intake decides it.
      yield* dispatch(edit("kept-attachments-edit"));
@@ -1442,7 +1545,7 @@ index 15ddfb90b08a59549e6b7d6dd08869a55625e525..975ecb613364db301a628703423e0cf7
        expect(yield* dispatch(command).pipe(Effect.flip)).toMatchObject({
          requiredPermission: AuthProvidersManageScope,
        });
-@@ -899,12 +921,31 @@ it.effect("requires provider management to send /logout through chat", () =>
+@@ -960,12 +982,31 @@ it.effect("requires provider management to send /logout through chat", () =>
        ),
      );
      yield* manager[ORCHESTRATION_V2_WS_METHODS.dispatchCommand](message("manager", "/logout"));
@@ -1475,10 +1578,10 @@ index 15ddfb90b08a59549e6b7d6dd08869a55625e525..975ecb613364db301a628703423e0cf7
    }).pipe(Effect.scoped),
  );
 diff --git a/apps/server/src/auth/RpcAuthorization.ts b/apps/server/src/auth/RpcAuthorization.ts
-index b276fafb2723a59539df401c5a71f3b5ba4e3fbc..3ef8b78cb4a15c8fe8826a76bf1df2233da4b623 100644
+index f6dda3ad4d8f8013dd8af59e1f2e01ddb9a93469..77ad679ac4ca01e44484ee9202ac0a67d6b9388d 100644
 --- a/apps/server/src/auth/RpcAuthorization.ts
 +++ b/apps/server/src/auth/RpcAuthorization.ts
-@@ -297,7 +297,8 @@ const sendsProviderSignOutPrompt = (method: string, payload: unknown): boolean =
+@@ -299,7 +299,8 @@ const sendsProviderSignOutPrompt = (method: string, payload: unknown): boolean =
    const command = payload as OrchestrationV2Command;
    switch (command.type) {
      case "message.dispatch":
@@ -1657,10 +1760,10 @@ index a4b47ebbe8c55d35ed178650f03c520e6dbb8681..2cad555be6d543d94d8b52b25c0fd56e
          }),
        );
 diff --git a/apps/server/src/device/DeviceService.test.ts b/apps/server/src/device/DeviceService.test.ts
-index 00e942f1e6df5c2d3e0db9f83d316f643999f595..d232b3fdf975193c186cb37cc89500d276e66fff 100644
+index 972a9a2b150b2c6d1030fadd2b88d8648c3480d3..25905a8600c16063be97f46b03ec1ff64e932e43 100644
 --- a/apps/server/src/device/DeviceService.test.ts
 +++ b/apps/server/src/device/DeviceService.test.ts
-@@ -389,6 +389,7 @@ const fixture = Effect.fn("fixture")(function* (
+@@ -408,6 +408,7 @@ const fixture = Effect.fn("fixture")(function* (
          withSettingsSnapshot: (use) => Effect.flatMap(Ref.get(settings), use),
          start: Effect.void,
          ready: Effect.void,
@@ -3456,7 +3559,7 @@ index 49f6c1c5c6b5af3ee6ba1a9c91e7c08602a00579..d492e6a944ede349b54d42b83ae9771b
    Effect.gen(function* () {
      expect(
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index df58b80756769c0565b5ae61e60ac8f92ca4e463..0b26fff60e47a67ccaf972026b454934f96ffd3b 100644
+index 40d8214f3e0374c94952e50de65f995268149a78..ad2fa15d7194cbafb813c0324e666a95a600eca6 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -702,6 +702,96 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
@@ -3920,7 +4023,7 @@ index df58b80756769c0565b5ae61e60ac8f92ca4e463..0b26fff60e47a67ccaf972026b454934
  describe("ClaudeAdapterV2 append-system-prompt-file launch argument", () => {
    const startTurnWithLaunchArgs = Effect.fnUntraced(function* (launchArgs: string, cwd: string) {
      const fileSystem = yield* FileSystem.FileSystem;
-@@ -3310,9 +3757,13 @@ describe("ClaudeAdapterV2 native fork", () => {
+@@ -3330,9 +3777,13 @@ describe("ClaudeAdapterV2 native fork", () => {
    );
  });
  
@@ -3935,7 +4038,7 @@ index df58b80756769c0565b5ae61e60ac8f92ca4e463..0b26fff60e47a67ccaf972026b454934
    const stdins: Array<NodeStream.PassThrough> = [];
    const spawn = (options: SpawnOptions): SpawnedProcess => {
      spawns.push(options);
-@@ -3336,14 +3787,20 @@ function makeFakeClaudeCli(answerSetServers = true) {
+@@ -3356,14 +3807,20 @@ function makeFakeClaudeCli(answerSetServers = true) {
        for (let end = pending.indexOf("\n"); end >= 0; end = pending.indexOf("\n")) {
          const frame = JSON.parse(pending.slice(0, end));
          pending = pending.slice(end + 1);
@@ -3957,7 +4060,7 @@ index df58b80756769c0565b5ae61e60ac8f92ca4e463..0b26fff60e47a67ccaf972026b454934
          };
          stdout.write(`${JSON.stringify({ type: "control_response", response })}\n`);
        }
-@@ -3355,7 +3812,7 @@ function makeFakeClaudeCli(answerSetServers = true) {
+@@ -3375,7 +3832,7 @@ function makeFakeClaudeCli(answerSetServers = true) {
      return child;
    };
    const closed = () => stdins.length > 0 && stdins.every((stdin) => stdin.writableEnded);
@@ -3967,7 +4070,7 @@ index df58b80756769c0565b5ae61e60ac8f92ca4e463..0b26fff60e47a67ccaf972026b454934
  
  describe("ClaudeAdapterV2 MCP credential channel", () => {
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795aed9fb48 100644
+index 6a7eace9edaf515ad9bc23c37e78748a2711b97d..7c75368e454ccaad2e27b524c9721bdc1228bbd6 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -201,6 +201,7 @@ import { signalProcessGroup } from "@t3tools/provider-core/server/processGroup";
@@ -3978,7 +4081,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
    makeClaudeEnvironment,
    mergeClaudeProcessEnvironment,
    resolveClaudeHomePath,
-@@ -388,6 +389,21 @@ const CLAUDE_SCRIPT_EXTENSIONS = [".js", ".mjs", ".tsx", ".ts", ".jsx"];
+@@ -387,6 +388,21 @@ const CLAUDE_SCRIPT_EXTENSIONS = [".js", ".mjs", ".tsx", ".ts", ".jsx"];
  // The SDK has no control-request deadline; the CLI waits up to 30 s per MCP server.
  const CLAUDE_MCP_REGISTRATION_TIMEOUT = "90 seconds";
  const CLAUDE_BOOT_TIMEOUT = "5 minutes";
@@ -4000,7 +4103,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
  // Claude can consume a subagent result before the launching turn ends, leaving
  // its notification with no native wake turn to answer the continuation.
  const CLAUDE_WAKE_TURN_START_DEADLINE = "2 minutes";
-@@ -671,6 +687,7 @@ export const ClaudeProviderCapabilitiesV2 = {
+@@ -670,6 +686,7 @@ export const ClaudeProviderCapabilitiesV2 = {
      supportsMcpTools: true,
      supportsDynamicToolCallbacks: true,
      supportsBackgroundWait: true,
@@ -4008,7 +4111,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
    },
    approvals: {
      supportsCommandApproval: true,
-@@ -902,6 +919,24 @@ export class ClaudeBackgroundWorkBlocksQueryReplacementError extends Schema.Tagg
+@@ -903,6 +920,24 @@ export class ClaudeBackgroundWorkBlocksQueryReplacementError extends Schema.Tagg
    }
  }
  
@@ -4033,7 +4136,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
  export class ClaudeAppendSystemPromptFileError extends Schema.TaggedError<ClaudeAppendSystemPromptFileError>()(
    "ClaudeAppendSystemPromptFileError",
    {
-@@ -1838,29 +1873,41 @@ export const layerQueryRunner: Layer.Layer<
+@@ -1839,29 +1874,41 @@ export const layerQueryRunner: Layer.Layer<
            Effect.tap((queryRuntime) =>
              restore(
                Effect.gen(function* () {
@@ -4093,10 +4196,10 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
 +                }
 +                if (mcpServers !== undefined) {
 +                  yield* initialized;
+                   const onStartupPhase = input.onStartupPhase ?? (() => Effect.void);
+                   yield* onStartupPhase("mcp");
                    // Errors and mcp_status can echo headers; log only server names.
-                   const failed = yield* Effect.tryPromise({
-                     try: () => queryRuntime.setMcpServers(mcpServers),
-@@ -2488,6 +2535,8 @@ export function makeClaudeQueryOptions(input: {
+@@ -2493,6 +2540,8 @@ export function makeClaudeQueryOptions(input: {
    readonly appendSystemPromptFileText?: string;
    // Flag settings, because a user's settings.json env beats the process env in Claude Code.
    readonly toolSearchOverride?: "true";
@@ -4105,7 +4208,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
  }): ClaudeAgentSdkQueryOptions {
    const compiledSelection = compileClaudeModelSelection(input.modelSelection, input.modelCatalog);
    const {
-@@ -2508,10 +2557,13 @@ export function makeClaudeQueryOptions(input: {
+@@ -2513,10 +2562,13 @@ export function makeClaudeQueryOptions(input: {
    // Claude Code overwrites its CLI append text with the SDK's initialize
    // appendSystemPrompt, so launch-argument text has to travel in that value.
    // The CLI puts file text before inline text and trims one trailing newline.
@@ -4123,7 +4226,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
    const requestThinkingSummaries =
      compiledSelection.settings.alwaysThinkingEnabled !== false &&
      extraArgs["thinking-display"] !== "omitted";
-@@ -2519,9 +2571,20 @@ export function makeClaudeQueryOptions(input: {
+@@ -2524,9 +2576,20 @@ export function makeClaudeQueryOptions(input: {
      extraArgs["thinking-display"] = "summarized";
    }
    const pluginDirectories =
@@ -4145,7 +4248,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
    const threadIdentity: ClaudeAgentSdkThreadIdentity = input.resume
      ? { resume: input.nativeThreadId }
      : { sessionId: input.nativeThreadId };
-@@ -2530,11 +2593,13 @@ export function makeClaudeQueryOptions(input: {
+@@ -2535,11 +2598,13 @@ export function makeClaudeQueryOptions(input: {
      Object.keys(compiledSelection.settings).length === 0
        ? undefined
        : (compiledSelection.settings as ClaudeSdkSettings);
@@ -4162,7 +4265,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
          : selectionSettings;
    const autoCompactWindow =
      input.settings?.autoCompactWindow === undefined || input.settings.autoCompactWindow.length === 0
-@@ -2577,6 +2642,16 @@ export function makeClaudeQueryOptions(input: {
+@@ -2582,6 +2647,16 @@ export function makeClaudeQueryOptions(input: {
                : { ENABLE_TOOL_SEARCH: input.toolSearchOverride }),
            },
          } as ClaudeSdkSettings);
@@ -4179,7 +4282,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
    const deviceInstructions = input.mcpServers !== undefined && input.deviceToolsAvailable === true;
    const agentFeedback = input.mcpServers === undefined ? "off" : (input.agentFeedback ?? "off");
    const options: ClaudeAgentSdkQueryOptions = {
-@@ -2585,10 +2660,21 @@ export function makeClaudeQueryOptions(input: {
+@@ -2590,10 +2665,21 @@ export function makeClaudeQueryOptions(input: {
      ...(input.title === undefined ? {} : { title: input.title }),
      tools: claudeAgentSdkQueryToolsForSdk(selectedTools),
      permissionMode:
@@ -4205,7 +4308,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
      includePartialMessages: true,
      promptSuggestions: input.promptSuggestions === true,
      ...(compiledSelection.effort === undefined
-@@ -2608,16 +2694,16 @@ export function makeClaudeQueryOptions(input: {
+@@ -2613,16 +2699,16 @@ export function makeClaudeQueryOptions(input: {
        ? {
            thinking: { type: "adaptive" as const, display: "summarized" as const },
            settings:
@@ -4227,7 +4330,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
      ...(input.onUserDialog === undefined ? {} : { onUserDialog: input.onUserDialog }),
      ...(input.onElicitation === undefined ? {} : { onElicitation: input.onElicitation }),
      ...(input.supportedDialogKinds === undefined
-@@ -2635,7 +2721,10 @@ export function makeClaudeQueryOptions(input: {
+@@ -2640,7 +2726,10 @@ export function makeClaudeQueryOptions(input: {
          buildRuntimeInstructions({
            harness: "Claude Code",
            agentFeedback,
@@ -4239,7 +4342,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
          }) +
            (input.mcpServers === undefined
              ? ""
-@@ -2661,14 +2750,19 @@ export function makeClaudeQueryOptions(input: {
+@@ -2666,14 +2755,19 @@ export function makeClaudeQueryOptions(input: {
      ...(pluginDirectories.length === 0
        ? {}
        : { plugins: pluginDirectories.map((path) => ({ type: "local" as const, path })) }),
@@ -4266,7 +4369,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
    const withDirectories =
      additionalDirectories.length === 0 ? options : { ...options, additionalDirectories };
    return input.cwd === null ? withDirectories : { ...withDirectories, cwd: input.cwd };
-@@ -3642,6 +3736,9 @@ function readOnlyPolicyAllowsGlobalReads(
+@@ -3647,6 +3741,9 @@ function readOnlyPolicyAllowsGlobalReads(
  function permissionModeForClaudeRuntimePolicy(
    runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
  ): PermissionMode {
@@ -4276,7 +4379,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
    if (runtimePolicy.interactionMode === "plan") {
      return "plan";
    }
-@@ -3694,8 +3791,16 @@ export interface ClaudeRuntimeQueryPolicy {
+@@ -3699,8 +3796,16 @@ export interface ClaudeRuntimeQueryPolicy {
    readonly allowedTools?: ReadonlyArray<string>;
    readonly allowDangerouslySkipPermissions?: true;
    readonly installPermissionCallback: boolean;
@@ -4293,7 +4396,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
  interface ClaudeBypassAvailability {
    readonly bypassDisabled: boolean;
    readonly autoDisabled: boolean;
-@@ -3710,6 +3815,9 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
+@@ -3715,6 +3820,9 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
    runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
    availability: ClaudeBypassAvailability = CLAUDE_BYPASS_FULLY_AVAILABLE,
  ): ClaudeRuntimeQueryPolicy {
@@ -4303,7 +4406,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
    const requestedMode = permissionModeForClaudeRuntimePolicy(runtimePolicy);
    const downgraded = requestedMode === "bypassPermissions" && availability.bypassDisabled;
    const permissionMode = downgraded
-@@ -3858,6 +3966,7 @@ function claudeRuntimeQueryPolicyKey(policy: ClaudeRuntimeQueryPolicy): string {
+@@ -3863,6 +3971,7 @@ function claudeRuntimeQueryPolicyKey(policy: ClaudeRuntimeQueryPolicy): string {
      allowedTools: policy.allowedTools,
      allowDangerouslySkipPermissions: policy.allowDangerouslySkipPermissions,
      installPermissionCallback: policy.installPermissionCallback,
@@ -4311,7 +4414,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
    });
  }
  
-@@ -12088,7 +12197,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12129,7 +12238,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
            }
  
            const toolPresentations = claudeToolPresentationsFromAssistantMessage(message);
@@ -4324,7 +4427,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
              const nativeToolInput = claudeNativeToolInputFromUnknown(toolUse.input);
              if (toolUse.name === "Agent") {
                rememberClaudeSubagentLaunch(
-@@ -12813,6 +12926,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12854,6 +12967,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                toolUseID: callbackOptions.toolUseID,
              } satisfies PermissionResult;
            }
@@ -4341,7 +4444,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
  
            const nativeRequestId = callbackOptions.toolUseID;
            const nativeToolInput = claudeNativeToolInputFromRecord(toolInput);
-@@ -13420,13 +13543,25 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13461,13 +13584,25 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
            nativeThreadId: string,
            queryPolicy: Effect.Success<ReturnType<typeof queryPolicyForTurn>>,
          ) {
@@ -4369,7 +4472,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
                  const pendingWake = (yield* mcpSessions.read(turnInput.threadId))?.hasPendingWake;
                  return pendingWake !== undefined && (yield* pendingWake) ? { continue: false } : {};
                }),
-@@ -13451,7 +13586,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13492,7 +13627,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              existing !== null &&
              existing.nativeThreadId === nativeThreadId &&
              !existing.stopping &&
@@ -4380,7 +4483,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
            ) {
              return existing;
            }
-@@ -13489,8 +13626,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13530,8 +13667,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              existing.nativeThreadId === nativeThreadId &&
              existing.queryPolicyKey === queryPolicyKey &&
              !existing.stopping;
@@ -4393,7 +4496,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
              cwd: turnInput.runtimePolicy.cwd,
              fileSystem,
              path,
-@@ -13585,7 +13725,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13626,7 +13766,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
            const [appendSystemPromptFileText, toolSearchOverride] = yield* Effect.all(
              [
                readClaudeAppendSystemPromptFile({
@@ -4402,7 +4505,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
                  cwd: turnInput.runtimePolicy.cwd,
                  fileSystem,
                  path,
-@@ -13662,6 +13802,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13703,6 +13843,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              supportedDialogKinds: ["resume_return"],
              ...(appendSystemPromptFileText === undefined ? {} : { appendSystemPromptFileText }),
              ...(toolSearchOverride === undefined ? {} : { toolSearchOverride }),
@@ -4410,7 +4513,7 @@ index b37071222677944204eaaf45800afa52280bb807..71ef5a3845fda30a5ced02070ee2b795
            });
            const resolvedTurnCwd = yield* fileSystem
              .realPath(turnInput.runtimePolicy.cwd ?? ".")
-@@ -13952,7 +14093,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13997,7 +14138,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              }
              const [skills, queryPolicy] = yield* Effect.all(
                [
@@ -4817,7 +4920,7 @@ index ca6b5ff0fcdf1269ea947352414ac0fc627ec82a..27c47b0b83ffcdcd2acea144e3391aa3
  
  const makeContextHandoffService = Effect.fn("orchestrationV2.ContextHandoffService.layer")(
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aafc2010c4 100644
+index 02223a139b9dd4af8f6c4a0a16ab98d878844b4b..817320efa9da2b2f3a3f1bac464e0ecb2134d0dc 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -658,6 +658,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
@@ -4828,7 +4931,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
      case "thread.pin":
      case "thread.unpin":
      case "thread.pin.reorder":
-@@ -845,6 +846,36 @@ function metadataUpdateContinuation(
+@@ -847,6 +848,36 @@ function metadataUpdateContinuation(
        };
  }
  
@@ -4865,7 +4968,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
  // A later command for the first message would leave the new thread committed with no run,
  // and every client would show it idle until that command landed.
  function threadCreateInitialMessage(
-@@ -862,6 +893,9 @@ function threadCreateInitialMessage(
+@@ -864,6 +895,9 @@ function threadCreateInitialMessage(
        workspaceStrategy === undefined
          ? { type: "start_immediately" }
          : { type: "defer_start", workspaceStrategy },
@@ -4875,7 +4978,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
      createdBy: command.createdBy,
      creationSource: command.creationSource,
    };
-@@ -2924,6 +2958,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -2931,6 +2965,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : projection.runs.filter(
                (run) =>
                  isHandoffSourceRun(run) &&
@@ -4883,7 +4986,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
                  run.ordinal >= contextBoundary &&
                  run.ordinal > (targetLastCompletedRun?.ordinal ?? 0) &&
                  run.ordinal <= latestHandoffRun.ordinal,
-@@ -4136,6 +4171,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4143,6 +4178,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        ...(command.linkOrigin === undefined || command.delegatedFrom === undefined
          ? {}
          : { delegatedFrom: command.delegatedFrom }),
@@ -4893,7 +4996,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
        ...(command.workflowRun === undefined ? {} : { workflowRun: command.workflowRun }),
        lineage: {
          parentThreadId: null,
-@@ -4460,6 +4498,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4467,6 +4505,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            | "thread.snooze"
            | "thread.unsnooze"
            | "thread.auto-settle.set"
@@ -4901,7 +5004,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
            | "thread.pin"
            | "thread.unpin"
            | "thread.pin.reorder"
-@@ -4623,6 +4662,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4630,6 +4669,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          command.type === "thread.snooze" ||
          command.type === "thread.unsnooze" ||
          command.type === "thread.auto-settle.set" ||
@@ -4909,7 +5012,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
          command.type === "thread.pin" ||
          command.type === "thread.unpin" ||
          command.type === "thread.pin.reorder" ||
-@@ -4636,6 +4676,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4643,6 +4683,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: `Thread ${command.threadId} is archived.`,
        });
      }
@@ -4923,7 +5026,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
      // Reject reorder after unpin so a raced request cannot restore a cleared pin.
      if (command.type === "thread.pin.reorder" && thread.pinnedAt == null) {
        return yield* new OrchestratorDispatchError({
-@@ -5124,6 +5171,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5131,6 +5178,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
              updatedAt: unchanged ? thread.updatedAt : now,
            };
          }
@@ -4940,7 +5043,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
          case "thread.pin": {
            const alreadyPinned = thread.pinnedAt != null;
            const promotes = thread.settledOverride === "settled" || thread.snoozedUntil != null;
-@@ -5636,6 +5693,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5643,6 +5700,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            return "thread.unsnoozed" as const;
          case "thread.auto-settle.set":
            return "thread.auto-settle-set" as const;
@@ -4949,7 +5052,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
          case "thread.pin":
            return "thread.pinned" as const;
          case "thread.unpin":
-@@ -5996,6 +6055,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6003,6 +6062,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        );
      const thread = projection.thread;
      if (thread.deletedAt !== null) return yield* reject("is deleted.");
@@ -4959,7 +5062,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
      if (threadHasUnfinishedWork(projection)) {
        return yield* reject("still has work in progress. Finish or stop it first.");
      }
-@@ -7302,6 +7364,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -7309,6 +7371,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            }
          : undefined,
      );
@@ -4973,7 +5076,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
      if (command.steerFollowUpOfRunId !== undefined) {
        const source = projection.runs.find((run) => run.id === command.steerFollowUpOfRunId);
        if (
-@@ -7718,6 +7787,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -7725,6 +7794,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        });
      }
      const output = outputSchema === undefined ? {} : { outputSchema };
@@ -4982,7 +5085,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
      if (
        (freshContext || command.outputSchema !== undefined) &&
        (dispatchMode.type === "steer_active" || dispatchMode.type === "restart_active")
-@@ -8739,6 +8810,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8746,6 +8817,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          ...wakeWorkStartedAt(projection, command),
          ...(freshContext ? { freshContext: true } : {}),
          ...output,
@@ -4990,7 +5093,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
        };
        const attempt: OrchestrationV2RunAttempt = {
          id: attemptId,
-@@ -8778,6 +8850,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8785,6 +8857,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : { scheduledTaskId: command.scheduledTaskId }),
          ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
          ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -4998,7 +5101,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
          ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
          ...(followsThreadSelection ? { followsThreadSelection: true as const } : {}),
          id: command.messageId,
-@@ -9272,6 +9345,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -9279,6 +9352,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          : projection.runs.filter(
              (run) =>
                isHandoffSourceRun(run) &&
@@ -5006,7 +5109,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
                run.ordinal >= contextBoundary &&
                run.ordinal >
                  (requiresFullProviderSwitchContext ? 0 : (targetLastCompletedRun?.ordinal ?? 0)) &&
-@@ -10055,6 +10129,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -10062,6 +10136,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
              (cause) => new OrchestratorProjectionError({ threadId: command.parentThreadId, cause }),
            ),
          );
@@ -5014,7 +5117,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
        const parentRun = parentProjection.runs.find(
          (candidate) => candidate.id === command.parentRunId,
        );
-@@ -10531,6 +10606,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -10538,6 +10613,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            (cause) => new OrchestratorProjectionError({ threadId: command.parentThreadId, cause }),
          ),
        );
@@ -5022,7 +5125,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
      const parentRun = parentProjection.runs.find(
        (candidate) => candidate.id === command.parentRunId,
      );
-@@ -11024,6 +11100,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -11031,6 +11107,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                }),
            ),
          );
@@ -5030,7 +5133,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
        const targetProjection = yield* projectionStore
          .getThreadRecords(
            command.targetThreadId,
-@@ -16221,6 +16298,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16262,6 +16339,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "thread.snooze":
        case "thread.unsnooze":
        case "thread.auto-settle.set":
@@ -5039,7 +5142,7 @@ index a5850e18e2dd9badc4df9fb56fcf0b1911342833..d08b20ed42724fedfea5f2717708f8aa
        case "thread.unpin":
        case "thread.pin.reorder":
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.ts b/apps/server/src/orchestration-v2/ProjectionStore.ts
-index 69848d6a44f74f4d6c1621d2d266006e63cd3607..17a8983d6f78dbe5d233c5c5b42bc7187032d043 100644
+index b0fa371bbba334fdd9f1449012ec82b798e78f0f..4cf5e19978330eecd36f7b15bdd5bd526655fd29 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.ts
 @@ -291,8 +291,8 @@ export interface ProjectionCheckpointCaptureContext {
@@ -5160,7 +5263,7 @@ index 69848d6a44f74f4d6c1621d2d266006e63cd3607..17a8983d6f78dbe5d233c5c5b42bc718
                thread: {
                  projectId: threadRows[0].project_id,
                  worktreePath: threadRows[0].worktree_path,
-@@ -9748,6 +9776,47 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -9753,6 +9781,47 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        return rows[0] === undefined ? null : ThreadId.make(rows[0].thread_id);
      }, Effect.mapError(shellSnapshotReadError));
  
@@ -5208,7 +5311,7 @@ index 69848d6a44f74f4d6c1621d2d266006e63cd3607..17a8983d6f78dbe5d233c5c5b42bc718
      const listOlderSettledThreads: ProjectionStoreV2Shape["listOlderSettledThreads"] = Effect.fn(
        "ProjectionStore.listOlderSettledThreads",
      )(function* ({ before, projectIds, limit }) {
-@@ -9901,6 +9970,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -9906,6 +9975,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        readShellSnapshot: readOnReader(readShellSnapshot),
        listOlderSettledThreads: readOnReader(listOlderSettledThreads),
        getThreadShell: readOnReader(getThreadShell),
@@ -6227,10 +6330,10 @@ index 42a8d7eae9cff728ded81277ef0a5b30a4e736eb..8b53aa06640255477738a11018ceeef9
  
  const layerReceiptsTest = CommandReceiptStore.layer.pipe(
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index dfddf29474b6b011c6f10f6f2f5751408a3a46e7..1cd0976510a94c39ead577a12d071c4a9571c558 100644
+index 0c8879cfe18a51b512c5584b418b834e29a10a0b..ada5ac7c41b22b6efaa5fa0e855c4be752a9748f 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-@@ -92,6 +92,7 @@ export function withCreationProvenance(
+@@ -94,6 +94,7 @@ export function withCreationProvenance(
        // Only the server stamps a link's origin or folds in a first message, so a client cannot.
        const {
          linkOrigin: _linkOrigin,
@@ -6238,7 +6341,7 @@ index dfddf29474b6b011c6f10f6f2f5751408a3a46e7..1cd0976510a94c39ead577a12d071c4a
          delegatedFrom: _delegatedFrom,
          initialMessage: _initialMessage,
          workflowRun: _workflowRun,
-@@ -99,7 +100,10 @@ export function withCreationProvenance(
+@@ -101,7 +102,10 @@ export function withCreationProvenance(
        } = command;
        return { ...rest, ...provenance };
      }
@@ -6250,7 +6353,7 @@ index dfddf29474b6b011c6f10f6f2f5751408a3a46e7..1cd0976510a94c39ead577a12d071c4a
      case "thread.fork":
      case "thread.merge_back":
      case "delegated_task.request":
-@@ -506,6 +510,7 @@ export interface ThreadManagementServiceShape {
+@@ -508,6 +512,7 @@ export interface ThreadManagementServiceShape {
    }) => Effect.Effect<boolean>;
    /** Receipt replays start no work; skip enablement checks with the same command id so settings cannot reject accepted retries. */
    readonly hasReceipt: (commandId: CommandId) => Effect.Effect<boolean>;
@@ -6258,7 +6361,7 @@ index dfddf29474b6b011c6f10f6f2f5751408a3a46e7..1cd0976510a94c39ead577a12d071c4a
    readonly waitForThread: (
      input: ThreadManagementWaitInput,
    ) => Effect.Effect<ThreadManagementWaitResult, ThreadManagementError>;
-@@ -685,6 +690,17 @@ const make = Effect.gen(function* () {
+@@ -687,6 +692,17 @@ const make = Effect.gen(function* () {
        Effect.map(Option.isSome),
      );
  
@@ -6276,7 +6379,7 @@ index dfddf29474b6b011c6f10f6f2f5751408a3a46e7..1cd0976510a94c39ead577a12d071c4a
    const ensureLegacyTranscript = Effect.fn(
      "orchestrationV2.threadManagement.ensureLegacyTranscript",
    )(function* (threadId: ThreadId) {
-@@ -1906,6 +1922,7 @@ const make = Effect.gen(function* () {
+@@ -1989,6 +2005,7 @@ const make = Effect.gen(function* () {
      assertProviderInstanceEnabled,
      isProviderInstanceEnabledForProject,
      hasReceipt,
@@ -6438,7 +6541,7 @@ index 20d76ecff009db00e5ff19de5bbc8fb55e6c6fc9..de5580a697f9a4a6499fabedaff1ec52
      parseGoalCommand(message) !== null);
  
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index 0a76d0ec7bb4fcad28e482045fb218750f2c557f..c8526ffad8f9a8980533f0ea304f2c12f43b0c22 100644
+index 0a617162d8ecbd413cc45fa7254564439fb6945a..5bc331165d5bbbe28fa63e00750fd996ded5818a 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 @@ -78,6 +78,8 @@ import * as VcsProcess from "../vcs/VcsProcess.ts";
@@ -6450,7 +6553,7 @@ index 0a76d0ec7bb4fcad28e482045fb218750f2c557f..c8526ffad8f9a8980533f0ea304f2c12
  import { ROLLBACK_FAILED_MESSAGE } from "./CheckpointRollbackService.ts";
  import * as EffectWorker from "./EffectWorker.ts";
  import * as EffectOutbox from "./EffectOutbox.ts";
-@@ -8023,6 +8025,233 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -8135,6 +8137,233 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
      }),
    );
  
@@ -9218,15 +9321,15 @@ index 31ce877de6f728abd51650f554e1812d9f229aef..cd1c0c7ad8df7443f7eb3b144b96f6d9
    });
  }
 diff --git a/apps/server/src/provider/agentContextBudget.json b/apps/server/src/provider/agentContextBudget.json
-index 169fac6ce2a859ee958f4afebe1a6014c3227552..0dd3ba7b12ec23617b9d6cc0aa6706fbe3bc2880 100644
+index 26f4f6719e9c443175fe93b659480fd736936040..8de3f549c377c3c3eb7d5fc160079dcfb8f9ea7e 100644
 --- a/apps/server/src/provider/agentContextBudget.json
 +++ b/apps/server/src/provider/agentContextBudget.json
 @@ -1,5 +1,5 @@
  {
    "claudeSystemAppendBytes": 6245,
    "codexAdditionalContextBytes": 7639,
--  "mcpToolListJsonBytes": 61724
-+  "mcpToolListJsonBytes": 62922
+-  "mcpToolListJsonBytes": 61709
++  "mcpToolListJsonBytes": 62907
  }
 diff --git a/apps/server/src/relay/AgentAwarenessRelay.test.ts b/apps/server/src/relay/AgentAwarenessRelay.test.ts
 index d7ad9ed1b1746323642c7a10166d17911380b2fb..9b5018adffaf43f4f95d61188bddaeaa68780876 100644
@@ -9434,10 +9537,10 @@ index 822254afcca14b27e8c73055b6507af8f4d17444..3d7279e3df8b523134c54768ed89d378
  });
  
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 56cbb0da444fce307a6a992826d4f4a02a6ac352..44a91e97ac8c685ee44af34809f449e92d340f1c 100644
+index 7c546c3364cd7b6a95b92fda7297120ec91b1b89..351ea677e1c7e38e3faca37653ffce5c9dc82562 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -1090,6 +1090,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1105,6 +1105,10 @@ export default function ChatView(props: ChatViewProps) {
    );
    const browserAvailable = isPreviewSupportedInRuntime() || activeEnvironmentServerBrowser;
    const activeThreadShell = serverThread;
@@ -9448,7 +9551,7 @@ index 56cbb0da444fce307a6a992826d4f4a02a6ac352..44a91e97ac8c685ee44af34809f449e9
    const limitRecoveryRun =
      serverRuntime?.status === "failed" && serverRuntime.lastErrorClass === "usage_limit"
        ? (activeThreadShell?.latestRun ?? null)
-@@ -3567,6 +3571,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3594,6 +3598,9 @@ export default function ChatView(props: ChatViewProps) {
                isServerThread={isServerThread}
                activeThreadTitle={activeThread.title}
                activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
@@ -9458,7 +9561,7 @@ index 56cbb0da444fce307a6a992826d4f4a02a6ac352..44a91e97ac8c685ee44af34809f449e9
                activeProject={activeProject ?? null}
                parentThreadLink={headerParentThreadLink}
                onOpenThread={onOpenRelatedThreadStable}
-@@ -3867,19 +3874,24 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3894,19 +3901,24 @@ export default function ChatView(props: ChatViewProps) {
                                  canResume={canResume}
                                  isRevertingCheckpoint={isRevertingCheckpoint}
                                  sendDisabledReason={
@@ -9497,7 +9600,7 @@ index 56cbb0da444fce307a6a992826d4f4a02a6ac352..44a91e97ac8c685ee44af34809f449e9
                                  isPreparingWorktree={isPreparingWorktree && !sendQueuesBehindSetup}
                                  bannerItems={
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 56fe0ce2adb6a910d68143006582cde412571e90..c8182ad810f5cd74cf4742b8cc25a3554f6a9037 100644
+index fd89402cc7cf42ce4786c888df4a7a5e930691f8..1067d80f983a3bb5515042081497d549e61ce134 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -141,6 +141,7 @@ import {
@@ -9508,7 +9611,7 @@ index 56fe0ce2adb6a910d68143006582cde412571e90..c8182ad810f5cd74cf4742b8cc25a355
    canTurnThreadIntoProject,
    readThreadReadAction,
    useAcknowledgeThreadWoke,
-@@ -988,6 +989,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -991,6 +992,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      unpinThread,
      confirmAndUnpinThread,
      setThreadAutoSettle,
@@ -9516,7 +9619,7 @@ index 56fe0ce2adb6a910d68143006582cde412571e90..c8182ad810f5cd74cf4742b8cc25a355
      turnThreadIntoProject,
      reorderPinnedThread,
      reorderActiveThread,
-@@ -2895,6 +2897,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2902,6 +2904,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                isPinned,
                isSettled,
                autoSettleEnabled: thread.autoSettleDisabledAt == null,
@@ -9525,7 +9628,7 @@ index 56fe0ce2adb6a910d68143006582cde412571e90..c8182ad810f5cd74cf4742b8cc25a355
                isSnoozed,
                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
                isRegeneratingTitle,
-@@ -2908,6 +2912,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2915,6 +2919,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                supports: {
                  settlement: configLoaded,
                  autoSettleOptOut: supportsAutoSettleOptOut,
@@ -9533,7 +9636,7 @@ index 56fe0ce2adb6a910d68143006582cde412571e90..c8182ad810f5cd74cf4742b8cc25a355
                  snooze: configLoaded,
                  pinning: configLoaded,
                  titleRegeneration: configLoaded,
-@@ -3027,6 +3032,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3034,6 +3039,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              }
              return;
            }
@@ -10095,10 +10198,10 @@ index efcf6e4559622a12ce9ce6c0af72649732878bb2..b6778b3f99991b30be74c6e1ee48613a
  
    it("finds the Welcome page only where a primary computer can open it", () => {
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index a38c930eb5d1a95759397e667ce08689170c047d..c0a60883955cfc1c998dcb46724aa76417ca7326 100644
+index e4c5683e65e587caf4d723b7e20849d77561076f..ccf62de87a3356c2b0bac291880bcca8e749c423 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -1475,6 +1475,13 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -1481,6 +1481,13 @@ export const SETTINGS_SEARCH_ITEMS = [
      targetId: "linked-environments",
      searchTerms: [msg("link peer another machine vps agents work there handoff pairing code")],
    },
@@ -10418,7 +10521,7 @@ index 1c2a4bb12e8e12f1c514645eb860eb23c9936fae..56c60f6ab8942595d29e628411b7ab92
    }
  
 diff --git a/docs/internals/03_providers.md b/docs/internals/03_providers.md
-index 69206d8458c616ad54f6145270d0b09fe1bfda1e..1d5b3b6357810549810b21c8949c49dcee31d629 100644
+index 4b4d781a12d58a2a4c5b1c434157ae2375a97dec..7bc684f744bfb34e9aa98a534ff879991aad584d 100644
 --- a/docs/internals/03_providers.md
 +++ b/docs/internals/03_providers.md
 @@ -29,7 +29,10 @@ clients read declared capabilities, never provider names.
@@ -10434,10 +10537,10 @@ index 69206d8458c616ad54f6145270d0b09fe1bfda1e..1d5b3b6357810549810b21c8949c49dc
    not fake a mode by auto-answering approvals in T3. Unoffered stored modes fall back to Supervised.
    Pass native approval and question option IDs through unchanged, and ensure every request can be
 diff --git a/docs/internals/04_environment-auth.md b/docs/internals/04_environment-auth.md
-index 8b80c65860d6036005f2d560fccbf3ec2ffb1ff3..9bd34db1357284f8598d70a30d1692962cff4155 100644
+index 1b22ab16e4d6db3d8ea64db84a9538e4e9d99dc2..04c972b96c5ae086de26192315fd3b06bba2486b 100644
 --- a/docs/internals/04_environment-auth.md
 +++ b/docs/internals/04_environment-auth.md
-@@ -49,6 +49,14 @@ model.
+@@ -53,6 +53,14 @@ model.
    [peer links](./05_remote.md#peer-links)). Every MCP tool must statically declare its access level in
    [`McpToolAccess.ts`](../../apps/server/src/mcp/McpToolAccess.ts), and thread-only tools must still
    refuse outside callers in handlers—hiding from tool listings is only discovery.
@@ -10613,10 +10716,10 @@ index 817b916ebe1a649a93b0d9c5d0c34dc827f9bef9..cde4984da80b6a04cf5c76d0c3884417
  // McpHttpServer decodes arguments with each tool's JSON codec, which drops undeclared keys.
  const t3InputDecoders = new Map(
 diff --git a/packages/client-runtime/src/operations/commands.ts b/packages/client-runtime/src/operations/commands.ts
-index b855e7ea99f0d4c790d67abe54cc56acef3ab2ea..8a73863a2180145c193752b2945908ebda22ae0a 100644
+index 393c9374d352738e7c6afc0e35cc06cffd319ef2..4de0667876d07e05b1c0be4fbcad5c311c1f73fe 100644
 --- a/packages/client-runtime/src/operations/commands.ts
 +++ b/packages/client-runtime/src/operations/commands.ts
-@@ -629,6 +629,20 @@ export const setThreadAutoSettle = Effect.fn("EnvironmentCommands.setThreadAutoS
+@@ -630,6 +630,20 @@ export const setThreadAutoSettle = Effect.fn("EnvironmentCommands.setThreadAutoS
    });
  });
  
@@ -10888,7 +10991,7 @@ index 2a39f39ef571fac4e93e5cfed94adb3d766411fd..b4056d736e1d734dac814d9cc2bf785f
        ...thread,
        pinnedAt: thread.pinnedAt ?? now,
 diff --git a/packages/client-runtime/src/state/threadExecution.test.ts b/packages/client-runtime/src/state/threadExecution.test.ts
-index 5e7b0b1b8c6751d90650d8a4f010324d6e478fdf..783bdcae10853863c9ab3b2e9318e9b12652103b 100644
+index a184c4bd037f466ec3f3bbb7510a4b5afb62d06c..ecfdf1dc5b9d8ecd608078a5ef444dee09f53f87 100644
 --- a/packages/client-runtime/src/state/threadExecution.test.ts
 +++ b/packages/client-runtime/src/state/threadExecution.test.ts
 @@ -254,23 +254,33 @@ describe("thread execution presentation", () => {
@@ -10943,10 +11046,10 @@ index 5e7b0b1b8c6751d90650d8a4f010324d6e478fdf..783bdcae10853863c9ab3b2e9318e9b1
    // regression: #15029 working timers no longer reset on every background wake
    it("counts a wake run's activity from the start of the work it continues", () => {
 diff --git a/packages/client-runtime/src/state/threadExecution.ts b/packages/client-runtime/src/state/threadExecution.ts
-index 7a47960e7b3f39437960b0fcdbc3ab968f7e8a2c..148c31e544b8e014969c966392df6331f1b468d8 100644
+index 3ce5f6604751801826b984bdd2bc7c27c9af78c1..188eecd1c87fe0ebf4cabac1c7b48e766228dafd 100644
 --- a/packages/client-runtime/src/state/threadExecution.ts
 +++ b/packages/client-runtime/src/state/threadExecution.ts
-@@ -380,6 +380,7 @@ export function deriveResumableRunId(
+@@ -430,6 +430,7 @@ export function deriveResumableRunId(
    runtime: Pick<ThreadStructureRuntime, "lastErrorClass"> | null,
  ): RunId | null {
    const run = latestExecutedRun(projection.runs);
@@ -11127,7 +11230,7 @@ index 5e16fb4a545ad44fe26b332d9a994ac139c9d815..e3428784ece01607c6017bde4da2bd4f
      expect(withMessageSenderNote(message, text)).toBe(expected);
    });
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index 94fed99ca735633ede65168b9bb0853fdf05b5f9..192bc3accac32d5a207a212ea872d79dd301a2b0 100644
+index 16583fcdc144a52e3cf4334fec7b3e321edc4ca4..ca996eee5abbdadb90f033636aca31b3301d030b 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
 @@ -359,6 +359,8 @@ export const OrchestrationV2ToolCapabilities = Schema.Struct({
@@ -11221,7 +11324,7 @@ index 94fed99ca735633ede65168b9bb0853fdf05b5f9..192bc3accac32d5a207a212ea872d79d
    /**
     * Its own field, written by its own event: lifecycle writers hold a copy of the run from when
     * the turn started, and their updates must not put an unanswered run back.
-@@ -1528,6 +1544,8 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
+@@ -1530,6 +1546,8 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
    followsThreadSelection: Schema.optional(Schema.Literal(true)),
    senderThreadId: Schema.optional(ThreadId),
    linkedSender: Schema.optional(OrchestrationV2LinkedSender),
@@ -11230,7 +11333,7 @@ index 94fed99ca735633ede65168b9bb0853fdf05b5f9..192bc3accac32d5a207a212ea872d79d
    idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
    /**
     * The message is the script a provider-native workflow run executes, not prose. Clients show
-@@ -2194,6 +2212,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
+@@ -2196,6 +2214,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
        "thread.unsnoozed",
        "thread.pinned",
        "thread.auto-settle-set",
@@ -11238,7 +11341,7 @@ index 94fed99ca735633ede65168b9bb0853fdf05b5f9..192bc3accac32d5a207a212ea872d79d
        "thread.unpinned",
        "thread.pin-reordered",
        "thread.active-reordered",
-@@ -2418,6 +2437,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
+@@ -2420,6 +2439,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
    activeProviderThreadId: Schema.NullOr(ProviderThreadId),
    historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
    linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
@@ -11246,7 +11349,7 @@ index 94fed99ca735633ede65168b9bb0853fdf05b5f9..192bc3accac32d5a207a212ea872d79d
    delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
    workflowRun: Schema.optional(OrchestrationV2WorkflowOrigin),
    latestRunId: Schema.NullOr(RunId),
-@@ -2466,6 +2486,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
+@@ -2468,6 +2488,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
    limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -11254,7 +11357,7 @@ index 94fed99ca735633ede65168b9bb0853fdf05b5f9..192bc3accac32d5a207a212ea872d79d
    pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    /** Absent on threads written before tags existed; read as empty. */
-@@ -2639,6 +2660,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
+@@ -2641,6 +2662,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
    lastSnoozeWakeAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
@@ -11262,7 +11365,7 @@ index 94fed99ca735633ede65168b9bb0853fdf05b5f9..192bc3accac32d5a207a212ea872d79d
    lastVisitedAt: Schema.NullOr(Schema.DateTimeUtcFromString).pipe(
      Schema.withDecodingDefault(Effect.succeed(null)),
    ),
-@@ -3101,6 +3123,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
+@@ -3103,6 +3125,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
    snoozedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
@@ -11270,7 +11373,7 @@ index 94fed99ca735633ede65168b9bb0853fdf05b5f9..192bc3accac32d5a207a212ea872d79d
    lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    titleRegeneration: Schema.optional(
      Schema.NullOr(
-@@ -3154,6 +3177,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
+@@ -3156,6 +3179,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
        "thread.unsnoozed",
        "thread.pinned",
        "thread.auto-settle-set",
@@ -11278,7 +11381,7 @@ index 94fed99ca735633ede65168b9bb0853fdf05b5f9..192bc3accac32d5a207a212ea872d79d
        "thread.unpinned",
        "thread.pin-reordered",
        "thread.active-reordered",
-@@ -3321,6 +3345,8 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3323,6 +3347,8 @@ export const OrchestrationV2Command = Schema.Union([
      worktreePath: Schema.NullOr(TrimmedNonEmptyString),
      /** Only the server sets this; a client's thread.create never carries one. */
      linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
@@ -11287,7 +11390,7 @@ index 94fed99ca735633ede65168b9bb0853fdf05b5f9..192bc3accac32d5a207a212ea872d79d
      /** Only the server sets this, with `linkOrigin`, for a linked environment's delegated task. */
      delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
      /** Only the server sets this, for a thread that is a workflow run's agent step. */
-@@ -3422,6 +3448,12 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3424,6 +3450,12 @@ export const OrchestrationV2Command = Schema.Union([
      threadId: ThreadId,
      enabled: Schema.Boolean,
    }),
@@ -11300,7 +11403,7 @@ index 94fed99ca735633ede65168b9bb0853fdf05b5f9..192bc3accac32d5a207a212ea872d79d
    Schema.Struct({
      type: Schema.Literal("thread.pin"),
      commandId: CommandId,
-@@ -3601,6 +3633,8 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3603,6 +3635,8 @@ export const OrchestrationV2Command = Schema.Union([
      scheduledTaskId: Schema.optional(ScheduledTaskId),
      senderThreadId: Schema.optional(ThreadId),
      linkedSender: Schema.optional(OrchestrationV2LinkedSender),
@@ -11433,7 +11536,7 @@ index c7fe990a4be7e4d12c8781f9481104372dddac25..34411523c3caab56dc684a12471f87ea
  });
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index e09345e859909de8880af623e766063a871f51a3..46dbf4da0dd99d7c0013294ae00632b547b431ee 100644
+index 56d7473e23f23b7b24f11071369b43f77bc090c9..50fae95d9a503b30ad7031b07b983dd143f6cd8a 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -1,5 +1,6 @@
@@ -11443,7 +11546,7 @@ index e09345e859909de8880af623e766063a871f51a3..46dbf4da0dd99d7c0013294ae00632b5
    AuthOrchestrationOperateScope,
    AuthAccessWriteScope,
    AuthSettingsWriteScope,
-@@ -1504,6 +1505,10 @@ export const ServerSettings = Schema.Struct({
+@@ -1511,6 +1512,10 @@ export const ServerSettings = Schema.Struct({
    linkedEnvironmentsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
    /** Beta: durable workflows from the workflows folder of the T3 home. Off runs none of them. */
    workflowsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -11454,7 +11557,7 @@ index e09345e859909de8880af623e766063a871f51a3..46dbf4da0dd99d7c0013294ae00632b5
    /** Beta: Claude and Codex predict the next prompt after completed turns. Codex follows a change at once; open Claude threads after they restart. */
    promptSuggestionsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
    sidebarAutoSettleKeepPullRequests: Schema.Boolean.pipe(
-@@ -1942,6 +1947,7 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1949,6 +1954,7 @@ export const ServerSettingsPatch = Schema.Struct({
    guestSharingEnabled: Schema.optionalKey(Schema.Boolean),
    linkedEnvironmentsEnabled: Schema.optionalKey(Schema.Boolean),
    workflowsEnabled: Schema.optionalKey(Schema.Boolean),
@@ -11462,7 +11565,7 @@ index e09345e859909de8880af623e766063a871f51a3..46dbf4da0dd99d7c0013294ae00632b5
    promptSuggestionsEnabled: Schema.optionalKey(Schema.Boolean),
    backgroundActivity: Schema.optionalKey(
      Schema.Struct({
-@@ -2031,7 +2037,11 @@ export function requiredScopesForServerSettingsPatch(
+@@ -2038,7 +2044,11 @@ export function requiredScopesForServerSettingsPatch(
    let changesAccess = false;
    for (const [key, value] of Object.entries(patch)) {
      if (value === undefined) continue;

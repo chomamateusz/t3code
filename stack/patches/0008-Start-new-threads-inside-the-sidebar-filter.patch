@@ -945,7 +945,7 @@ index 87f43d9f901f693ffa26f2b86835f1bde482fb42..4a0323fea1ad4e2b61095967149914bc
      } else {
        expect(openCommandPalette).not.toHaveBeenCalled();
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 0c41d6d67f9ab45e4dc79a4518c7a4aabfc72410..86588e59dfd0ac35d2d93621093684ef8bd72977 100644
+index bf892f6ab2b8226df7c47f9064f4b0ef310184a0..0aa26fee3168b1517890db7c2a49817c78a6e2b6 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -128,6 +128,7 @@ import {
@@ -973,7 +973,7 @@ index 0c41d6d67f9ab45e4dc79a4518c7a4aabfc72410..86588e59dfd0ac35d2d93621093684ef
    shouldNavigateAfterThreadPark,
    sidebarListItemId,
    sidebarThreadKeyAtY,
-@@ -3137,24 +3137,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3144,24 +3144,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      : null;
  
    const handleNewThreadClick = (event?: ReactMouseEvent) => {
@@ -999,7 +999,7 @@ index 0c41d6d67f9ab45e4dc79a4518c7a4aabfc72410..86588e59dfd0ac35d2d93621093684ef
        if (isMobile) setOpenMobile(false);
        // With no current or open project, such as when every project is archived, pick one.
        void startNewThreadFromContext({
-@@ -3168,7 +3151,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3175,7 +3158,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
        return;
      }
      if (isMobile) setOpenMobile(false);
@@ -1015,7 +1015,7 @@ index 0c41d6d67f9ab45e4dc79a4518c7a4aabfc72410..86588e59dfd0ac35d2d93621093684ef
    };
  
    const newThreadShortcutLabel =
-@@ -3214,16 +3204,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3221,16 +3211,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                }
                onNewProject={openAddProjectCommandPalette}
                onNewThread={handleNewThreadClick}
@@ -2838,7 +2838,7 @@ index 0000000000000000000000000000000000000000..d12d0604de0343f304d71d15cef6986e
 +  return buildInput(projects, settings, identities, connected, primary, filter, projectActivity);
 +}
 diff --git a/apps/web/src/shortcuts/chatRouteCommands.test.ts b/apps/web/src/shortcuts/chatRouteCommands.test.ts
-index 3979368ff90321f40cf1aece3c4ca77f9f3610a7..5b16c7bb7a0b162093d348827cd84dce200b7a65 100644
+index db332610cd923141c239cac27f14d2f9fd9f1b3e..40e8266ec6573813fb3ec0c1bcc19fd0bdd9a292 100644
 --- a/apps/web/src/shortcuts/chatRouteCommands.test.ts
 +++ b/apps/web/src/shortcuts/chatRouteCommands.test.ts
 @@ -64,7 +64,10 @@ describe("new thread commands", () => {
@@ -2854,7 +2854,7 @@ index 3979368ff90321f40cf1aece3c4ca77f9f3610a7..5b16c7bb7a0b162093d348827cd84dce
      } else {
        expect(openPicker).not.toHaveBeenCalled();
 diff --git a/apps/web/src/shortcuts/chatRouteCommands.ts b/apps/web/src/shortcuts/chatRouteCommands.ts
-index 7cca45fbd81db6f35188ab04be1cba3dd2df7dbc..125482f36ed7ccb16d343b2d5cd9f56c2f43ea85 100644
+index 90ccf9fc2023f7746f76e707d49689e80c3548fa..e7c8a555a40b4da28fd413c8106ba70f13da80f0 100644
 --- a/apps/web/src/shortcuts/chatRouteCommands.ts
 +++ b/apps/web/src/shortcuts/chatRouteCommands.ts
 @@ -10,7 +10,6 @@ import { useComposerDraftStore } from "../composerDraftStore";

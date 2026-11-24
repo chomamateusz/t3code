@@ -56,7 +56,7 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  3 files changed, 405 insertions(+), 36 deletions(-)
 
 diff --git a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
-index f0fe30716818e96ca329f04404a2dbb7e44e0610..d1411fb82a1aa3bf99f2372a33dbfb7d5eaa56ee 100644
+index 222f498e7123a6980a619180841d6da63814bdf7..be1f0d34a535c5305fb000efde65e3148fcedd80 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
 +++ b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
 @@ -299,9 +299,79 @@ describe("MessagesTimeline work rows", () => {
@@ -200,7 +200,7 @@ index f0fe30716818e96ca329f04404a2dbb7e44e0610..d1411fb82a1aa3bf99f2372a33dbfb7d
      ];
      await using screen = await render(<MessagesTimeline {...props} timelineEntries={entries} />, {
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-index 37005359592cdced8d1d52759aab5f221cb2ff89..ceba4d92759660b29b4feb749d537c482932c5d3 100644
+index 649d6fe2894949406d1c6969c4fb63a4e0b0e661..e53e60ca0ce292ff0744c266f2a8f5542ac142f0 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 @@ -1141,7 +1141,106 @@ describe("deriveMessagesTimelineRows", () => {
@@ -640,7 +640,7 @@ index 37005359592cdced8d1d52759aab5f221cb2ff89..ceba4d92759660b29b4feb749d537c48
        "created",
        "after-steer",
        "final",
-@@ -5196,6 +5433,7 @@ describe("subagent continued by a later turn", () => {
+@@ -5210,6 +5447,7 @@ describe("subagent continued by a later turn", () => {
        "answer-1",
        "prompt-2",
        `turn-fold:${run2}`,
@@ -649,7 +649,7 @@ index 37005359592cdced8d1d52759aab5f221cb2ff89..ceba4d92759660b29b4feb749d537c48
      ]);
    });
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index 990b2a6f4ecc86d63a2d517f87dcec6f927aab67..d8a1faa613b29bccfb53273267079813e3983818 100644
+index d6f260e1dbabf898ae43f4e0f374543c6be27b36..f9d576122543bbe6b234c45d378d7397738154c2 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
 @@ -844,6 +844,30 @@ function retainedAssistantReplyEntryIds(
