@@ -1,0 +1,98 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mateusz Choma <chomamateusz@gmail.com>
+Date: Tue, 24 Nov 2026 20:29:03 +0100
+Subject: =?UTF-8?q?=F0=9F=90=9B=20All=20machines=20in=20the=20sidebar=20fi?=
+ =?UTF-8?q?lter=20shows=20every=20machine=20checked?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- With no machine filter (All machines), every machine in the menu shows as checked instead of none.
+- Cmd-click (Ctrl-click off macOS) on a machine while all are shown removes just that machine, so "all but one" is two clicks: All machines, then Cmd-click the one to hide.
+- Stored keys still use an empty list for all machines; stale ids alone also count as all.
+
+Files:
+- apps/web: sidebarEnvironmentScope.ts, components/sidebar/SidebarMachineRow.tsx
+- docs: user/thread-sidebar.md
+
+Tests:
+- apps/web: sidebarEnvironmentScope.test.ts (additive toggle from all machines and from stale-only keys)
+---
+ apps/web/src/components/sidebar/SidebarMachineRow.tsx |  2 +-
+ apps/web/src/sidebarEnvironmentScope.test.ts          | 10 ++++++++--
+ apps/web/src/sidebarEnvironmentScope.ts               |  6 +++++-
+ docs/user/thread-sidebar.md                           |  5 +++--
+ 4 files changed, 17 insertions(+), 6 deletions(-)
+
+diff --git a/apps/web/src/components/sidebar/SidebarMachineRow.tsx b/apps/web/src/components/sidebar/SidebarMachineRow.tsx
+index 4a1fe4ab71201d857c5678e7e0dc533539bbd0a9..f903e4a6b534edef3f72a29035ed453261ec8276 100644
+--- a/apps/web/src/components/sidebar/SidebarMachineRow.tsx
++++ b/apps/web/src/components/sidebar/SidebarMachineRow.tsx
+@@ -94,7 +94,7 @@ export function SidebarMachineRow({
+             .map((item) => (
+               <MenuCheckboxItem
+                 key={item.value}
+-                checked={selectedIds?.has(item.environmentId) ?? false}
++                checked={selectedIds === null || selectedIds.has(item.environmentId)}
+                 closeOnClick={false}
+                 onCheckedChange={(_, details) => {
+                   const event = details.event;
+diff --git a/apps/web/src/sidebarEnvironmentScope.test.ts b/apps/web/src/sidebarEnvironmentScope.test.ts
+index b9dafdf06847ccdb882886ca39977883a1df6963..0d4707101c2f379e810ce142153cb6b1f16de237 100644
+--- a/apps/web/src/sidebarEnvironmentScope.test.ts
++++ b/apps/web/src/sidebarEnvironmentScope.test.ts
+@@ -129,13 +129,19 @@ describe("sidebar machine scope items", () => {
+ describe("resolving the sidebar machine scope", () => {
+   it.each([
+     { keys: [linuxId], expected: [linuxId], normalized: [linuxId], plain: [], additive: [] },
+-    { keys: [], expected: [], normalized: [], plain: [linuxId], additive: [linuxId] },
++    {
++      keys: [],
++      expected: [],
++      normalized: [],
++      plain: [linuxId],
++      additive: [remoteMacId, macbookId],
++    },
+     {
+       keys: ["env-gone"],
+       expected: [],
+       normalized: ["env-gone"],
+       plain: [linuxId],
+-      additive: ["env-gone", linuxId],
++      additive: [remoteMacId, macbookId],
+     },
+     {
+       keys: [linuxId, "env-gone", remoteMacId],
+diff --git a/apps/web/src/sidebarEnvironmentScope.ts b/apps/web/src/sidebarEnvironmentScope.ts
+index edcb93154ca516a6e9d4fe0e2d3f17c2921332dd..54495976d3dea1ada2cefae2ab4fecba0526a564 100644
+--- a/apps/web/src/sidebarEnvironmentScope.ts
++++ b/apps/web/src/sidebarEnvironmentScope.ts
+@@ -58,7 +58,11 @@ export function nextSidebarEnvironmentScopeKeys(
+   environmentIds: readonly EnvironmentId[],
+ ): string[] {
+   if (!additive) return keys.length === 1 && keys[0] === key ? [] : [key];
+-  const next = keys.includes(key) ? keys.filter((candidate) => candidate !== key) : [...keys, key];
++  const knownIds = new Set<string>(environmentIds);
++  const current = keys.some((candidate) => knownIds.has(candidate)) ? keys : environmentIds;
++  const next = current.includes(key)
++    ? current.filter((candidate) => candidate !== key)
++    : [...current, key];
+   return normalizeSidebarEnvironmentScopeKeys(next, environmentIds);
+ }
+ 
+diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
+index d199cf01e2fa74862ae575be76952729686405a7..8b5ff1ee42f04d0d30db750dad886d30708fff5f 100644
+--- a/docs/user/thread-sidebar.md
++++ b/docs/user/thread-sidebar.md
+@@ -174,8 +174,9 @@ On web and desktop, when two or more machines are known, the machine row below
+ Search lets you filter by machine. A plain pick selects only that machine and
+ closes the menu; picking the same singleton again clears the selection.
+ **⌘-click** (Ctrl-click outside macOS) adds or removes a machine and keeps the
+-menu open. Enter acts like a plain pick. Choose **All machines** to clear the
+-selection; selecting every machine does the same. Projects remain available when
++menu open. Enter acts like a plain pick. Choose **All machines** to check every
++machine, then ⌘-click the one you want to hide; selecting every machine does the
++same as **All machines**. Projects remain available when
+ they exist on any selected machine. Opening a thread on another machine returns
+ the machine filter to **All machines**.
+ 
