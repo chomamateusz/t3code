@@ -47,6 +47,8 @@ Port to def64e3a54: useComposerContextImport.ts conflicted only in its imports: 
 
 imageCompression.browser.test.ts: Display P3 colour is now checked on the fork's over-cap paths too. The downscale table gains a Display P3 PNG that is still over the byte cap after the 2000 px resize and is re-encoded to WebP from the reused decoded bitmap, and each P3-tagged HEIC is also prepared under a cap below its converted JPEG, which re-encodes that JPEG with the same colours.
 
+Port to b8be2287dc: upstream c3aacf1e5b (#42377, pasted images over 2000 px no longer stall on "Preparing" on busy pages) moved canvas work into imageCanvas.ts and decodes, resizes and encodes in imageCompression.worker.ts, but still reads only the header and resizes only PNG and JPEG. Its fitImageToMaxEdge is replaced by fitImageWithinLimits in imageCanvas.ts, which the worker's "fit" task and the main-thread fallback both run: it decodes once, passes an image within both limits through unchanged, resizes a PNG or JPEG over 2000 px and keeps it when it fits the byte cap, and otherwise hands the decoded bitmap back (transferred from the worker) so reencodeWithinBudget reuses it for the WebP/JPEG byte-budget path, which also resizes GIF and WebP. The source-size refusal still comes before any decode, and a failed decode is still "unreadable". Upstream's off-main-thread browser case runs unchanged. useComposerContextImport.browser.test.tsx: the delayed-import cases hide Worker so preparation decodes on the main-thread fallback, where their createImageBitmap stub can hold the decode while a chip is deleted; the deleted-chip guard runs after preparation either way.
+
 Files:
 apps/web:
 - apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
@@ -75,20 +77,22 @@ Tests:
 
 Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
 ---
- .../useComposerContextImport.browser.test.tsx | 157 ++++++++++++++++-
+ .../useComposerContextImport.browser.test.tsx | 159 ++++++++++++++++-
  .../chat/useComposerContextImport.ts          |  33 +++-
  .../SnapShotCoordinator.browser.test.ts       |  20 ++-
  .../src/components/preview/PreviewView.tsx    |   2 +-
+ apps/web/src/lib/imageCanvas.ts               |  62 ++++---
  .../src/lib/imageCompression.browser.test.ts  |  47 +++--
  apps/web/src/lib/imageCompression.test.ts     | 160 ++++++++++++++++--
- apps/web/src/lib/imageCompression.ts          |  47 ++---
+ apps/web/src/lib/imageCompression.ts          |  61 +++----
+ apps/web/src/lib/imageCompression.worker.ts   |  25 ++-
  apps/web/src/lib/previewAnnotation.test.ts    |  50 +++++-
  apps/web/src/lib/previewAnnotation.ts         |  15 +-
  docs/user/composer.md                         |   4 +
- 10 files changed, 463 insertions(+), 72 deletions(-)
+ 12 files changed, 531 insertions(+), 107 deletions(-)
 
 diff --git a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
-index d48e965895ddd40377c2836ffc39435e889af34a..32111a881eee54403248d3da956e194082b6d448 100644
+index d48e965895ddd40377c2836ffc39435e889af34a..34a6e7dbf8d8550f52f6eba4f357e1923ddb3fa8 100644
 --- a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
 +++ b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
 @@ -48,7 +48,10 @@ function deferred<T>() {
@@ -137,10 +141,12 @@ index d48e965895ddd40377c2836ffc39435e889af34a..32111a881eee54403248d3da956e1940
    const input = {
      environmentId: EnvironmentId.make("clipboard-target"),
      linkedEnvironments: new Map(),
-@@ -112,6 +128,18 @@ it.each([
+@@ -112,6 +128,20 @@ it.each([
      requested.resolve();
      return downloaded.promise;
    });
++  // Image preparation decodes in a worker when one exists; the stub below sees only this thread.
++  using _worker = stubGlobal("Worker", undefined);
 +  const decode = globalThis.createImageBitmap.bind(globalThis);
 +  using _decode = stubGlobal(
 +    "createImageBitmap",
@@ -156,7 +162,7 @@ index d48e965895ddd40377c2836ffc39435e889af34a..32111a881eee54403248d3da956e1940
    const contextId = ComposerContextId.make(`${kind}_source`);
    const attachmentFields = {
      version: 1 as const,
-@@ -119,8 +147,8 @@ it.each([
+@@ -119,8 +149,8 @@ it.each([
      label: "notes.txt",
      attachmentId: "source-attachment",
      name: "notes.txt",
@@ -167,7 +173,7 @@ index d48e965895ddd40377c2836ffc39435e889af34a..32111a881eee54403248d3da956e1940
    };
    const attachment = (
      kind === "file"
-@@ -165,9 +193,15 @@ it.each([
+@@ -165,9 +195,15 @@ it.each([
      if (edit === "question") pastedPrompt = "Question answer";
      promptRef.current = pastedPrompt;
      store.setPrompt(target, pastedPrompt);
@@ -185,7 +191,7 @@ index d48e965895ddd40377c2836ffc39435e889af34a..32111a881eee54403248d3da956e1940
    await act(() => {
      if (
        edit !== "annotation" &&
-@@ -186,14 +220,15 @@ it.each([
+@@ -186,14 +222,15 @@ it.each([
      if (edit === "switch") input.attachmentTargetKeyRef.current = DraftId.make("other-draft");
    });
    await act(async () => {
@@ -203,7 +209,7 @@ index d48e965895ddd40377c2836ffc39435e889af34a..32111a881eee54403248d3da956e1940
      expect(draft.images[0]?.source).toEqual(
        attachment.kind === "image" ? attachment.source : undefined,
      );
-@@ -208,6 +243,110 @@ it.each([
+@@ -208,6 +245,110 @@ it.each([
    );
  });
  
@@ -448,11 +454,96 @@ index bb62228b937369f81c9ec05d829b3dfdf71b8ca0..9f15d29f37360626d93fed65e7e41734
        const cropDropped = screenshotFailed || capture.status === "failed";
        const annotation = capture.status === "failed" ? { ...picked, screenshot: null } : picked;
        if (capture.status === "captured") await readComposerImageBytes(capture.file);
+diff --git a/apps/web/src/lib/imageCanvas.ts b/apps/web/src/lib/imageCanvas.ts
+index 145a97341b48d13ab71440838bd8b4622bf7e420..e5681afcee242ac09b169cbf29aee46ee2ae283f 100644
+--- a/apps/web/src/lib/imageCanvas.ts
++++ b/apps/web/src/lib/imageCanvas.ts
+@@ -1,8 +1,4 @@
+ import { fitImageAttachmentSize } from "@t3tools/client-runtime/image-attachment-size";
+-import {
+-  IMAGE_DIMENSIONS_HEADER_BYTES,
+-  readImageDimensions,
+-} from "@t3tools/shared/imageDimensions";
+ 
+ // Canvas work shared by the main thread and imageCompression.worker.ts, so it imports no UI code.
+ 
+@@ -194,31 +190,53 @@ export const encodeCanvasOnThisThread: EncodeCanvas = async (
+   return blob?.type === mimeType ? blob : null;
+ };
+ 
+-/** `null` when the image already fits, or the browser cannot draw or encode it. */
+-export async function fitImageToMaxEdge(
++export type FittedImage =
++  | { kind: "fits" }
++  | { kind: "resized"; blob: Blob; imageSize: ImageSize }
++  | { kind: "over-budget"; bitmap: ImageBitmap };
++
++async function drawAtSize(
++  bitmap: ImageBitmap,
+   file: Blob,
++  imageSize: ImageSize,
+   mimeType: string,
+   quality: number,
+   encode: EncodeCanvas,
+-): Promise<{ blob: Blob; imageSize: ImageSize } | null> {
+-  const header = readImageDimensions(
+-    new Uint8Array(await file.slice(0, IMAGE_DIMENSIONS_HEADER_BYTES).arrayBuffer()),
+-  );
+-  if (!header || !fitImageAttachmentSize(header)) return null;
++): Promise<Blob | null> {
++  const colorSpace = await readImageColorSpace(file);
++  const target = createCanvas(imageSize.width, imageSize.height, colorSpace);
++  if (!target) return null;
++  target.context.imageSmoothingQuality = "high";
++  target.context.drawImage(bitmap, 0, 0, imageSize.width, imageSize.height);
++  return encode(target.canvas, colorSpace, quality, mimeType);
++}
++
++/**
++ * Decides on the decoded size, not the header. `over-budget` hands the decoded bitmap to the
++ * byte-budget re-encode so it is not decoded twice; the caller closes it.
++ */
++export async function fitImageWithinLimits(
++  file: Blob,
++  maxBytes: number,
++  mimeType: string | null,
++  quality: number,
++  encode: EncodeCanvas,
++): Promise<FittedImage> {
+   const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+-  try {
+-    const imageSize = fitImageAttachmentSize(bitmap);
+-    if (!imageSize) return null;
+-    const colorSpace = await readImageColorSpace(file);
+-    const target = createCanvas(imageSize.width, imageSize.height, colorSpace);
+-    if (!target) return null;
+-    target.context.imageSmoothingQuality = "high";
+-    target.context.drawImage(bitmap, 0, 0, imageSize.width, imageSize.height);
+-    const blob = await encode(target.canvas, colorSpace, quality, mimeType);
+-    return blob ? { blob, imageSize } : null;
+-  } finally {
++  const imageSize = fitImageAttachmentSize(bitmap);
++  if (!imageSize && file.size <= maxBytes) {
++    bitmap.close();
++    return { kind: "fits" };
++  }
++  const blob =
++    imageSize && mimeType
++      ? await drawAtSize(bitmap, file, imageSize, mimeType, quality, encode).catch(() => null)
++      : null;
++  if (imageSize && blob && blob.size <= maxBytes) {
+     bitmap.close();
++    return { kind: "resized", blob, imageSize };
+   }
++  return { kind: "over-budget", bitmap };
+ }
+ 
+ export async function renderThumbnailFromBitmap(
 diff --git a/apps/web/src/lib/imageCompression.browser.test.ts b/apps/web/src/lib/imageCompression.browser.test.ts
-index 2e7597eaa8bf800a5f7cec7afabfcff4c9a3c54c..33b737fed1a5f7fada75c614cd3b4cd2ed55520a 100644
+index fb4f90af5c9f43a7cd27d11102cae283a4e227b0..8a3b0b8780b236399eaaa91ee3729bd9bc61bed6 100644
 --- a/apps/web/src/lib/imageCompression.browser.test.ts
 +++ b/apps/web/src/lib/imageCompression.browser.test.ts
-@@ -97,19 +97,34 @@ describe("prepareImageForAttachment color", () => {
+@@ -121,19 +121,34 @@ describe("prepareImageForAttachment color", () => {
    // P3 green lies outside sRGB, so an sRGB canvas clips it; a P3 canvas would turn sRGB red's
    // stored (255,0,0) into P3 values.
    it.each([
@@ -499,7 +590,7 @@ index 2e7597eaa8bf800a5f7cec7afabfcff4c9a3c54c..33b737fed1a5f7fada75c614cd3b4cd2
  
    it("keeps Display P3 colors when the stash re-encodes a WebP", async () => {
      const source = await makeImage("display-p3", "color(display-p3 0 1 0)", "image/webp");
-@@ -149,6 +164,14 @@ describe("prepareImageForAttachment color", () => {
+@@ -173,6 +188,14 @@ describe("prepareImageForAttachment color", () => {
        );
        if (!result.ok) throw new Error(result.reason);
        expectNear(await readPixel(result.file), decoded);
@@ -515,10 +606,10 @@ index 2e7597eaa8bf800a5f7cec7afabfcff4c9a3c54c..33b737fed1a5f7fada75c614cd3b4cd2
    });
  });
 diff --git a/apps/web/src/lib/imageCompression.test.ts b/apps/web/src/lib/imageCompression.test.ts
-index e40c3968bc850e77a2e0e96b762da9f75ffbdbb1..7ecec677c0486af0b59d1cd273433b4f6e79ff78 100644
+index 87ede29ea5be5f8a84c5997709ad5ed24389c4d2..7bdd04db47d62de18f4f847d83dee489b8092363 100644
 --- a/apps/web/src/lib/imageCompression.test.ts
 +++ b/apps/web/src/lib/imageCompression.test.ts
-@@ -235,6 +235,72 @@ describe("compressImageForStash", () => {
+@@ -262,6 +262,72 @@ describe("compressImageForStash", () => {
      });
    });
  
@@ -591,7 +682,7 @@ index e40c3968bc850e77a2e0e96b762da9f75ffbdbb1..7ecec677c0486af0b59d1cd273433b4f
    it("compressImageToByteLimit refuses sources above the decode-safety ceiling", async () => {
      const bitmapSpy = vi.fn();
      vi.stubGlobal("createImageBitmap", bitmapSpy);
-@@ -349,6 +415,31 @@ describe("HEIC attachment preparation", () => {
+@@ -376,6 +442,31 @@ describe("HEIC attachment preparation", () => {
      ]);
    });
  
@@ -623,7 +714,7 @@ index e40c3968bc850e77a2e0e96b762da9f75ffbdbb1..7ecec677c0486af0b59d1cd273433b4f
    it("rejects oversized HEIC dimensions before loading the decoder", async () => {
      const original = makeHeicFile({ width: 16_000, height: 4001 });
  
-@@ -461,22 +552,69 @@ describe("attachment max edge", () => {
+@@ -488,22 +579,69 @@ describe("attachment max edge", () => {
      expect(result.ok && result.imageSize).toEqual({ width: 1500, height: 2000 });
    });
  
@@ -705,21 +796,20 @@ index e40c3968bc850e77a2e0e96b762da9f75ffbdbb1..7ecec677c0486af0b59d1cd273433b4f
  });
  
 diff --git a/apps/web/src/lib/imageCompression.ts b/apps/web/src/lib/imageCompression.ts
-index 7e5485cabcee9bc3ae12aa8ae69e1f44bfd79784..fd9f94b295ff42eb816bcfe955fe4e2ba7042282 100644
+index e63d9800de3c88a88b492197a67753797f44be17..5c33a4a7853f4ad763723c7e2cdb8cf34ab2f478 100644
 --- a/apps/web/src/lib/imageCompression.ts
 +++ b/apps/web/src/lib/imageCompression.ts
-@@ -3,10 +3,6 @@ import {
-   fitImageAttachmentSize,
-   IMAGE_ATTACHMENT_MAX_EDGE,
- } from "@t3tools/client-runtime/image-attachment-size";
--import {
--  IMAGE_DIMENSIONS_HEADER_BYTES,
--  readImageDimensions,
--} from "@t3tools/shared/imageDimensions";
- import { msg } from "gt-react";
- 
- import { m } from "../i18n/messages";
-@@ -497,8 +493,10 @@ async function reencodeWithinBudget(
+@@ -10,7 +10,8 @@ import {
+   createCanvas,
+   type EncodeCanvas,
+   encodeCanvasOnThisThread,
+-  fitImageToMaxEdge,
++  type FittedImage,
++  fitImageWithinLimits,
+   iccProfileIsDisplayP3,
+   type ImageSize,
+   MAX_IMAGE_METADATA_BYTES,
+@@ -384,8 +385,10 @@ async function reencodeWithinBudget(
    file: File,
    budgetChars: number,
    preferredMimeType?: "image/jpeg",
@@ -730,7 +820,7 @@ index 7e5485cabcee9bc3ae12aa8ae69e1f44bfd79784..fd9f94b295ff42eb816bcfe955fe4e2b
      return { ok: false, reason: "too-large" };
    }
  
-@@ -506,8 +504,9 @@ async function reencodeWithinBudget(
+@@ -393,8 +396,9 @@ async function reencodeWithinBudget(
    let colorSpace: PredefinedColorSpace;
    try {
      colorSpace = await readImageColorSpace(file);
@@ -741,75 +831,144 @@ index 7e5485cabcee9bc3ae12aa8ae69e1f44bfd79784..fd9f94b295ff42eb816bcfe955fe4e2b
      return { ok: false, reason: "unreadable" };
    }
  
-@@ -581,16 +580,13 @@ export async function compressImageForStash(
+@@ -468,26 +472,13 @@ export async function compressImageForStash(
    }
  }
  
--async function fitImageToMaxEdge(file: File): Promise<{ file: File; imageSize: ImageSize } | null> {
-+async function fitImageToMaxEdge(
-+  file: File,
-+  bitmap: ImageBitmap,
-+): Promise<{ file: File; imageSize: ImageSize } | null> {
+-async function fitImageFileToMaxEdge(
+-  file: File,
+-): Promise<{ file: File; imageSize: ImageSize } | null> {
++async function fitImageFileWithinLimits(file: File, maxBytes: number): Promise<FittedImage> {
    const mimeType = downscalableImageMimeType(file.type);
 -  if (!mimeType || !canRecompress() || file.size > MAX_COMPRESSIBLE_SOURCE_BYTES) return null;
--  let bitmap: ImageBitmap | undefined;
-+  if (!mimeType || !canRecompress()) return null;
-   try {
--    const header = readImageDimensions(
--      new Uint8Array(await file.slice(0, IMAGE_DIMENSIONS_HEADER_BYTES).arrayBuffer()),
--    );
--    if (!header || !fitImageAttachmentSize(header)) return null;
--    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-     const imageSize = fitImageAttachmentSize(bitmap);
-     if (!imageSize) return null;
-     const target = createCanvas(imageSize.width, imageSize.height, await readImageColorSpace(file));
-@@ -605,8 +601,6 @@ async function fitImageToMaxEdge(file: File): Promise<{ file: File; imageSize: I
-     };
-   } catch {
-     return null;
--  } finally {
--    bitmap?.close();
-   }
+-  try {
+-    const fitted =
+-      (await runInImageWorker({ kind: "fit", file, mimeType, quality: QUALITY_STEPS[0] })) ??
+-      ({ value: await fitImageToMaxEdge(file, mimeType, QUALITY_STEPS[0], encodeCanvas) } as const);
+-    if (!fitted.value) return null;
+-    return {
+-      file: new File([fitted.value.blob], file.name, {
+-        type: mimeType,
+-        lastModified: file.lastModified,
+-      }),
+-      imageSize: fitted.value.imageSize,
+-    };
+-  } catch {
+-    return null;
+-  }
++  const quality = QUALITY_STEPS[0];
++  const inWorker = await runInImageWorker({ kind: "fit", file, maxBytes, mimeType, quality });
++  return inWorker
++    ? inWorker.value
++    : fitImageWithinLimits(file, maxBytes, mimeType, quality, encodeCanvas);
  }
  
-@@ -615,21 +609,30 @@ export async function compressImageToByteLimit(
+ export async function compressImageToByteLimit(
+@@ -495,21 +486,33 @@ export async function compressImageToByteLimit(
    maxBytes: number,
    options?: { preferredMimeType?: "image/jpeg"; sourceSizeBytes?: number },
  ): Promise<CompressImageFileResult> {
--  const fitted = await fitImageToMaxEdge(file);
+-  const fitted = await fitImageFileToMaxEdge(file);
 -  if (fitted && fitted.file.size <= maxBytes) {
 -    return { ok: true, file: fitted.file, recompressed: true, imageSize: fitted.imageSize };
-+  if ((options?.sourceSizeBytes ?? file.size) > MAX_COMPRESSIBLE_SOURCE_BYTES) {
-+    return { ok: false, reason: "too-large" };
-   }
+-  }
 -  if (!fitted && file.size <= maxBytes) {
-+  let bitmap: ImageBitmap;
+-    return { ok: true, file, recompressed: false };
+-  }
+   if ((options?.sourceSizeBytes ?? file.size) > MAX_COMPRESSIBLE_SOURCE_BYTES) {
+     return { ok: false, reason: "too-large" };
+   }
++  let fitted: FittedImage;
 +  try {
-+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
++    fitted = await fitImageFileWithinLimits(file, maxBytes);
 +  } catch {
 +    return { ok: false, reason: "unreadable" };
 +  }
-+  if (file.size <= maxBytes && Math.max(bitmap.width, bitmap.height) <= MAX_DIMENSION) {
-+    bitmap.close();
-     return { ok: true, file, recompressed: false };
-   }
--  if ((options?.sourceSizeBytes ?? file.size) > MAX_COMPRESSIBLE_SOURCE_BYTES) {
--    return { ok: false, reason: "too-large" };
-+  const fitted = await fitImageToMaxEdge(file, bitmap);
-+  if (fitted && fitted.file.size <= maxBytes) {
-+    bitmap.close();
-+    return { ok: true, file: fitted.file, recompressed: true, imageSize: fitted.imageSize };
-   }
++  if (fitted.kind === "fits") return { ok: true, file, recompressed: false };
++  if (fitted.kind === "resized") {
++    return {
++      ok: true,
++      file: new File([fitted.blob], file.name, {
++        type: fitted.blob.type,
++        lastModified: file.lastModified,
++      }),
++      recompressed: true,
++      imageSize: fitted.imageSize,
++    };
++  }
    const budgetChars = Math.floor(maxBytes / 3) * 4;
    const reencoded = await reencodeWithinBudget(
 -    fitted?.file ?? file,
 +    file,
      budgetChars,
      options?.preferredMimeType,
-+    bitmap,
++    fitted.bitmap,
    );
    if (!reencoded.ok) {
      return reencoded;
+diff --git a/apps/web/src/lib/imageCompression.worker.ts b/apps/web/src/lib/imageCompression.worker.ts
+index 96c3bcdbf7f12c78a5e2bb1764b7e5c137b22b40..c85be30bb40f38cbfe4c68d0bb5f9d0d95668cb9 100644
+--- a/apps/web/src/lib/imageCompression.worker.ts
++++ b/apps/web/src/lib/imageCompression.worker.ts
+@@ -1,7 +1,7 @@
+ import {
+   encodeCanvasOnThisThread,
+-  fitImageToMaxEdge,
+-  type ImageSize,
++  type FittedImage,
++  fitImageWithinLimits,
+   renderThumbnail,
+ } from "./imageCanvas";
+ 
+@@ -13,12 +13,12 @@ export type ImageWorkerTask =
+       mimeType: string;
+       quality: number;
+     }
+-  | { kind: "fit"; file: Blob; mimeType: string; quality: number }
++  | { kind: "fit"; file: Blob; maxBytes: number; mimeType: string | null; quality: number }
+   | { kind: "thumbnail"; file: Blob };
+ 
+ export interface ImageWorkerResults {
+   encode: Blob | null;
+-  fit: { blob: Blob; imageSize: ImageSize } | null;
++  fit: FittedImage;
+   thumbnail: string | null;
+ }
+ 
+@@ -55,7 +55,13 @@ async function run(task: ImageWorkerTask): Promise<ImageWorkerResults[ImageWorke
+     case "encode":
+       return encodeBitmap(task);
+     case "fit":
+-      return fitImageToMaxEdge(task.file, task.mimeType, task.quality, encodeCanvasOnThisThread);
++      return fitImageWithinLimits(
++        task.file,
++        task.maxBytes,
++        task.mimeType,
++        task.quality,
++        encodeCanvasOnThisThread,
++      );
+     case "thumbnail": {
+       const blob = await renderThumbnail(task.file, encodeCanvasOnThisThread);
+       return blob ? readAsDataUrl(blob) : null;
+@@ -63,10 +69,17 @@ async function run(task: ImageWorkerTask): Promise<ImageWorkerResults[ImageWorke
+   }
+ }
+ 
++function transferablesOf(value: ImageWorkerResults[ImageWorkerTask["kind"]]): Transferable[] {
++  return value !== null && typeof value === "object" && "bitmap" in value ? [value.bitmap] : [];
++}
++
+ self.addEventListener("message", (event: MessageEvent<{ id: number; task: ImageWorkerTask }>) => {
+   const { id, task } = event.data;
+   void run(task).then(
+-    (value) => self.postMessage({ id, value } satisfies ImageWorkerResponse, { transfer: [] }),
++    (value) =>
++      self.postMessage({ id, value } satisfies ImageWorkerResponse, {
++        transfer: transferablesOf(value),
++      }),
+     () => self.postMessage({ id, failed: true } satisfies ImageWorkerResponse, { transfer: [] }),
+   );
+ });
 diff --git a/apps/web/src/lib/previewAnnotation.test.ts b/apps/web/src/lib/previewAnnotation.test.ts
 index 56439437d3d3ffba8a7baee34e291702c8d45471..e72e510dca4fd676f646ae945107580c6d9abb89 100644
 --- a/apps/web/src/lib/previewAnnotation.test.ts

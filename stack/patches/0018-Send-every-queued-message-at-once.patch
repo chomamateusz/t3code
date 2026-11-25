@@ -246,7 +246,7 @@ index 7ea6f95a7a5159dc636b48f8aa020f543ec653a8..646cee832d6d4372a0132985fe4811f7
  );
  
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 7a106478044b16d3481ee38768f202f87ff5c575..c2df634cb520a16bbab975ce292dc8536c16de6e 100644
+index 08c9c4190a30f5c94de477343f2c778d7f631f26..5a1c72c1ffd6684860fa8a95963383d9dd91755b 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -32,6 +32,7 @@ import {
@@ -281,7 +281,7 @@ index 7a106478044b16d3481ee38768f202f87ff5c575..c2df634cb520a16bbab975ce292dc853
      case "runtime-request.respond":
      case "runtime-request.delivery.fail":
      case "thread.user-input.dismiss":
-@@ -12622,12 +12626,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12627,12 +12631,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: editProblem,
        });
      }
@@ -294,7 +294,7 @@ index 7a106478044b16d3481ee38768f202f87ff5c575..c2df634cb520a16bbab975ce292dc853
      let updatedRun =
        command.modelSelection === undefined
          ? queuedRun
-@@ -12644,7 +12643,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12649,7 +12648,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        updatedRun = queued;
      }
      if (updatedRun !== queuedRun) {
@@ -306,7 +306,7 @@ index 7a106478044b16d3481ee38768f202f87ff5c575..c2df634cb520a16bbab975ce292dc853
          type: "run.updated",
          threadId: command.threadId,
          runId: queuedRun.id,
-@@ -12654,41 +12656,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12659,41 +12661,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          payload: updatedRun,
        });
      }
@@ -357,7 +357,7 @@ index 7a106478044b16d3481ee38768f202f87ff5c575..c2df634cb520a16bbab975ce292dc853
      // Thread deletion only cleans files the thread still references.
      const keptAttachmentIds = new Set(
        (command.attachments ?? queuedMessage.attachments).map((attachment) => attachment.id),
-@@ -12713,6 +12693,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12718,6 +12698,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
      }
    });
  
@@ -486,7 +486,7 @@ index 7a106478044b16d3481ee38768f202f87ff5c575..c2df634cb520a16bbab975ce292dc853
    const subagentCount = (threadId: ThreadId) =>
      projectionStore
        .getSubagentCount(threadId)
-@@ -16403,6 +16505,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16410,6 +16512,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "run.output.submit":
          yield* dispatchRunOutputSubmit(command, events);
          break;
@@ -496,7 +496,7 @@ index 7a106478044b16d3481ee38768f202f87ff5c575..c2df634cb520a16bbab975ce292dc853
        case "checkpoint.rollback":
          yield* dispatchCheckpointRollback(command, events, effects);
          break;
-@@ -16643,7 +16748,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16650,7 +16755,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                ),
              );
            if (
@@ -913,10 +913,10 @@ index 61fb57ada454ed0b1a9a309eb066ff03db841f86..33aa46863d0b7f36613f6f8b959933e7
    "thread.guest-message.dismiss": () => ({ feature: "guest_message.dismiss" }),
  };
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 7ffce48991ee8d897bb697c1ee3c619dc197925b..e20271a508e9ffba303114caf04674f9596b2950 100644
+index 18d8f4b4ab612c97f0eb699660c43a3b3cce79ae..262e275df913f3a40cefa43665fe3ad4346cd048 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
-@@ -1951,6 +1951,7 @@ export const layerWsRpc = (
+@@ -1966,6 +1966,7 @@ export const layerWsRpc = (
            threadSnapshotPagination: true,
            threadFind: true,
            threadFindProgressive: true,
@@ -1560,10 +1560,10 @@ index 17d6264c401879b1689b284e4b8335e54285296c..393c9374d352738e7c6afc0e35cc06cf
    function* (input: RetryWorkspacePreparationInput) {
      return yield* dispatch({
 diff --git a/packages/client-runtime/src/state/threadCommands.ts b/packages/client-runtime/src/state/threadCommands.ts
-index 98d88407b85b45775669a82c18cf57524766f6e7..2a39f39ef571fac4e93e5cfed94adb3d766411fd 100644
+index d60c433f5bf3b17d94397ee557db4ad29241425c..65f03ed937c9d7bd41e4356b12a699e18fba8bdf 100644
 --- a/packages/client-runtime/src/state/threadCommands.ts
 +++ b/packages/client-runtime/src/state/threadCommands.ts
-@@ -34,6 +34,7 @@ import {
+@@ -37,6 +37,7 @@ import {
    forkSideChat,
    forkThreadFromRun,
    markThreadUnread,
@@ -1571,7 +1571,7 @@ index 98d88407b85b45775669a82c18cf57524766f6e7..2a39f39ef571fac4e93e5cfed94adb3d
    mergeThreadBack,
    promoteQueuedRun,
    resumeThreadQueue,
-@@ -438,6 +439,12 @@ export function createThreadEnvironmentAtoms<R, E>(
+@@ -485,6 +486,12 @@ export function createThreadEnvironmentAtoms<R, E>(
        scheduler,
        concurrency,
      }),
@@ -2051,10 +2051,10 @@ index f692f6b6a5d696ccaa3cec0fcd9388a7a7e449c0..16583fcdc144a52e3cf4334fec7b3e32
      type: Schema.Literal("runtime-request.respond"),
      commandId: CommandId,
 diff --git a/packages/contracts/src/server.ts b/packages/contracts/src/server.ts
-index 1e7042600149522b1591eb9a733be473e22668c5..55e320b58d1d50b94813b7ecdc94fe4fe39e43e4 100644
+index 10f8fbcb73277547bd87328695cfc8ecd89886b2..a30dd71a42c5764d4804124dc62b89f74029d21e 100644
 --- a/packages/contracts/src/server.ts
 +++ b/packages/contracts/src/server.ts
-@@ -745,6 +745,7 @@ export const ServerConfig = Schema.Struct({
+@@ -747,6 +747,7 @@ export const ServerConfig = Schema.Struct({
    threadFind: Schema.optionalKey(Schema.Boolean),
    threadFindProgressive: Schema.optionalKey(Schema.Boolean),
    featureFlags: Schema.optionalKey(ServerFeatureFlags),
@@ -2063,10 +2063,10 @@ index 1e7042600149522b1591eb9a733be473e22668c5..55e320b58d1d50b94813b7ecdc94fe4f
    secretProviderSettings: Schema.optionalKey(Schema.Boolean),
    /** Secret settings may point at a secret provider; older servers drop the reference. */
 diff --git a/packages/shared/package.json b/packages/shared/package.json
-index af45f2adb66f91714566da9b86162df6babb2ffa..117cecff0f93e7440880141c719b332772c42d64 100644
+index 123da46863a99311e0cd7ee6a6aebd6aef3355d2..071bc7f924a132ad918e8458f0fc15dc49536d78 100644
 --- a/packages/shared/package.json
 +++ b/packages/shared/package.json
-@@ -323,6 +323,14 @@
+@@ -331,6 +331,14 @@
        "types": "./src/composerContextReferences.ts",
        "import": "./src/composerContextReferences.ts"
      },

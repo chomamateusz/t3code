@@ -454,10 +454,10 @@ index 3249b6762423440d5fb22feca52d5e2ef92aef61..efcf6e4559622a12ce9ce6c0af726497
      expect(searchSettings("wsl")).toEqual([]);
      expect(searchSettings("update track")).toEqual([]);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 3d0b8ce90845e02fb205bf6b1eb3e740e763d575..8955f7f4a61e71f89af7456f25925980f18c7c3d 100644
+index f3d3b68f06bb2c8fd6b67710d23076dfa94d69bf..0b4f68951e7c1f5a2be42c41af709469f5a048fd 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -956,6 +956,15 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -965,6 +965,15 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: [msg("confirmation desktop app exit direct hold double click press twice")],
      desktopOnly: true,
    },
@@ -498,7 +498,7 @@ index 9dc56d7a6a02d95c0b3c89882cbbc4dff1739bd6..771e102d2b25467839ce623f83e76d90
    it("resolves instance enabled state with explicit false winning", () => {
      const grok = ProviderDriverKind.make("grok");
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index dd1675f78e5f89689f381f7dd8891666ae6b4160..b4786dcafc2746e0bc296306c0c78f8710e63249 100644
+index 27b2bbc35a332d7f001063e34808e5a9af4911a4..d514703bdfdc42c1aaabf414c1b7e9cdbcd32d78 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -482,6 +482,7 @@ export const ClientSettingsSchema = Schema.Struct({
@@ -509,7 +509,7 @@ index dd1675f78e5f89689f381f7dd8891666ae6b4160..b4786dcafc2746e0bc296306c0c78f87
    confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
    confirmTerminalClose: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
    confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-@@ -2116,6 +2117,7 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2127,6 +2128,7 @@ export const ClientSettingsPatch = Schema.Struct({
    browserProfiles: Schema.optionalKey(Schema.Array(BrowserProfile)),
    browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),
    confirmQuit: Schema.optionalKey(QuitConfirmationMode),

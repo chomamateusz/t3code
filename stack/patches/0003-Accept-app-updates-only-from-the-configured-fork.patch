@@ -57,6 +57,8 @@ Port to 21b52875ea: upstream 10765a4e47 (#41262, a refused desktop install shows
 
 release-fork.yml: the macOS arm64 desktop job runs on macos-26, because upstream packaging runs stageAppleSpeech (scripts/build-desktop-artifact.ts) and apps/desktop/scripts/build-apple-speech.mjs needs Xcode 26. Upstream's release workflows select no Xcode version, so none is selected here; the macOS verification job, which builds nothing, stays on macos-15.
 
+Fix-up: forkFeedPolicy.test.ts gains a row for upstream 548a61d711 (#42035, an update whose downloaded file was deleted downloads again before installing): with the fork feed intact, installPrepared downloads the deleted file again and installs it; with the feed redirected after the download, it is refused with the fork-only message before any second download, and nothing installs.
+
 Files:
 .github:
 - .github/workflows/release-desktop.yml
@@ -131,7 +133,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .../src/updates/DesktopRemoteUpdates.test.ts  | 135 +++++-
  .../src/updates/DesktopRemoteUpdates.ts       |  11 +
  apps/desktop/src/updates/DesktopUpdates.ts    |  92 +++-
- .../src/updates/forkFeedPolicy.test.ts        | 206 ++++++++
+ .../src/updates/forkFeedPolicy.test.ts        | 240 ++++++++++
  .../src/updates/forkUpdateProvider.test.ts    | 128 +++++
  apps/desktop/src/updates/remoteUpdateFlow.ts  |   2 +-
  .../desktop/src/updates/updatesTestHarness.ts |  24 +-
@@ -154,7 +156,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  scripts/build-desktop-artifact.ts             |  15 +-
  scripts/verify-fork-update-feed.test.ts       |  37 ++
  scripts/verify-fork-update-feed.ts            |  36 ++
- 32 files changed, 1569 insertions(+), 79 deletions(-)
+ 32 files changed, 1603 insertions(+), 79 deletions(-)
  create mode 100644 .github/workflows/release-fork.yml
  create mode 100644 apps/desktop/src/updates/forkFeedPolicy.test.ts
  create mode 100644 apps/desktop/src/updates/forkUpdateProvider.test.ts
@@ -1168,10 +1170,10 @@ index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917
          return yield* new DesktopUpdateChannelManagedError({
 diff --git a/apps/desktop/src/updates/forkFeedPolicy.test.ts b/apps/desktop/src/updates/forkFeedPolicy.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..4d8b390c1e35711cb223b69dff925dcc66486041
+index 0000000000000000000000000000000000000000..073729d985662c30d7db734bb3fd9e22853a1e44
 --- /dev/null
 +++ b/apps/desktop/src/updates/forkFeedPolicy.test.ts
-@@ -0,0 +1,206 @@
+@@ -0,0 +1,240 @@
 +import { assert, describe, it } from "@effect/vitest";
 +import * as Effect from "effect/Effect";
 +import * as Fiber from "effect/Fiber";
@@ -1373,6 +1375,40 @@ index 0000000000000000000000000000000000000000..4d8b390c1e35711cb223b69dff925dcc
 +          assert.equal(result.state.message, refusal);
 +          assert.equal(harness.downloadCount(), 0);
 +          assert.equal(harness.quitAndInstalls(), 0);
++        }),
++      ).pipe(Effect.provide(harness.layer));
++    },
++  );
++
++  it.effect.each([false, true])(
++    "downloads a deleted update file again only from the fork feed (feed redirected: %s)",
++    (redirected) => {
++      const downloadedFile = "/cache/pending/T3-Code-0.0.46-fork.2-arm64.zip";
++      const harness = makeHarness({
++        allowedUpdateRepository: repository,
++        appUpdateYml: feed,
++        env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
++        downloadUpdate: Effect.sync(() => {
++          harness.deletedFiles.delete(downloadedFile);
++          harness.emit("update-downloaded", { version: "0.0.46-fork.2", downloadedFile });
++        }),
++      });
++      return Effect.scoped(
++        Effect.gen(function* () {
++          const updates = yield* DesktopUpdates.DesktopUpdates;
++          const updater = yield* ElectronUpdater.ElectronUpdater;
++          yield* updates.configure;
++          yield* emitState(harness, "update-available");
++          assert.equal((yield* updates.download).completed, true);
++          assert.equal(harness.downloadCount(), 1);
++
++          harness.deletedFiles.add(downloadedFile);
++          if (redirected) yield* updater.setFeedURL("https://updates.example.com");
++          const result = yield* updates.installPrepared("0.0.46-fork.2");
++          assert.equal(result.accepted, !redirected);
++          assert.equal(harness.downloadCount(), redirected ? 1 : 2);
++          assert.equal(harness.quitAndInstalls(), redirected ? 0 : 1);
++          if (redirected) assert.equal(result.state.message, refusal);
 +        }),
 +      ).pipe(Effect.provide(harness.layer));
 +    },
@@ -2240,10 +2276,10 @@ index 307b9c5d8284dc07a5c257dfe6c3d91f6ff5219a..54e9b8fbfa89c89d8f1cf88fdf8f8693
  }
  
 diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
-index e107c9a7e74919b1aa70c460c75cdc568d77c09e..8ab409dcace977e052800bb8a2f02ebfd749fdc4 100644
+index 2a68257cbfa635f5a2e8c33e6e9988f5cc78bb11..815124a5c546d682ef98537c42cce702b044fdba 100644
 --- a/apps/web/vite.config.ts
 +++ b/apps/web/vite.config.ts
-@@ -353,6 +353,11 @@ export default defineConfig(({ command }) => {
+@@ -357,6 +357,11 @@ export default defineConfig(({ command }) => {
        ],
      },
      define: {

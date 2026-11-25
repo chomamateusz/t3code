@@ -122,10 +122,10 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code;
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
 diff --git a/apps/server/src/serverSettings.test.ts b/apps/server/src/serverSettings.test.ts
-index e8efe5d2f91bc13d0b4fbd7e0bcd798096ae2d34..5b26d478940393a8365cd94d3382db7aac3ab76f 100644
+index 9b2f842387904e1666a89a64afa87826c10da0d1..33d2f976a3e9e2f11a90558a546c90eb9d51c990 100644
 --- a/apps/server/src/serverSettings.test.ts
 +++ b/apps/server/src/serverSettings.test.ts
-@@ -650,7 +650,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -660,7 +660,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
            storageCleanup: { worktreeSettledAfterDays: 0, worktreeKeepWhen: "any-local-files" },
          });
          assert.deepStrictEqual(updated.usageLimitSources, saved.usageLimitSources);
@@ -1337,7 +1337,7 @@ index 64a81e20a53e4c097382dcb3e75b948cf038f61c..0348b19cf5a64eedb542b361ea15c571
  export function resolveUsageShortcut(
    event: ShortcutEventLike & { target: EventTarget | null },
 diff --git a/docs/user/usage.md b/docs/user/usage.md
-index 43f4c94a19328be71934d655617849c609298754..71b56f04e81d22c312b9ef528b7c6ba4d71630d1 100644
+index 5355fbe76bc46b5490d95b292ec026f7ef220f69..622b5938222d64883966dabd2190153317f647b7 100644
 --- a/docs/user/usage.md
 +++ b/docs/user/usage.md
 @@ -20,12 +20,12 @@ record are missing from the totals.
@@ -1368,7 +1368,7 @@ index 43f4c94a19328be71934d655617849c609298754..71b56f04e81d22c312b9ef528b7c6ba4
  If recent work is missing or a new model shows no cost, refresh to rescan session history and
  update model pricing.
  
-@@ -205,6 +207,7 @@ Session, Weekly, or both for each provider. Reopen T3 to refresh expired reading
+@@ -243,6 +245,7 @@ Session, Weekly, or both for each provider. Reopen T3 to refresh expired reading
  On web and desktop, open Usage from the command palette. While on Usage,
  press `C`, `T`, or `L` for Cost, Tokens, or Limits while not typing in a field.
  Use `Ctrl+Shift+1/2/3/4` (`Cmd+Shift+1/2/3/4` on macOS) for the past
@@ -1378,10 +1378,10 @@ index 43f4c94a19328be71934d655617849c609298754..71b56f04e81d22c312b9ef528b7c6ba4
  Press `Escape` to return to the previous page. Customize these shortcuts in
  **Settings → Keybindings**.
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index a99be293c2121c345ebe4f6c30945946c7068732..dd1675f78e5f89689f381f7dd8891666ae6b4160 100644
+index 4922cceeda19f619d6ebd82c6d20e04d4dba428c..27b2bbc35a332d7f001063e34808e5a9af4911a4 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -1618,7 +1618,7 @@ export const ServerSettings = Schema.Struct({
+@@ -1628,7 +1628,7 @@ export const ServerSettings = Schema.Struct({
    ),
  
    usageHistoryRetentionDays: UsageHistoryRetentionDays.pipe(

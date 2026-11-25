@@ -56,6 +56,8 @@ Port to 29b42d409c: upstream #39018 (e8c4824b70) computes the turn status before
 
 Port to 54ba2408f4: ClaudeSkills.ts: upstream 5b2299ca0a (#41972, Claude review guides use project launch settings and only their own tool list) adds readClaudeUserSettings next to the settings reader this commit splits into readClaudeApiSettings and readClaudeSettingsEnv; both stay, so review guides read the user settings file through upstream's reader while the usage-limit lookup keeps reading the proxy URL, key and apiKeyHelper through readClaudeApiSettings.
 
+Fix-up: readClaudeSettingsEnv is a named Effect.fn("readClaudeSettingsEnv") again, with upstream's return type, now reading readClaudeApiSettings's env; the earlier port had turned it into a plain function and lost its span.
+
 Files:
 apps/server:
 - apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
@@ -86,11 +88,11 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  .../Adapters/ClaudeAdapterV2.test.ts          | 172 ++++++++++
  .../Adapters/ClaudeAdapterV2.ts               |  50 ++-
  .../src/provider/Drivers/ClaudeDriver.ts      |   1 +
- .../src/provider/Drivers/ClaudeSkills.ts      |  27 +-
+ .../src/provider/Drivers/ClaudeSkills.ts      |  29 +-
  .../provider/fleetProxyLimits.fixture.json    | 207 ++++++++++++
  .../src/provider/fleetProxyLimits.test.ts     | 306 ++++++++++++++++++
  apps/server/src/provider/fleetProxyLimits.ts  | 238 ++++++++++++++
- 7 files changed, 987 insertions(+), 14 deletions(-)
+ 7 files changed, 989 insertions(+), 14 deletions(-)
  create mode 100644 apps/server/src/provider/fleetProxyLimits.fixture.json
  create mode 100644 apps/server/src/provider/fleetProxyLimits.test.ts
  create mode 100644 apps/server/src/provider/fleetProxyLimits.ts
@@ -409,7 +411,7 @@ index a03c72c7de458e1bd12f2be39eed3713cebcd6c1..a56285785e215c12a43fd2d5a0c536dc
      ).pipe(
        Effect.mapError(
 diff --git a/apps/server/src/provider/Drivers/ClaudeSkills.ts b/apps/server/src/provider/Drivers/ClaudeSkills.ts
-index 05bb7f197c80f04a010bd9c7ff68781a3f0007aa..9f5a10f806d13eefceabd06a0711c1de857bcf16 100644
+index 05bb7f197c80f04a010bd9c7ff68781a3f0007aa..db8f52e3242d1c7989e363f57dca6ec502fbc66f 100644
 --- a/apps/server/src/provider/Drivers/ClaudeSkills.ts
 +++ b/apps/server/src/provider/Drivers/ClaudeSkills.ts
 @@ -669,20 +669,29 @@ const SettingsEnv = Schema.Struct({
@@ -446,7 +448,7 @@ index 05bb7f197c80f04a010bd9c7ff68781a3f0007aa..9f5a10f806d13eefceabd06a0711c1de
    for (const settingsPath of claudeSettingsPaths(
      path,
      configDirPath,
-@@ -696,10 +705,18 @@ export const readClaudeSettingsEnv = Effect.fn("readClaudeSettingsEnv")(function
+@@ -696,8 +705,18 @@ export const readClaudeSettingsEnv = Effect.fn("readClaudeSettingsEnv")(function
      if (contents === undefined) continue;
      const parsed = yield* decodeSettingsEnv(contents).pipe(Effect.orElseSucceed(() => undefined));
      Object.assign(settingsEnv, parsed?.env);
@@ -454,18 +456,18 @@ index 05bb7f197c80f04a010bd9c7ff68781a3f0007aa..9f5a10f806d13eefceabd06a0711c1de
    }
 -  return settingsEnv;
 +  return { env: settingsEnv, apiKeyHelper };
- });
- 
++});
++
 +/** The `env` values T3 Code reads from Claude's user and managed settings; later files win. */
-+export const readClaudeSettingsEnv = (
++export const readClaudeSettingsEnv = Effect.fn("readClaudeSettingsEnv")(function* (
 +  config: Pick<ClaudeSettings, "homePath">,
 +  cwd: string | undefined,
 +  environment: NodeJS.ProcessEnv,
-+) => readClaudeApiSettings(config, cwd, environment).pipe(Effect.map((settings) => settings.env));
-+
++): Effect.fn.Return<typeof SettingsEnv.Type, never, FileSystem.FileSystem | Path.Path> {
++  return (yield* readClaudeApiSettings(config, cwd, environment)).env;
+ });
+ 
  const decodeSettingsRecord = Schema.decodeUnknownEffect(
-   fromLenientJson(Schema.Record(Schema.String, Schema.Unknown)),
- );
 diff --git a/apps/server/src/provider/fleetProxyLimits.fixture.json b/apps/server/src/provider/fleetProxyLimits.fixture.json
 new file mode 100644
 index 0000000000000000000000000000000000000000..73b7c86f220fe088215a92a70a58f2a448fcef3d

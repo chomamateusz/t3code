@@ -233,7 +233,7 @@ index 19c2fdd749f5ebd65ea547370af696caec8724c3..023b639e6d368bd4eb244735a8536e0f
      Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) => fs.exists(filePath));
  
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index 8f25dbcc4d727d3bf3061c9c764f8ca965193492..ae9f6a973b4182290c37599f781ae5c7b645e8a6 100644
+index 489dbc4368cfcff0f8cb72f6184d7a148902e82d..ed82e5405f51466a33a426365f6f7d979080acfe 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
 @@ -21,6 +21,7 @@ import {
@@ -1034,7 +1034,7 @@ index 2ed861eba045a4891dda8580aa5b39c5b70ce02f..3af6aaf4d92210580aaa04443ff1bdb2
    });
  
 diff --git a/apps/web/src/components/settings/ProjectSettingsPanel.tsx b/apps/web/src/components/settings/ProjectSettingsPanel.tsx
-index c4ed6e4ff33b1914a94b7b0df1b477604b47ce89..fa977091ca4afd211d07743de2f2075b87665dfd 100644
+index 9f5f0cc71595b26f2884aebd9ebcade3cd5cb227..8df25013332dbc180f78518b676bb2287182ce2b 100644
 --- a/apps/web/src/components/settings/ProjectSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/ProjectSettingsPanel.tsx
 @@ -35,6 +35,7 @@ import { useThreadShells, waitForProjectRemoval } from "../../state/entities";
@@ -1045,7 +1045,7 @@ index c4ed6e4ff33b1914a94b7b0df1b477604b47ce89..fa977091ca4afd211d07743de2f2075b
  import { Alert, AlertDescription } from "../ui/alert";
  import { Button } from "../ui/button";
  import { Input } from "../ui/input";
-@@ -405,6 +406,9 @@ function ProjectDetail({
+@@ -406,6 +407,9 @@ function ProjectDetail({
        }
        const projectRef = scopeProjectRef(member.environmentId, member.id);
        await waitForProjectRemoval(projectRef);
@@ -1575,7 +1575,7 @@ index 4fca86f5b87d7f9269878a7d06ddc041380b9a20..b46c7fa4ef30ebd08b4de266239901ae
  
  function setup(mode: "single" | "all") {
 diff --git a/apps/web/src/hooks/useThreadActions.permissions.test.ts b/apps/web/src/hooks/useThreadActions.permissions.test.ts
-index c15dc90bb11f3d1ca8f5694d896c6ef7d7dd6342..e0ac7d1d0d53870130139c961cca4058bb947f62 100644
+index f948d38928cec489ae0a62d1351e0f698d4811db..5e53b0f4c8135eed66535f937d6e5c6e47343a95 100644
 --- a/apps/web/src/hooks/useThreadActions.permissions.test.ts
 +++ b/apps/web/src/hooks/useThreadActions.permissions.test.ts
 @@ -52,6 +52,8 @@ const state = vi.hoisted(() => ({
@@ -1587,7 +1587,7 @@ index c15dc90bb11f3d1ca8f5694d896c6ef7d7dd6342..e0ac7d1d0d53870130139c961cca4058
  }));
  
  vi.mock("react", () => ({
-@@ -78,7 +80,10 @@ vi.mock("../state/use-atom-command", () => ({
+@@ -80,7 +82,10 @@ vi.mock("../state/use-atom-command", () => ({
        state.requests.push({ action, ...request });
        const scope =
          action === "removeWorktree" ? AuthSourceControlWriteScope : AuthOrchestrationOperateScope;
@@ -1599,7 +1599,7 @@ index c15dc90bb11f3d1ca8f5694d896c6ef7d7dd6342..e0ac7d1d0d53870130139c961cca4058
          return AsyncResult.failure(Cause.fail(new Error("Server denied the request")));
        }
        state.afterRequest?.(action);
-@@ -162,6 +167,9 @@ vi.mock("../terminalUiStateStore", () => ({
+@@ -164,6 +169,9 @@ vi.mock("../terminalUiStateStore", () => ({
        clearTerminalUiState: () => state.localEffects.push("clear-terminal-ui"),
      }),
  }));
@@ -1609,7 +1609,7 @@ index c15dc90bb11f3d1ca8f5694d896c6ef7d7dd6342..e0ac7d1d0d53870130139c961cca4058
  vi.mock("../uiStateStore", () => ({
    useUiStateStore: (select: (store: unknown) => unknown) =>
      select({
-@@ -286,6 +294,8 @@ beforeEach(() => {
+@@ -288,6 +296,8 @@ beforeEach(() => {
    state.toasts = [];
    state.afterRequest = undefined;
    state.sessionLookupFails = false;
@@ -1618,7 +1618,7 @@ index c15dc90bb11f3d1ca8f5694d896c6ef7d7dd6342..e0ac7d1d0d53870130139c961cca4058
    useRightPanelStore.setState(useRightPanelStore.getInitialState(), true);
    useDiffPanelStore.setState(useDiffPanelStore.getInitialState(), true);
    usePreviewMiniPlayerStore.setState(usePreviewMiniPlayerStore.getInitialState(), true);
-@@ -377,11 +387,17 @@ describe("thread action permissions", () => {
+@@ -379,11 +389,17 @@ describe("thread action permissions", () => {
      expect(state.requests).toEqual([]);
      expect(threadPanelStatePresence(target)).toEqual(panelStateKept);
      state.scopes.get(secondary)!.add(AuthOrchestrationOperateScope);
@@ -1637,7 +1637,7 @@ index c15dc90bb11f3d1ca8f5694d896c6ef7d7dd6342..e0ac7d1d0d53870130139c961cca4058
        "release-uploads:thread",
        "clear-draft:thread",
 diff --git a/apps/web/src/hooks/useThreadActions.ts b/apps/web/src/hooks/useThreadActions.ts
-index c4528d2813e1a86614bd6d2fa3ae182bbbf60630..ef7626acb91690aadd813f296921cd25db41783b 100644
+index e0b1cce853759551131b8904e010ab1179e9bbc8..26a357ff13b27aa042205588b216204c6043e7fb 100644
 --- a/apps/web/src/hooks/useThreadActions.ts
 +++ b/apps/web/src/hooks/useThreadActions.ts
 @@ -61,6 +61,7 @@ import { usePreviewMiniPlayerStore } from "../previewMiniPlayerStore";
@@ -1648,7 +1648,7 @@ index c4528d2813e1a86614bd6d2fa3ae182bbbf60630..ef7626acb91690aadd813f296921cd25
  import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
  import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
  import { stackedThreadToast, toastManager } from "../components/ui/toast";
-@@ -479,6 +480,7 @@ export function useThreadActions() {
+@@ -487,6 +488,7 @@ export function useThreadActions() {
        return archiveResult;
      }
      expireThreadUndos(threadRef, LIST_PLACEMENT_UNDO_KINDS);
@@ -1656,7 +1656,7 @@ index c4528d2813e1a86614bd6d2fa3ae182bbbf60630..ef7626acb91690aadd813f296921cd25
      const wokeAt = threadWokeAt(thread, { now: new Date().toISOString() });
      if (wokeAt !== null) {
        markThreadVisited(scopedThreadKey(threadRef), wokeAt);
-@@ -546,6 +548,7 @@ export function useThreadActions() {
+@@ -554,6 +556,7 @@ export function useThreadActions() {
          }
          expireThreadUndos(target, [...LIST_PLACEMENT_UNDO_KINDS, "archive"]);
          refreshArchivedThreadsForEnvironment(target.environmentId);
@@ -1664,7 +1664,7 @@ index c4528d2813e1a86614bd6d2fa3ae182bbbf60630..ef7626acb91690aadd813f296921cd25
          clearTerminalUiState(target);
          clearDeletedThreadPanelState(target);
        }
-@@ -693,6 +696,7 @@ export function useThreadActions() {
+@@ -701,6 +704,7 @@ export function useThreadActions() {
        scopeProjectRef(threadRef.environmentId, thread.projectId),
        threadRef,
      );
@@ -1691,10 +1691,10 @@ index aa6bb76437c2cff981d6348f3353c5fff5ad0acf..5a0db39973a6146852b1c667f54790b6
  vi.mock("../lib/announce", () => ({ announce: vi.fn(), cancelAnnouncement: vi.fn() }));
  vi.mock("../lib/archivedThreadsState", () => ({ refreshArchivedThreadsForEnvironment: vi.fn() }));
 diff --git a/apps/web/src/routes/__root.tsx b/apps/web/src/routes/__root.tsx
-index 3cbef77306c8e7404433cb5f957a7aca8288fc66..ee3677c520e69feccc4310c3696665efebc02adb 100644
+index c59d9f934f359aca43b67b7ad21fff3398a1da93..4d16e9a15d11a8ee6af6ad1b41da3ea93de248df 100644
 --- a/apps/web/src/routes/__root.tsx
 +++ b/apps/web/src/routes/__root.tsx
-@@ -34,6 +34,7 @@ import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepA
+@@ -35,6 +35,7 @@ import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepA
  import { ReopenClosedViewShortcut } from "../components/ReopenClosedViewShortcut";
  import { ProjectCloneToastCoordinator } from "../components/ProjectCloneToastCoordinator";
  import { ConnectDeviceApprovalCoordinator } from "../components/ConnectDeviceApprovalCoordinator";
@@ -1702,7 +1702,7 @@ index 3cbef77306c8e7404433cb5f957a7aca8288fc66..ee3677c520e69feccc4310c3696665ef
  import { ChatGptWelcomeCoordinator } from "../components/settings/ChatGptWelcomeCoordinator";
  import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
  import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
-@@ -203,6 +204,7 @@ function RootRouteBranch() {
+@@ -205,6 +206,7 @@ function RootRouteBranch() {
        <GuestShareDialogHost />
        <ProjectCloneToastCoordinator />
        <ConnectDeviceApprovalCoordinator />

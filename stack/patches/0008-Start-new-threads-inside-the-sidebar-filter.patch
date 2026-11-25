@@ -571,7 +571,7 @@ index 8fc6f18fa4bd28d2cffebe1b99811b1976623741..bfa6a200050bb0e492511d122bfa6b33
        return openWithIntent({ kind: "change-theme" });
    }
 diff --git a/apps/web/src/components/CommandPalette.tsx b/apps/web/src/components/CommandPalette.tsx
-index d58c79185e114e72675190c7d10374046bd649da..e9bcc69f04e6e18dabccc59fecb95b09f86d8daf 100644
+index eef8e844f0fed2015e269b12a514c96cf1616037..9edf9b09a0715d7a73196f4e2b42d998d713dd6f 100644
 --- a/apps/web/src/components/CommandPalette.tsx
 +++ b/apps/web/src/components/CommandPalette.tsx
 @@ -103,6 +103,9 @@ import { useAtomValue } from "@effect/atom-react";
@@ -635,7 +635,7 @@ index d58c79185e114e72675190c7d10374046bd649da..e9bcc69f04e6e18dabccc59fecb95b09
    const browsePath = getFilesystemBrowsePath(query, browseEnvironmentPlatform, canBrowsePaths);
    const isBrowsing = browsePath.isBrowsing;
    const browseDirectoryPath = browsePath.directoryPath;
-@@ -894,6 +908,22 @@ function OpenCommandPaletteDialog(props: {
+@@ -893,6 +907,22 @@ function OpenCommandPaletteDialog(props: {
      true,
    );
  
@@ -658,7 +658,7 @@ index d58c79185e114e72675190c7d10374046bd649da..e9bcc69f04e6e18dabccc59fecb95b09
    const openingOrderThreadItems = useOrderWhileOpen(
      (() => {
        const isScratch = (project: CommandPaletteProject) =>
-@@ -928,7 +958,6 @@ function OpenCommandPaletteDialog(props: {
+@@ -927,7 +957,6 @@ function OpenCommandPaletteDialog(props: {
          },
        });
        if (scratchTargetEnvironmentId === null) return projectItems;
@@ -666,7 +666,7 @@ index d58c79185e114e72675190c7d10374046bd649da..e9bcc69f04e6e18dabccc59fecb95b09
        const noProjectIndex = newThreadNoProjectIndex(
          projectPickerEntries.map(({ group, targetProject, isPreferred }) => ({
            isScratch: isScratchProject(
-@@ -957,14 +986,63 @@ function OpenCommandPaletteDialog(props: {
+@@ -956,14 +985,63 @@ function OpenCommandPaletteDialog(props: {
      true,
    );
    // Root search suggestions copy these numbers; the picker renumbers its shown rows below.
@@ -736,7 +736,7 @@ index d58c79185e114e72675190c7d10374046bd649da..e9bcc69f04e6e18dabccc59fecb95b09
  
    const {
      threadItems: allThreadItems,
-@@ -995,6 +1073,10 @@ function OpenCommandPaletteDialog(props: {
+@@ -994,6 +1072,10 @@ function OpenCommandPaletteDialog(props: {
    });
  
    function popView(): void {
@@ -747,7 +747,7 @@ index d58c79185e114e72675190c7d10374046bd649da..e9bcc69f04e6e18dabccc59fecb95b09
      browseNavigation.invalidate();
      setAddProjectCloneFlow(null);
      setNewProjectFlow(null);
-@@ -1385,7 +1467,7 @@ function OpenCommandPaletteDialog(props: {
+@@ -1384,7 +1466,7 @@ function OpenCommandPaletteDialog(props: {
        title: gt("New thread in..."),
        icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
        addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
@@ -756,7 +756,7 @@ index d58c79185e114e72675190c7d10374046bd649da..e9bcc69f04e6e18dabccc59fecb95b09
      });
    }
  
-@@ -1907,21 +1989,22 @@ function OpenCommandPaletteDialog(props: {
+@@ -1906,21 +1988,22 @@ function OpenCommandPaletteDialog(props: {
        : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
          ? addProjectEntryGroups()
          : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
@@ -794,7 +794,7 @@ index d58c79185e114e72675190c7d10374046bd649da..e9bcc69f04e6e18dabccc59fecb95b09
  
    const isLinkedThreadSearch =
      linkedThreadSearch?.linkedThreads !== undefined && deferredQuery === linkedThreadSearch.query;
-@@ -1930,7 +2013,7 @@ function OpenCommandPaletteDialog(props: {
+@@ -1929,7 +2012,7 @@ function OpenCommandPaletteDialog(props: {
        activeGroups,
        query: deferredQuery,
        isInSubmenu: currentView !== null,
@@ -803,7 +803,7 @@ index d58c79185e114e72675190c7d10374046bd649da..e9bcc69f04e6e18dabccc59fecb95b09
          ? {
              allOptions: {
                rootGroups,
-@@ -1971,7 +2054,11 @@ function OpenCommandPaletteDialog(props: {
+@@ -1970,7 +2053,11 @@ function OpenCommandPaletteDialog(props: {
    );
    // Jump shortcuts number the project rows as shown, so a pin cannot move a number to another row.
    const filteredGroups = searchedGroups.map((group) => {
@@ -816,7 +816,7 @@ index d58c79185e114e72675190c7d10374046bd649da..e9bcc69f04e6e18dabccc59fecb95b09
      const jumpItems = new Map(
        enumerateCommandPaletteItems(
          group.items.filter(
-@@ -2583,7 +2670,26 @@ function OpenCommandPaletteDialog(props: {
+@@ -2581,7 +2668,26 @@ function OpenCommandPaletteDialog(props: {
            },
          ];
  
@@ -950,7 +950,7 @@ index 87f43d9f901f693ffa26f2b86835f1bde482fb42..4a0323fea1ad4e2b61095967149914bc
      } else {
        expect(openCommandPalette).not.toHaveBeenCalled();
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index bf892f6ab2b8226df7c47f9064f4b0ef310184a0..0aa26fee3168b1517890db7c2a49817c78a6e2b6 100644
+index 6c74f7a58c0d7da9214a6bf8ddf8aef292b68652..a271a4c479057fc6d71633b6877e461dfbd4e253 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -128,6 +128,7 @@ import {
@@ -961,7 +961,7 @@ index bf892f6ab2b8226df7c47f9064f4b0ef310184a0..0aa26fee3168b1517890db7c2a49817c
  import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
  import {
    getThreadKeysToDeselectAfterDelete,
-@@ -197,6 +198,7 @@ import {
+@@ -198,6 +199,7 @@ import {
    isInSidebarScope,
    isSidebarNestedLinkClick,
    isTrailingDoubleClick,
@@ -969,7 +969,7 @@ index bf892f6ab2b8226df7c47f9064f4b0ef310184a0..0aa26fee3168b1517890db7c2a49817c
    orderItemsByPreferredIds,
    planSidebarThreadDrop,
    resolveAdjacentThreadId,
-@@ -207,8 +209,6 @@ import {
+@@ -208,8 +210,6 @@ import {
    resolveSidebarReorderableThreadKeys,
    resolveSidebarThreadShelfState,
    searchSidebarThreads,
@@ -978,7 +978,7 @@ index bf892f6ab2b8226df7c47f9064f4b0ef310184a0..0aa26fee3168b1517890db7c2a49817c
    shouldNavigateAfterThreadPark,
    sidebarListItemId,
    sidebarThreadKeyAtY,
-@@ -3144,24 +3144,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3158,24 +3158,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      : null;
  
    const handleNewThreadClick = (event?: ReactMouseEvent) => {
@@ -1004,7 +1004,7 @@ index bf892f6ab2b8226df7c47f9064f4b0ef310184a0..0aa26fee3168b1517890db7c2a49817c
        if (isMobile) setOpenMobile(false);
        // With no current or open project, such as when every project is archived, pick one.
        void startNewThreadFromContext({
-@@ -3175,7 +3158,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3189,7 +3172,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
        return;
      }
      if (isMobile) setOpenMobile(false);
@@ -1020,7 +1020,7 @@ index bf892f6ab2b8226df7c47f9064f4b0ef310184a0..0aa26fee3168b1517890db7c2a49817c
    };
  
    const newThreadShortcutLabel =
-@@ -3221,16 +3211,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3235,16 +3225,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                }
                onNewProject={openAddProjectCommandPalette}
                onNewThread={handleNewThreadClick}
@@ -2923,7 +2923,7 @@ index 90ccf9fc2023f7746f76e707d49689e80c3548fa..e7c8a555a40b4da28fd413c8106ba70f
        "preview.toggle": (event) => {
          claim(event);
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 724df0c22590ac8951107533d7d8dd64b8debb80..7ae94c8141a52bd7ce61b650494137869cb83980 100644
+index 3a11e38c84c1089900d36f5d054883a13c4d3faf..af8a13276f560cdf54e6e98a121db913472e6112 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -6,14 +6,27 @@ branch, so T3 Code refuses a branch switch there while one of them is working.

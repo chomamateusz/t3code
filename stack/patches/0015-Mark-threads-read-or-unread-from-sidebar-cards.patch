@@ -27,6 +27,8 @@ Port to b6ac2449f1: upstream 055b44919e already translates the thread menu's Mar
 
 Port to 85aaef42d4: upstream 92199680cc (#41365) hides the menus' Mark unread while the thread is running or before any run completed (hasCompletedRun and isRunning). resolveSidebarThreadReadAction now offers mark-unread only for a completed run on a runtime that is not running (threadRuntimeCanArchive), so the card and both single-thread menus follow upstream's rule through the one decision; the menu state takes readAction instead of upstream's hasCompletedRun, upstream's omission cases move to the read-action table (a seen completion while a new run starts gives no action), and Mark read is unchanged.
 
+Port to b8be2287dc: threadActionMenu.logic.ts conflicted only in placement: upstream 78de041d48 (#24917, settle and snooze threads while their machine is offline) adds isThreadTriageAction where this commit adds READ_ACTION_ITEMS; both are kept. Mark read and Mark unread were already exempt from the operate scope, so upstream's canTriage exemption leaves them unchanged. The change itself is unchanged.
+
 Files:
 apps/web:
 - apps/web/src/components/Sidebar.logic.test.ts
@@ -195,7 +197,7 @@ index d31d96c9517b384b0ccf6a18b110a3a1fc19a018..8160be91b63cc78e5d88525218283b06
    "approval",
    "input",
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 17259e00cee7c476154b073110ef3eb1bd54154a..d873045d879c23add6a5b89a2875f6a71bcdcede 100644
+index 2d33a256af6fb6607d9dadcf6a8d40a4513922c4..b2e80b16ad5f711c5d9adc59d7459b2551e236ca 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -142,6 +142,7 @@ import {
@@ -206,7 +208,7 @@ index 17259e00cee7c476154b073110ef3eb1bd54154a..d873045d879c23add6a5b89a2875f6a7
    useAcknowledgeThreadWoke,
    useThreadActions,
  } from "../hooks/useThreadActions";
-@@ -229,6 +230,7 @@ import {
+@@ -230,6 +231,7 @@ import {
    useThreadJumpHintsVisible,
    type SidebarListItem,
    type SidebarSection,
@@ -214,7 +216,7 @@ index 17259e00cee7c476154b073110ef3eb1bd54154a..d873045d879c23add6a5b89a2875f6a7
  } from "./Sidebar.logic";
  import {
    createSidebarCollisionDetection,
-@@ -992,6 +994,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -997,6 +999,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      reorderPinnedThread,
      reorderActiveThread,
      markThreadUnread,
@@ -222,7 +224,7 @@ index 17259e00cee7c476154b073110ef3eb1bd54154a..d873045d879c23add6a5b89a2875f6a7
      archiveThread,
      deleteThread,
    } = useThreadActions();
-@@ -1049,6 +1052,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1054,6 +1057,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
    const rangeSelectTo = useThreadSelectionStore((s) => s.rangeSelectTo);
    const acknowledgeWoke = useAcknowledgeThreadWoke();
@@ -235,7 +237,7 @@ index 17259e00cee7c476154b073110ef3eb1bd54154a..d873045d879c23add6a5b89a2875f6a7
    // A Settings or Usage modal keeps the thread behind it current.
    const routeTarget = useShownThreadRouteTarget().shownTarget;
    const routeDraftThread = useComposerDraftStore((store) =>
-@@ -2880,8 +2889,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2890,8 +2899,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                isSnoozed,
                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
                isRegeneratingTitle,
@@ -245,7 +247,7 @@ index 17259e00cee7c476154b073110ef3eb1bd54154a..d873045d879c23add6a5b89a2875f6a7
                canShareWithGuest: appAtomRegistry.get(
                  canShareWithGuestAtom(threadRef.environmentId),
                ),
-@@ -3026,8 +3035,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3040,8 +3049,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              if (toast) toastManager.add(toast);
              return;
            }
@@ -256,7 +258,7 @@ index 17259e00cee7c476154b073110ef3eb1bd54154a..d873045d879c23add6a5b89a2875f6a7
              return;
            case "copy-path":
              if (!threadWorkspacePath) {
-@@ -3561,6 +3571,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3575,6 +3585,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              onUnsnooze={attemptUnsnooze}
                              onUnpin={attemptUnpin}
                              onAcknowledgeWoke={acknowledgeWoke}
@@ -277,7 +279,7 @@ index 39abba5e5b808c359db5300302d07018279ecb74..7707afbbb31d28cfcbfee4dd3e7380a1
        <li>Outside</li>
      </ul>
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index ef7e23d2c10432e528fd9f4931404888fba58f07..c3fa051dd10bb28b0071856f3d7e7da4010d528c 100644
+index c6544e8a799df82e15106214ace2e2d9ab186ecc..1aa623058e0dd60cdfbb40cfca216296f9ec072f 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -50,6 +50,8 @@ import {
@@ -289,7 +291,7 @@ index ef7e23d2c10432e528fd9f4931404888fba58f07..c3fa051dd10bb28b0071856f3d7e7da4
    MessageCircleQuestionIcon,
    PinIcon,
    PinOffIcon,
-@@ -93,8 +95,10 @@ import {
+@@ -98,8 +100,10 @@ import {
    animateSidebarLayoutChanges,
    resolveSidebarRowAccessibility,
    type SidebarDropVerb,
@@ -300,7 +302,7 @@ index ef7e23d2c10432e528fd9f4931404888fba58f07..c3fa051dd10bb28b0071856f3d7e7da4
    shouldRecedeSidebarThread,
    resolveWorkingStartedAt,
    useRetainedValue,
-@@ -470,6 +474,39 @@ function SnoozeMenuButton(props: {
+@@ -488,6 +492,39 @@ function SnoozeMenuButton(props: {
    );
  }
  
@@ -340,7 +342,7 @@ index ef7e23d2c10432e528fd9f4931404888fba58f07..c3fa051dd10bb28b0071856f3d7e7da4
  type SortableThreadRowBag = Pick<
    ReturnType<typeof useSortable>,
    "listeners" | "setNodeRef" | "transform" | "transition" | "isDragging"
-@@ -638,6 +675,7 @@ type SidebarThreadRowProps = {
+@@ -656,6 +693,7 @@ type SidebarThreadRowProps = {
    onUnsnooze: (threadRef: ScopedThreadRef) => void;
    onUnpin: (threadRef: ScopedThreadRef) => void;
    onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
@@ -348,7 +350,7 @@ index ef7e23d2c10432e528fd9f4931404888fba58f07..c3fa051dd10bb28b0071856f3d7e7da4
    onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
  };
  
-@@ -693,6 +731,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -711,6 +749,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      onContextMenu,
      onAcknowledgeWoke,
      onFileDropThreads,
@@ -356,7 +358,7 @@ index ef7e23d2c10432e528fd9f4931404888fba58f07..c3fa051dd10bb28b0071856f3d7e7da4
      onRenameTitleChange,
      onSettle,
      onActionSweepStart,
-@@ -789,6 +828,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -815,6 +854,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      isSelected,
    });
    const isWokeStatus = topStatus?.icon === "woke";
@@ -367,7 +369,7 @@ index ef7e23d2c10432e528fd9f4931404888fba58f07..c3fa051dd10bb28b0071856f3d7e7da4
  
    const branchMismatch = resolveLocalCheckoutBranchMismatch({
      effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
-@@ -883,6 +926,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -909,6 +952,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
          addFolders: () => {},
        })
      : null;
@@ -379,7 +381,7 @@ index ef7e23d2c10432e528fd9f4931404888fba58f07..c3fa051dd10bb28b0071856f3d7e7da4
    const handleSettleClick = (event: ReactMouseEvent) => {
      event.preventDefault();
      event.stopPropagation();
-@@ -1629,7 +1677,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1661,7 +1709,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                        <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
                      )}
                    </span>
@@ -391,7 +393,7 @@ index ef7e23d2c10432e528fd9f4931404888fba58f07..c3fa051dd10bb28b0071856f3d7e7da4
                      <span
                        className={cn(
                          // Mouse clicks leave Settle focused; focus-within would pin controls over
-@@ -1657,6 +1708,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1689,6 +1740,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                            </TooltipPopup>
                          </Tooltip>
                        ) : null}
@@ -466,7 +468,7 @@ index d73a50f7a1b349ba687f4733d8b69694d0a7b440..8b98cb0041e8b444a56e60894573a811
      const items = buildThreadActionMenuItems({ ...baseState, canRename: false });
      expect(items.filter((item) => item.disabled).map((item) => item.id)).toEqual(["rename"]);
 diff --git a/apps/web/src/components/threadActionMenu.logic.ts b/apps/web/src/components/threadActionMenu.logic.ts
-index 0bf0568e2b460bf9cfb133a5d084393ab969d67a..61bd76ebfed27dcd4c13435ace590cd05548ba8a 100644
+index 211e812c671f786e3310f0d8d6723c2d91734452..e5899817a1ced3ad5a1574e21165239daffd343f 100644
 --- a/apps/web/src/components/threadActionMenu.logic.ts
 +++ b/apps/web/src/components/threadActionMenu.logic.ts
 @@ -3,6 +3,7 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
@@ -485,7 +487,7 @@ index 0bf0568e2b460bf9cfb133a5d084393ab969d67a..61bd76ebfed27dcd4c13435ace590cd0
    | "mark-unread"
    | "share-guest"
    | "copy"
-@@ -109,10 +111,9 @@ export interface ThreadActionMenuState {
+@@ -111,10 +113,9 @@ export interface ThreadActionMenuState {
    readonly isSnoozed: boolean;
    readonly canSnoozeNow: boolean;
    readonly isRegeneratingTitle: boolean;
@@ -497,7 +499,7 @@ index 0bf0568e2b460bf9cfb133a5d084393ab969d67a..61bd76ebfed27dcd4c13435ace590cd0
    readonly supports: {
      readonly settlement: boolean;
      readonly autoSettleOptOut: boolean;
-@@ -133,6 +134,7 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
+@@ -135,6 +136,7 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
      "find",
      "new-thread-on-branch",
      "project-settings",
@@ -505,8 +507,8 @@ index 0bf0568e2b460bf9cfb133a5d084393ab969d67a..61bd76ebfed27dcd4c13435ace590cd0
      "mark-unread",
      "share-guest",
      "copy",
-@@ -143,6 +145,11 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
-   ].includes(action);
+@@ -155,6 +157,11 @@ export function isThreadTriageAction(action: string): boolean {
+   );
  }
  
 +const READ_ACTION_ITEMS = {
@@ -517,7 +519,7 @@ index 0bf0568e2b460bf9cfb133a5d084393ab969d67a..61bd76ebfed27dcd4c13435ace590cd0
  export function buildThreadActionMenuItems(
    state: ThreadActionMenuState,
    resolve: MessageResolver = m,
-@@ -221,9 +228,14 @@ export function buildThreadActionMenuItems(
+@@ -233,9 +240,14 @@ export function buildThreadActionMenuItems(
            },
          ]
        : []),
@@ -552,10 +554,10 @@ index 7754e191f472202d783cc2196e0181f6623ad122..8318bec39b48b9e58970401e7d3d933f
      {
        tag: "path",
 diff --git a/apps/web/src/hooks/useThreadActionMenu.test.ts b/apps/web/src/hooks/useThreadActionMenu.test.ts
-index 3c8255b04c088a5ec87abaf133e742f42aeb9a33..f6fb32fa0d353d2c736e27a599358351249f7fc0 100644
+index f058c47a1499e91ca8ed67ec283f376248aeb478..3f598e6cfffa3557b8dd44116c8d4549022aea7b 100644
 --- a/apps/web/src/hooks/useThreadActionMenu.test.ts
 +++ b/apps/web/src/hooks/useThreadActionMenu.test.ts
-@@ -120,6 +120,7 @@ vi.mock("./useSettings", () => ({
+@@ -121,6 +121,7 @@ vi.mock("./useSettings", () => ({
  }));
  vi.mock("./useThreadActions", () => ({
    canTurnThreadIntoProject: () => false,
@@ -564,10 +566,10 @@ index 3c8255b04c088a5ec87abaf133e742f42aeb9a33..f6fb32fa0d353d2c736e27a599358351
      Object.fromEntries(
        [
 diff --git a/apps/web/src/hooks/useThreadActionMenu.ts b/apps/web/src/hooks/useThreadActionMenu.ts
-index 7860856027b921e14e6164faeda1ce5ff2408a24..04c2d96db36419e03ebf1ba2eec7e1ff2b5666fb 100644
+index eae164d2cbebfba3b0d01d1ab4a4b620446c9c2b..d1cfb4e2aefee211b2afe951ea2704b3807ebde6 100644
 --- a/apps/web/src/hooks/useThreadActionMenu.ts
 +++ b/apps/web/src/hooks/useThreadActionMenu.ts
-@@ -51,7 +51,11 @@ import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
+@@ -52,7 +52,11 @@ import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
  import { useCopyToClipboard } from "./useCopyToClipboard";
  import { useNewThreadHandler } from "./useHandleNewThread";
  import { useClientSettings } from "./useSettings";
@@ -580,7 +582,7 @@ index 7860856027b921e14e6164faeda1ce5ff2408a24..04c2d96db36419e03ebf1ba2eec7e1ff
  
  function failureToast(title: string, error: unknown) {
    toastManager.add(
-@@ -91,6 +95,7 @@ export function useThreadActionMenu(input: {
+@@ -92,6 +96,7 @@ export function useThreadActionMenu(input: {
      archiveThread,
      deleteThread,
      markThreadUnread,
@@ -588,7 +590,7 @@ index 7860856027b921e14e6164faeda1ce5ff2408a24..04c2d96db36419e03ebf1ba2eec7e1ff
      turnThreadIntoProject,
    } = useThreadActions();
    const regenerateThreadTitle = useOrchestrationCommand(threadEnvironment.regenerateTitle, {
-@@ -150,8 +155,8 @@ export function useThreadActionMenu(input: {
+@@ -152,8 +157,8 @@ export function useThreadActionMenu(input: {
          isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
          canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
          isRegeneratingTitle,
@@ -598,7 +600,7 @@ index 7860856027b921e14e6164faeda1ce5ff2408a24..04c2d96db36419e03ebf1ba2eec7e1ff
          supports,
          snoozePresets,
          canShareWithGuest,
-@@ -269,6 +274,9 @@ export function useThreadActionMenu(input: {
+@@ -273,6 +278,9 @@ export function useThreadActionMenu(input: {
            if (toast) toastManager.add(toast);
            return;
          }
@@ -609,7 +611,7 @@ index 7860856027b921e14e6164faeda1ce5ff2408a24..04c2d96db36419e03ebf1ba2eec7e1ff
            markThreadUnread(threadRef);
            return;
 diff --git a/apps/web/src/hooks/useThreadActions.ts b/apps/web/src/hooks/useThreadActions.ts
-index 2a591127044d129955e6e44b00f55da81c001cc4..c4528d2813e1a86614bd6d2fa3ae182bbbf60630 100644
+index d6868fbc02eb8df903619cc5529b32ee6a1a93df..e0b1cce853759551131b8904e010ab1179e9bbc8 100644
 --- a/apps/web/src/hooks/useThreadActions.ts
 +++ b/apps/web/src/hooks/useThreadActions.ts
 @@ -24,7 +24,13 @@ import { AsyncResult } from "effect/reactivity";
@@ -669,15 +671,15 @@ index 2a591127044d129955e6e44b00f55da81c001cc4..c4528d2813e1a86614bd6d2fa3ae182b
  export function useAcknowledgeThreadWoke() {
    const visitThreadMutation = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
    const markThreadVisited = useUiStateStore((state) => state.markThreadVisited);
-@@ -338,6 +379,7 @@ export function useThreadActions() {
-     reportFailure: false,
-   });
+@@ -346,6 +387,7 @@ export function useThreadActions() {
+     threadTriagePermitted,
+   );
    const markThreadUnread = useMarkThreadUnread();
 +  const markThreadRead = useMarkThreadRead();
    const createProjectFromThread = useAtomCommand(projectEnvironment.createFromThread, {
      reportFailure: false,
    });
-@@ -1060,6 +1102,7 @@ export function useThreadActions() {
+@@ -1073,6 +1115,7 @@ export function useThreadActions() {
      reorderPinnedThread,
      reorderActiveThread,
      markThreadUnread,
@@ -686,7 +688,7 @@ index 2a591127044d129955e6e44b00f55da81c001cc4..c4528d2813e1a86614bd6d2fa3ae182b
      turnThreadIntoProject: (target: ScopedThreadRef) =>
        createProjectFromThread({
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 66188f1bc40e556224a5b5b7d6834f3b8ae3394c..4fd5305e2d894403a5ec33a968f5626ea4b74789 100644
+index 682aa08dc87d9e84def63cb4d6dfb45315fbbdb8..7bcde1c0b0b116f0985bcac9e708f9de83561e97 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
 @@ -85,6 +85,9 @@ viewing. Discarding an unsent draft from the sidebar works the same way: Undo br
