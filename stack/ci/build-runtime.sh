@@ -37,6 +37,8 @@ PNPM_VERSION=${PNPM_VERSION%%+*}
 NODE_BIN=$(bash "$STACK_CI/fetch-node.sh" "$NODE_VERSION" "$BUILD/toolchain")
 export PATH="$NODE_BIN:$PATH"
 npm install --prefix "$BUILD/toolchain/pnpm" --ignore-scripts --no-package-lock "pnpm@$PNPM_VERSION"
+# vite-plus 1.8 cannot run pnpm's shebang-less placeholder bin; link the native binary that --ignore-scripts skipped.
+node "$BUILD/toolchain/pnpm/node_modules/pnpm/install.js"
 export PATH="$BUILD/toolchain/pnpm/node_modules/.bin:$PATH"
 test "$(node -v)" = "v$NODE_VERSION"
 test "$(pnpm -v)" = "$PNPM_VERSION"
