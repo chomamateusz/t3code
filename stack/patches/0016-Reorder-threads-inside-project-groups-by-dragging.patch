@@ -913,10 +913,10 @@ index 1aa623058e0dd60cdfbb40cfca216296f9ec072f..cee5911584938fb3f74a4184912c41c1
                                />
                              }
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 7bcde1c0b0b116f0985bcac9e708f9de83561e97..dbef423ae58dbc76d4e7265804f1dd820c3b18a6 100644
+index 8757b812efe3307458521654433a737de1fde82c..cca97d378a0641209aea272b04c782eddace3874 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -233,9 +233,12 @@ clicking, or press Alt+Enter on a focused folder, to close every folder when it
+@@ -243,9 +243,12 @@ clicking, or press Alt+Enter on a focused folder, to close every folder when it
  every folder when it is closed. A closed folder shows how many threads it holds and the same
  badge as its project icon for the hidden threads. Use the pen button on a folder, or right-click
  it, to start a thread in that project.

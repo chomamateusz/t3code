@@ -98,7 +98,7 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 apps/server/src/provider/fleetProxyLimits.ts
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index 26e5d04f10c4c4c5cc668c415176ddd03b2c96eb..039b9f25a47ed500437e6d850e4bf8f4eab90790 100644
+index a7b110e851f0ac343b06daab9f0747230abf1b82..867c09f4e495e31777f2e9311ce00de295c940d0 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -79,6 +79,7 @@ import * as Scope from "effect/Scope";
@@ -135,7 +135,7 @@ index 26e5d04f10c4c4c5cc668c415176ddd03b2c96eb..039b9f25a47ed500437e6d850e4bf8f4
          continuationRequests: {
            offer: (request) =>
              Effect.sync(() => {
-@@ -10664,6 +10670,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -10706,6 +10712,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      ),
    );
  
@@ -309,7 +309,7 @@ index 26e5d04f10c4c4c5cc668c415176ddd03b2c96eb..039b9f25a47ed500437e6d850e4bf8f4
      Effect.gen(function* () {
        const harness = yield* makeWakeHarness;
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index 3d1ba5c73048cab302717c6875feb2fd2887392b..ec7de1dcf648c8f99249cc5215d93b4676a07a49 100644
+index 20840670251439d3fcaed0b3cbcfea6097e57407..b843446e65cb2e73bb7d2c2b5c996c81fbee1c84 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -37,6 +37,7 @@ import {

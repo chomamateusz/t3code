@@ -130,10 +130,10 @@ index cee5911584938fb3f74a4184912c41c139d69cee..b6a9400d91bf79bb911c7e7bc0888706
                  <span
                    className={cn("min-w-0 flex-1 truncate font-normal text-secondary-label text-xs")}
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index dbef423ae58dbc76d4e7265804f1dd820c3b18a6..8b094a23410cf8652af734ff551108d44fae15c8 100644
+index cca97d378a0641209aea272b04c782eddace3874..6c45787ad9349ab1777d1f054c5102a548169da0 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -76,7 +76,8 @@ and worktree while you stay in the new thread composer. This requires a Git proj
+@@ -86,7 +86,8 @@ and worktree while you stay in the new thread composer. This requires a Git proj
  
  ## Pin and reorder threads
  

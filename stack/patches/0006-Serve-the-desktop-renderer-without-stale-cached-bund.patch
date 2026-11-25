@@ -460,7 +460,7 @@ index c5e91cf924ba766efec8b9effcb789c10618b2e1..09873fa3764166fc50d7199134c79ef9
            setServerExposureMode: () => Effect.die("unexpected server exposure update"),
            setTailscaleServe: () => Effect.die("unexpected Tailscale Serve update"),
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index 28a2cde19d0cc049f2c9704548840453e35f7d5a..fb3c72fb55460f67786f28573b29f9a463a656fd 100644
+index d9d9d23646653fc8feba27eee7286e33434f7d90..2d98cbb94e327af86d2d5ac8c56fda15e1ffa420 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
 @@ -268,6 +268,7 @@ function layerTest(input: {

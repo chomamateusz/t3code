@@ -274,7 +274,7 @@ index 0771ea2e33d5d12fede4b834b9ca54cf6ead1dd9..e1732d642fcc84a127d97ecb86790f68
  }
  
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 55ee326cb5de48266ad93df8c932109beb44d146..ba4f73f168b8c0a9bf66b840fbe1c3abf243e4bf 100644
+index 2ca4abf581ea2b43a072ed2d0f5568707115702d..87ba05a99331dc2e420b872f35fde8fd6666fb0f 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -120,6 +120,14 @@ import {
@@ -685,7 +685,7 @@ index 55ee326cb5de48266ad93df8c932109beb44d146..ba4f73f168b8c0a9bf66b840fbe1c3ab
                projectScope={
                  <Combobox
                    items={projectScopeItems}
-@@ -3452,17 +3547,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3453,17 +3548,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                ) : scopedProjectGroups.length > 0 ? (
                  <>
                    <span>
@@ -715,7 +715,7 @@ index 55ee326cb5de48266ad93df8c932109beb44d146..ba4f73f168b8c0a9bf66b840fbe1c3ab
                    </span>
                    <button
                      type="button"
-@@ -3473,7 +3569,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3474,7 +3570,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    </button>
                  </>
                ) : (
@@ -727,7 +727,7 @@ index 55ee326cb5de48266ad93df8c932109beb44d146..ba4f73f168b8c0a9bf66b840fbe1c3ab
                )}
              </div>
            ) : null}
-@@ -3595,6 +3694,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3596,6 +3695,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                              environmentMachine={
                                environmentMachineById.get(thread.environmentId) ?? "server"
                              }

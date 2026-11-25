@@ -74,6 +74,8 @@ Port to 85aaef42d4: uiStateStore.ts and uiStateStore.test.ts follow upstream 1c6
 
 Port to b8be2287dc: imports only. LabsSettingsPanel.tsx keeps upstream c6162da7ec's (#42353) commitNumberFieldOnEnter and number-field imports beside this commit's ProjectManualOrderList; SidebarThreadRow.tsx keeps upstream 78de041d48's (#24917, settle and snooze threads while their machine is offline) threadEnvironment and useEnvironmentScopeDenied imports and still drops the parseTimestampDate import this commit no longer uses. The change itself is unchanged.
 
+Port to 221953fbf3: Sidebar.tsx conflicted only where upstream 221953fbf3 (#42657, fade project picker tooltips in place on scroll) wraps the header project combobox popup in TooltipScrollDismissArea holdPositionOnExit; this commit replaces that combobox with the project row, so the wrapper and its import go with it. The +N popup renders no Tooltip triggers (its pin button uses a native title), so it needs no wrapper; the change itself is unchanged.
+
 Files:
 apps/web:
 - apps/web/src/components/ProjectComboboxRow.tsx
@@ -140,7 +142,7 @@ Model/harness: GPT-6 / Codex; badge legend follow-up: Claude Opus 5.5 / Claude C
  .../components/Sidebar.drag.browser.test.tsx  |   4 +-
  apps/web/src/components/Sidebar.logic.test.ts | 398 ++++++++-
  apps/web/src/components/Sidebar.logic.ts      | 365 +++++++-
- apps/web/src/components/Sidebar.tsx           | 571 +++++--------
+ apps/web/src/components/Sidebar.tsx           | 574 +++++--------
  .../components/settings/LabsSettingsPanel.tsx |  59 ++
  .../ProjectManualOrderList.browser.test.tsx   |  67 ++
  .../settings/ProjectManualOrderList.tsx       | 133 +++
@@ -160,7 +162,7 @@ Model/harness: GPT-6 / Codex; badge legend follow-up: Claude Opus 5.5 / Claude C
  apps/web/src/uiStateStore.ts                  | 223 ++++-
  docs/user/thread-sidebar.md                   |  54 ++
  .../add-project-tab-reaches-submit.e2e.ts     |   3 +-
- 24 files changed, 4868 insertions(+), 579 deletions(-)
+ 24 files changed, 4869 insertions(+), 581 deletions(-)
  delete mode 100644 apps/web/src/components/ProjectComboboxRow.tsx
  create mode 100644 apps/web/src/components/settings/ProjectManualOrderList.browser.test.tsx
  create mode 100644 apps/web/src/components/settings/ProjectManualOrderList.tsx
@@ -1048,7 +1050,7 @@ index e1732d642fcc84a127d97ecb86790f682a071742..a2b1d06a850333b97d1a3c3ac42cb01f
    thread: Pick<SidebarThreadSummary, "latestRun" | "runtime">,
  ): string | null {
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index ba4f73f168b8c0a9bf66b840fbe1c3abf243e4bf..6c74f7a58c0d7da9214a6bf8ddf8aef292b68652 100644
+index 87ba05a99331dc2e420b872f35fde8fd6666fb0f..6c74f7a58c0d7da9214a6bf8ddf8aef292b68652 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -68,18 +68,10 @@ import {
@@ -1150,7 +1152,7 @@ index ba4f73f168b8c0a9bf66b840fbe1c3abf243e4bf..6c74f7a58c0d7da9214a6bf8ddf8aef2
  import { deriveProviderEntriesByEnvironment } from "../providerInstances";
  import { useStableCallback } from "../hooks/useStableCallback";
  import {
-@@ -254,21 +248,10 @@ import { stackedThreadToast, toastManager } from "./ui/toast";
+@@ -254,22 +248,11 @@ import { stackedThreadToast, toastManager } from "./ui/toast";
  import { titleRegenerationToast } from "./threadTitleRegenerationToast";
  import { copyThreadReference } from "../lib/copyThreadReference";
  import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
@@ -1169,11 +1171,13 @@ index ba4f73f168b8c0a9bf66b840fbe1c3abf243e4bf..6c74f7a58c0d7da9214a6bf8ddf8aef2
  import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
  import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 -import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
+-import { TooltipProvider, TooltipScrollDismissArea } from "./ui/tooltip";
 +import { SidebarMachineRow } from "./sidebar/SidebarMachineRow";
 +import { SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
- import { TooltipProvider } from "./ui/tooltip";
++import { TooltipProvider } from "./ui/tooltip";
  import {
    composerDraftHasUserContent,
+   DraftId,
 @@ -719,8 +702,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
        );
      } else {
@@ -1580,7 +1584,7 @@ index ba4f73f168b8c0a9bf66b840fbe1c3abf243e4bf..6c74f7a58c0d7da9214a6bf8ddf8aef2
                );
              }
              return;
-@@ -3187,228 +3217,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3187,229 +3217,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    onChange={setEnvironmentScopeKeys}
                  />
                }
@@ -1668,6 +1672,7 @@ index ba4f73f168b8c0a9bf66b840fbe1c3abf243e4bf..6c74f7a58c0d7da9214a6bf8ddf8aef2
 -                    collisionAvoidance={{ side: "flip", align: "shift" }}
 -                    className="w-[min(18rem,var(--available-width))] overflow-hidden"
 -                    finalFocus={(closeType) => closeType === "keyboard"}
+-                    render={<TooltipScrollDismissArea holdPositionOnExit />}
 -                  >
 -                    <ComboboxSearchInput
 -                      aria-label={gt("Search projects")}
@@ -1825,7 +1830,7 @@ index ba4f73f168b8c0a9bf66b840fbe1c3abf243e4bf..6c74f7a58c0d7da9214a6bf8ddf8aef2
                onNewThread={handleNewThreadClick}
                newThreadDisabled={projects.length === 0}
                newThreadShortcutLabel={newThreadShortcutLabel}
-@@ -3562,7 +3387,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3563,7 +3387,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    </span>
                    <button
                      type="button"
@@ -1834,7 +1839,7 @@ index ba4f73f168b8c0a9bf66b840fbe1c3abf243e4bf..6c74f7a58c0d7da9214a6bf8ddf8aef2
                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
                    >
                      <T>Show all projects</T>
-@@ -3570,7 +3395,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3571,7 +3395,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                  </>
                ) : (
                  sidebarEmptyThreadsLabel(
@@ -6284,10 +6289,10 @@ index bde94d9548673ed4e0ce0cd40cb6a2002cac884f..e3ffc3e67a01a790eafe05fd5955b99d
      set((state) => setSidebarEnvironmentScopeKeys(state, environmentKeys)),
    setPullRequestMergeMethod: (method) => set((state) => setPullRequestMergeMethod(state, method)),
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index cf2c42d753b531d94fe4525d5a7997d21159745e..3a11e38c84c1089900d36f5d054883a13c4d3faf 100644
+index 00ee74cd704f99f690771413f291f59ab4651401..ca143d42f8ff62184621e74df5e336794fe7b32c 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -151,6 +151,60 @@ choice.
+@@ -161,6 +161,60 @@ choice.
  While this is on, the active list is ordered by when each thread last came back to you, so you
  cannot drag or move threads within it. Your saved order returns when you turn it off.
  

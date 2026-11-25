@@ -54,7 +54,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code;
  5 files changed, 22 insertions(+), 7 deletions(-)
 
 diff --git a/apps/server/src/auth/EnvironmentAuth.test.ts b/apps/server/src/auth/EnvironmentAuth.test.ts
-index 352ca586783d2854d88434c0dd933de7a59d0140..cdd2473f83e91e63bd1b66f90a6933e62281e1cd 100644
+index 2e6bd03c74619c4fa8da6e45efeb9c7cc68e98d1..c384254ff9b0adbfbfdc44e4f17d64b04b37a8fa 100644
 --- a/apps/server/src/auth/EnvironmentAuth.test.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.test.ts
 @@ -459,8 +459,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
@@ -106,7 +106,7 @@ index 352ca586783d2854d88434c0dd933de7a59d0140..cdd2473f83e91e63bd1b66f90a6933e6
            "ServerAuthInvalidCredentialError",
          );
 diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
-index 46e207dcf8ead43bb591130dce3fada0280a5761..1bffe47e824cc848464ad4fd8e68eceb2139830e 100644
+index 658e578750ff207c92bf2194f66ecab8d2e70f23..75a723ca02f50b9227e94df61efc3fdabe86f4a8 100644
 --- a/apps/server/src/auth/EnvironmentAuth.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.ts
 @@ -93,7 +93,7 @@ const PEER_LINK_RENEWAL_STEP = Duration.days(1);
@@ -147,7 +147,7 @@ index 4057cbdb4540c3d2672b9ff56145873131bba9fa..3f454241cafb0c89c265cb4cba7cbc25
  
  const SessionClaims = Schema.Struct({
 diff --git a/docs/user/remote-access.md b/docs/user/remote-access.md
-index 76faca62c96123a12e0a810f4f79cdb3e5dbb608..612f814fec5520d39ef2cd64f927abde8855867d 100644
+index 378ec90d28ef5487ae86dec59a515fabedc614d7..aca1d31998e2c1d07873633af4a7a686ade83e8e 100644
 --- a/docs/user/remote-access.md
 +++ b/docs/user/remote-access.md
 @@ -128,7 +128,7 @@ Android app then trusts it.

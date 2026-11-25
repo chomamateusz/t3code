@@ -81,10 +81,10 @@ index edcb93154ca516a6e9d4fe0e2d3f17c2921332dd..54495976d3dea1ada2cefae2ab4fecba
  }
  
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 8b094a23410cf8652af734ff551108d44fae15c8..6d131ffca4b1c3abdd7412bb85c158d6b2ca7e35 100644
+index 6c45787ad9349ab1777d1f054c5102a548169da0..fc12cf05ea37df30817c7a553b3512f0f284e881 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -174,8 +174,9 @@ On web and desktop, when two or more machines are known, the machine row below
+@@ -184,8 +184,9 @@ On web and desktop, when two or more machines are known, the machine row below
  Search lets you filter by machine. A plain pick selects only that machine and
  closes the menu; picking the same singleton again clears the selection.
  **⌘-click** (Ctrl-click outside macOS) adds or removes a machine and keeps the

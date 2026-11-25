@@ -103,7 +103,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  9 files changed, 206 insertions(+), 18 deletions(-)
 
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index fb3c72fb55460f67786f28573b29f9a463a656fd..e8f0bb7625a225174c7a917946e8becca6083891 100644
+index 2d98cbb94e327af86d2d5ac8c56fda15e1ffa420..9519ce9b5a5a491f6300ad5d84dd594dbcb4617f 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
 @@ -1,7 +1,7 @@
@@ -143,7 +143,7 @@ index fb3c72fb55460f67786f28573b29f9a463a656fd..e8f0bb7625a225174c7a917946e8becc
          layerDesktopServerExposure,
          DesktopState.layer,
          layerElectronApp,
-@@ -1446,7 +1449,17 @@ describe("DesktopWindow", () => {
+@@ -1447,7 +1450,17 @@ describe("DesktopWindow", () => {
        const fakeWindow = makeFakeBrowserWindow();
        const createCount = yield* Ref.make(0);
        const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
@@ -162,7 +162,7 @@ index fb3c72fb55460f67786f28573b29f9a463a656fd..e8f0bb7625a225174c7a917946e8becc
  
        yield* Effect.gen(function* () {
          const desktopWindow = yield* DesktopWindow.DesktopWindow;
-@@ -1454,22 +1467,55 @@ describe("DesktopWindow", () => {
+@@ -1455,22 +1468,55 @@ describe("DesktopWindow", () => {
          const swipe = fakeWindow.windowListeners.get("swipe");
          assert.isDefined(swipe);
          if (!swipe) return;
@@ -227,10 +227,10 @@ index fb3c72fb55460f67786f28573b29f9a463a656fd..e8f0bb7625a225174c7a917946e8becc
      }),
    );
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index ebf64c7540507402607e352d45cd2d65e0943844..12e7078ec7985f563e19f1b940cd828d198c1223 100644
+index 2b2401f42d57aa393fbc1ca04ba1140c3afacdea..6bdffc27b67869b9317fa4b445bc90910f82d812 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
-@@ -874,9 +874,27 @@ export const make = Effect.gen(function* () {
+@@ -885,9 +885,27 @@ export const make = Effect.gen(function* () {
      if (environment.platform === "darwin") {
        // Mouse drivers can deliver Back/Forward as macOS swipe gestures instead of buttons.
        window.on("swipe", (_event, direction) => {
@@ -351,7 +351,7 @@ index c97ea5e6412aa03730e1c7eeec996e57b18359d3..9807024a6a1cf078d241bd524a760c55
 +  );
 +});
 diff --git a/apps/web/src/components/AppSidebarLayout.tsx b/apps/web/src/components/AppSidebarLayout.tsx
-index c7515485662ac76f9dbbcb957d59b03d631d5e1f..8f184ccee524cac8f9639624747c8161d19c6b69 100644
+index 5d0383915f8c027b026ddfac2140c5e2207ad195..93ce40cd31ec618972db307da76f749818f14e41 100644
 --- a/apps/web/src/components/AppSidebarLayout.tsx
 +++ b/apps/web/src/components/AppSidebarLayout.tsx
 @@ -33,7 +33,7 @@ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
@@ -371,7 +371,7 @@ index c7515485662ac76f9dbbcb957d59b03d631d5e1f..8f184ccee524cac8f9639624747c8161
    const sidebarArea = workspaceAreaProps("sidebar", 0, gt("Threads"));
    const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
      observedKey: null,
-@@ -502,7 +503,7 @@ export function AppSidebarLayout({
+@@ -503,7 +504,7 @@ export function AppSidebarLayout({
          {children}
          <BackgroundThreadAnnouncer />
          <SidebarControl showSidebar={showSidebar} />

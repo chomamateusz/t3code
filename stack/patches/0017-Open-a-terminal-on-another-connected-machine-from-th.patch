@@ -233,7 +233,7 @@ index 19c2fdd749f5ebd65ea547370af696caec8724c3..023b639e6d368bd4eb244735a8536e0f
      Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) => fs.exists(filePath));
  
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index 489dbc4368cfcff0f8cb72f6184d7a148902e82d..ed82e5405f51466a33a426365f6f7d979080acfe 100644
+index 08c173e1410ccb36fe3c2a090b62ba987970a7db..bfa78858603c0fb54f41d2640a0e972ae9669d6c 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
 @@ -21,6 +21,7 @@ import {
@@ -482,7 +482,7 @@ index 7632d01b5f9075a724391762d7fa5ae8bae3358f..9fd26fee8ca45a6e10c402819b203ae4
  }));
  vi.mock("../state/use-atom-command", () => ({
 diff --git a/apps/web/src/components/ThreadTerminalDrawer.tsx b/apps/web/src/components/ThreadTerminalDrawer.tsx
-index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbdf2022714 100644
+index b3871f5b2897002132b33e95444f8b49ee6cd417..fb8c7a356d8852c7b6ffbc8a56acbdcead368e79 100644
 --- a/apps/web/src/components/ThreadTerminalDrawer.tsx
 +++ b/apps/web/src/components/ThreadTerminalDrawer.tsx
 @@ -30,6 +30,7 @@ import {
@@ -493,7 +493,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
    type ProviderInstanceId,
    type ResolvedKeybindingsConfig,
    type ScopedThreadRef,
-@@ -90,7 +91,7 @@ import { serverEnvironment } from "../state/server";
+@@ -91,7 +92,7 @@ import { serverEnvironment } from "../state/server";
  import { previewEnvironment } from "../state/preview";
  import { readEnvironmentScope } from "../state/session";
  import { terminalEnvironment } from "../state/terminal";
@@ -502,7 +502,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
  import { openTerminalLinkInPreview } from "./preview/openTerminalLinkInPreview";
  import { terminalInputWriter } from "./terminal/terminalInputWriter";
  import { useAtomCommand } from "../state/use-atom-command";
-@@ -471,6 +472,8 @@ export function shouldHandleTerminalExit(
+@@ -481,6 +482,8 @@ export function shouldHandleTerminalExit(
  interface TerminalViewportProps {
    advancedTypography: boolean;
    threadRef: ScopedThreadRef;
@@ -511,7 +511,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
    threadId: ThreadId;
    terminalId: string;
    terminalLabel: string;
-@@ -494,7 +497,7 @@ interface TerminalLaunchLocation {
+@@ -504,7 +507,7 @@ interface TerminalLaunchLocation {
  
  export function TerminalViewport(props: TerminalViewportProps) {
    const sessionKey = JSON.stringify([
@@ -520,7 +520,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
      props.threadId,
      props.terminalId,
      props.cwd,
-@@ -507,6 +510,7 @@ export function TerminalViewport(props: TerminalViewportProps) {
+@@ -517,6 +520,7 @@ export function TerminalViewport(props: TerminalViewportProps) {
  function TerminalSessionViewport({
    advancedTypography,
    threadRef,
@@ -528,7 +528,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
    threadId,
    terminalId,
    terminalLabel,
-@@ -524,7 +528,7 @@ function TerminalSessionViewport({
+@@ -534,7 +538,7 @@ function TerminalSessionViewport({
    const autoFocusedRef = useRef(false);
    const terminalRef = useRef<GhosttyTerminalSurface | null>(null);
    const visibleRef = useRef(visible);
@@ -537,7 +537,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
    const canOperateTerminal = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
    const hasTerminalWriteAccess = useEffectEvent(() =>
      readEnvironmentScope(environmentId, AuthTerminalOperateScope),
-@@ -624,6 +628,7 @@ function TerminalSessionViewport({
+@@ -634,6 +638,7 @@ function TerminalSessionViewport({
      ...(worktreePath !== undefined ? { worktreePath } : {}),
      ...(runtimeEnv ? { env: runtimeEnv } : {}),
      ...(providerInstanceId ? { providerInstanceId } : {}),
@@ -545,7 +545,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
    });
    // Attaching starts with the viewport, while the WASM surface is still loading;
    // the surface reads the session itself, so output chunks never re-render here.
-@@ -676,7 +681,14 @@ function TerminalSessionViewport({
+@@ -686,7 +691,14 @@ function TerminalSessionViewport({
    );
    const openLinkInPreview = useEffectEvent(
      (url: string, forceBrowser: boolean, fallbackToBrowser: () => void) =>
@@ -561,7 +561,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
    );
  
    // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- sets the terminal input's readOnly from the operate grant and consumes a pending focus request
-@@ -1253,8 +1265,19 @@ interface ThreadTerminalDrawerProps {
+@@ -1267,8 +1279,19 @@ interface ThreadTerminalDrawerProps {
    keybindings: ResolvedKeybindingsConfig;
    terminalLabelsById?: ReadonlyMap<string, string>;
    terminalLaunchLocationsById?: ReadonlyMap<string, TerminalLaunchLocation>;
@@ -581,7 +581,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
  interface TerminalActionButtonProps {
    label: string;
    className: string;
-@@ -1310,6 +1333,7 @@ function TerminalSplitPanes({
+@@ -1324,6 +1347,7 @@ function TerminalSplitPanes({
    advancedTypography,
    threadRef,
    threadId,
@@ -589,7 +589,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
    onAddTerminalContext,
    visible,
    keybindings,
-@@ -1324,6 +1348,7 @@ function TerminalSplitPanes({
+@@ -1338,6 +1362,7 @@ function TerminalSplitPanes({
    advancedTypography: boolean;
    threadRef: ScopedThreadRef;
    threadId: ThreadId;
@@ -597,7 +597,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
    onAddTerminalContext: (selection: TerminalContextSelection) => void;
    visible: boolean;
    keybindings: ResolvedKeybindingsConfig;
-@@ -1344,6 +1369,7 @@ function TerminalSplitPanes({
+@@ -1358,6 +1383,7 @@ function TerminalSplitPanes({
      >
        {terminalIds.map((terminalId) => {
          const terminalLaunchLocation = resolveLaunchLocation(terminalId);
@@ -605,7 +605,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
          return (
            <div
              key={terminalId}
-@@ -1362,6 +1388,7 @@ function TerminalSplitPanes({
+@@ -1376,6 +1402,7 @@ function TerminalSplitPanes({
                <TerminalViewport
                  advancedTypography={advancedTypography}
                  threadRef={threadRef}
@@ -613,7 +613,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
                  threadId={threadId}
                  terminalId={terminalId}
                  terminalLabel={terminalLabelById.get(terminalId) ?? gt("Terminal")}
-@@ -1391,7 +1418,8 @@ function TerminalSidebarGroup({
+@@ -1405,7 +1432,8 @@ function TerminalSidebarGroup({
    showHeader,
    terminalLabelById,
    closeShortcutLabel,
@@ -623,7 +623,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
    onActiveTerminalChange,
    onCloseTerminal,
  }: {
-@@ -1400,7 +1428,8 @@ function TerminalSidebarGroup({
+@@ -1414,7 +1442,8 @@ function TerminalSidebarGroup({
    showHeader: boolean;
    terminalLabelById: ReadonlyMap<string, string>;
    closeShortcutLabel: string | undefined;
@@ -633,7 +633,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
    onActiveTerminalChange: (terminalId: string) => void;
    onCloseTerminal: (terminalId: string) => void;
  }) {
-@@ -1451,6 +1480,7 @@ function TerminalSidebarGroup({
+@@ -1465,6 +1494,7 @@ function TerminalSidebarGroup({
                    shortcut: closeShortcutLabel,
                  })
                : gt("Close {terminal}", { terminal: terminalLabel });
@@ -641,7 +641,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
            return (
              <div
                key={terminalId}
-@@ -1461,7 +1491,7 @@ function TerminalSidebarGroup({
+@@ -1475,7 +1505,7 @@ function TerminalSidebarGroup({
                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
                )}
              >
@@ -650,7 +650,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
                  <PanelTabCloseButton
                    label={closeTerminalLabel}
                    onClick={() => onCloseTerminal(terminalId)}
-@@ -1478,6 +1508,11 @@ function TerminalSidebarGroup({
+@@ -1492,6 +1522,11 @@ function TerminalSidebarGroup({
                  onClick={() => onActiveTerminalChange(terminalId)}
                >
                  <span className="truncate">{terminalLabel}</span>
@@ -662,7 +662,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
                </button>
              </div>
            );
-@@ -1515,10 +1550,23 @@ export default function ThreadTerminalDrawer({
+@@ -1529,10 +1564,23 @@ export default function ThreadTerminalDrawer({
    keybindings,
    terminalLabelsById,
    terminalLaunchLocationsById,
@@ -686,7 +686,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
    const terminalArea = workspaceAreaProps("terminal", 5, gt("Terminal"));
    const isPanel = mode === "panel";
    const [advancedTypography] = useLocalStorage(
-@@ -1689,12 +1737,14 @@ export default function ThreadTerminalDrawer({
+@@ -1703,12 +1751,14 @@ export default function ThreadTerminalDrawer({
    const closeTerminalActionLabel = closeShortcutLabel
      ? gt("Close Terminal ({shortcut})", { shortcut: closeShortcutLabel })
      : gt("Close Terminal");
@@ -703,7 +703,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
      onSplitTerminalVertical();
    };
    const onNewTerminalAction = () => {
-@@ -1702,10 +1752,14 @@ export default function ThreadTerminalDrawer({
+@@ -1716,10 +1766,14 @@ export default function ThreadTerminalDrawer({
      onNewTerminal();
    };
    const confirmCloseTerminal = (terminalId: string) => {
@@ -720,7 +720,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
          onCloseTerminal(terminalId, threadRef);
        }
      });
-@@ -1832,14 +1886,17 @@ export default function ThreadTerminalDrawer({
+@@ -1846,14 +1900,17 @@ export default function ThreadTerminalDrawer({
            <p>
              <T>No terminal sessions for this thread yet.</T>
            </p>
@@ -746,7 +746,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
          </div>
        </aside>
      );
-@@ -1863,7 +1920,7 @@ export default function ThreadTerminalDrawer({
+@@ -1877,7 +1934,7 @@ export default function ThreadTerminalDrawer({
          <div className="pointer-events-none absolute right-2 top-2 z-20">
            <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-md border border-border/80 bg-background shadow-xs">
              <TerminalActionButton
@@ -755,7 +755,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
                className={`p-1 text-foreground/90 transition-colors ${
                  hasReachedSplitLimit
                    ? "cursor-not-allowed opacity-64 hover:bg-transparent"
-@@ -1876,7 +1933,7 @@ export default function ThreadTerminalDrawer({
+@@ -1890,7 +1947,7 @@ export default function ThreadTerminalDrawer({
              </TerminalActionButton>
              <div className="h-4 w-px bg-border/80" />
              <TerminalActionButton
@@ -764,7 +764,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
                className={`p-1 text-foreground/90 transition-colors ${
                  hasReachedSplitLimit
                    ? "cursor-not-allowed opacity-64 hover:bg-transparent"
-@@ -1888,17 +1945,20 @@ export default function ThreadTerminalDrawer({
+@@ -1902,17 +1959,20 @@ export default function ThreadTerminalDrawer({
                <SquareSplitVertical className="size-3.25" />
              </TerminalActionButton>
              <div className="h-4 w-px bg-border/80" />
@@ -794,7 +794,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
                className="p-1 text-foreground/90 transition-colors hover:bg-accent"
                onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
                label={closeTerminalActionLabel}
-@@ -1928,6 +1988,7 @@ export default function ThreadTerminalDrawer({
+@@ -1942,6 +2002,7 @@ export default function ThreadTerminalDrawer({
                advancedTypography={advancedTypography}
                threadRef={threadRef}
                threadId={threadId}
@@ -802,7 +802,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
                onAddTerminalContext={onAddTerminalContext}
                visible={visible}
                keybindings={keybindings}
-@@ -1940,7 +2001,7 @@ export default function ThreadTerminalDrawer({
+@@ -1954,7 +2015,7 @@ export default function ThreadTerminalDrawer({
                  {/* Sits above the taller touch resize handle so its buttons keep their taps. */}
                  <div className="inline-flex h-full items-stretch any-pointer-coarse:relative any-pointer-coarse:z-30">
                    <TerminalActionButton
@@ -811,7 +811,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
                      className={`inline-flex h-full items-center px-1 text-foreground/90 transition-colors ${
                        hasReachedSplitLimit
                          ? "cursor-not-allowed opacity-64 hover:bg-transparent"
-@@ -1952,7 +2013,7 @@ export default function ThreadTerminalDrawer({
+@@ -1966,7 +2027,7 @@ export default function ThreadTerminalDrawer({
                      <SquareSplitHorizontal className="size-3.25" />
                    </TerminalActionButton>
                    <TerminalActionButton
@@ -820,7 +820,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
                      className={`inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors ${
                        hasReachedSplitLimit
                          ? "cursor-not-allowed opacity-64 hover:bg-transparent"
-@@ -1971,8 +2032,9 @@ export default function ThreadTerminalDrawer({
+@@ -1985,8 +2046,9 @@ export default function ThreadTerminalDrawer({
                    >
                      <Plus className="size-3.25" />
                    </TerminalActionButton>
@@ -831,7 +831,7 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
                      className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
                      onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
                      label={closeTerminalActionLabel}
-@@ -1991,7 +2053,8 @@ export default function ThreadTerminalDrawer({
+@@ -2005,7 +2067,8 @@ export default function ThreadTerminalDrawer({
                      showHeader={showGroupHeaders}
                      terminalLabelById={terminalLabelById}
                      closeShortcutLabel={closeShortcutLabel}
@@ -842,10 +842,10 @@ index d6781eabc3ed138dad3f31af74bb93aa12f6bc95..2ea23ba916f917b91a4847a803a3dfbd
                      onCloseTerminal={confirmCloseTerminal}
                    />
 diff --git a/apps/web/src/components/chat/useChatTerminalActions.ts b/apps/web/src/components/chat/useChatTerminalActions.ts
-index 6b48d3f19e4593d15bd8ff903e4f983e219238be..7793d3a9b002817081bf65cc28f2f7a907637a7c 100644
+index 3c83fd02bfd818bd5bb97ed6cdfae70b1d3c7495..8fca9f087f7432c7196b6d8e1fab2dcb424d8b42 100644
 --- a/apps/web/src/components/chat/useChatTerminalActions.ts
 +++ b/apps/web/src/components/chat/useChatTerminalActions.ts
-@@ -133,6 +133,14 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
+@@ -134,6 +134,14 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
      null;
    const hasReachedSplitLimit =
      (activeTerminalGroup?.terminalIds.length ?? 0) >= MAX_TERMINALS_PER_GROUP;
@@ -860,7 +860,7 @@ index 6b48d3f19e4593d15bd8ff903e4f983e219238be..7793d3a9b002817081bf65cc28f2f7a9
    /*__HOOK__*/
    const addTerminalContextToDraft = (selection: TerminalContextSelection) => {
      composerRef.current?.addTerminalContext(selection);
-@@ -177,6 +185,22 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
+@@ -178,6 +186,22 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
    const toggleTerminalVisibilityStable = useStableCallback(toggleTerminalVisibility);
    const splitTerminal = (direction: "horizontal" | "vertical" = "horizontal") => {
      if (!activeThreadRef || hasReachedSplitLimit) return;
@@ -883,7 +883,7 @@ index 6b48d3f19e4593d15bd8ff903e4f983e219238be..7793d3a9b002817081bf65cc28f2f7a9
      const launched = terminalActions.launchTerminal({
        place: (terminalId) =>
          direction === "vertical"
-@@ -199,7 +223,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
+@@ -200,7 +224,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
    };
    const createNewTerminalStable = useStableCallback(createNewTerminal);
    const closeTerminal = (terminalId: string) => {
@@ -892,7 +892,7 @@ index 6b48d3f19e4593d15bd8ff903e4f983e219238be..7793d3a9b002817081bf65cc28f2f7a9
      terminalActions.closeTerminalSession(terminalId, activeThreadRef);
      storeCloseTerminal(activeThreadRef, terminalId);
      focusActiveDrawerTerminal(activeThreadRef);
-@@ -234,7 +258,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
+@@ -235,7 +259,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
              // worktree setup shell; the helper drops the panel-owned ones.
              drawerTerminalIds: [
                ...new Set([...terminalUiState.terminalIds, ...activeServerOrderedTerminalIds]),
@@ -901,7 +901,7 @@ index 6b48d3f19e4593d15bd8ff903e4f983e219238be..7793d3a9b002817081bf65cc28f2f7a9
              activeTerminalId: terminalUiState.activeTerminalId,
              panelTerminalIds,
              runningTerminalIds,
-@@ -393,12 +417,10 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
+@@ -394,12 +418,10 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
    };
    const closePanelTerminalStable = useStableCallback(closePanelTerminal);
    const requestCloseTerminal = (terminalId: string) => {
@@ -916,8 +916,8 @@ index 6b48d3f19e4593d15bd8ff903e4f983e219238be..7793d3a9b002817081bf65cc28f2f7a9
      });
    };
    const requestCloseTerminalStable = useStableCallback(requestCloseTerminal);
-@@ -427,23 +449,30 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
-       toggleTerminalVisibility();
+@@ -436,23 +458,30 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
+       return cycleThreadTerminal(activeThreadRef, terminalFocusOwner, "next");
      },
      "terminal.split": ({ terminalFocusOwner }) => {
 -      if (!hasTerminalWriteAccess()) return false;
@@ -953,7 +953,7 @@ index 6b48d3f19e4593d15bd8ff903e4f983e219238be..7793d3a9b002817081bf65cc28f2f7a9
      },
      "terminal.new": ({ terminalFocusOwner }) => {
 diff --git a/apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx b/apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx
-index 2ed861eba045a4891dda8580aa5b39c5b70ce02f..3af6aaf4d92210580aaa04443ff1bdb2a9578a36 100644
+index 1ede7537915ceff70ba1dd54a78602df4dd5ec2a..8105d75719556a642913117be7e5cf5822c88bda 100644
 --- a/apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx
 +++ b/apps/web/src/components/settings/ProjectSettingsPanel.browser.test.tsx
 @@ -1,4 +1,5 @@
@@ -1034,7 +1034,7 @@ index 2ed861eba045a4891dda8580aa5b39c5b70ce02f..3af6aaf4d92210580aaa04443ff1bdb2
    });
  
 diff --git a/apps/web/src/components/settings/ProjectSettingsPanel.tsx b/apps/web/src/components/settings/ProjectSettingsPanel.tsx
-index 9f5f0cc71595b26f2884aebd9ebcade3cd5cb227..8df25013332dbc180f78518b676bb2287182ce2b 100644
+index 01782d42895e1d1bec69b577e7f0f038627f10c9..0e1aa212051d2ba3132eb9b17853470454e3f1f6 100644
 --- a/apps/web/src/components/settings/ProjectSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/ProjectSettingsPanel.tsx
 @@ -35,6 +35,7 @@ import { useThreadShells, waitForProjectRemoval } from "../../state/entities";
@@ -1045,7 +1045,7 @@ index 9f5f0cc71595b26f2884aebd9ebcade3cd5cb227..8df25013332dbc180f78518b676bb228
  import { Alert, AlertDescription } from "../ui/alert";
  import { Button } from "../ui/button";
  import { Input } from "../ui/input";
-@@ -406,6 +407,9 @@ function ProjectDetail({
+@@ -407,6 +408,9 @@ function ProjectDetail({
        }
        const projectRef = scopeProjectRef(member.environmentId, member.id);
        await waitForProjectRemoval(projectRef);
@@ -2121,10 +2121,10 @@ index 6bb939f7958463abf931cae011666fba9d1fa5cf..5effc733b86be6dc6a4d780c29bc59c1
      },
    ),
 diff --git a/docs/user/terminal.md b/docs/user/terminal.md
-index a92ddc1ab6458799ee55554bf886a23f653292a0..44c93fd26e4dce8b6d15e071bfee4d782a67d9d2 100644
+index 0ef9420be322e3d0a7638e404bb89e0c46f0aa73..34a24dba8475c26b5ba71cf6dab7bdf463c0d1fb 100644
 --- a/docs/user/terminal.md
 +++ b/docs/user/terminal.md
-@@ -49,6 +49,20 @@ Jump to latest in the context menu returns to the current output.
+@@ -54,6 +54,20 @@ shortcuts in Settings > Keybindings.
  On iPhone and iPad, long-press the terminal to paste or to choose Select Text.
  Select Text shows the visible output, where you can copy text or tap a link.
  

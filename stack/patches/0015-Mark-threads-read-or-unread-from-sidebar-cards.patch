@@ -29,6 +29,8 @@ Port to 85aaef42d4: upstream 92199680cc (#41365) hides the menus' Mark unread wh
 
 Port to b8be2287dc: threadActionMenu.logic.ts conflicted only in placement: upstream 78de041d48 (#24917, settle and snooze threads while their machine is offline) adds isThreadTriageAction where this commit adds READ_ACTION_ITEMS; both are kept. Mark read and Mark unread were already exempt from the operate scope, so upstream's canTriage exemption leaves them unchanged. The change itself is unchanged.
 
+Port to 221953fbf3: upstream 95411e3cd7 (#40742, settle, pin, snooze and more for the current thread from cmd+k) moved the menu build out of openMenu into readMenu, which returns the items and a run(action) runner. readAction: readThreadReadAction(threadRef) replaces hasCompletedRun in readMenu's buildThreadActionMenuItems call and the mark-read case sits in run before mark-unread, so the sidebar row menu, the chat header menu and upstream's cmd+k rows for the current thread all take the same three-state decision. CommandPaletteThreadActions.tsx maps the mail-check icon so the palette's Mark read row shows the same icon as the menus; no palette entries are added.
+
 Files:
 apps/web:
 - apps/web/src/components/Sidebar.logic.test.ts
@@ -55,6 +57,7 @@ Tests:
 
 Model/harness: Claude Opus 5.5 / Claude Code
 ---
+ .../CommandPaletteThreadActions.tsx           |  2 +
  apps/web/src/components/Sidebar.logic.test.ts | 74 +++++++++++++++++++
  apps/web/src/components/Sidebar.logic.ts      | 18 ++++-
  apps/web/src/components/Sidebar.tsx           | 15 +++-
@@ -67,8 +70,28 @@ Model/harness: Claude Opus 5.5 / Claude Code
  apps/web/src/hooks/useThreadActionMenu.ts     | 12 ++-
  apps/web/src/hooks/useThreadActions.ts        | 45 ++++++++++-
  docs/user/thread-sidebar.md                   |  3 +
- 12 files changed, 253 insertions(+), 24 deletions(-)
+ 13 files changed, 255 insertions(+), 24 deletions(-)
 
+diff --git a/apps/web/src/components/CommandPaletteThreadActions.tsx b/apps/web/src/components/CommandPaletteThreadActions.tsx
+index 80e0213026846f9adbe60c88fef1686259c91183..938bfe4d950636407b78a2410df1baba2cb4886a 100644
+--- a/apps/web/src/components/CommandPaletteThreadActions.tsx
++++ b/apps/web/src/components/CommandPaletteThreadActions.tsx
+@@ -9,6 +9,7 @@ import {
+   GitBranchIcon,
+   HashIcon,
+   type LucideIcon,
++  MailCheckIcon,
+   MailOpenIcon,
+   MessageSquareIcon,
+   MessageSquarePlusIcon,
+@@ -37,6 +38,7 @@ const ICONS: Record<string, LucideIcon> = {
+   "folder-plus": FolderPlusIcon,
+   "git-branch": GitBranchIcon,
+   hash: HashIcon,
++  "mail-check": MailCheckIcon,
+   "mail-open": MailOpenIcon,
+   "message-square": MessageSquareIcon,
+   "message-square-plus": MessageSquarePlusIcon,
 diff --git a/apps/web/src/components/Sidebar.logic.test.ts b/apps/web/src/components/Sidebar.logic.test.ts
 index 35cef3f781070f007e28bb1783ad77d8150dbccc..34071e1328294e179170051e739e3866fa137349 100644
 --- a/apps/web/src/components/Sidebar.logic.test.ts
@@ -566,7 +589,7 @@ index f058c47a1499e91ca8ed67ec283f376248aeb478..3f598e6cfffa3557b8dd44116c8d4549
      Object.fromEntries(
        [
 diff --git a/apps/web/src/hooks/useThreadActionMenu.ts b/apps/web/src/hooks/useThreadActionMenu.ts
-index eae164d2cbebfba3b0d01d1ab4a4b620446c9c2b..d1cfb4e2aefee211b2afe951ea2704b3807ebde6 100644
+index 9c3bda0413ea2a9eafbe7d089588986989fecced..dcedf2099ea35f1a4da0d16695d89a611c77825b 100644
 --- a/apps/web/src/hooks/useThreadActionMenu.ts
 +++ b/apps/web/src/hooks/useThreadActionMenu.ts
 @@ -52,7 +52,11 @@ import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
@@ -582,7 +605,7 @@ index eae164d2cbebfba3b0d01d1ab4a4b620446c9c2b..d1cfb4e2aefee211b2afe951ea2704b3
  
  function failureToast(title: string, error: unknown) {
    toastManager.add(
-@@ -92,6 +96,7 @@ export function useThreadActionMenu(input: {
+@@ -93,6 +97,7 @@ export function useThreadActionMenu(input: {
      archiveThread,
      deleteThread,
      markThreadUnread,
@@ -590,17 +613,17 @@ index eae164d2cbebfba3b0d01d1ab4a4b620446c9c2b..d1cfb4e2aefee211b2afe951ea2704b3
      turnThreadIntoProject,
    } = useThreadActions();
    const regenerateThreadTitle = useOrchestrationCommand(threadEnvironment.regenerateTitle, {
-@@ -152,8 +157,8 @@ export function useThreadActionMenu(input: {
-         isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
-         canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
-         isRegeneratingTitle,
-+        readAction: readThreadReadAction(threadRef),
-         isRunning: !threadRuntimeCanArchive(thread.runtime),
--        hasCompletedRun: thread.latestRun?.completedAt != null,
-         supports,
-         snoozePresets,
-         canShareWithGuest,
-@@ -273,6 +278,9 @@ export function useThreadActionMenu(input: {
+@@ -146,8 +151,8 @@ export function useThreadActionMenu(input: {
+       isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
+       canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
+       isRegeneratingTitle,
++      readAction: readThreadReadAction(threadRef),
+       isRunning: !threadRuntimeCanArchive(thread.runtime),
+-      hasCompletedRun: thread.latestRun?.completedAt != null,
+       supports,
+       snoozePresets,
+       canShareWithGuest,
+@@ -267,6 +272,9 @@ export function useThreadActionMenu(input: {
            if (toast) toastManager.add(toast);
            return;
          }
@@ -688,10 +711,10 @@ index d6868fbc02eb8df903619cc5529b32ee6a1a93df..e0b1cce853759551131b8904e010ab11
      turnThreadIntoProject: (target: ScopedThreadRef) =>
        createProjectFromThread({
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 682aa08dc87d9e84def63cb4d6dfb45315fbbdb8..7bcde1c0b0b116f0985bcac9e708f9de83561e97 100644
+index ce35f5123d06ce03b56c2b04610b8c4d9013ec01..8757b812efe3307458521654433a737de1fde82c 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -85,6 +85,9 @@ viewing. Discarding an unsent draft from the sidebar works the same way: Undo br
+@@ -95,6 +95,9 @@ viewing. Discarding an unsent draft from the sidebar works the same way: Undo br
  back its text and attachments. `mod+z` triggers the most recent Undo, even from the composer; see
  [Keybindings](./keybindings.md#commands-with-special-behavior).
  

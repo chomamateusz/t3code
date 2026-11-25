@@ -1015,7 +1015,7 @@ index cc6068b72f164eca21f8bb29ba3587da1ca7d3ba..466638aaa010d61c54300d39f6387258
    // Snapshot now: the encoding runs later, while the file is written.
    return (cache, extra) => encode([...cache], extra);
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index 441aa9615361a252c9d56cbf99928648afd70df9..bf5a3285a2913ed665d9a83583b69bbbb6aab1fd 100644
+index 32c6a87fd0a37ac205df79ab3e86d092a2540cc1..f955f3728dcf35f2cd6f2d7160a6837b2c1ccdf3 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 @@ -29,7 +29,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
@@ -1041,10 +1041,10 @@ index 441aa9615361a252c9d56cbf99928648afd70df9..bf5a3285a2913ed665d9a83583b69bbb
  > = {
    "usage.cost": msg("Usage: Cost"),
 diff --git a/apps/web/src/components/usage/UsagePage.tsx b/apps/web/src/components/usage/UsagePage.tsx
-index 326b592e823dbc1317b0b779839f2398560a47e7..20d9db877f77c428b105f86f49eef1878b1e78f3 100644
+index 0aa227a146fe5f48f69733e5b9736e4f2df2ae27..6e387ce98d6affaca415f95f0fabcfbedcce54e1 100644
 --- a/apps/web/src/components/usage/UsagePage.tsx
 +++ b/apps/web/src/components/usage/UsagePage.tsx
-@@ -42,7 +42,6 @@ import { shortcutLabelForCommand } from "../../keybindings";
+@@ -43,7 +43,6 @@ import { shortcutLabelForCommand } from "../../keybindings";
  import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
  import { useAtomCommand } from "../../state/use-atom-command";
  import {
@@ -1052,7 +1052,7 @@ index 326b592e823dbc1317b0b779839f2398560a47e7..20d9db877f77c428b105f86f49eef187
    enumerateHourStarts,
    formatCount,
    formatDateTimeShort,
-@@ -51,7 +50,6 @@ import {
+@@ -52,7 +51,6 @@ import {
    formatPercent,
    formatTokens,
    formatUsd,
@@ -1060,7 +1060,7 @@ index 326b592e823dbc1317b0b779839f2398560a47e7..20d9db877f77c428b105f86f49eef187
  } from "@t3tools/shared/usageFormat";
  import { formatUsageContractMismatch, usageSourceMessages } from "@t3tools/shared/usageFormatCopy";
  import { Button, InlineButton } from "../ui/button";
-@@ -107,12 +105,20 @@ import {
+@@ -108,12 +106,20 @@ import {
    type UsagePagePreferences,
  } from "./usagePagePreferences";
  
@@ -1083,7 +1083,7 @@ index 326b592e823dbc1317b0b779839f2398560a47e7..20d9db877f77c428b105f86f49eef187
  }
  
  const providerLabel = (provider: UsageProviderKind) => PROVIDER_PRESENTATION[provider].label;
-@@ -184,6 +190,7 @@ export function UsagePage() {
+@@ -185,6 +191,7 @@ export function UsagePage() {
    const shortcutTitle = (
      option: (typeof METRIC_OPTIONS)[number] | (typeof WINDOW_OPTIONS)[number],
    ) => {
@@ -1091,7 +1091,7 @@ index 326b592e823dbc1317b0b779839f2398560a47e7..20d9db877f77c428b105f86f49eef187
      const shortcut = shortcutLabelForCommand(keybindings, option.command, {
        context: { usagePageOpen: true },
      });
-@@ -193,11 +200,7 @@ export function UsagePage() {
+@@ -194,11 +201,7 @@ export function UsagePage() {
    };
    const [windowSelection, setWindowSelection] = useState(() => ({
      days: preferences.windowDays,
@@ -1104,7 +1104,7 @@ index 326b592e823dbc1317b0b779839f2398560a47e7..20d9db877f77c428b105f86f49eef187
    }));
    const metric = preferences.metric;
    const showingLimits = metric === "limits";
-@@ -209,7 +212,6 @@ export function UsagePage() {
+@@ -211,7 +214,6 @@ export function UsagePage() {
      useState<ReadonlySet<EnvironmentId> | null>(null);
    const hiddenProviders = new Set(preferences.hiddenProviders);
    const { days: windowDays, window } = windowSelection;
@@ -1112,7 +1112,7 @@ index 326b592e823dbc1317b0b779839f2398560a47e7..20d9db877f77c428b105f86f49eef187
    const {
      merged: answeredUsage,
      environments,
-@@ -240,12 +242,11 @@ export function UsagePage() {
+@@ -242,12 +244,11 @@ export function UsagePage() {
      setPreferences(nextPreferences);
      saveUsagePagePreferences(nextPreferences);
    };
@@ -1127,7 +1127,7 @@ index 326b592e823dbc1317b0b779839f2398560a47e7..20d9db877f77c428b105f86f49eef187
      });
    };
    const selectMetric = (nextMetric: UsageMetric) => {
-@@ -310,7 +311,7 @@ export function UsagePage() {
+@@ -318,7 +319,7 @@ export function UsagePage() {
        });
        return;
      }
@@ -1136,7 +1136,7 @@ index 326b592e823dbc1317b0b779839f2398560a47e7..20d9db877f77c428b105f86f49eef187
      if (
        nextWindow.sinceDay !== window.sinceDay ||
        nextWindow.untilDay !== window.untilDay ||
-@@ -344,7 +345,7 @@ export function UsagePage() {
+@@ -352,7 +353,7 @@ export function UsagePage() {
      if (showingLimits && connectedLimitsEnvironments) autoRefreshLimits();
    }, [showingLimits, connectedLimitsEnvironments]);
  
@@ -1145,7 +1145,7 @@ index 326b592e823dbc1317b0b779839f2398560a47e7..20d9db877f77c428b105f86f49eef187
    const hours =
      shownWindow.sinceTime === undefined || shownWindow.untilTime === undefined
        ? []
-@@ -358,15 +359,17 @@ export function UsagePage() {
+@@ -366,15 +367,17 @@ export function UsagePage() {
      );
  
    const windowLabel =
@@ -1172,7 +1172,7 @@ index 326b592e823dbc1317b0b779839f2398560a47e7..20d9db877f77c428b105f86f49eef187
    const windowOptionLabel = WINDOW_OPTIONS.find((option) => option.days === windowDays)?.label;
    const metricOptionLabel = METRIC_OPTIONS.find((option) => option.value === metric)?.label;
    const topbarContent = (
-@@ -414,8 +417,8 @@ export function UsagePage() {
+@@ -422,8 +425,8 @@ export function UsagePage() {
              variant="segmented"
              value={[String(windowDays)]}
              onValueChange={(next) => {
@@ -1183,7 +1183,7 @@ index 326b592e823dbc1317b0b779839f2398560a47e7..20d9db877f77c428b105f86f49eef187
              }}
            >
              {WINDOW_OPTIONS.map((option) => (
-@@ -453,7 +456,13 @@ export function UsagePage() {
+@@ -461,7 +464,13 @@ export function UsagePage() {
        </div>
        <div className="ms-auto flex shrink-0 items-center justify-end gap-1 @4xl/usage-header:hidden">
          {showingLimits ? null : (
@@ -1337,7 +1337,7 @@ index 64a81e20a53e4c097382dcb3e75b948cf038f61c..0348b19cf5a64eedb542b361ea15c571
  export function resolveUsageShortcut(
    event: ShortcutEventLike & { target: EventTarget | null },
 diff --git a/docs/user/usage.md b/docs/user/usage.md
-index 5355fbe76bc46b5490d95b292ec026f7ef220f69..622b5938222d64883966dabd2190153317f647b7 100644
+index d7a921454f54ef611ee1db81027b37b8a4aecb1f..834fd69edaf8ecde8b17031cab020db8dca837b9 100644
 --- a/docs/user/usage.md
 +++ b/docs/user/usage.md
 @@ -20,12 +20,12 @@ record are missing from the totals.

@@ -246,7 +246,7 @@ index 7ea6f95a7a5159dc636b48f8aa020f543ec653a8..646cee832d6d4372a0132985fe4811f7
  );
  
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 08c9c4190a30f5c94de477343f2c778d7f631f26..5a1c72c1ffd6684860fa8a95963383d9dd91755b 100644
+index 6d8245c81a41aab53f79a32a04969306b2b644ce..cc28b71c7715468732f3ba7a06dae7e2bb0ba5d8 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -32,6 +32,7 @@ import {
@@ -486,7 +486,7 @@ index 08c9c4190a30f5c94de477343f2c778d7f631f26..5a1c72c1ffd6684860fa8a95963383d9
    const subagentCount = (threadId: ThreadId) =>
      projectionStore
        .getSubagentCount(threadId)
-@@ -16410,6 +16512,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16415,6 +16517,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "run.output.submit":
          yield* dispatchRunOutputSubmit(command, events);
          break;
@@ -496,7 +496,7 @@ index 08c9c4190a30f5c94de477343f2c778d7f631f26..5a1c72c1ffd6684860fa8a95963383d9
        case "checkpoint.rollback":
          yield* dispatchCheckpointRollback(command, events, effects);
          break;
-@@ -16650,7 +16755,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16655,7 +16760,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                ),
              );
            if (
@@ -913,7 +913,7 @@ index 61fb57ada454ed0b1a9a309eb066ff03db841f86..33aa46863d0b7f36613f6f8b959933e7
    "thread.guest-message.dismiss": () => ({ feature: "guest_message.dismiss" }),
  };
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 18d8f4b4ab612c97f0eb699660c43a3b3cce79ae..262e275df913f3a40cefa43665fe3ad4346cd048 100644
+index a348af429d03858f3ad294db0dd6a6546561ee93..28fd2ac2368e501aa72c5ae1fcefd0ef26a82d08 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -1966,6 +1966,7 @@ export const layerWsRpc = (
@@ -925,10 +925,10 @@ index 18d8f4b4ab612c97f0eb699660c43a3b3cce79ae..262e275df913f3a40cefa43665fe3ad4
            secretReferences: true,
            secretRequestReferences: true,
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 357439cbdf0d640cc131315eabce5ad2731a44ea..7c546c3364cd7b6a95b92fda7297120ec91b1b89 100644
+index b720e53e828d0628f8643484370107b9013950b6..7cf406c8766af19aa4166d66657e499e69e96697 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -2969,6 +2969,8 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2970,6 +2970,8 @@ export default function ChatView(props: ChatViewProps) {
          routeKind !== "draft" &&
          composerRef.current?.isCaretAtStart() === true &&
          queuedRunsControlRef.current?.editLatest(event.repeat) === true,
@@ -937,7 +937,7 @@ index 357439cbdf0d640cc131315eabce5ad2731a44ea..7c546c3364cd7b6a95b92fda7297120e
        "thread.stop": ({ event }) => {
          if (!canInterruptRunningThread) return false;
          if (!event.repeat) void onInterruptStable();
-@@ -3267,6 +3269,11 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3268,6 +3270,11 @@ export default function ChatView(props: ChatViewProps) {
            editShortcutLabel={shortcutLabelForCommand(keybindings, "thread.editQueuedMessage", {
              context: { composerFocus: true },
            })}
@@ -1481,7 +1481,7 @@ index ca4118e0ff28b134895bf2dd019dd201012eef97..a9e796dad4a19d8ac1a52e29358f6ea6
                providerThreads: [],
                providerSessions: [
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index bf5a3285a2913ed665d9a83583b69bbbb6aab1fd..552220dab53f71072e84a4b0556f64e1037100a5 100644
+index f955f3728dcf35f2cd6f2d7160a6837b2c1ccdf3..3b3b0d0441e91b7071d296dc82f37c30005c1ad5 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 @@ -461,6 +461,7 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
@@ -2021,7 +2021,7 @@ index 9e3d1eb4512b29946c7dcb162ecaec115593480f..97090a7f7558094e847a9737a3da3b0e
    readonly projectedItem: OrchestrationV2ProjectedTurnItem;
    readonly capabilities?: OrchestrationV2ProviderCapabilities | undefined;
 diff --git a/packages/contracts/src/keybindings.ts b/packages/contracts/src/keybindings.ts
-index eda5138b760b9b3d028d89d9b4b7a0c0b7c8075b..56f521670e72594a00b8737a97486206f0e6670c 100644
+index 855afb74013a532ff6f824c7480ae7775ab68c98..402c8f35d4a0cc0577a47ca11f69c5d3a30dff74 100644
 --- a/packages/contracts/src/keybindings.ts
 +++ b/packages/contracts/src/keybindings.ts
 @@ -38,6 +38,7 @@ const THREAD_KEYBINDING_COMMANDS = [
@@ -2033,10 +2033,10 @@ index eda5138b760b9b3d028d89d9b4b7a0c0b7c8075b..56f521670e72594a00b8737a97486206
    "thread.next",
    "thread.copyReference",
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index f692f6b6a5d696ccaa3cec0fcd9388a7a7e449c0..16583fcdc144a52e3cf4334fec7b3e321edc4ca4 100644
+index 563479d00b8591c05ffbfd8ae71bc0aeb61ad843..be94cedefebf1fa2d3aadff81115f4fb68b15a3b 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
-@@ -3731,6 +3731,13 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3739,6 +3739,13 @@ export const OrchestrationV2Command = Schema.Union([
      // Replaces all attachments; absent preserves them for older clients editing text.
      attachments: Schema.optional(Schema.Array(ChatAttachment)),
    }),
@@ -2051,7 +2051,7 @@ index f692f6b6a5d696ccaa3cec0fcd9388a7a7e449c0..16583fcdc144a52e3cf4334fec7b3e32
      type: Schema.Literal("runtime-request.respond"),
      commandId: CommandId,
 diff --git a/packages/contracts/src/server.ts b/packages/contracts/src/server.ts
-index 10f8fbcb73277547bd87328695cfc8ecd89886b2..a30dd71a42c5764d4804124dc62b89f74029d21e 100644
+index 68ef9c37f0386fd8a4358365e432ce72ab85c0ed..042fb48a376395f2988f2d475a9b38bef5cb77c1 100644
 --- a/packages/contracts/src/server.ts
 +++ b/packages/contracts/src/server.ts
 @@ -747,6 +747,7 @@ export const ServerConfig = Schema.Struct({

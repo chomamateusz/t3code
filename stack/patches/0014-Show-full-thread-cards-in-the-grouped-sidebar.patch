@@ -1246,10 +1246,10 @@ index 6ce3f831c9ea9f94efe50e72081c3adac8b07acc..3d0b664bb36e69cd4e6375f8534d08a4
    --command-content-inset: 1rem;
    --floating-content-inset: 0.75rem;
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index af8a13276f560cdf54e6e98a121db913472e6112..682aa08dc87d9e84def63cb4d6dfb45315fbbdb8 100644
+index bc98df6a9549e1975c9960856ab688b0b9eb9b21..ce35f5123d06ce03b56c2b04610b8c4d9013ec01 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -221,11 +221,15 @@ selections so the thread can appear, while keeping selections for unavailable pr
+@@ -231,11 +231,15 @@ selections so the thread can appear, while keeping selections for unavailable pr
  ### Group threads by project (beta)
  
  Turn on **Settings → Labs → Boring sidebar (group by project)** on web and desktop to put active
