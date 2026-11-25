@@ -45,11 +45,48 @@ Behaviours:
 - Question threads, subagents, side chats and a workflow run's agent steps
   never answer at any level, are left out of t3_ask_list (workflow steps
   already in its query) and no longer offer the entry. A task delegated from
-  a linked machine keeps its menu entry and follows the levels. A fork
-  starts not set.
+  a linked machine keeps its menu entry and follows the levels.
+- Off on a thread means, on this machine: the thread is not listed and
+  cannot be asked; its own rows are never read to build an answer, also not
+  through a fork; and a thread made from it afterwards starts off. It does
+  not reach back: a thread that already exists keeps its own choice, title
+  and own rows. One rule (isLinkedQuestionsOff) decides whether a thread is
+  off now: its own choice, or, for a side chat or subagent, which has no
+  menu, the choice of the nearest thread above it that has one. Side chats
+  and subagents get no choice of their own on this build; an off stored on
+  one by an older build or client still counts for its forks.
+- With that rule: a fork of an off thread starts off; every other fork starts
+  not set, never on. A thread an agent starts through create_threads or
+  t3_thread_launch on this machine starts off when the calling thread is
+  off, with or without a first message: the server puts the calling thread on
+  thread.create as startedFromThreadId, which a client's thread.create
+  cannot carry and which can only ever make a thread off. A linked
+  question's context stops its walk up the fork ancestors at one that is
+  off, as it stops at a /clear, also when it was switched off after the
+  fork; what a fork shows its owner, ordinary handoffs and fork history are
+  unchanged.
+- A task delegated to a linked machine from an off thread starts off there:
+  the launch carries t3_thread_launch's new optional linkedQuestionsOff
+  (true only, so it only narrows), sent only to a machine that advertises
+  linkedQuestionLevels; the other machine passes it to thread.create. A
+  machine without that capability would refuse the unknown argument, and
+  has no machine or project level, so it gets nothing new. When the other
+  machine's capabilities cannot be read, the argument is sent, so an older
+  machine refuses that launch and the agent retries.
 - Stored data: a thread stored as on stays on; every other thread and every
-  project starts not set. A thread switched off by hand before this change
-  follows its project and the machine afterwards.
+  project starts not set. A thread switched off by hand on the previous
+  build stays off: once, at store start, a thread with no stored choice, no
+  linkedQuestionsDisabledAt key and an accepted thread.linked-questions.set
+  receipt gets linkedQuestionsDisabledAt set to the time of its newest such
+  receipt by result_sequence. The previous build's events say it too but
+  are pruned after a day; receipts are kept, and on that build any accepted
+  command that left linkedQuestionsEnabledAt null was an off. One UPDATE,
+  outside the numbered migrations, skipping rows whose payload is not valid
+  JSON, in one transaction with a marker row
+  (linked-questions-off-repaired in orchestration_v2_projection_metadata);
+  a start that finds the marker only reads it. If the repair fails, it logs
+  a warning, leaves no marker and the store starts; the next start tries
+  again.
 - The header chip "Answers linked questions" and the mobile thread row
   (the menu's subtitle) show the effective state.
 - t3_ask_list returns the newest activity first, at most 50 threads, each
@@ -68,21 +105,31 @@ Behaviours:
   machine setting's row are absent.
   A t3_ask_list reply from a machine on the previous build decodes with an
   empty project, total = the threads returned and truncated = false.
-- Limits, the answering turn, what an answer sees, question threads, the
-  inbound cap and link levels are unchanged. User docs explain the three
-  levels and name the managed-policy key; two internal sentences that said
-  "opt-in" now say "answers".
+- Limits, the answering turn, question threads, the inbound cap and link
+  levels are unchanged; what an answer sees changes only by leaving out an
+  off ancestor's rows. User docs explain the three
+  levels, name the managed-policy key and state what off covers: not listed,
+  not asked, its messages never read for an answer, threads made from it
+  start off, and a fork made earlier is switched off separately; two
+  internal sentences that said "opt-in" now say "answers".
 
 Base: upstream 54ba2408f4 with the series through 12b09ce160 (on it a
 question's context stops at the asked thread's latest /clear and ask links
 are refused writesOwnerWork); unchanged by this commit.
 
-Not covered: the evals cases were built with --dry-run but not run against a
-model (no API key here). A project group spanning machines shows the first
-checkout's choice in its menu. The mobile project overview (Organize
-section) has no row for the project level.
+Not covered:
+- The evals cases were built with --dry-run but not run against a model (no API key here), also not for t3_thread_launch's new linkedQuestionsOff argument.
+- A project group spanning machines shows the first checkout's choice in its menu.
+- The mobile project overview (Organize section) has no row for the project level.
+- Titles and own messages of threads that existed before the switch stay; replies that repeat an off thread are their own words.
+- A fork made in an off fork at a row inherited from a thread that is not off starts not set.
+- Text an agent of an off thread sends into existing threads, scheduled tasks and workflow steps is left out of an answer only as that message.
+- A thread an off thread's agent starts directly on another machine (t3_thread_launch with environmentId) follows that machine's levels; only a delegated task carries off.
+- Threads a scheduled task launches follow the levels, also when an off thread's agent made the task.
+- An off stored on a side chat or subagent by an older build or client cannot be cleared from a menu; each fork of it can be changed.
+- No test for the launch sent while the other machine's capabilities cannot be read, and none that a start with the repair marker takes no write lock.
 
-Port to b8be2287dc: imports only, plus the measured budget. Sidebar.tsx imports upstream 78de041d48's (#24917, settle and snooze threads while their machine is offline) isThreadTriageAction next to this commit's linkedQuestionsEnabledFor; thread-list-v2-items.tsx keeps upstream's useEnvironmentScopeDenied next to this commit's useEnvironmentServerConfig and useProject. agentContextBudget.json: mcpToolListJsonBytes is 63262 as AgentContextBudget.test.ts measures it on the carried tree. No upstream migration up to b8be2287dc rebuilds projection_projects, so the linked_questions column is still added at store start. The change itself is unchanged. commandPermissions.test.ts keeps passing upstream's shell status atom (live) as createThreadEnvironmentAtoms's third argument.
+Port to b8be2287dc: imports only, plus the measured budget. Sidebar.tsx imports upstream 78de041d48's (#24917, settle and snooze threads while their machine is offline) isThreadTriageAction next to this commit's linkedQuestionsEnabledFor; thread-list-v2-items.tsx keeps upstream's useEnvironmentScopeDenied next to this commit's useEnvironmentServerConfig and useProject. agentContextBudget.json: mcpToolListJsonBytes is 63302 as AgentContextBudget.test.ts measures it on the carried tree. No upstream migration up to b8be2287dc rebuilds projection_projects, so the linked_questions column is still added at store start. The change itself is unchanged. commandPermissions.test.ts keeps passing upstream's shell status atom (live) as createThreadEnvironmentAtoms's third argument.
 
 Files:
 - apps/mobile:
@@ -91,15 +138,22 @@ Files:
   src/state/use-thread-selection.ts
 - apps/server:
   src/environment/ServerEnvironment.ts,
+  src/mcp/OrchestratorMcpService.ts,
   src/mcp/toolkits/ask/handlers.ts, src/mcp/toolkits/ask/tools.ts,
+  src/mcp/toolkits/project/handlers.ts, src/mcp/toolkits/project/tools.ts,
+  src/orchestration-v2/ContextHandoffService.ts,
   src/orchestration-v2/Orchestrator.ts,
   src/orchestration-v2/ProjectCommands.ts,
   src/orchestration-v2/ProjectStore.ts,
   src/orchestration-v2/ProjectionStore.ts,
   src/orchestration-v2/ProviderTurnStartService.ts,
   src/orchestration-v2/ThreadForkService.ts,
+  src/orchestration-v2/ThreadLaunchService.ts,
+  src/orchestration-v2/ThreadManagementService.ts,
   src/orchestration-v2/linkedQuestionFailures.ts,
-  src/peer/LinkedQuestions.ts, src/project/ProjectMutation.ts,
+  src/orchestration-v2/linkedQuestionsOff.ts,
+  src/peer/LinkedQuestions.ts, src/peer/RemoteDelegation.ts,
+  src/project/ProjectMutation.ts,
   src/project/ProjectService.ts, src/provider/agentContextBudget.json
 - apps/web:
   src/components/ChatView.tsx, src/components/Sidebar.tsx,
@@ -126,14 +180,20 @@ Tests:
 - apps/server:
   src/auth/RpcAuthorization.test.ts, src/mcp/linkOrigin.test.ts,
   src/mcp/toolkits/project/handlers.test.ts,
+  src/orchestration-v2/ContextHandoffService.test.ts,
   src/orchestration-v2/Orchestrator.control-reads.test.ts,
   src/orchestration-v2/ProjectStore.test.ts,
+  src/orchestration-v2/ProjectionStore.test.ts,
   src/orchestration-v2/ProviderTurnControlService.test.ts,
   src/orchestration-v2/ProviderTurnStartService.test.ts,
   src/orchestration-v2/ProviderTurnStartService.testkit.ts,
+  src/orchestration-v2/SubagentProjection.test.ts,
+  src/orchestration-v2/ThreadFork.execution.test.ts,
   src/orchestration-v2/ThreadForkService.test.ts,
   src/orchestration-v2/ThreadLaunchService.test.ts,
-  src/peer/LinkedQuestions.test.ts, src/policy/ManagedPolicy.test.ts,
+  src/orchestration-v2/ThreadManagementService.test.ts,
+  src/peer/LinkedQuestions.test.ts, src/peer/RemoteDelegation.test.ts,
+  src/policy/ManagedPolicy.test.ts,
   src/project/ProjectMutation.test.ts, src/project/ProjectService.test.ts,
   src/relay/AgentAwarenessRelay.test.ts
 - apps/web:
@@ -154,26 +214,40 @@ Tests:
  apps/mobile/src/state/use-thread-selection.ts |   1 +
  apps/server/src/auth/RpcAuthorization.test.ts |  21 +-
  .../src/environment/ServerEnvironment.ts      |   1 +
- apps/server/src/mcp/linkOrigin.test.ts        | 196 +++++++++++++++++-
+ apps/server/src/mcp/OrchestratorMcpService.ts |   1 +
+ apps/server/src/mcp/linkOrigin.test.ts        | 197 +++++++++++++++++-
  apps/server/src/mcp/toolkits/ask/handlers.ts  |   2 +-
  apps/server/src/mcp/toolkits/ask/tools.ts     |   2 +-
  .../src/mcp/toolkits/project/handlers.test.ts |  10 +
- .../Orchestrator.control-reads.test.ts        |  18 ++
- .../src/orchestration-v2/Orchestrator.ts      |  14 +-
+ .../src/mcp/toolkits/project/handlers.ts      |   2 +
+ apps/server/src/mcp/toolkits/project/tools.ts |   2 +
+ .../ContextHandoffService.test.ts             |  84 ++++++++
+ .../orchestration-v2/ContextHandoffService.ts |  20 +-
+ .../Orchestrator.control-reads.test.ts        |  85 ++++++++
+ .../src/orchestration-v2/Orchestrator.ts      |  24 ++-
  .../src/orchestration-v2/ProjectCommands.ts   |   5 +
  .../src/orchestration-v2/ProjectStore.test.ts |  13 ++
  .../src/orchestration-v2/ProjectStore.ts      |  32 +++
- .../src/orchestration-v2/ProjectionStore.ts   |  61 ++++--
+ .../orchestration-v2/ProjectionStore.test.ts  | 124 +++++++++++
+ .../src/orchestration-v2/ProjectionStore.ts   | 127 +++++++++--
  .../ProviderTurnControlService.test.ts        |   2 +-
  .../ProviderTurnStartService.test.ts          |  71 ++++++-
  .../ProviderTurnStartService.testkit.ts       |   1 +
  .../ProviderTurnStartService.ts               |   9 +-
- .../ThreadForkService.test.ts                 |   3 +
- .../src/orchestration-v2/ThreadForkService.ts |   1 +
+ .../SubagentProjection.test.ts                |  18 ++
+ .../ThreadFork.execution.test.ts              | 114 ++++++++++
+ .../ThreadForkService.test.ts                 |   4 +
+ .../src/orchestration-v2/ThreadForkService.ts |   3 +
  .../ThreadLaunchService.test.ts               |   1 +
+ .../orchestration-v2/ThreadLaunchService.ts   |   6 +
+ .../ThreadManagementService.test.ts           |   4 +
+ .../ThreadManagementService.ts                |   2 +
  .../linkedQuestionFailures.ts                 |  86 +++++---
+ .../orchestration-v2/linkedQuestionsOff.ts    |  29 +++
  apps/server/src/peer/LinkedQuestions.test.ts  |  32 ++-
  apps/server/src/peer/LinkedQuestions.ts       |  63 ++++--
+ apps/server/src/peer/RemoteDelegation.test.ts |  43 +++-
+ apps/server/src/peer/RemoteDelegation.ts      |  23 ++
  apps/server/src/policy/ManagedPolicy.test.ts  |   8 +-
  .../src/project/ProjectMutation.test.ts       |   2 +
  apps/server/src/project/ProjectMutation.ts    |  12 +-
@@ -194,7 +268,7 @@ Tests:
  apps/web/src/hooks/useThreadActionMenu.ts     |   9 +-
  apps/web/src/hooks/useThreadActions.ts        |  41 +++-
  docs/internals/05_remote.md                   |   4 +-
- docs/user/remote-access.md                    |  37 +++-
+ docs/user/remote-access.md                    |  42 +++-
  .../cases/linked-questions.ndjson             |   3 +-
  .../client-runtime/src/operations/commands.ts |  24 ++-
  .../src/state/commandPermissions.test.ts      |  50 +++--
@@ -208,14 +282,15 @@ Tests:
  .../contracts/src/linkedQuestions.test.ts     | 101 +++++++++
  packages/contracts/src/linkedQuestions.ts     | 101 +++++++++
  .../contracts/src/orchestrationProject.ts     |   3 +
- packages/contracts/src/orchestrationV2.ts     |   7 +-
+ packages/contracts/src/orchestrationV2.ts     |  11 +-
  .../contracts/src/orchestratorMcp.test.ts     |  26 +++
  packages/contracts/src/orchestratorMcp.ts     |  33 ++-
  packages/contracts/src/project.ts             |   7 +
  packages/contracts/src/settings.test.ts       |  10 +
  packages/contracts/src/settings.ts            |  12 +-
  .../src/server/subagentProjection.ts          |   1 +
- 67 files changed, 1610 insertions(+), 185 deletions(-)
+ 81 files changed, 2232 insertions(+), 191 deletions(-)
+ create mode 100644 apps/server/src/orchestration-v2/linkedQuestionsOff.ts
  create mode 100644 packages/contracts/src/linkedQuestions.test.ts
  create mode 100644 packages/contracts/src/linkedQuestions.ts
 
@@ -515,8 +590,20 @@ index 64d756e80415d9f258ea1995c88de6a355792140..fd8b00955ce0c9e905883d1986b5e22b
        mcpApprovalCodes: true,
        peerLinkPairingCodes: true,
        mcpHostedApproval: true,
+diff --git a/apps/server/src/mcp/OrchestratorMcpService.ts b/apps/server/src/mcp/OrchestratorMcpService.ts
+index eaa08b10df7a069d9a6ea170256b3a67b7115fd5..61170d743d05b9c2ea04609236eebfeb051a2b8b 100644
+--- a/apps/server/src/mcp/OrchestratorMcpService.ts
++++ b/apps/server/src/mcp/OrchestratorMcpService.ts
+@@ -3399,6 +3399,7 @@ const make = Effect.gen(function* () {
+                   ...(parent.thread.linkOrigin === undefined
+                     ? {}
+                     : { linkOrigin: parent.thread.linkOrigin }),
++                  startedFromThreadId: scope.thread.threadId,
+                   ...(initialMessage === undefined ? {} : { initialMessage }),
+                 })
+                 .pipe(
 diff --git a/apps/server/src/mcp/linkOrigin.test.ts b/apps/server/src/mcp/linkOrigin.test.ts
-index 8f4d4e4aff340d06d584987bc69e62d95ec99334..229f178692d02ab41bc402049aebd1d97f955f9f 100644
+index 8f4d4e4aff340d06d584987bc69e62d95ec99334..e0c4ee938efcab60fc867f1180bbe367c1428676 100644
 --- a/apps/server/src/mcp/linkOrigin.test.ts
 +++ b/apps/server/src/mcp/linkOrigin.test.ts
 @@ -18,6 +18,8 @@ import {
@@ -597,7 +684,15 @@ index 8f4d4e4aff340d06d584987bc69e62d95ec99334..229f178692d02ab41bc402049aebd1d9
    Orchestrator.OrchestratorV2.pipe(
      Effect.flatMap((orchestrator) =>
        orchestrator.dispatch({
-@@ -671,7 +701,12 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
+@@ -558,6 +588,7 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
+             canonicalSourcePoint: { threadId: launched },
+             transferId: ContextTransferId.make("transfer:fork"),
+             targetThreadId: ThreadId.make("thread:fork"),
++            sourceLinkedQuestionsOff: false,
+             createdBy: "agent",
+             creationSource: "mcp",
+             createdAt: thread.createdAt,
+@@ -671,7 +702,12 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
              assert.equal(result.isError, false, JSON.stringify(result.content));
              const listing = result.structuredContent as {
                machine: string;
@@ -611,7 +706,7 @@ index 8f4d4e4aff340d06d584987bc69e62d95ec99334..229f178692d02ab41bc402049aebd1d9
              };
              return {
                machine: listing.machine,
-@@ -690,6 +725,7 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
+@@ -690,6 +726,7 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
            {
              threadId,
              title: "answers-questions https://t3.example/api/hooks/task-daily/[withheld]",
@@ -619,7 +714,7 @@ index 8f4d4e4aff340d06d584987bc69e62d95ec99334..229f178692d02ab41bc402049aebd1d9
              machine: "Box",
            },
          ],
-@@ -779,7 +815,58 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
+@@ -779,7 +816,58 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
      }),
    );
  
@@ -679,7 +774,7 @@ index 8f4d4e4aff340d06d584987bc69e62d95ec99334..229f178692d02ab41bc402049aebd1d9
      Effect.gen(function* () {
        const orchestrator = yield* Orchestrator.OrchestratorV2;
        const asker = askLink("subagent-asker");
-@@ -821,7 +908,47 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
+@@ -821,7 +909,47 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
          childId,
        );
        assert.equal(failureCode(yield* ask(asker, childId)), "thread_not_found");
@@ -728,7 +823,7 @@ index 8f4d4e4aff340d06d584987bc69e62d95ec99334..229f178692d02ab41bc402049aebd1d9
    );
  
    it.effect("treats a question's usage limit as an ordinary failure of its thread", () =>
-@@ -975,3 +1102,60 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
+@@ -975,3 +1103,60 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
      }),
    );
  });
@@ -833,8 +928,209 @@ index 17fa4dd496fad09979908f02e410fa77d35e8dd8..712f0706f1f25e6840cdaf28eaeba323
 +    expect(Object.keys(fields)).not.toContain("enabled");
 +  }
 +});
+diff --git a/apps/server/src/mcp/toolkits/project/handlers.ts b/apps/server/src/mcp/toolkits/project/handlers.ts
+index deec936b62b5417b861b50dcbef10d5947754995..4bb1e0e8145529a4376b1bac056be57c5922999e 100644
+--- a/apps/server/src/mcp/toolkits/project/handlers.ts
++++ b/apps/server/src/mcp/toolkits/project/handlers.ts
+@@ -479,6 +479,8 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
+               }),
+           createdBy: "agent",
+           creationSource: "mcp",
++          ...(caller === undefined ? {} : { startedFromThreadId: caller.id }),
++          ...(input.linkedQuestionsOff === true ? { linkedQuestionsOff: true } : {}),
+           ...(linkOrigin === undefined ? {} : { linkOrigin }),
+           // Kept only alongside linkOrigin: thread.create drops it otherwise.
+           ...(input.delegatedFrom === undefined ? {} : { delegatedFrom: input.delegatedFrom }),
+diff --git a/apps/server/src/mcp/toolkits/project/tools.ts b/apps/server/src/mcp/toolkits/project/tools.ts
+index 4aff1e4385c8d45fee62745dae8e660bd97c40e8..36cab22aa0f5775ab61773a357376b73942e4e36 100644
+--- a/apps/server/src/mcp/toolkits/project/tools.ts
++++ b/apps/server/src/mcp/toolkits/project/tools.ts
+@@ -168,6 +168,8 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
+     delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+     /** Set by a linked environment whose workflow run this thread is a step of; ignored otherwise. */
+     workflowRun: Schema.optional(OrchestrationV2WorkflowOrigin),
++    /** Set by a linked environment delegating from a thread that is off there; it only narrows. */
++    linkedQuestionsOff: Schema.optional(Schema.Literal(true)),
+   }),
+   success: Schema.Struct({
+     threadId: ThreadId,
+diff --git a/apps/server/src/orchestration-v2/ContextHandoffService.test.ts b/apps/server/src/orchestration-v2/ContextHandoffService.test.ts
+index 1539945e02ba9bf9575cfc3b490ff37c48a62e96..9e94189a8706c12cdad7b0b3756883e30083242d 100644
+--- a/apps/server/src/orchestration-v2/ContextHandoffService.test.ts
++++ b/apps/server/src/orchestration-v2/ContextHandoffService.test.ts
+@@ -551,6 +551,7 @@ it.effect("gives a linked question only the asked thread's own words", () =>
+     const reads: Array<ReadonlyArray<string> | undefined> = [];
+     const context = yield* ContextHandoffService.readLinkedQuestionContext(
+       {
++        findThread: () => Effect.succeed(null),
+         getForkSourceRunIds: () => Effect.succeed([]),
+         getThreadRecords: (_threadId, fields, filter) =>
+           Effect.sync(() => {
+@@ -613,6 +614,7 @@ it.effect("a linked question sees the asked thread only from its latest /clear",
+     });
+     const context = yield* ContextHandoffService.readLinkedQuestionContext(
+       {
++        findThread: () => Effect.succeed(null),
+         getForkSourceRunIds: () => Effect.succeed([clearAncestorRunId]),
+         getThreadRecords: (threadId) =>
+           Effect.succeed(
+@@ -644,6 +646,87 @@ it.effect("a linked question sees the asked thread only from its latest /clear",
+   }),
+ );
+ 
++it.effect("a linked question on a fork sees nothing of an ancestor switched off", () =>
++  Effect.gen(function* () {
++    const forkMadeAt = DateTime.makeUnsafe("2026-01-02T00:00:00.000Z");
++    const later = DateTime.makeUnsafe("2026-01-03T00:00:00.000Z");
++    const own = RunId.make("run:source-1");
++    const menuThreadId = ThreadId.make("thread:menu-above-ancestor");
++    const middleSubagentId = ThreadId.make("thread:middle-subagent");
++    const childOf = (
++      parentThreadId: ThreadId,
++      relationship: "side chat" | "subagent",
++    ): Partial<OrchestrationV2AppThread> => ({
++      lineage: {
++        parentThreadId,
++        relationshipToParent: relationship === "subagent" ? "subagent" : "fork",
++        rootThreadId: menuThreadId,
++        ...(relationship === "side chat" ? { sideChat: true } : {}),
++      },
++    });
++    const offAbove = (offAt: DateTime.Utc) => ({
++      [menuThreadId]: { ...clearThread(menuThreadId, null), linkedQuestionsDisabledAt: offAt },
++      [middleSubagentId]: {
++        ...clearThread(middleSubagentId, null),
++        ...childOf(menuThreadId, "subagent"),
++      },
++    });
++    for (const { offAt, askedOnAt, ancestorIs } of [
++      { offAt: clearNow, askedOnAt: later, ancestorIs: { linkedQuestionsDisabledAt: clearNow } },
++      { offAt: later, askedOnAt: null, ancestorIs: { linkedQuestionsDisabledAt: later } },
++      { offAt: later, askedOnAt: null, ancestorIs: childOf(menuThreadId, "side chat") },
++      { offAt: later, askedOnAt: null, ancestorIs: childOf(menuThreadId, "subagent") },
++      { offAt: later, askedOnAt: later, ancestorIs: childOf(middleSubagentId, "subagent") },
++    ]) {
++      const asked = {
++        ...clearThread(clearSourceId, {
++          type: "run",
++          threadId: clearAncestorId,
++          runId: clearAncestorRunId,
++        }),
++        createdAt: forkMadeAt,
++        linkedQuestionsEnabledAt: askedOnAt,
++      };
++      const ancestor = { ...clearThread(clearAncestorId, null), ...ancestorIs };
++      const threads: Record<string, OrchestrationV2AppThread> = {
++        ...offAbove(offAt),
++        [clearAncestorId]: ancestor,
++        [clearSourceId]: asked,
++      };
++      const store = {
++        getForkSourceRunIds: () => Effect.succeed([clearAncestorRunId]),
++        findThread: (threadId: ThreadId) => Effect.succeed(threads[threadId] ?? null),
++        getThreadRecords: (threadId: ThreadId) =>
++          Effect.succeed(
++            (threadId === clearAncestorId
++              ? {
++                  thread: ancestor,
++                  runs: [clearRun(clearAncestorRunId, clearAncestorId, 1)],
++                  attempts: [],
++                  turnItems: [
++                    clearUserItem("anc", clearAncestorId, clearAncestorRunId, "OFF TEXT", 1),
++                  ],
++                }
++              : {
++                  thread: asked,
++                  runs: [clearRun(own, clearSourceId, 1)],
++                  attempts: [],
++                  turnItems: [clearUserItem("own", clearSourceId, own, "FORK TEXT", 1)],
++                }) as never,
++          ),
++      };
++      const context = yield* ContextHandoffService.readLinkedQuestionContext(store, clearSourceId);
++      assert.include(context, "User:\nFORK TEXT");
++      assert.notInclude(context, "OFF TEXT");
++      const forkHistory = yield* ContextHandoffService.readInheritedHandoffItems(store, asked);
++      assert.deepEqual(
++        forkHistory.map((item) => item.id),
++        [TurnItemId.make("turn-item:anc")],
++      );
++    }
++  }),
++);
++
+ it.effect("a linked question on a fork sees what the fork inherited, even after a rewind", () =>
+   Effect.gen(function* () {
+     const rewoundBeforeFork = RunId.make("run:ancestor-1-rewound-before-fork");
+@@ -687,6 +770,7 @@ it.effect("a linked question on a fork sees what the fork inherited, even after
+     };
+     const context = yield* ContextHandoffService.readLinkedQuestionContext(
+       {
++        findThread: () => Effect.succeed(null),
+         getForkSourceRunIds: (threadId) =>
+           Effect.succeed(threadId === clearSourceId ? [inherited, forkPoint] : []),
+         getThreadRecords: (threadId, _fields, filter) =>
+diff --git a/apps/server/src/orchestration-v2/ContextHandoffService.ts b/apps/server/src/orchestration-v2/ContextHandoffService.ts
+index e128c620eae0bd7b64634f214e5253149b594a55..0d6a8bf540419ac85072719a92fc216926ff1d93 100644
+--- a/apps/server/src/orchestration-v2/ContextHandoffService.ts
++++ b/apps/server/src/orchestration-v2/ContextHandoffService.ts
+@@ -27,7 +27,8 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+ import { createOrchestrationV2TurnItemVisibility } from "@t3tools/shared/orchestrationV2Timeline";
+ import { withoutWebhookUrlToken } from "../scheduledTasks/webhookUrlToken.ts";
+ import { turnItemsSinceContextBoundary } from "./contextBoundary.ts";
+-import type { ProjectionStoreV2Shape } from "./ProjectionStore.ts";
++import { isLinkedQuestionsOff } from "./linkedQuestionsOff.ts";
++import type { ProjectionStoreV2Error, ProjectionStoreV2Shape } from "./ProjectionStore.ts";
+ 
+ export class ContextHandoffPrepareError extends Schema.TaggedError<ContextHandoffPrepareError>()(
+   "ContextHandoffPrepareError",
+@@ -198,6 +199,9 @@ export const readInheritedHandoffItems = Effect.fn(
+   projectionStore: Pick<ProjectionStoreV2Shape, "getThreadRecords" | "getForkSourceRunIds">,
+   thread: OrchestrationV2AppThread,
+   turnItemTypes?: TurnItemTypes,
++  stopsAt: (
++    ancestor: OrchestrationV2AppThread,
++  ) => Effect.Effect<boolean, ProjectionStoreV2Error> = () => Effect.succeed(false),
+ ) {
+   const segments: Array<ReadonlyArray<OrchestrationV2TurnItem>> = [];
+   const seen = new Set([thread.id]);
+@@ -213,7 +217,7 @@ export const readInheritedHandoffItems = Effect.fn(
+       .getThreadRecords(threadId, ["runs", "attempts"])
+       .pipe(Effect.catchTags({ ProjectionStoreThreadNotFoundError: () => Effect.succeed(null) }));
+     const forkRun = source?.runs.find((run) => run.id === runId);
+-    if (source === null || forkRun === undefined) break;
++    if (source === null || forkRun === undefined || (yield* stopsAt(source.thread))) break;
+     const own = yield* readOwnHistoryItems(
+       projectionStore,
+       source,
+@@ -271,7 +275,10 @@ const ownerConversationItems = (items: ReadonlyArray<OrchestrationV2TurnItem>) =
+ export const readLinkedQuestionContext = Effect.fn(
+   "orchestrationV2.contextHandoff.readLinkedQuestionContext",
+ )(function* (
+-  projectionStore: Pick<ProjectionStoreV2Shape, "getThreadRecords" | "getForkSourceRunIds">,
++  projectionStore: Pick<
++    ProjectionStoreV2Shape,
++    "getThreadRecords" | "getForkSourceRunIds" | "findThread"
++  >,
+   askedThreadId: ThreadId,
+ ) {
+   const asked = yield* projectionStore.getThreadRecords(askedThreadId, ["runs", "attempts"]);
+@@ -286,7 +293,12 @@ export const readLinkedQuestionContext = Effect.fn(
+   const items = own.cleared
+     ? own.items
+     : [
+-        ...(yield* readInheritedHandoffItems(projectionStore, asked.thread, turnItemTypes)),
++        ...(yield* readInheritedHandoffItems(
++          projectionStore,
++          asked.thread,
++          turnItemTypes,
++          (ancestor) => isLinkedQuestionsOff(projectionStore.findThread, ancestor),
++        )),
+         ...own.items,
+       ];
+   return renderConversationTail({
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.control-reads.test.ts b/apps/server/src/orchestration-v2/Orchestrator.control-reads.test.ts
-index ac7cb9c714d88942da0a5a17c261017fb0a2b9bc..f5ce742d64c858f9a48ed8ec99406846d704d2d5 100644
+index ac7cb9c714d88942da0a5a17c261017fb0a2b9bc..94fdbf4478164ad7d1ebd70511635e6363bd28ee 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.control-reads.test.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.control-reads.test.ts
 @@ -22,6 +22,7 @@ import {
@@ -869,8 +1165,82 @@ index ac7cb9c714d88942da0a5a17c261017fb0a2b9bc..f5ce742d64c858f9a48ed8ec99406846
        yield* sql`INSERT INTO orchestration_v2_projection_messages
        (message_id, thread_id, run_id, node_id, role, streaming, created_at, updated_at, payload_json)
        VALUES ('obsolete', ${threadId}, NULL, NULL, 'assistant', 0, ${DateTime.formatIso(now)}, ${DateTime.formatIso(now)}, '{"obsolete":true}')`;
+@@ -1946,6 +1964,73 @@ it.effect.each([false, true])("rejects thread.create for an existing id (deleted
+   }).pipe(Effect.provide(layerTest)),
+ );
+ 
++it.effect("a thread an agent starts from a thread switched off starts off", () =>
++  Effect.gen(function* () {
++    const orchestrator = yield* Orchestrator.OrchestratorV2;
++    const projections = yield* ProjectionStore.ProjectionStoreV2;
++    const create = (
++      threadId: ThreadId,
++      startedFrom?: { readonly thread: ThreadId; readonly withMessage: boolean },
++      linkedQuestionsOff?: true,
++    ) =>
++      orchestrator.dispatch({
++        type: "thread.create",
++        commandId: CommandId.make(`create:${threadId}`),
++        threadId,
++        projectId: ProjectId.make("project:started-by-agent"),
++        title: threadId,
++        modelSelection,
++        runtimeMode: "full-access",
++        interactionMode: "default",
++        branch: null,
++        worktreePath: null,
++        createdBy: "agent",
++        creationSource: "mcp",
++        ...(startedFrom === undefined
++          ? {}
++          : startedFrom.withMessage
++            ? {
++                initialMessage: {
++                  messageId: MessageId.make(`message:${threadId}`),
++                  text: "Carry on from here",
++                  attachments: [],
++                  senderThreadId: startedFrom.thread,
++                },
++              }
++            : { startedFromThreadId: startedFrom.thread }),
++        ...(linkedQuestionsOff === undefined ? {} : { linkedQuestionsOff }),
++      });
++    for (const [enabled, expected] of [
++      [false, "off"],
++      [true, null],
++      [null, null],
++    ] as const) {
++      const sender = ThreadId.make(`thread:sender-${enabled}`);
++      yield* create(sender);
++      yield* orchestrator.dispatch({
++        type: "thread.linked-questions.set",
++        commandId: CommandId.make(`linked-questions:${sender}`),
++        threadId: sender,
++        enabled,
++      });
++      for (const withMessage of [true, false]) {
++        const started = ThreadId.make(`thread:started-by-${enabled}-${withMessage}`);
++        yield* create(started, { thread: sender, withMessage });
++        assert.strictEqual(
++          threadLinkedQuestionsChoice(yield* projections.getThread(started)),
++          expected,
++        );
++      }
++    }
++    const delegatedOff = ThreadId.make("thread:delegated-from-an-off-thread-elsewhere");
++    yield* create(delegatedOff, undefined, true);
++    assert.strictEqual(
++      threadLinkedQuestionsChoice(yield* projections.getThread(delegatedOff)),
++      "off",
++    );
++  }).pipe(Effect.provide(layerTest)),
++);
++
+ it.effect("starts, finishes and follows up a task without reading the parent's history", () =>
+   Effect.gen(function* () {
+     const orchestrator = yield* Orchestrator.OrchestratorV2;
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 2fa40073b85295be45157779ee98f94d3789e31b..67003b66cf095a895245c1fd0f5677468913a64c 100644
+index 2fa40073b85295be45157779ee98f94d3789e31b..874bd2939f89da8108a13910fbc27f435ec1cd06 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -13,7 +13,7 @@ import {
@@ -882,7 +1252,15 @@ index 2fa40073b85295be45157779ee98f94d3789e31b..67003b66cf095a895245c1fd0f567746
  import { canonicalizeGitCafePullRequestUrl } from "@t3tools/source-control-definitions/registry";
  import { threadPullRequestsOf } from "../sourceControl/threadPullRequests.ts";
  import {
-@@ -856,7 +856,7 @@ function metadataUpdateContinuation(
+@@ -227,6 +227,7 @@ import {
+   isForkableSourceRunStatus,
+   ThreadForkServiceV2,
+ } from "./ThreadForkService.ts";
++import { isLinkedQuestionsOff } from "./linkedQuestionsOff.ts";
+ import { planThreadDeletion } from "./ThreadDeletion.ts";
+ import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+ import * as ServerSettings from "../serverSettings.ts";
+@@ -856,7 +857,7 @@ function metadataUpdateContinuation(
  function questionThreadRefuses(command: OrchestrationV2ServerCommand): boolean {
    switch (command.type) {
      case "thread.linked-questions.set":
@@ -891,7 +1269,29 @@ index 2fa40073b85295be45157779ee98f94d3789e31b..67003b66cf095a895245c1fd0f567746
      case "thread.pull-request.watch":
        return command.watching;
      case "thread.pull-request-watch.sync":
-@@ -5183,12 +5183,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4162,6 +4163,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+ 
+     const now = yield* DateTime.now;
+     const emitEvent = emit(events, command);
++    const startedFromThreadId =
++      command.startedFromThreadId ?? command.initialMessage?.senderThreadId;
++    const startedFrom =
++      startedFromThreadId === undefined ? null : yield* findThread(startedFromThreadId);
++    const startsOff =
++      command.linkedQuestionsOff === true ||
++      (startedFrom !== null && (yield* isLinkedQuestionsOff(findThread, startedFrom)));
+     const thread: OrchestrationV2AppThread = {
+       createdBy: command.createdBy,
+       creationSource: command.creationSource,
+@@ -4186,6 +4194,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         ? {}
+         : { linkedQuestionOf: command.linkedQuestionOf }),
+       ...(command.workflowRun === undefined ? {} : { workflowRun: command.workflowRun }),
++      ...(startsOff ? { linkedQuestionsDisabledAt: now } : {}),
+       lineage: {
+         parentThreadId: null,
+         relationshipToParent: null,
+@@ -5183,12 +5192,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            };
          }
          case "thread.linked-questions.set": {
@@ -910,6 +1310,14 @@ index 2fa40073b85295be45157779ee98f94d3789e31b..67003b66cf095a895245c1fd0f567746
              updatedAt: unchanged ? thread.updatedAt : now,
            };
          }
+@@ -6274,6 +6285,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         targetThreadId: command.targetThreadId,
+         ...(command.title === undefined ? {} : { title: command.title }),
+         ...(command.sideChat ? { sideChat: true } : {}),
++        sourceLinkedQuestionsOff: yield* isLinkedQuestionsOff(findThread, sourceProjection.thread),
+         createdBy: command.createdBy,
+         creationSource: command.creationSource,
+         createdAt: now,
 diff --git a/apps/server/src/orchestration-v2/ProjectCommands.ts b/apps/server/src/orchestration-v2/ProjectCommands.ts
 index 8e5669a76a01aacd0c12e97c086b143ed9d3325b..e9b13bba1b9240d6a1939326670625576d0cc02d 100644
 --- a/apps/server/src/orchestration-v2/ProjectCommands.ts
@@ -1080,8 +1488,150 @@ index ee83411213a26b38d2b81f5573b55b3e039053cf..b95788a98664d9cd7b25b2592a8a5505
          updatedAt: payload.updatedAt,
        }).pipe(mapError("apply"));
      },
+diff --git a/apps/server/src/orchestration-v2/ProjectionStore.test.ts b/apps/server/src/orchestration-v2/ProjectionStore.test.ts
+index 211b2c8f8935c56fd6ea9e2b8bd1f547d6a4a618..7313bcf352c29d4a86f255b6fd9b25d4a8d2205e 100644
+--- a/apps/server/src/orchestration-v2/ProjectionStore.test.ts
++++ b/apps/server/src/orchestration-v2/ProjectionStore.test.ts
+@@ -32,6 +32,8 @@ import {
+   type ThreadPullRequestLink,
+   isLiveSubagentShell,
+   isListedThreadLineage,
++  type OrchestrationV2AppThread,
++  threadLinkedQuestionsChoice,
+ } from "@t3tools/contracts";
+ import * as DateTime from "effect/DateTime";
+ import * as Effect from "effect/Effect";
+@@ -3756,6 +3758,128 @@ it.effect("SQL snapshot windows leave handoff bodies in SQLite without changing
+   }).pipe(Effect.provide(layerTest)),
+ );
+ 
++it.effect("a thread switched off on the build before levels stays off after start", () =>
++  Effect.gen(function* () {
++    const store = yield* ProjectionStore.ProjectionStoreV2;
++    const sql = yield* SqlClient.SqlClient;
++    yield* sql`
++      DELETE FROM orchestration_v2_projection_metadata
++      WHERE projection_name = 'linked-questions-off-repaired'
++    `;
++    const at = (minute: number) => DateTime.makeUnsafe(`2026-11-23T10:0${minute}:00.000Z`);
++    const threads = {
++      enabledThenDisabled: {
++        choice: { linkedQuestionsEnabledAt: null },
++        receipts: [at(3), at(2)],
++        expected: "off",
++      },
++      enabledOnly: {
++        choice: { linkedQuestionsEnabledAt: at(1) },
++        receipts: [at(1)],
++        expected: "on",
++      },
++      neverTouched: { choice: {}, receipts: [], expected: null },
++      disabledThenDefaultOnThisBuild: {
++        choice: { linkedQuestionsEnabledAt: null, linkedQuestionsDisabledAt: null },
++        receipts: [at(1), at(2), at(3)],
++        expected: null,
++      },
++    } as const;
++    const writePreviousBuildThread = Effect.fn(function* (
++      name: string,
++      choice: Partial<OrchestrationV2AppThread>,
++      receipts: ReadonlyArray<DateTime.Utc>,
++    ) {
++      const threadId = ThreadId.make(`thread:${name}`);
++      const thread: OrchestrationV2AppThread = {
++        createdBy: "user",
++        creationSource: "web",
++        id: threadId,
++        projectId: ProjectId.make("project:previous-build"),
++        title: name,
++        providerInstanceId,
++        modelSelection,
++        runtimeMode: "full-access",
++        interactionMode: "default",
++        branch: null,
++        worktreePath: null,
++        activeProviderThreadId: null,
++        lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
++        forkedFrom: null,
++        createdAt: at(0),
++        updatedAt: at(0),
++        archivedAt: null,
++        settledOverride: null,
++        settledAt: null,
++        lastVisitedAt: null,
++        snoozedUntil: null,
++        snoozedAt: null,
++        deletedAt: null,
++      };
++      yield* store.apply({
++        id: EventId.make(`event:${name}:created`),
++        type: "thread.created",
++        threadId,
++        occurredAt: at(0),
++        payload: thread,
++      });
++      if (receipts.length > 0) {
++        yield* store.apply({
++          id: EventId.make(`event:${name}:linked-questions`),
++          type: "thread.linked-questions-set",
++          threadId,
++          occurredAt: receipts.at(-1)!,
++          payload: { ...thread, ...choice },
++        });
++      }
++      for (const [index, acceptedAt] of receipts.entries()) {
++        yield* sql`
++          INSERT INTO orchestration_command_receipts (
++            command_id, aggregate_kind, aggregate_id, command_type, accepted_at,
++            result_sequence, status, error
++          ) VALUES (
++            ${`command:${name}:${index}`}, 'thread', ${threadId}, 'thread.linked-questions.set',
++            ${DateTime.formatIso(acceptedAt)}, ${index + 1}, 'accepted', NULL
++          )
++        `;
++      }
++    });
++    for (const [name, { choice, receipts }] of Object.entries(threads)) {
++      yield* writePreviousBuildThread(name, choice, receipts);
++    }
++    yield* writePreviousBuildThread("damaged", { linkedQuestionsEnabledAt: null }, [at(1)]);
++    yield* sql`
++      UPDATE orchestration_v2_projection_threads SET payload_json = '{"damaged":'
++      WHERE thread_id = 'thread:damaged'
++    `;
++
++    const readAfterStart = (names: ReadonlyArray<string>) =>
++      Effect.gen(function* () {
++        const started = yield* ProjectionStore.ProjectionStoreV2;
++        return yield* Effect.forEach(names, (name) =>
++          started.getThread(ThreadId.make(`thread:${name}`)),
++        );
++      }).pipe(Effect.provide(Layer.fresh(ProjectionStore.layer)));
++
++    yield* sql`ALTER TABLE orchestration_command_receipts RENAME TO receipts_unreadable`;
++    const afterFailedStart = yield* readAfterStart(["enabledThenDisabled"]);
++    assert.isNull(threadLinkedQuestionsChoice(afterFailedStart[0]!));
++    yield* sql`ALTER TABLE receipts_unreadable RENAME TO orchestration_command_receipts`;
++
++    const afterFirstStart = yield* readAfterStart(Object.keys(threads));
++    assert.deepEqual(
++      afterFirstStart.map(threadLinkedQuestionsChoice),
++      Object.values(threads).map(({ expected }) => expected),
++    );
++    assert.deepEqual(afterFirstStart[0]?.linkedQuestionsDisabledAt, at(2));
++
++    yield* writePreviousBuildThread("afterRepair", { linkedQuestionsEnabledAt: null }, [at(4)]);
++    const afterSecondStart = yield* readAfterStart([...Object.keys(threads), "afterRepair"]);
++    assert.deepEqual(afterSecondStart.slice(0, -1), afterFirstStart);
++    assert.isNull(threadLinkedQuestionsChoice(afterSecondStart.at(-1)!));
++  }).pipe(Effect.provide(layerTest)),
++);
++
+ it.effect("lists only active subagent IDs without loading shell data", () =>
+   Effect.gen(function* () {
+     const store = yield* ProjectionStore.ProjectionStoreV2;
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.ts b/apps/server/src/orchestration-v2/ProjectionStore.ts
-index ddd74a434394b3982a556015ee244f6071c368f6..429b245e2747646223131aa3ca8464d0e55e4357 100644
+index ddd74a434394b3982a556015ee244f6071c368f6..c39e9f8abfe292cf37e2392c4fdb4cc1ed9ba25e 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.ts
 @@ -1,5 +1,10 @@
@@ -1144,7 +1694,84 @@ index ddd74a434394b3982a556015ee244f6071c368f6..429b245e2747646223131aa3ca8464d0
      pinOrderKey: input.state.thread.pinOrderKey ?? null,
      ...(input.state.thread.tags?.length ? { tags: input.state.thread.tags } : {}),
      lastVisitedAt: input.state.thread.lastVisitedAt,
-@@ -9845,24 +9856,46 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -2397,10 +2408,76 @@ const isInlineWorkOutput = (payloadJson: string) => {
+   );
+ };
+ 
++const LINKED_QUESTIONS_OFF_REPAIRED = "linked-questions-off-repaired";
++
++// The build before linked question levels stored Off only by clearing linkedQuestionsEnabledAt,
++// and its events are pruned after a day, but its command receipts stay. This build always writes
++// linkedQuestionsDisabledAt with the choice, so the repair runs once and is never needed again.
++const keepPreviousBuildLinkedQuestionsOff = Effect.fn(
++  "ProjectionStoreV2.keepPreviousBuildLinkedQuestionsOff",
++)(function* (sql: SqlClient.SqlClient) {
++  const linkedQuestionsSetReceipts = sql`
++    FROM orchestration_command_receipts AS receipt
++    WHERE receipt.aggregate_kind = 'thread'
++      AND receipt.aggregate_id = orchestration_v2_projection_threads.thread_id
++      AND receipt.command_type = 'thread.linked-questions.set'
++      AND receipt.status = 'accepted'
++  `;
++  const repaired = sql`
++    SELECT 1 FROM orchestration_v2_projection_metadata
++    WHERE projection_name = ${LINKED_QUESTIONS_OFF_REPAIRED}
++  `.pipe(Effect.map((marker) => marker.length > 0));
++  const repair = Effect.gen(function* () {
++    if (yield* repaired) return;
++    // CASE, not AND: SQLite may evaluate AND terms in any order, and json_type throws on bad JSON.
++    yield* sql`
++      UPDATE orchestration_v2_projection_threads
++      SET payload_json = json_set(
++        payload_json,
++        '$.linkedQuestionsDisabledAt',
++        (
++          SELECT receipt.accepted_at ${linkedQuestionsSetReceipts}
++          ORDER BY receipt.result_sequence DESC, receipt.rowid DESC
++          LIMIT 1
++        )
++      )
++      WHERE CASE
++          WHEN json_valid(payload_json)
++            THEN json_type(payload_json, '$.linkedQuestionsDisabledAt') IS NULL
++              AND json_extract(payload_json, '$.linkedQuestionsEnabledAt') IS NULL
++          ELSE 0
++        END
++        AND EXISTS (SELECT 1 ${linkedQuestionsSetReceipts})
++    `;
++    yield* sql`
++      INSERT INTO orchestration_v2_projection_metadata (
++        projection_name, schema_version, last_sequence, updated_at
++      )
++      VALUES (
++        ${LINKED_QUESTIONS_OFF_REPAIRED},
++        ${ORCHESTRATION_V2_PROJECTION_SCHEMA_VERSION},
++        0,
++        ${DateTime.formatIso(yield* DateTime.now)}
++      )
++      ON CONFLICT(projection_name) DO NOTHING
++    `;
++  });
++  // Read first without the write lock: every start after the repair stops here.
++  yield* repaired.pipe(
++    Effect.flatMap((done) => (done ? Effect.void : sql.withTransaction(repair))),
++    Effect.catch((cause) =>
++      Effect.logWarning("Linked questions switched off on the previous build were not kept", {
++        cause,
++      }),
++    ),
++  );
++});
++
+ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> = Layer.effect(
+   ProjectionStoreV2,
+   Effect.gen(function* () {
+     const sql = yield* SqlClient.SqlClient;
++    yield* keepPreviousBuildLinkedQuestionsOff(sql);
+ 
+     // SQLite uses the partial conversation index of migration 082 only for this exact predicate.
+     const CONVERSATION_INDEX_EXCLUDED_TYPES = sql.literal(
+@@ -9845,24 +9922,46 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        return rows[0] === undefined ? null : ThreadId.make(rows[0].thread_id);
      }, Effect.mapError(shellSnapshotReadError));
  
@@ -1196,7 +1823,7 @@ index ddd74a434394b3982a556015ee244f6071c368f6..429b245e2747646223131aa3ca8464d0
          }));
        },
        Effect.mapError(shellSnapshotReadError),
-@@ -10039,7 +10072,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -10039,7 +10138,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        readShellSnapshot: readOnReader(readShellSnapshot),
        listOlderSettledThreads: readOnReader(listOlderSettledThreads),
        getThreadShell: readOnReader(getThreadShell),
@@ -1394,8 +2021,183 @@ index 857928c1e322c1830146e65117780fac9a8a2c38..37d9986c9df202b6cf7082d685a78edc
          providerAdapters,
        });
        if (linkedQuestionRefusal !== undefined) {
+diff --git a/apps/server/src/orchestration-v2/SubagentProjection.test.ts b/apps/server/src/orchestration-v2/SubagentProjection.test.ts
+index 08f75db938a37ab9a55f9fb07ce0493e3615535e..8a232c23c5a840ac416c0ae71fd9a56df3739771 100644
+--- a/apps/server/src/orchestration-v2/SubagentProjection.test.ts
++++ b/apps/server/src/orchestration-v2/SubagentProjection.test.ts
+@@ -16,6 +16,7 @@ import {
+   ProviderInstanceId,
+   ProviderThreadId,
+   ThreadId,
++  threadLinkedQuestionsChoice,
+ } from "@t3tools/contracts";
+ import * as DateTime from "effect/DateTime";
+ import * as Effect from "effect/Effect";
+@@ -139,6 +140,23 @@ it("resets a subagent child's snooze, title job, remote delegation and linked qu
+   });
+ });
+ 
++it("a subagent stores no linked question choice, also under a thread switched off", () => {
++  const childThread = makeSubagentChildThread({
++    parentThread: { ...makeParentThread(), linkedQuestionsDisabledAt: snoozedAt },
++    childThreadId,
++    parentNodeId: NodeId.make("node:subagent-parent"),
++    activeProviderThreadId: null,
++    providerInstanceId: childProviderInstanceId,
++    modelSelection: childModelSelection,
++    title: "Off child",
++    now: childCreatedAt,
++    createdBy: "agent",
++    creationSource: "provider",
++  });
++
++  assert.isNull(threadLinkedQuestionsChoice(childThread));
++});
++
+ it.effect.each(["provider", "mcp"] as const)(
+   "a %s child does not inherit parent settlement protections and settles once its parent settles",
+   (creationSource) =>
+diff --git a/apps/server/src/orchestration-v2/ThreadFork.execution.test.ts b/apps/server/src/orchestration-v2/ThreadFork.execution.test.ts
+index 457a98487c69dba6eb20a5cd301bcab0ceb02afe..012671cfb0a8c9c9d53d795e5bd124b0e9d70865 100644
+--- a/apps/server/src/orchestration-v2/ThreadFork.execution.test.ts
++++ b/apps/server/src/orchestration-v2/ThreadFork.execution.test.ts
+@@ -18,6 +18,8 @@ import {
+   ScheduledTaskId,
+   ThreadId,
+   TurnItemId,
++  type OrchestrationV2AppThread,
++  threadLinkedQuestionsChoice,
+ } from "@t3tools/contracts";
+ import * as DateTime from "effect/DateTime";
+ import * as Deferred from "effect/Deferred";
+@@ -34,6 +36,7 @@ import * as Orchestrator from "./Orchestrator.ts";
+ import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
+ import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
+ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
++import { makeSubagentChildThread } from "@t3tools/provider-core/server/subagentProjection";
+ 
+ const forkCases = (
+   [
+@@ -1091,6 +1094,117 @@ it.effect.each([
+   }).pipe(Effect.provide(forkCases[0]!.layer)),
+ );
+ 
++it.effect(
++  "a fork starts off when its source is off now, itself or through the thread above a side chat or subagent",
++  () =>
++    Effect.gen(function* () {
++      const orchestrator = yield* Orchestrator.OrchestratorV2;
++      const eventSink = yield* EventSink.EventSinkV2;
++      const now = yield* DateTime.now;
++      const parentId = ThreadId.make("linked-off-parent");
++      yield* createParent(parentId);
++      yield* writeParentRun({
++        threadId: parentId,
++        runId: RunId.make("linked-off-parent-run"),
++        ordinal: 1,
++        status: "completed",
++        text: "Work",
++        stable: true,
++      });
++      const sideChatId = ThreadId.make("linked-off-side-chat");
++      yield* forkSideChat("linked-off-side-chat-fork", parentId, sideChatId);
++      const subagentOf = (parentThread: OrchestrationV2AppThread, childThreadId: ThreadId) =>
++        makeSubagentChildThread({
++          parentThread,
++          childThreadId,
++          parentNodeId: NodeId.make(`${childThreadId}:node`),
++          activeProviderThreadId: null,
++          providerInstanceId: parentThread.providerInstanceId,
++          modelSelection: parentThread.modelSelection,
++          title: childThreadId,
++          now,
++          createdBy: "agent",
++          creationSource: "provider",
++        });
++      const subagent = subagentOf(
++        (yield* orchestrator.getThreadProjection(parentId)).thread,
++        ThreadId.make("linked-off-subagent"),
++      );
++      const nested = subagentOf(subagent, ThreadId.make("linked-off-nested-subagent"));
++      yield* eventSink.write({
++        events: [subagent, nested].map((thread) => ({
++          id: EventId.make(`${thread.id}:created`),
++          type: "thread.created" as const,
++          threadId: thread.id,
++          occurredAt: now,
++          payload: thread,
++        })),
++      });
++      const sources = [parentId, sideChatId, subagent.id, nested.id];
++      for (const source of sources.slice(1)) {
++        yield* writeParentRun({
++          threadId: source,
++          runId: RunId.make(`${source}-run`),
++          ordinal: 1,
++          status: "completed",
++          text: "Child work",
++          stable: true,
++        });
++      }
++      const choice = (threadId: ThreadId) =>
++        orchestrator
++          .getThreadProjection(threadId)
++          .pipe(Effect.map(({ thread }) => threadLinkedQuestionsChoice(thread)));
++      const forkChoices = (key: string) =>
++        Effect.forEach(sources, (source) =>
++          Effect.gen(function* () {
++            const forkId = ThreadId.make(`${source}-${key}-fork`);
++            yield* orchestrator.dispatch({
++              type: "thread.fork",
++              commandId: CommandId.make(`${source}-${key}-fork`),
++              sourceThreadId: source,
++              targetThreadId: forkId,
++              sourcePoint: { type: "latest_stable" },
++              createdBy: "user",
++              creationSource: "web",
++            });
++            return yield* choice(forkId);
++          }),
++        );
++      const setParent = (enabled: boolean | null) =>
++        orchestrator.dispatch({
++          type: "thread.linked-questions.set",
++          commandId: CommandId.make(`linked-off-parent-set-${enabled}`),
++          threadId: parentId,
++          enabled,
++        });
++
++      assert.deepEqual(yield* forkChoices("unset"), [null, null, null, null]);
++      yield* setParent(true);
++      assert.deepEqual(yield* forkChoices("on"), [null, null, null, null]);
++      yield* setParent(false);
++      assert.deepEqual(yield* forkChoices("off"), ["off", "off", "off", "off"]);
++
++      const offSideChatId = ThreadId.make("linked-off-side-chat-after-off");
++      yield* forkSideChat("linked-off-side-chat-after-off-fork", parentId, offSideChatId);
++      assert.deepEqual(yield* Effect.forEach(sources.slice(1).concat(offSideChatId), choice), [
++        null,
++        null,
++        null,
++        null,
++      ]);
++
++      yield* orchestrator.dispatch({
++        type: "thread.linked-questions.set",
++        commandId: CommandId.make("linked-off-side-chat-set-off"),
++        threadId: sideChatId,
++        enabled: false,
++      });
++      yield* setParent(null);
++      assert.deepEqual(yield* forkChoices("stored-on-child"), [null, "off", null, null]);
++    }).pipe(Effect.provide(forkCases[0]!.layer)),
++);
++
+ it.effect("a side chat of a busy parent points history recovery at the parent", () =>
+   Effect.gen(function* () {
+     const orchestrator = yield* Orchestrator.OrchestratorV2;
 diff --git a/apps/server/src/orchestration-v2/ThreadForkService.test.ts b/apps/server/src/orchestration-v2/ThreadForkService.test.ts
-index f9f6ff25b2f0a1e1d48b46f3719c80cb7ffe04d8..34d6967f1005630a85eb24e72c28a400f6686789 100644
+index f9f6ff25b2f0a1e1d48b46f3719c80cb7ffe04d8..e109f07c24942251033a2a31ac841560df90c937 100644
 --- a/apps/server/src/orchestration-v2/ThreadForkService.test.ts
 +++ b/apps/server/src/orchestration-v2/ThreadForkService.test.ts
 @@ -13,6 +13,7 @@ import {
@@ -1406,15 +2208,23 @@ index f9f6ff25b2f0a1e1d48b46f3719c80cb7ffe04d8..34d6967f1005630a85eb24e72c28a400
    type ThreadPullRequestLink,
  } from "@t3tools/contracts";
  import * as DateTime from "effect/DateTime";
-@@ -144,6 +145,7 @@ it.effect("resets a fork's pin, snooze, settle and delegation state but keeps it
+@@ -127,6 +128,7 @@ const planFork = (
+       transferId: ContextTransferId.make("context-transfer:fork-snoozed-source"),
+       targetThreadId,
+       title: "Awake fork",
++      sourceLinkedQuestionsOff: false,
+       ...options,
+       createdBy: "user",
+       creationSource: "mobile",
+@@ -144,6 +146,7 @@ it.effect("resets a fork's pin, snooze, settle and delegation state but keeps it
        pinOrderKey: "a0",
        activeOrderKey: "a1",
        autoSettleDisabledAt: snoozedAt,
-+      linkedQuestionsDisabledAt: snoozedAt,
++      linkedQuestionsEnabledAt: snoozedAt,
        delegatedFrom: {
          environmentId: EnvironmentId.make("linked-environment"),
          threadId: ThreadId.make("linked-parent"),
-@@ -166,6 +168,7 @@ it.effect("resets a fork's pin, snooze, settle and delegation state but keeps it
+@@ -166,6 +169,7 @@ it.effect("resets a fork's pin, snooze, settle and delegation state but keeps it
      assert.isNull(result.targetThread.pinOrderKey);
      assert.isNull(result.targetThread.activeOrderKey);
      assert.isNull(result.targetThread.autoSettleDisabledAt);
@@ -1423,14 +2233,23 @@ index f9f6ff25b2f0a1e1d48b46f3719c80cb7ffe04d8..34d6967f1005630a85eb24e72c28a400
      assert.equal(result.targetThread.historyOrigin, "v1_import");
      assert.deepEqual(result.targetThread.linkOrigin, linkOrigin);
 diff --git a/apps/server/src/orchestration-v2/ThreadForkService.ts b/apps/server/src/orchestration-v2/ThreadForkService.ts
-index b15e23d7d73f174617f20860ad68d376b8b8c5fa..5d169115da3440f3780dbc5678774acede15c238 100644
+index b15e23d7d73f174617f20860ad68d376b8b8c5fa..0c808bc39902edb8b99944535e4bb0b5572cf491 100644
 --- a/apps/server/src/orchestration-v2/ThreadForkService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadForkService.ts
-@@ -150,6 +150,7 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
+@@ -60,6 +60,7 @@ export interface ThreadForkServiceV2Shape {
+     readonly targetThreadId: ThreadId;
+     readonly title?: string;
+     readonly sideChat?: boolean;
++    readonly sourceLinkedQuestionsOff: boolean;
+     readonly createdBy: OrchestrationV2Actor;
+     readonly creationSource: OrchestrationV2CreationSource;
+     readonly createdAt: DateTime.Utc;
+@@ -150,6 +151,8 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
          activeOrderKey: null,
          autoSettleDisabledAt: null,
          linkedQuestionsEnabledAt: null,
-+        linkedQuestionsDisabledAt: null,
++        linkedQuestionsDisabledAt:
++          input.sourceLinkedQuestionsOff && !input.sideChat ? input.createdAt : null,
          // A guest link belongs to the thread it was made for.
          guestShare: null,
          lastVisitedAt: null,
@@ -1446,6 +2265,65 @@ index 98434fa4967b1b64e1f45125e682c5b13a16ac27..13d0d5b3befe13610b21db0775fff5bc
        delete: () => Effect.die("unused"),
        listPage: () => Effect.die("unused"),
        getById: (id) =>
+diff --git a/apps/server/src/orchestration-v2/ThreadLaunchService.ts b/apps/server/src/orchestration-v2/ThreadLaunchService.ts
+index 99e81c27c36893355812180c36b8f46a9e196901..2869248acbfb33c279269ed254364f14904b9e54 100644
+--- a/apps/server/src/orchestration-v2/ThreadLaunchService.ts
++++ b/apps/server/src/orchestration-v2/ThreadLaunchService.ts
+@@ -127,6 +127,8 @@ export interface ThreadLaunchInput {
+   readonly delegatedFrom?: OrchestrationV2DelegatedFrom;
+   /** The workflow run this thread is an agent step of. */
+   readonly workflowRun?: OrchestrationV2WorkflowOrigin;
++  readonly startedFromThreadId?: ThreadId;
++  readonly linkedQuestionsOff?: true;
+ }
+ 
+ type PreparationInput = Pick<
+@@ -1543,6 +1545,10 @@ const make = Effect.gen(function* () {
+                   ? {}
+                   : { delegatedFrom: input.delegatedFrom }),
+                 ...(input.workflowRun === undefined ? {} : { workflowRun: input.workflowRun }),
++                ...(input.startedFromThreadId === undefined
++                  ? {}
++                  : { startedFromThreadId: input.startedFromThreadId }),
++                ...(input.linkedQuestionsOff === true ? { linkedQuestionsOff: true } : {}),
+                 createdBy: input.createdBy,
+                 creationSource: input.creationSource,
+                 ...(initialMessage === undefined
+diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.test.ts b/apps/server/src/orchestration-v2/ThreadManagementService.test.ts
+index 68f272f2de810ce1b20dd3bf9d69e7d18c717d97..3b7a2265f3327e8c7a2aac063468d2ca2f73430a 100644
+--- a/apps/server/src/orchestration-v2/ThreadManagementService.test.ts
++++ b/apps/server/src/orchestration-v2/ThreadManagementService.test.ts
+@@ -82,6 +82,8 @@ it("stamps authoritative provenance on commands that create threads or messages"
+       workflow: "fix",
+       step: "write",
+     },
++    startedFromThreadId: ThreadId.make("thread:someone-else"),
++    linkedQuestionsOff: true,
+   };
+ 
+   const stamped = ThreadManagementService.withCreationProvenance(command, {
+@@ -97,6 +99,8 @@ it("stamps authoritative provenance on commands that create threads or messages"
+   expect(stamped).not.toHaveProperty("delegatedFrom");
+   expect(stamped).not.toHaveProperty("initialMessage");
+   expect(stamped).not.toHaveProperty("workflowRun");
++  expect(stamped).not.toHaveProperty("startedFromThreadId");
++  expect(stamped).not.toHaveProperty("linkedQuestionsOff");
+ 
+   const question = ThreadManagementService.withCreationProvenance(
+     {
+diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
+index 16949ffc8df8930678283be2bf048e18e108bc40..ed66721567b4a6992d8c11f968cf501e318a1c84 100644
+--- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
++++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
+@@ -98,6 +98,8 @@ export function withCreationProvenance(
+         delegatedFrom: _delegatedFrom,
+         initialMessage: _initialMessage,
+         workflowRun: _workflowRun,
++        startedFromThreadId: _startedFromThreadId,
++        linkedQuestionsOff: _linkedQuestionsOff,
+         ...rest
+       } = command;
+       return { ...rest, ...provenance };
 diff --git a/apps/server/src/orchestration-v2/linkedQuestionFailures.ts b/apps/server/src/orchestration-v2/linkedQuestionFailures.ts
 index bccf0d9fb40ab374722a4979e0d98f23035dffb6..9553020677d147a51f7ee3c17c65e24e309abf34 100644
 --- a/apps/server/src/orchestration-v2/linkedQuestionFailures.ts
@@ -1568,6 +2446,41 @@ index bccf0d9fb40ab374722a4979e0d98f23035dffb6..9553020677d147a51f7ee3c17c65e24e
        return linkedQuestionStartFailure("optedOut");
      }
      const answersWithoutTools = yield* input.providerAdapters
+diff --git a/apps/server/src/orchestration-v2/linkedQuestionsOff.ts b/apps/server/src/orchestration-v2/linkedQuestionsOff.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..5b56d31337f6c1b98de52ea262baa651ccb6c251
+--- /dev/null
++++ b/apps/server/src/orchestration-v2/linkedQuestionsOff.ts
+@@ -0,0 +1,29 @@
++import {
++  type OrchestrationV2AppThread,
++  type ThreadId,
++  threadLinkedQuestionsChoice,
++} from "@t3tools/contracts";
++import * as Effect from "effect/Effect";
++
++const hasNoLinkedQuestionsMenu = (thread: OrchestrationV2AppThread) =>
++  thread.lineage.relationshipToParent === "subagent" || thread.lineage.sideChat === true;
++
++/**
++ * A side chat or subagent has no menu of its own, so it is Off while the nearest thread above it
++ * that has one is Off now. An Off stored on it by an older build or client still counts.
++ */
++export const isLinkedQuestionsOff = Effect.fn("linkedQuestions.isLinkedQuestionsOff")(function* <E>(
++  findThread: (threadId: ThreadId) => Effect.Effect<OrchestrationV2AppThread | null, E>,
++  thread: OrchestrationV2AppThread,
++) {
++  const seen = new Set<ThreadId>();
++  let current: OrchestrationV2AppThread | null = thread;
++  while (current !== null && !seen.has(current.id)) {
++    if (threadLinkedQuestionsChoice(current) === "off") return true;
++    const parentThreadId: ThreadId | null = current.lineage.parentThreadId;
++    if (!hasNoLinkedQuestionsMenu(current) || parentThreadId === null) return false;
++    seen.add(current.id);
++    current = yield* findThread(parentThreadId);
++  }
++  return false;
++});
 diff --git a/apps/server/src/peer/LinkedQuestions.test.ts b/apps/server/src/peer/LinkedQuestions.test.ts
 index 245cb6cd6b0be234bd569fe65a11d7eb766c8581..a4c013ad9a475556a2e087d32bb7de0d00f216b6 100644
 --- a/apps/server/src/peer/LinkedQuestions.test.ts
@@ -1768,6 +2681,150 @@ index b5039c95fcd29d969b94d3ac52b4ee019c33ed84..32b8ef02544ceacda2f9c57de86f1216
      } satisfies OrchestratorMcpAskListResult;
    });
  
+diff --git a/apps/server/src/peer/RemoteDelegation.test.ts b/apps/server/src/peer/RemoteDelegation.test.ts
+index d075c44ef9ff2a950e7623f6a291102f838ee996..3be6ccf67cb2659043e47e1095cdf20bf23f11fd 100644
+--- a/apps/server/src/peer/RemoteDelegation.test.ts
++++ b/apps/server/src/peer/RemoteDelegation.test.ts
+@@ -109,6 +109,7 @@ interface BoxThread {
+   readonly delegatedFrom: Ref.Ref<ThreadLaunch.ThreadLaunchInput["delegatedFrom"] | null>;
+   /** The model and modes it was launched with. */
+   readonly launchedWith: Ref.Ref<LaunchedWith | null>;
++  readonly launchedLinkedQuestionsOff: Ref.Ref<boolean>;
+   /** The first message the thread there was launched with. */
+   readonly message: Ref.Ref<string | null>;
+   readonly status: Ref.Ref<OrchestrationV2Run["status"]>;
+@@ -168,6 +169,7 @@ const makeBoxThread = Effect.gen(function* () {
+     ),
+     delegatedFrom: yield* Ref.make<ThreadLaunch.ThreadLaunchInput["delegatedFrom"] | null>(null),
+     launchedWith: yield* Ref.make<LaunchedWith | null>(null),
++    launchedLinkedQuestionsOff: yield* Ref.make(false),
+     message: yield* Ref.make<string | null>(null),
+     status: yield* Ref.make<OrchestrationV2Run["status"]>("running"),
+     reply: yield* Ref.make<string | null>("Working…"),
+@@ -232,8 +234,8 @@ const boxProjects: ReadonlyArray<Project> = [
+   },
+ ];
+ 
+-const serveBox = (thread: BoxThread) => {
+-  return servePeer(box, boxToolkitLayer(thread));
++const serveBox = (thread: BoxThread, descriptor = box) => {
++  return servePeer(descriptor, boxToolkitLayer(thread));
+ };
+ 
+ const boxRunId = RunId.make("run:box");
+@@ -535,6 +537,9 @@ const boxToolkitLayer = (thread: BoxThread) => {
+             Effect.andThen(Ref.set(thread.linkOrigin, input.linkOrigin ?? null)),
+             Effect.andThen(Ref.set(thread.delegatedFrom, input.delegatedFrom ?? null)),
+             Effect.andThen(Ref.set(thread.message, input.initialMessage?.text ?? null)),
++            Effect.andThen(
++              Ref.set(thread.launchedLinkedQuestionsOff, input.linkedQuestionsOff === true),
++            ),
+             Effect.andThen(
+               Ref.set(thread.launchedWith, {
+                 modelSelection: input.modelSelection,
+@@ -1258,6 +1263,40 @@ it.effect(
+     ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+ );
+ 
++it.effect.each([
++  { parentOff: true, boxHasLevels: true, startsOff: true },
++  { parentOff: true, boxHasLevels: false, startsOff: false },
++  { parentOff: false, boxHasLevels: true, startsOff: false },
++])(
++  "a task delegated from a thread switched off starts off there: $parentOff, $boxHasLevels",
++  ({ parentOff, boxHasLevels, startsOff }) =>
++    Effect.scoped(
++      Effect.gen(function* () {
++        const thread = yield* makeBoxThread;
++        const b = yield* serveBox(
++          thread,
++          descriptorOf(box.environmentId, box.label, { linkedQuestionLevels: boxHasLevels }),
++        );
++        const offers = yield* SubscriptionRef.make<
++          ReadonlyArray<ProviderContinuationRequests.ProviderContinuationRequest>
++        >([]);
++        const database = yield* SqlitePersistence.layerMemory.pipe(Layer.build);
++        const a = yield* makeLaptop(database, offers);
++        yield* linkTo(a.links, b, "full-access");
++        yield* seedParent(a);
++        yield* a.orchestrator.dispatch({
++          type: "thread.linked-questions.set",
++          commandId: CommandId.make("command:laptop-parent-linked-questions"),
++          threadId: parentThreadId,
++          enabled: !parentOff,
++        });
++
++        yield* delegateToBox(a);
++        expect(yield* Ref.get(thread.launchedLinkedQuestionsOff)).toBe(startsOff);
++      }),
++    ).pipe(Effect.provide(NodeHttpServer.layerTest)),
++);
++
+ it.effect("a task named only by environment inherits the parent's model, within the link", () =>
+   Effect.scoped(
+     Effect.gen(function* () {
+diff --git a/apps/server/src/peer/RemoteDelegation.ts b/apps/server/src/peer/RemoteDelegation.ts
+index 5ed03b795b686076aa95efc7838425aa17c2eb25..4eb0d53c1fe7adc611025a737920e60b6a665b07 100644
+--- a/apps/server/src/peer/RemoteDelegation.ts
++++ b/apps/server/src/peer/RemoteDelegation.ts
+@@ -11,6 +11,7 @@ import {
+   type OrchestratorMcpThreadSendInput,
+   type OrchestratorMcpThreadSendResult,
+   type OrchestratorMcpThreadTimelineItem,
++  type OrchestrationV2AppThread,
+   type OrchestrationV2RemoteTaskChild,
+   type OrchestrationV2Subagent,
+   type ProjectId,
+@@ -41,6 +42,7 @@ import {
+   taskPrompt,
+ } from "../mcp/delegatedTaskModes.ts";
+ import { followUpOwnerRun } from "../orchestration-v2/CommandPolicy.ts";
++import { isLinkedQuestionsOff } from "../orchestration-v2/linkedQuestionsOff.ts";
+ import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+ import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
+ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+@@ -262,6 +264,22 @@ const make = Effect.gen(function* () {
+     return chosen.providerInstanceId;
+   });
+ 
++  // A machine without linkedQuestionLevels refuses the unknown field, and there a thread answers
++  // only once switched on. Capabilities that cannot be read count as present: a refused launch
++  // can be retried, a task that started at Default cannot be taken back.
++  const startsLinkedQuestionsOffThere = Effect.fn("RemoteDelegation.startsLinkedQuestionsOffThere")(
++    function* (environmentId: EnvironmentId, parentThread: OrchestrationV2AppThread) {
++      const parentOff = yield* isLinkedQuestionsOff(projections.findThread, parentThread).pipe(
++        Effect.orElseSucceed(() => true),
++      );
++      if (!parentOff) return false;
++      return yield* links.resolve(environmentId).pipe(
++        Effect.map((resolved) => resolved.capabilities.linkedQuestionLevels === true),
++        Effect.orElseSucceed(() => true),
++      );
++    },
++  );
++
+   const delegate: RemoteDelegation["Service"]["delegate"] = Effect.fn("RemoteDelegation.delegate")(
+     function* (scope, input) {
+       const parent = yield* threads.getThreadRecords(scope.thread.threadId, ["runs"]).pipe(
+@@ -344,6 +362,10 @@ const make = Effect.gen(function* () {
+       const key = input.clientRequestId ?? (yield* random.uuidV4());
+       const task = taskPrompt(input);
+       const title = input.title ?? parent.thread.title;
++      const startsOffThere = yield* startsLinkedQuestionsOffThere(
++        target.environmentId,
++        parent.thread,
++      );
+       const launched = yield* forwarding.call(
+         scope,
+         ProjectToolkit.tools.t3_thread_launch,
+@@ -362,6 +384,7 @@ const make = Effect.gen(function* () {
+             threadId: parent.thread.id,
+             title: parent.thread.title,
+           },
++          ...(startsOffThere ? { linkedQuestionsOff: true } : {}),
+         },
+       );
+       const link = yield* links.get(target.environmentId).pipe(
 diff --git a/apps/server/src/policy/ManagedPolicy.test.ts b/apps/server/src/policy/ManagedPolicy.test.ts
 index eb2bc6439fa6e031d3dc615c2b0e267b8afaf5a0..e86129143d0295b123f97ae9c99de417bd0257a7 100644
 --- a/apps/server/src/policy/ManagedPolicy.test.ts
@@ -1965,7 +3022,7 @@ index c5e67e2ea1aa7c166c9925d9b5eb5accc6317265..00936a672d39828a9ec3162bc18dee3e
      getById,
      getByWorkspaceRoot,
 diff --git a/apps/server/src/provider/agentContextBudget.json b/apps/server/src/provider/agentContextBudget.json
-index c25ba66e9a323e67456fb1a26a313c26c2704772..d7dba9383fc96592b80a9232c2361747db8d855f 100644
+index c25ba66e9a323e67456fb1a26a313c26c2704772..38a5ea73e64026e5d6c37f87bfe361881d473fbe 100644
 --- a/apps/server/src/provider/agentContextBudget.json
 +++ b/apps/server/src/provider/agentContextBudget.json
 @@ -1,5 +1,5 @@
@@ -1973,7 +3030,7 @@ index c25ba66e9a323e67456fb1a26a313c26c2704772..d7dba9383fc96592b80a9232c2361747
    "claudeSystemAppendBytes": 6245,
    "codexAdditionalContextBytes": 7639,
 -  "mcpToolListJsonBytes": 63112
-+  "mcpToolListJsonBytes": 63262
++  "mcpToolListJsonBytes": 63302
  }
 diff --git a/apps/server/src/relay/AgentAwarenessRelay.test.ts b/apps/server/src/relay/AgentAwarenessRelay.test.ts
 index 9b5018adffaf43f4f95d61188bddaeaa68780876..92ef3ba2830c33ab2508d51c48157d9a78109035 100644
@@ -2820,10 +3877,10 @@ index 0da134e212701cc757421625cf8e1f28e9d6155d..9aa49d519912cd575d98a9df235d9c0b
    the asked thread's owner and assistant messages that fit 32,000 characters, read at turn start
    and never stored; only messages the owner typed in a client stay in, so wakes, agent sends,
 diff --git a/docs/user/remote-access.md b/docs/user/remote-access.md
-index a819f1fc850ac982df0569e1edde360fab6254ad..3ad33a9d7a9b6e0d32169e230c265524bc97ffce 100644
+index a819f1fc850ac982df0569e1edde360fab6254ad..7740190d9e0251699cb44d055dbb6d06cd4347f2 100644
 --- a/docs/user/remote-access.md
 +++ b/docs/user/remote-access.md
-@@ -574,17 +574,34 @@ any other thread on web and desktop, and a shorter read-only list on mobile.
+@@ -574,17 +574,39 @@ any other thread on web and desktop, and a shorter read-only list on mobile.
  
  ### Let linked machines ask a thread
  
@@ -2847,9 +3904,14 @@ index a819f1fc850ac982df0569e1edde360fab6254ad..3ad33a9d7a9b6e0d32169e230c265524
 +**Default (off, from this machine)**. Choose it to return to that. Only a session
 +that manages access can change any level; agents, links and scheduled tasks
 +cannot, and no file in a project folder can switch it on. Question threads,
-+subagents, side chats and a workflow's agent steps never answer, and a fork
-+starts at **Default**. While a thread answers, its header shows **Answers linked
-+questions**.
++subagents, side chats and a workflow's agent steps never answer. A thread set to
++**Off** is not listed and cannot be asked, and its messages are never read for an
++answer, also not through a fork. A fork of it, a thread its agent starts directly
++on this machine, or a task it delegates to another machine starts at **Off**;
++other new threads start at **Default**. Threads that already exist keep their
++own choice, title and messages, so switch a fork you made earlier off
++separately.
++While a thread answers, its header shows **Answers linked questions**.
  
  - Agents on a linked machine list these threads with `t3_ask_list`, ask one with
    `t3_ask_send` and read the reply with `t3_ask_wait`. A link at any level can
@@ -2864,7 +3926,7 @@ index a819f1fc850ac982df0569e1edde360fab6254ad..3ad33a9d7a9b6e0d32169e230c265524
    queue, snooze and settled state stay as they were.
  - The answer sees the newest of that thread's messages that fit a limit, the
    ones you typed and its replies, and nothing else from it: no files, command
-@@ -604,7 +621,8 @@ is on, the thread's header shows **Answers linked questions**.
+@@ -604,7 +626,8 @@ is on, the thread's header shows **Answers linked questions**.
    time, and refuses more while 20 of its question threads are not archived.
  - A question stopped by a usage limit or a restart fails and is not resumed. Ask
    again later.
@@ -2874,7 +3936,7 @@ index a819f1fc850ac982df0569e1edde360fab6254ad..3ad33a9d7a9b6e0d32169e230c265524
  
  ### Limit links into a machine
  
-@@ -614,7 +632,10 @@ It defaults to Full access. A pairing above it fails and names the limit. A link
+@@ -614,7 +637,10 @@ It defaults to Full access. A pairing above it fails and names the limit. A link
  already above it stops working and stays stopped even if you raise the limit
  later; link it again within the limit. A [managed policy](./managed-policy.md#settings)
  can set and lock it with the key `linkedEnvironmentsInboundMaxAccess`, for
@@ -3452,7 +4514,7 @@ index e060c7da8059e05df33e7a0e82adb72dabf94aba..3a3f9644ea781c183457d3ef9f78557d
    updatedAt: IsoDateTime,
  });
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index ca996eee5abbdadb90f033636aca31b3301d030b..29513575dab59cd50c4e5bbfd65610866ceec83f 100644
+index ca996eee5abbdadb90f033636aca31b3301d030b..731d0c3a7c9f06680c037e1feadc162dd6cc30d8 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
 @@ -552,6 +552,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
@@ -3487,7 +4549,18 @@ index ca996eee5abbdadb90f033636aca31b3301d030b..29513575dab59cd50c4e5bbfd6561086
    lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    titleRegeneration: Schema.optional(
      Schema.NullOr(
-@@ -3454,7 +3458,8 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3353,6 +3357,10 @@ export const OrchestrationV2Command = Schema.Union([
+     delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+     /** Only the server sets this, for a thread that is a workflow run's agent step. */
+     workflowRun: Schema.optional(OrchestrationV2WorkflowOrigin),
++    /** Only the server sets this: the thread whose agent started this one. */
++    startedFromThreadId: Schema.optional(ThreadId),
++    /** Only the server sets this, for a linked environment's task from a thread off there. */
++    linkedQuestionsOff: Schema.optional(Schema.Literal(true)),
+     importedNativeThread: Schema.optional(
+       Schema.Struct({
+         ref: Schema.Struct({
+@@ -3454,7 +3462,8 @@ export const OrchestrationV2Command = Schema.Union([
      type: Schema.Literal("thread.linked-questions.set"),
      commandId: CommandId,
      threadId: ThreadId,
