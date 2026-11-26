@@ -165,6 +165,8 @@ Port to b8be2287dc: imports only, plus the measured budget. Sidebar.tsx imports 
 
 Port to 221953fbf3: useThreadActionMenu.ts: upstream 95411e3cd7 (#40742, thread actions for the current thread from cmd+k) builds the menu in readMenu; readThreadLinkedQuestionsMenu(thread) replaces linkedQuestionsEnabled in readMenu's buildThreadActionMenuItems call, and the linked-questions cases run in its run(action) with readMenu's thread, so upstream's cmd+k rows for the current thread offer the same Default, On and Off choices. agentContextBudget.json: mcpToolListJsonBytes is 63443 as AgentContextBudget.test.ts measures it on the carried tree. No upstream migration up to 221953fbf3 (the new one is 117_WorkflowMailSender, which adds workflow_mail.sender_json) touches projection_projects, so the linked_questions column is still added at store start. The change itself is unchanged.
 
+Port to 0085217d1b: agentContextBudget.json: mcpToolListJsonBytes recomputed with AgentContextBudget.test.ts on the new base (63528, the ask-only links value 63338 plus this commit's 190, the same growth as before). Mobile useThreadListActions.ts: the useStableCallback wrapper the ask-only links port added (upstream 2ae731530d, #43024) takes enabled as boolean | null, as this commit's setThreadLinkedQuestions does. The change itself is otherwise unchanged.
+
 Files:
 - apps/mobile:
   src/features/home/HomeScreen.tsx, src/features/home/useThreadListActions.ts,
@@ -244,7 +246,7 @@ Tests:
   src/settings.test.ts
 ---
  apps/mobile/src/features/home/HomeScreen.tsx  |   2 +-
- .../src/features/home/useThreadListActions.ts |   7 +-
+ .../src/features/home/useThreadListActions.ts |   9 +-
  .../features/threads/thread-list-v2-items.tsx | 131 +++++++++---
  apps/mobile/src/state/use-thread-selection.ts |   1 +
  apps/server/src/auth/RpcAuthorization.test.ts |  21 +-
@@ -325,7 +327,7 @@ Tests:
  packages/contracts/src/settings.test.ts       |  10 +
  packages/contracts/src/settings.ts            |  12 +-
  .../src/server/subagentProjection.ts          |   1 +
- 82 files changed, 2584 insertions(+), 224 deletions(-)
+ 82 files changed, 2585 insertions(+), 225 deletions(-)
  create mode 100644 apps/server/src/orchestration-v2/linkedQuestionsOff.ts
  create mode 100644 packages/contracts/src/linkedQuestions.test.ts
  create mode 100644 packages/contracts/src/linkedQuestions.ts
@@ -344,10 +346,10 @@ index 3bf5b7fa2519599b15b4082a1439c7fbacb80af0..7a8e11df1e0fe670ca8b987ba85362fd
    readonly onMoveThread: (
      thread: EnvironmentThreadShell,
 diff --git a/apps/mobile/src/features/home/useThreadListActions.ts b/apps/mobile/src/features/home/useThreadListActions.ts
-index a93580eb5292d6da2e475299f5e4184f6bc7b1f3..7196df16a98f17337982e484a7a5ba219c9f647a 100644
+index 7c422767f316c6f281a8dbfd0cb3bb7a6caffc7f..5edd7763bbe5c2c3d101d76449a0726847c32714 100644
 --- a/apps/mobile/src/features/home/useThreadListActions.ts
 +++ b/apps/mobile/src/features/home/useThreadListActions.ts
-@@ -259,7 +259,7 @@ export function useThreadListActions(): {
+@@ -260,7 +260,7 @@ export function useThreadListActions(): {
    ) => Promise<boolean>;
    readonly setThreadLinkedQuestions: (
      thread: EnvironmentThreadShell,
@@ -356,7 +358,7 @@ index a93580eb5292d6da2e475299f5e4184f6bc7b1f3..7196df16a98f17337982e484a7a5ba21
    ) => Promise<boolean>;
    readonly moveThread: (
      thread: EnvironmentThreadShell,
-@@ -607,7 +607,10 @@ export function useThreadListActions(): {
+@@ -608,7 +608,10 @@ export function useThreadListActions(): {
      }
      return true;
    };
@@ -368,6 +370,15 @@ index a93580eb5292d6da2e475299f5e4184f6bc7b1f3..7196df16a98f17337982e484a7a5ba21
      selectionHaptic();
      const result = await setLinkedQuestionsMutation({
        environmentId: thread.environmentId,
+@@ -887,7 +890,7 @@ export function useThreadListActions(): {
+       setThreadAutoSettle(liveThread(thread), enabled),
+     ),
+     setThreadLinkedQuestions: useStableCallback(
+-      (thread: EnvironmentThreadShell, enabled: boolean) =>
++      (thread: EnvironmentThreadShell, enabled: boolean | null) =>
+         setThreadLinkedQuestions(liveThread(thread), enabled),
+     ),
+     moveThread: useStableCallback(moveThread),
 diff --git a/apps/mobile/src/features/threads/thread-list-v2-items.tsx b/apps/mobile/src/features/threads/thread-list-v2-items.tsx
 index fd89e365b43371ee3ee4d65136a8ca19dc9dfe3d..d0c24c3038adbd4663178474d2dc91d6425d3346 100644
 --- a/apps/mobile/src/features/threads/thread-list-v2-items.tsx
@@ -627,10 +638,10 @@ index 64d756e80415d9f258ea1995c88de6a355792140..fd8b00955ce0c9e905883d1986b5e22b
        peerLinkPairingCodes: true,
        mcpHostedApproval: true,
 diff --git a/apps/server/src/mcp/OrchestratorMcpService.ts b/apps/server/src/mcp/OrchestratorMcpService.ts
-index a604173ddc7d9c4168e7eb4798e5b7960bdc3e7c..c9e0319a8a07e41d042c582288d5028e1a4d2dcd 100644
+index 5c80c95805dea2ca0b72d942a7daf8e45cfd3a9b..1c08be1bb97b84edda244ce1a8ec34b70dea97aa 100644
 --- a/apps/server/src/mcp/OrchestratorMcpService.ts
 +++ b/apps/server/src/mcp/OrchestratorMcpService.ts
-@@ -3414,6 +3414,7 @@ const make = Effect.gen(function* () {
+@@ -3430,6 +3430,7 @@ const make = Effect.gen(function* () {
                    ...(parent.thread.linkOrigin === undefined
                      ? {}
                      : { linkOrigin: parent.thread.linkOrigin }),
@@ -947,10 +958,10 @@ index 940f5fc8f92e4da88309b0ec21b815730232e84f..a5cf647b7abd8d1b68295c71b52d7fca
    success: OrchestratorMcpAskListResult,
    failure: OrchestratorMcpFailure,
 diff --git a/apps/server/src/mcp/toolkits/project/handlers.test.ts b/apps/server/src/mcp/toolkits/project/handlers.test.ts
-index 17fa4dd496fad09979908f02e410fa77d35e8dd8..712f0706f1f25e6840cdaf28eaeba323d55119c7 100644
+index 764589a6864f6f020049c9570057d5a05dee9593..45bf2480d0a97742082d80b39156070b01829b06 100644
 --- a/apps/server/src/mcp/toolkits/project/handlers.test.ts
 +++ b/apps/server/src/mcp/toolkits/project/handlers.test.ts
-@@ -1384,3 +1384,13 @@ it.effect("a project update or create that is refused tells the agent why", () =
+@@ -1467,3 +1467,13 @@ it.effect("a project update or create that is refused tells the agent why", () =
      expect(dropped.at(-1)?.result).toMatchObject({ code: "invalid_request" });
    }),
  );
@@ -965,10 +976,10 @@ index 17fa4dd496fad09979908f02e410fa77d35e8dd8..712f0706f1f25e6840cdaf28eaeba323
 +  }
 +});
 diff --git a/apps/server/src/mcp/toolkits/project/handlers.ts b/apps/server/src/mcp/toolkits/project/handlers.ts
-index deec936b62b5417b861b50dcbef10d5947754995..4bb1e0e8145529a4376b1bac056be57c5922999e 100644
+index 75d11f46d066bfc07134ad60a7229cccc0dfaf0c..24de298cf37d59bdcaa7a70adc09a99a35ad72af 100644
 --- a/apps/server/src/mcp/toolkits/project/handlers.ts
 +++ b/apps/server/src/mcp/toolkits/project/handlers.ts
-@@ -479,6 +479,8 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
+@@ -493,6 +493,8 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
                }),
            createdBy: "agent",
            creationSource: "mcp",
@@ -1355,7 +1366,7 @@ index ac7cb9c714d88942da0a5a17c261017fb0a2b9bc..f6094db10d65ef97895fa60e9de2ff81
    Effect.gen(function* () {
      const orchestrator = yield* Orchestrator.OrchestratorV2;
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index da03a19cf2869ed6aa1edef3b1aa51908cc35014..2d07d815b4059394354913855b8f7a593f811dd6 100644
+index a350cdd4cbaec196168bacef5be589e43ba3075f..d9caf9227ec5cec77c024d67ab753eb4a2f51652 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -13,7 +13,7 @@ import {
@@ -1433,7 +1444,7 @@ index da03a19cf2869ed6aa1edef3b1aa51908cc35014..2d07d815b4059394354913855b8f7a59
          createdBy: command.createdBy,
          creationSource: command.creationSource,
          createdAt: now,
-@@ -16901,7 +16913,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16903,7 +16915,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        .commitCommand({
          commandId: command.commandId,
          threadId: commandThreadId(command),
@@ -2077,7 +2088,7 @@ index ddd74a434394b3982a556015ee244f6071c368f6..4c95acb9bfc7af6573632b32695d8586
        findGuestShareThreadId: readOnReader(findGuestShareThreadId),
        getThread: readOnReader(getThread),
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts b/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
-index 74e807bac2bc6477899e07ae17a5e78d77d84f4d..94da04a7bd8c755eaa18aee4c370c23f7131ac44 100644
+index 09d34ab7e470babb6697b5f5626d67f0f2556afa..f71550309daf8bff1bf7c3c4dd7910191bce0a83 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
 +++ b/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
 @@ -148,7 +148,8 @@ function layerProjectionStore(
@@ -2250,10 +2261,10 @@ index 8b5fbc009aae939b5968eda9e3309828810a487b..c147a4811e45d7ab5b5a65e684667b20
  );
  
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-index 857928c1e322c1830146e65117780fac9a8a2c38..37d9986c9df202b6cf7082d685a78edc4b61101f 100644
+index 4d210c06ee872e42a65b8c3e344a98acdc61c373..eb2475fbdd7251a111c3c891a707843cc2321295 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
 +++ b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-@@ -333,6 +333,11 @@ export const layer: Layer.Layer<
+@@ -373,6 +373,11 @@ export const layer: Layer.Layer<
      const restoreMissingWorktree = yield* makeRestoreMissingWorktree;
      const worktreeRestore = yield* ThreadWorktreeRestore;
      const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
@@ -2265,7 +2276,7 @@ index 857928c1e322c1830146e65117780fac9a8a2c38..37d9986c9df202b6cf7082d685a78edc
  
      // Build draining callbacks outside startup scope so they cannot retain full thread history.
      const makeRunControls = (input: {
-@@ -377,7 +382,7 @@ export const layer: Layer.Layer<
+@@ -417,7 +422,7 @@ export const layer: Layer.Layer<
            isCurrentAttemptInStatus("running").pipe(
              Effect.tap((current) =>
                current && input.linkedQuestionOf !== undefined
@@ -2274,7 +2285,7 @@ index 857928c1e322c1830146e65117780fac9a8a2c38..37d9986c9df202b6cf7082d685a78edc
                  : Effect.void,
              ),
            ),
-@@ -748,7 +753,7 @@ export const layer: Layer.Layer<
+@@ -788,7 +793,7 @@ export const layer: Layer.Layer<
        const linkedQuestionRefusal = yield* linkedQuestionStartRefusal({
          run,
          askedThreadId: linkedQuestionOf,
@@ -2552,7 +2563,7 @@ index 99e81c27c36893355812180c36b8f46a9e196901..2869248acbfb33c279269ed254364f14
                  creationSource: input.creationSource,
                  ...(initialMessage === undefined
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.test.ts b/apps/server/src/orchestration-v2/ThreadManagementService.test.ts
-index 68f272f2de810ce1b20dd3bf9d69e7d18c717d97..3b7a2265f3327e8c7a2aac063468d2ca2f73430a 100644
+index 73ea9e4b6f61474a7681a311bfddc0664cf2adc5..6acfdcc4ce89a2c12b0cdce97837331461c08768 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.test.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.test.ts
 @@ -82,6 +82,8 @@ it("stamps authoritative provenance on commands that create threads or messages"
@@ -2574,7 +2585,7 @@ index 68f272f2de810ce1b20dd3bf9d69e7d18c717d97..3b7a2265f3327e8c7a2aac063468d2ca
    const question = ThreadManagementService.withCreationProvenance(
      {
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index 16949ffc8df8930678283be2bf048e18e108bc40..ed66721567b4a6992d8c11f968cf501e318a1c84 100644
+index 85dc09c085b159d2e476e9d6aadad5c5d5e11bd2..6972c459015b8af3c79402acc3522d265131f0d8 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
 @@ -98,6 +98,8 @@ export function withCreationProvenance(
@@ -3270,7 +3281,7 @@ index 895cd1d7a6fb9472bdf7dc9d8df039f8560b91df..a5c4e523d87ad80b941151a36b5dd4ee
        args.clientRequestId = yield* scopedRequestId(scope.requestNamespace, args.clientRequestId);
      }
 diff --git a/apps/server/src/peer/RemoteDelegation.test.ts b/apps/server/src/peer/RemoteDelegation.test.ts
-index d075c44ef9ff2a950e7623f6a291102f838ee996..3be6ccf67cb2659043e47e1095cdf20bf23f11fd 100644
+index ba4cd158758fda9bca3e469edff3366250f80a3d..161cdd38a358ed69a3782619149a46acc640db44 100644
 --- a/apps/server/src/peer/RemoteDelegation.test.ts
 +++ b/apps/server/src/peer/RemoteDelegation.test.ts
 @@ -109,6 +109,7 @@ interface BoxThread {
@@ -3300,7 +3311,7 @@ index d075c44ef9ff2a950e7623f6a291102f838ee996..3be6ccf67cb2659043e47e1095cdf20b
  };
  
  const boxRunId = RunId.make("run:box");
-@@ -535,6 +537,9 @@ const boxToolkitLayer = (thread: BoxThread) => {
+@@ -537,6 +539,9 @@ const boxToolkitLayer = (thread: BoxThread) => {
              Effect.andThen(Ref.set(thread.linkOrigin, input.linkOrigin ?? null)),
              Effect.andThen(Ref.set(thread.delegatedFrom, input.delegatedFrom ?? null)),
              Effect.andThen(Ref.set(thread.message, input.initialMessage?.text ?? null)),
@@ -3310,7 +3321,7 @@ index d075c44ef9ff2a950e7623f6a291102f838ee996..3be6ccf67cb2659043e47e1095cdf20b
              Effect.andThen(
                Ref.set(thread.launchedWith, {
                  modelSelection: input.modelSelection,
-@@ -1258,6 +1263,40 @@ it.effect(
+@@ -1262,6 +1267,40 @@ it.effect(
      ).pipe(Effect.provide(NodeHttpServer.layerTest)),
  );
  
@@ -3548,15 +3559,15 @@ index c5e67e2ea1aa7c166c9925d9b5eb5accc6317265..00936a672d39828a9ec3162bc18dee3e
      getById,
      getByWorkspaceRoot,
 diff --git a/apps/server/src/provider/agentContextBudget.json b/apps/server/src/provider/agentContextBudget.json
-index d027a14dfdd8f3776b3fc985b8011cdcfff8dcc2..a90510358de5056b9c579b5efb942e412051eda4 100644
+index 90320cc755c8aaa07ef7cbf03c0cc882f2ec3ce5..35c3e9c18e29fd58437e0fd6d1c5c0e1cb379d97 100644
 --- a/apps/server/src/provider/agentContextBudget.json
 +++ b/apps/server/src/provider/agentContextBudget.json
 @@ -1,5 +1,5 @@
  {
    "claudeSystemAppendBytes": 6245,
    "codexAdditionalContextBytes": 7639,
--  "mcpToolListJsonBytes": 63253
-+  "mcpToolListJsonBytes": 63443
+-  "mcpToolListJsonBytes": 63338
++  "mcpToolListJsonBytes": 63528
  }
 diff --git a/apps/server/src/relay/AgentAwarenessRelay.test.ts b/apps/server/src/relay/AgentAwarenessRelay.test.ts
 index 9b5018adffaf43f4f95d61188bddaeaa68780876..92ef3ba2830c33ab2508d51c48157d9a78109035 100644
@@ -3571,7 +3582,7 @@ index 9b5018adffaf43f4f95d61188bddaeaa68780876..92ef3ba2830c33ab2508d51c48157d9a
        getByWorkspaceRoot: unused,
        workspaceScanDirectory: unused,
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index b93648cb6642ecf95244bff3d4dfb4b4dcf214d1..ac5a65171cdcc5a676c1c48986f8e38101036983 100644
+index e78b0e303adfa2638cce2135bb73d56289ba2dbd..f8864add043c434c80cd0385e6f66d7c7ff00c79 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
 @@ -87,6 +87,7 @@ import {
@@ -3582,7 +3593,7 @@ index b93648cb6642ecf95244bff3d4dfb4b4dcf214d1..ac5a65171cdcc5a676c1c48986f8e381
  } from "@t3tools/contracts";
  import {
    canResumeThread,
-@@ -3605,7 +3606,12 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3609,7 +3610,12 @@ export default function ChatView(props: ChatViewProps) {
                activeThreadTitle={activeThread.title}
                activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
                activeThreadAnswersLinkedQuestions={
@@ -3597,7 +3608,7 @@ index b93648cb6642ecf95244bff3d4dfb4b4dcf214d1..ac5a65171cdcc5a676c1c48986f8e381
                activeProject={activeProject ?? null}
                parentThreadLink={headerParentThreadLink}
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index a3cbe9ed90c2e92efe77b7876c72df8702823c39..3d083c3f6d8b25104e1ff12d59d4abca1cef82e2 100644
+index 5780112441c1719e1c3aba2a7d0d291ea79296d9..dd61c530c28c00754f210cbfe1d63a95d2d4ca95 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -143,12 +143,13 @@ import {
@@ -3628,7 +3639,7 @@ index a3cbe9ed90c2e92efe77b7876c72df8702823c39..3d083c3f6d8b25104e1ff12d59d4abca
  } from "./threadActionMenu.logic";
  import {
    applySidebarThreadDrop,
-@@ -1414,6 +1418,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1413,6 +1417,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      setProjectGroupPinned,
      toggleProjectGroupPin,
    } = useProjectPin();
@@ -3637,7 +3648,7 @@ index a3cbe9ed90c2e92efe77b7876c72df8702823c39..3d083c3f6d8b25104e1ff12d59d4abca
    const openSidebarSettings = useStableCallback(() => {
      if (isMobile) setOpenMobile(false);
      void router.navigate({ to: "/settings/labs", hash: searchableSetting("boring-sidebar").id });
-@@ -1448,6 +1454,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1447,6 +1453,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      ) => {
        const api = readLocalApi();
        if (!api) return;
@@ -3645,7 +3656,7 @@ index a3cbe9ed90c2e92efe77b7876c72df8702823c39..3d083c3f6d8b25104e1ff12d59d4abca
        void (async () => {
          const clicked = await settlePromise(() =>
            api.contextMenu.show(
-@@ -1461,6 +1468,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1460,6 +1467,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                        : { id: "pin", label: gt("Pin project"), icon: "pin" },
                    ]
                  : []),
@@ -3655,7 +3666,7 @@ index a3cbe9ed90c2e92efe77b7876c72df8702823c39..3d083c3f6d8b25104e1ff12d59d4abca
                { id: "project-settings", label: gt("Project settings"), icon: "settings" },
              ],
              position,
-@@ -1479,6 +1489,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1478,6 +1488,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            case "unpin":
              setProjectGroupPinned(group, clicked.value === "pin");
              return;
@@ -3667,7 +3678,7 @@ index a3cbe9ed90c2e92efe77b7876c72df8702823c39..3d083c3f6d8b25104e1ff12d59d4abca
            case "project-settings":
              openProjectSettings(group);
              return;
-@@ -2914,7 +2929,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2913,7 +2928,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                isPinned,
                isSettled,
                autoSettleEnabled: thread.autoSettleDisabledAt == null,
@@ -3676,7 +3687,7 @@ index a3cbe9ed90c2e92efe77b7876c72df8702823c39..3d083c3f6d8b25104e1ff12d59d4abca
                isLinkedQuestion: thread.linkedQuestionOf != null,
                isSnoozed,
                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
-@@ -3053,10 +3068,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3052,10 +3067,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              }
              return;
            }
@@ -3762,7 +3773,7 @@ index 229e685a6fc1e27aa1249c6a6f513ccd5b626b99..0ee202cea8c8bdc7c63b5aae37ad06c7
    environmentId,
    link,
 diff --git a/apps/web/src/components/settings/ProjectSettingsPanel.tsx b/apps/web/src/components/settings/ProjectSettingsPanel.tsx
-index 0e1aa212051d2ba3132eb9b17853470454e3f1f6..b8225088ad04e9db3473098a8b9a6d22181ea245 100644
+index 666e774556b707bb37209c26f17bd44b820e215f..a970dc1107104b6c551442406f165b5b433efa56 100644
 --- a/apps/web/src/components/settings/ProjectSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/ProjectSettingsPanel.tsx
 @@ -12,6 +12,7 @@ import {
@@ -3834,7 +3845,7 @@ index 0e1aa212051d2ba3132eb9b17853470454e3f1f6..b8225088ad04e9db3473098a8b9a6d22
  export type ProjectSettingsCategory = "general" | "source-control" | "project";
  
  interface ProjectSelection {
-@@ -696,6 +744,7 @@ function ProjectDetail({
+@@ -694,6 +742,7 @@ function ProjectDetail({
                />
              </>
            ) : null}
@@ -5039,10 +5050,10 @@ index e060c7da8059e05df33e7a0e82adb72dabf94aba..3a3f9644ea781c183457d3ef9f78557d
    updatedAt: IsoDateTime,
  });
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index 587ac2b9817e305b3ad1ac136ff51f8e3275b1d0..543febc69fba6cba61bdc0358caf3d35f3d2376c 100644
+index 51316df9442591bcbfb3688313cf654ce1056be1..c559486f6df3f52845c7a759c4242038e4ac4b71 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
-@@ -552,6 +552,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
+@@ -553,6 +553,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
    linkedQuestionsEnabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -5050,7 +5061,7 @@ index 587ac2b9817e305b3ad1ac136ff51f8e3275b1d0..543febc69fba6cba61bdc0358caf3d35
    pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    /** Absent on threads written before tags existed; read as empty. */
-@@ -2497,6 +2498,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
+@@ -2501,6 +2502,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
    linkedQuestionsEnabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -5058,7 +5069,7 @@ index 587ac2b9817e305b3ad1ac136ff51f8e3275b1d0..543febc69fba6cba61bdc0358caf3d35
    pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    /** Absent on threads written before tags existed; read as empty. */
-@@ -2671,6 +2673,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
+@@ -2675,6 +2677,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    linkedQuestionsEnabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
@@ -5066,7 +5077,7 @@ index 587ac2b9817e305b3ad1ac136ff51f8e3275b1d0..543febc69fba6cba61bdc0358caf3d35
    lastVisitedAt: Schema.NullOr(Schema.DateTimeUtcFromString).pipe(
      Schema.withDecodingDefault(Effect.succeed(null)),
    ),
-@@ -3134,6 +3137,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
+@@ -3139,6 +3142,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    linkedQuestionsEnabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
@@ -5074,7 +5085,7 @@ index 587ac2b9817e305b3ad1ac136ff51f8e3275b1d0..543febc69fba6cba61bdc0358caf3d35
    lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    titleRegeneration: Schema.optional(
      Schema.NullOr(
-@@ -3361,6 +3365,10 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3366,6 +3370,10 @@ export const OrchestrationV2Command = Schema.Union([
      delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
      /** Only the server sets this, for a thread that is a workflow run's agent step. */
      workflowRun: Schema.optional(OrchestrationV2WorkflowOrigin),
@@ -5085,7 +5096,7 @@ index 587ac2b9817e305b3ad1ac136ff51f8e3275b1d0..543febc69fba6cba61bdc0358caf3d35
      importedNativeThread: Schema.optional(
        Schema.Struct({
          ref: Schema.Struct({
-@@ -3462,7 +3470,8 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3467,7 +3475,8 @@ export const OrchestrationV2Command = Schema.Union([
      type: Schema.Literal("thread.linked-questions.set"),
      commandId: CommandId,
      threadId: ThreadId,
@@ -5243,10 +5254,10 @@ index 771e102d2b25467839ce623f83e76d9085c10e63..b6262b5c5788ffcf4376d801b6ecff75
  });
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 20704885b830b4c8a13a2762df795518239148cf..ebc8a82aa63265a85f140df49131bea8ab8bfa4a 100644
+index 568ff980d22c861a9306e757832c132c044cc2c3..ab5bfb0c962b9a13e2c7026c850433b5f1659277 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -1526,6 +1526,10 @@ export const ServerSettings = Schema.Struct({
+@@ -1543,6 +1543,10 @@ export const ServerSettings = Schema.Struct({
    linkedEnvironmentsInboundMaxAccess: AuthMcpClientAccess.pipe(
      Schema.withDecodingDefault(Effect.succeed("full-access" as const)),
    ),
@@ -5257,7 +5268,7 @@ index 20704885b830b4c8a13a2762df795518239148cf..ebc8a82aa63265a85f140df49131bea8
    /** Beta: Claude and Codex predict the next prompt after completed turns. Codex follows a change at once; open Claude threads after they restart. */
    promptSuggestionsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
    sidebarAutoSettleKeepPullRequests: Schema.Boolean.pipe(
-@@ -1966,6 +1970,7 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1983,6 +1987,7 @@ export const ServerSettingsPatch = Schema.Struct({
    workflowsEnabled: Schema.optionalKey(Schema.Boolean),
    workflowSkippedRunsKept: Schema.optionalKey(WorkflowSkippedRunsKept),
    linkedEnvironmentsInboundMaxAccess: Schema.optionalKey(AuthMcpClientAccess),
@@ -5265,7 +5276,7 @@ index 20704885b830b4c8a13a2762df795518239148cf..ebc8a82aa63265a85f140df49131bea8
    promptSuggestionsEnabled: Schema.optionalKey(Schema.Boolean),
    backgroundActivity: Schema.optionalKey(
      Schema.Struct({
-@@ -2069,7 +2074,8 @@ export function requiredScopesForServerSettingsPatch(
+@@ -2086,7 +2091,8 @@ export function requiredScopesForServerSettingsPatch(
      if (
        key === "requireConnectDeviceApproval" ||
        key === "enablePreviewTunnel" ||
@@ -5275,7 +5286,7 @@ index 20704885b830b4c8a13a2762df795518239148cf..ebc8a82aa63265a85f140df49131bea8
      ) {
        changesAccess = true;
      } else if (
-@@ -2103,6 +2109,10 @@ export function requiredScopesForServerSettingsPatch(
+@@ -2120,6 +2126,10 @@ export function requiredScopesForServerSettingsPatch(
  export function requiredScopesForProjectMutation(
    mutation: ProjectMutation,
  ): ReadonlyArray<AuthEnvironmentScope> {

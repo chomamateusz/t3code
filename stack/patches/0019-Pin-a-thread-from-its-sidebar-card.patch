@@ -30,6 +30,8 @@ Tests:
 - No run in a real client yet.
 
 Model/harness: Claude Opus 5.5 / Claude Code
+
+Port to 0085217d1b: SidebarThreadRow.tsx follows upstream ea3328c50c (#42671, one shared tooltip serves every trigger): the Pin thread button is a SharedTooltipTrigger with its label instead of Tooltip, TooltipTrigger and TooltipPopup, like upstream's Unpin button beside it. Sidebar.tsx conflicted only in context. The change itself is unchanged.
 ---
  apps/web/src/components/Sidebar.tsx           |  1 +
  .../sidebar/SidebarThreadRow.browser.test.tsx |  1 +
@@ -38,17 +40,17 @@ Model/harness: Claude Opus 5.5 / Claude Code
  4 files changed, 33 insertions(+), 1 deletion(-)
 
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 81564bc0f11c8504e5fe0a43326f945cc5f90737..ed3ededb7410b2edc724b4c7359bf32169b31efa 100644
+index 1463f9d56a6003f05e6cc5f9cd4a4beb9ef19f81..17a3ebe123bdb2bc42ad422d4d282b9956dc1b65 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -3599,6 +3599,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
-                             onUnsettle={attemptUnsettle}
-                             onSnooze={attemptSnooze}
-                             onUnsnooze={attemptUnsnooze}
-+                            onPin={attemptPin}
-                             onUnpin={attemptUnpin}
-                             onAcknowledgeWoke={acknowledgeWoke}
-                             onReadAction={applyThreadReadAction}
+@@ -3574,6 +3574,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                           onUnsettle={attemptUnsettle}
+                           onSnooze={attemptSnooze}
+                           onUnsnooze={attemptUnsnooze}
++                          onPin={attemptPin}
+                           onUnpin={attemptUnpin}
+                           onAcknowledgeWoke={acknowledgeWoke}
+                           onReadAction={applyThreadReadAction}
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
 index 7707afbbb31d28cfcbfee4dd3e7380a16200d7d2..8e37eeabc0b22914e0f0f58df59a3964b7605b75 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
@@ -62,10 +64,10 @@ index 7707afbbb31d28cfcbfee4dd3e7380a16200d7d2..8e37eeabc0b22914e0f0f58df59a3964
          onAcknowledgeWoke={noop}
          onReadAction={noop}
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index cee5911584938fb3f74a4184912c41c139d69cee..b6a9400d91bf79bb911c7e7bc088870679f6b220 100644
+index ac10820e78414c6e75e272492f2291c8d35fc021..16de19832104c506187716c35c313df6a1603ef6 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -692,6 +692,7 @@ type SidebarThreadRowProps = {
+@@ -693,6 +693,7 @@ type SidebarThreadRowProps = {
    onUnsettle: (threadRef: ScopedThreadRef) => void;
    onSnooze: (threadRef: ScopedThreadRef, preset: Pick<SnoozePreset, "snoozedUntil">) => void;
    onUnsnooze: (threadRef: ScopedThreadRef) => void;
@@ -73,7 +75,7 @@ index cee5911584938fb3f74a4184912c41c139d69cee..b6a9400d91bf79bb911c7e7bc0888706
    onUnpin: (threadRef: ScopedThreadRef) => void;
    onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
    onReadAction: (threadRef: ScopedThreadRef, action: SidebarThreadReadAction) => void;
-@@ -760,6 +761,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -761,6 +762,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      onThreadClick,
      onUnsettle,
      onUnsnooze,
@@ -81,7 +83,7 @@ index cee5911584938fb3f74a4184912c41c139d69cee..b6a9400d91bf79bb911c7e7bc0888706
      onUnpin,
      readOpensPullRequestsInRightPanel,
      renamingTitle,
-@@ -978,6 +980,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -980,6 +982,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      event.stopPropagation();
      onUnsnooze(threadRef);
    };
@@ -93,42 +95,42 @@ index cee5911584938fb3f74a4184912c41c139d69cee..b6a9400d91bf79bb911c7e7bc0888706
    const handleUnpinClick = (event: ReactMouseEvent) => {
      event.preventDefault();
      event.stopPropagation();
-@@ -1264,6 +1271,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1266,6 +1273,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
        />
      )
    ) : null;
 +  const pinButton =
 +    !props.isPinned && props.pinningSupported && canOperateThread && !sortable?.isDragging ? (
-+      <Tooltip>
-+        <TooltipTrigger
-+          render={
-+            <button
-+              type="button"
-+              aria-label={gt("Pin thread")}
-+              onClick={handlePinClick}
-+              onPointerDown={(event) => event.stopPropagation()}
-+              className="hidden cursor-pointer items-center rounded-sm text-muted-foreground/65 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring group-any-hover/sidebar-row:inline-flex group-focus-visible/sidebar-row:inline-flex group-has-[:focus-visible]/sidebar-row:inline-flex"
-+            />
-+          }
-+        >
-+          <PinIcon aria-hidden className="size-3 shrink-0" />
-+        </TooltipTrigger>
-+        <TooltipPopup>
-+          <T>Pin thread</T>
-+        </TooltipPopup>
-+      </Tooltip>
++      <SharedTooltipTrigger
++        render={
++          <button
++            type="button"
++            aria-label={gt("Pin thread")}
++            onClick={handlePinClick}
++            onPointerDown={(event) => event.stopPropagation()}
++            className="hidden cursor-pointer items-center rounded-sm text-muted-foreground/65 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring group-any-hover/sidebar-row:inline-flex group-focus-visible/sidebar-row:inline-flex group-has-[:focus-visible]/sidebar-row:inline-flex"
++          />
++        }
++        label={
++          <>
++            <T>Pin thread</T>
++          </>
++        }
++      >
++        <PinIcon aria-hidden className="size-3 shrink-0" />
++      </SharedTooltipTrigger>
 +    ) : null;
  
    const diff = latestRunDiff(thread);
    // Only the trailing icons would remain, so the row moves them to the title line instead.
-@@ -1624,6 +1652,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
-               {/* Left of the status slot, the pin would slide when hover swaps the
+@@ -1632,6 +1660,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+             {/* Left of the status slot, the pin would slide when hover swaps the
                  label for the wider row controls. */}
-               {pinIndicator}
-+              {pinButton}
-               {props.projectDisplayName ? (
-                 <span
-                   className={cn("min-w-0 flex-1 truncate font-normal text-secondary-label text-xs")}
+             {pinIndicator}
++            {pinButton}
+             {props.projectDisplayName ? (
+               <span
+                 className={cn("min-w-0 flex-1 truncate font-normal text-secondary-label text-xs")}
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
 index cca97d378a0641209aea272b04c782eddace3874..6c45787ad9349ab1777d1f054c5102a548169da0 100644
 --- a/docs/user/thread-sidebar.md

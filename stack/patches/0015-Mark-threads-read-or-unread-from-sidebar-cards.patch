@@ -31,6 +31,8 @@ Port to b8be2287dc: threadActionMenu.logic.ts conflicted only in placement: upst
 
 Port to 221953fbf3: upstream 95411e3cd7 (#40742, settle, pin, snooze and more for the current thread from cmd+k) moved the menu build out of openMenu into readMenu, which returns the items and a run(action) runner. readAction: readThreadReadAction(threadRef) replaces hasCompletedRun in readMenu's buildThreadActionMenuItems call and the mark-read case sits in run before mark-unread, so the sidebar row menu, the chat header menu and upstream's cmd+k rows for the current thread all take the same three-state decision. CommandPaletteThreadActions.tsx maps the mail-check icon so the palette's Mark read row shows the same icon as the menus; no palette entries are added.
 
+Port to 0085217d1b: SidebarThreadRow.tsx follows upstream ea3328c50c (#42671, one shared tooltip serves every trigger): ReadActionButton is a SharedTooltipTrigger with its label instead of Tooltip, TooltipTrigger and TooltipPopup, and sits between upstream's shared-tooltip Discard draft and the snooze menu as before. Sidebar.tsx conflicted only in context (ea3328c50c drops the TooltipProvider around the thread list). The change itself is unchanged.
+
 Files:
 apps/web:
 - apps/web/src/components/Sidebar.logic.test.ts
@@ -62,7 +64,7 @@ Model/harness: Claude Opus 5.5 / Claude Code
  apps/web/src/components/Sidebar.logic.ts      | 18 ++++-
  apps/web/src/components/Sidebar.tsx           | 15 +++-
  .../sidebar/SidebarThreadRow.browser.test.tsx |  1 +
- .../components/sidebar/SidebarThreadRow.tsx   | 56 +++++++++++++-
+ .../components/sidebar/SidebarThreadRow.tsx   | 54 +++++++++++++-
  .../components/threadActionMenu.logic.test.ts | 25 ++++---
  .../src/components/threadActionMenu.logic.ts  | 22 ++++--
  apps/web/src/contextMenuFallback.ts           |  5 ++
@@ -70,7 +72,7 @@ Model/harness: Claude Opus 5.5 / Claude Code
  apps/web/src/hooks/useThreadActionMenu.ts     | 12 ++-
  apps/web/src/hooks/useThreadActions.ts        | 45 ++++++++++-
  docs/user/thread-sidebar.md                   |  3 +
- 13 files changed, 255 insertions(+), 24 deletions(-)
+ 13 files changed, 253 insertions(+), 24 deletions(-)
 
 diff --git a/apps/web/src/components/CommandPaletteThreadActions.tsx b/apps/web/src/components/CommandPaletteThreadActions.tsx
 index 80e0213026846f9adbe60c88fef1686259c91183..938bfe4d950636407b78a2410df1baba2cb4886a 100644
@@ -220,7 +222,7 @@ index d31d96c9517b384b0ccf6a18b110a3a1fc19a018..8160be91b63cc78e5d88525218283b06
    "approval",
    "input",
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 2d33a256af6fb6607d9dadcf6a8d40a4513922c4..b2e80b16ad5f711c5d9adc59d7459b2551e236ca 100644
+index eb52beccf31332efc589d49721d451273cd95498..321c871d9571f36ad05fe6958f0a8db49905353c 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -142,6 +142,7 @@ import {
@@ -239,7 +241,7 @@ index 2d33a256af6fb6607d9dadcf6a8d40a4513922c4..b2e80b16ad5f711c5d9adc59d7459b25
  } from "./Sidebar.logic";
  import {
    createSidebarCollisionDetection,
-@@ -997,6 +999,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -996,6 +998,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      reorderPinnedThread,
      reorderActiveThread,
      markThreadUnread,
@@ -247,7 +249,7 @@ index 2d33a256af6fb6607d9dadcf6a8d40a4513922c4..b2e80b16ad5f711c5d9adc59d7459b25
      archiveThread,
      deleteThread,
    } = useThreadActions();
-@@ -1054,6 +1057,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1053,6 +1056,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
    const rangeSelectTo = useThreadSelectionStore((s) => s.rangeSelectTo);
    const acknowledgeWoke = useAcknowledgeThreadWoke();
@@ -260,7 +262,7 @@ index 2d33a256af6fb6607d9dadcf6a8d40a4513922c4..b2e80b16ad5f711c5d9adc59d7459b25
    // A Settings or Usage modal keeps the thread behind it current.
    const routeTarget = useShownThreadRouteTarget().shownTarget;
    const routeDraftThread = useComposerDraftStore((store) =>
-@@ -2890,8 +2899,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2889,8 +2898,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                isSnoozed,
                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
                isRegeneratingTitle,
@@ -270,7 +272,7 @@ index 2d33a256af6fb6607d9dadcf6a8d40a4513922c4..b2e80b16ad5f711c5d9adc59d7459b25
                canShareWithGuest: appAtomRegistry.get(
                  canShareWithGuestAtom(threadRef.environmentId),
                ),
-@@ -3040,8 +3049,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3039,8 +3048,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              if (toast) toastManager.add(toast);
              return;
            }
@@ -281,14 +283,14 @@ index 2d33a256af6fb6607d9dadcf6a8d40a4513922c4..b2e80b16ad5f711c5d9adc59d7459b25
              return;
            case "copy-path":
              if (!threadWorkspacePath) {
-@@ -3575,6 +3585,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
-                             onUnsnooze={attemptUnsnooze}
-                             onUnpin={attemptUnpin}
-                             onAcknowledgeWoke={acknowledgeWoke}
-+                            onReadAction={applyThreadReadAction}
-                             onFileDropThreads={handleThreadFileDrop}
-                           />
-                         );
+@@ -3550,6 +3560,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                           onUnsnooze={attemptUnsnooze}
+                           onUnpin={attemptUnpin}
+                           onAcknowledgeWoke={acknowledgeWoke}
++                          onReadAction={applyThreadReadAction}
+                           onFileDropThreads={handleThreadFileDrop}
+                         />
+                       );
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
 index 39abba5e5b808c359db5300302d07018279ecb74..7707afbbb31d28cfcbfee4dd3e7380a16200d7d2 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
@@ -302,7 +304,7 @@ index 39abba5e5b808c359db5300302d07018279ecb74..7707afbbb31d28cfcbfee4dd3e7380a1
        <li>Outside</li>
      </ul>
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index c6544e8a799df82e15106214ace2e2d9ab186ecc..1aa623058e0dd60cdfbb40cfca216296f9ec072f 100644
+index ca4e27750388abbca117bc15c1475192ec21f3c1..762c767e5abab952d029984c6e1ae08bfc4e61b9 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -50,6 +50,8 @@ import {
@@ -325,7 +327,7 @@ index c6544e8a799df82e15106214ace2e2d9ab186ecc..1aa623058e0dd60cdfbb40cfca216296
    shouldRecedeSidebarThread,
    resolveWorkingStartedAt,
    useRetainedValue,
-@@ -488,6 +492,39 @@ function SnoozeMenuButton(props: {
+@@ -491,6 +495,37 @@ function SnoozeMenuButton(props: {
    );
  }
  
@@ -342,30 +344,28 @@ index c6544e8a799df82e15106214ace2e2d9ab186ecc..1aa623058e0dd60cdfbb40cfca216296
 +  const { Icon } = READ_ACTION_BUTTONS[props.action];
 +  const label = messages(READ_ACTION_BUTTONS[props.action].label);
 +  return (
-+    <Tooltip>
-+      <TooltipTrigger
-+        render={
-+          <button
-+            type="button"
-+            aria-label={label}
-+            onClick={props.onClick}
-+            onPointerDown={(event) => event.stopPropagation()}
-+            onDoubleClick={(event) => event.stopPropagation()}
-+            className="inline-flex h-full cursor-pointer items-center gap-0.5 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
-+          />
-+        }
-+      >
-+        <Icon className="size-3" />
-+      </TooltipTrigger>
-+      <TooltipPopup>{label}</TooltipPopup>
-+    </Tooltip>
++    <SharedTooltipTrigger
++      render={
++        <button
++          type="button"
++          aria-label={label}
++          onClick={props.onClick}
++          onPointerDown={(event) => event.stopPropagation()}
++          onDoubleClick={(event) => event.stopPropagation()}
++          className="inline-flex h-full cursor-pointer items-center gap-0.5 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
++        />
++      }
++      label={label}
++    >
++      <Icon className="size-3" />
++    </SharedTooltipTrigger>
 +  );
 +}
 +
  type SortableThreadRowBag = Pick<
    ReturnType<typeof useSortable>,
    "listeners" | "setNodeRef" | "transform" | "transition" | "isDragging"
-@@ -656,6 +693,7 @@ type SidebarThreadRowProps = {
+@@ -659,6 +694,7 @@ type SidebarThreadRowProps = {
    onUnsnooze: (threadRef: ScopedThreadRef) => void;
    onUnpin: (threadRef: ScopedThreadRef) => void;
    onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
@@ -373,7 +373,7 @@ index c6544e8a799df82e15106214ace2e2d9ab186ecc..1aa623058e0dd60cdfbb40cfca216296
    onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
  };
  
-@@ -711,6 +749,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -714,6 +750,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      onContextMenu,
      onAcknowledgeWoke,
      onFileDropThreads,
@@ -381,7 +381,7 @@ index c6544e8a799df82e15106214ace2e2d9ab186ecc..1aa623058e0dd60cdfbb40cfca216296
      onRenameTitleChange,
      onSettle,
      onActionSweepStart,
-@@ -815,6 +854,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -818,6 +855,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      isSelected,
    });
    const isWokeStatus = topStatus?.icon === "woke";
@@ -392,7 +392,7 @@ index c6544e8a799df82e15106214ace2e2d9ab186ecc..1aa623058e0dd60cdfbb40cfca216296
  
    const branchMismatch = resolveLocalCheckoutBranchMismatch({
      effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
-@@ -909,6 +952,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -913,6 +954,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
          addFolders: () => {},
        })
      : null;
@@ -404,28 +404,28 @@ index c6544e8a799df82e15106214ace2e2d9ab186ecc..1aa623058e0dd60cdfbb40cfca216296
    const handleSettleClick = (event: ReactMouseEvent) => {
      event.preventDefault();
      event.stopPropagation();
-@@ -1661,7 +1709,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
-                       <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
-                     )}
-                   </span>
--                  {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
-+                  {props.settlementSupported ||
-+                  showSnoozeButton ||
-+                  hasUnsentDraft ||
-+                  readAction !== null ? (
-                     <span
-                       className={cn(
-                         // Mouse clicks leave Settle focused; focus-within would pin controls over
-@@ -1689,6 +1740,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
-                           </TooltipPopup>
-                         </Tooltip>
-                       ) : null}
-+                      {readAction !== null ? (
-+                        <ReadActionButton action={readAction} onClick={handleReadActionClick} />
-+                      ) : null}
-                       {showSnoozeButton ? (
-                         <SnoozeMenuButton
-                           open={snoozeMenuOpen}
+@@ -1671,7 +1717,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+                     <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
+                   )}
+                 </span>
+-                {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
++                {props.settlementSupported ||
++                showSnoozeButton ||
++                hasUnsentDraft ||
++                readAction !== null ? (
+                   <span
+                     className={cn(
+                       // Mouse clicks leave Settle focused; focus-within would pin controls over
+@@ -1699,6 +1748,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+                         <XIcon className="size-3.5" />
+                       </SharedTooltipTrigger>
+                     ) : null}
++                    {readAction !== null ? (
++                      <ReadActionButton action={readAction} onClick={handleReadActionClick} />
++                    ) : null}
+                     {showSnoozeButton ? (
+                       <SnoozeMenuButton
+                         open={snoozeMenuOpen}
 diff --git a/apps/web/src/components/threadActionMenu.logic.test.ts b/apps/web/src/components/threadActionMenu.logic.test.ts
 index d73a50f7a1b349ba687f4733d8b69694d0a7b440..8b98cb0041e8b444a56e60894573a81180bc02fc 100644
 --- a/apps/web/src/components/threadActionMenu.logic.test.ts

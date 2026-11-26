@@ -122,10 +122,10 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code;
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
 diff --git a/apps/server/src/serverSettings.test.ts b/apps/server/src/serverSettings.test.ts
-index 9b2f842387904e1666a89a64afa87826c10da0d1..33d2f976a3e9e2f11a90558a546c90eb9d51c990 100644
+index 9b47604910885748cf93e2b42dc8cd7f0df3b5ae..7c8d5233242f447cb0903656d33903d264b3fd43 100644
 --- a/apps/server/src/serverSettings.test.ts
 +++ b/apps/server/src/serverSettings.test.ts
-@@ -660,7 +660,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -661,7 +661,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
            storageCleanup: { worktreeSettledAfterDays: 0, worktreeKeepWhen: "any-local-files" },
          });
          assert.deepStrictEqual(updated.usageLimitSources, saved.usageLimitSources);
@@ -1015,7 +1015,7 @@ index cc6068b72f164eca21f8bb29ba3587da1ca7d3ba..466638aaa010d61c54300d39f6387258
    // Snapshot now: the encoding runs later, while the file is written.
    return (cache, extra) => encode([...cache], extra);
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index 32c6a87fd0a37ac205df79ab3e86d092a2540cc1..f955f3728dcf35f2cd6f2d7160a6837b2c1ccdf3 100644
+index 0654c187f3f93ddceb8fa755ad65bb144024ea3f..5be27ee4fd1fe1f40c44389bc04ec83369e97fd3 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 @@ -29,7 +29,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
@@ -1029,7 +1029,7 @@ index 32c6a87fd0a37ac205df79ab3e86d092a2540cc1..f955f3728dcf35f2cd6f2d7160a6837b
    ].map((command, index) => [command, index]),
  );
  
-@@ -516,7 +518,9 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+@@ -517,7 +519,9 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
  
  // Whole labels: search titles keep the encoded message, which cannot nest another one.
  const USAGE_COMMAND_LABELS: Record<
@@ -1041,7 +1041,7 @@ index 32c6a87fd0a37ac205df79ab3e86d092a2540cc1..f955f3728dcf35f2cd6f2d7160a6837b
  > = {
    "usage.cost": msg("Usage: Cost"),
 diff --git a/apps/web/src/components/usage/UsagePage.tsx b/apps/web/src/components/usage/UsagePage.tsx
-index 0aa227a146fe5f48f69733e5b9736e4f2df2ae27..6e387ce98d6affaca415f95f0fabcfbedcce54e1 100644
+index f4aa54b160eb2e7b3b71329eb188cd7499b9f90b..d08a4e95605ecc154d03aa8171ca5c25b81e2184 100644
 --- a/apps/web/src/components/usage/UsagePage.tsx
 +++ b/apps/web/src/components/usage/UsagePage.tsx
 @@ -43,7 +43,6 @@ import { shortcutLabelForCommand } from "../../keybindings";
@@ -1337,7 +1337,7 @@ index 64a81e20a53e4c097382dcb3e75b948cf038f61c..0348b19cf5a64eedb542b361ea15c571
  export function resolveUsageShortcut(
    event: ShortcutEventLike & { target: EventTarget | null },
 diff --git a/docs/user/usage.md b/docs/user/usage.md
-index d7a921454f54ef611ee1db81027b37b8a4aecb1f..834fd69edaf8ecde8b17031cab020db8dca837b9 100644
+index 6681bd34ea402653270c47d8a77cf262386fd10c..de39e68c39611fc6aedb294844b30ca1ca7774e4 100644
 --- a/docs/user/usage.md
 +++ b/docs/user/usage.md
 @@ -20,12 +20,12 @@ record are missing from the totals.
@@ -1378,10 +1378,10 @@ index d7a921454f54ef611ee1db81027b37b8a4aecb1f..834fd69edaf8ecde8b17031cab020db8
  Press `Escape` to return to the previous page. Customize these shortcuts in
  **Settings → Keybindings**.
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 4922cceeda19f619d6ebd82c6d20e04d4dba428c..27b2bbc35a332d7f001063e34808e5a9af4911a4 100644
+index 630527f75690b8c2859c4d9db4c9107a7dc18b67..fbf5b08043c938f57eaaf6528ea2ee9f3ee3960c 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -1628,7 +1628,7 @@ export const ServerSettings = Schema.Struct({
+@@ -1645,7 +1645,7 @@ export const ServerSettings = Schema.Struct({
    ),
  
    usageHistoryRetentionDays: UsageHistoryRetentionDays.pipe(

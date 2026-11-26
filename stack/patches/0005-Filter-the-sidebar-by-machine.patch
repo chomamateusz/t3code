@@ -43,6 +43,8 @@ Port to def64e3a54: upstream cd3a57ac72 (#40736) shows every thread row's enviro
 
 Port to 85aaef42d4: upstream 1c6d41a9ba (#41317) removes the changed-files card and its persisted expansion state from uiStateStore.ts; the machine scope fields sit where those fields were, and the uiStateStore.test.ts fixtures follow without them. The change itself is unchanged.
 
+Port to 0085217d1b: Sidebar.tsx conflicted only in context: upstream ea3328c50c (#42671, one shared tooltip serves every trigger) drops the TooltipProvider around the thread list and re-indents it; this commit's machineLabel prop on the thread row sits in the re-indented list. The change itself is unchanged.
+
 Files:
 apps/web:
 - apps/web/src/components/Sidebar.logic.test.ts
@@ -274,7 +276,7 @@ index 0771ea2e33d5d12fede4b834b9ca54cf6ead1dd9..e1732d642fcc84a127d97ecb86790f68
  }
  
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 2ca4abf581ea2b43a072ed2d0f5568707115702d..87ba05a99331dc2e420b872f35fde8fd6666fb0f 100644
+index 109dc2786b7aecab6e8a9288864304a3729daea3..0ea3446b79eacbebcd4b7796c6c5565b3ab3b6db 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -120,6 +120,14 @@ import {
@@ -685,7 +687,7 @@ index 2ca4abf581ea2b43a072ed2d0f5568707115702d..87ba05a99331dc2e420b872f35fde8fd
                projectScope={
                  <Combobox
                    items={projectScopeItems}
-@@ -3453,17 +3548,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3446,17 +3541,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                ) : scopedProjectGroups.length > 0 ? (
                  <>
                    <span>
@@ -715,7 +717,7 @@ index 2ca4abf581ea2b43a072ed2d0f5568707115702d..87ba05a99331dc2e420b872f35fde8fd
                    </span>
                    <button
                      type="button"
-@@ -3474,7 +3570,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3467,7 +3563,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    </button>
                  </>
                ) : (
@@ -727,14 +729,14 @@ index 2ca4abf581ea2b43a072ed2d0f5568707115702d..87ba05a99331dc2e420b872f35fde8fd
                )}
              </div>
            ) : null}
-@@ -3596,6 +3695,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
-                             environmentMachine={
-                               environmentMachineById.get(thread.environmentId) ?? "server"
-                             }
-+                            machineLabel={rowMachineLabelFor(thread)}
-                             project={
-                               projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ??
-                               null
+@@ -3573,6 +3672,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                           environmentMachine={
+                             environmentMachineById.get(thread.environmentId) ?? "server"
+                           }
++                          machineLabel={rowMachineLabelFor(thread)}
+                           project={
+                             projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ?? null
+                           }
 diff --git a/apps/web/src/components/sidebar/SidebarDraftBlock.browser.test.tsx b/apps/web/src/components/sidebar/SidebarDraftBlock.browser.test.tsx
 index 9e2e6a058f22027f457ee3195cda08e33e96aecf..c203471ea894b25e396b8c45d11f1c548d1adc12 100644
 --- a/apps/web/src/components/sidebar/SidebarDraftBlock.browser.test.tsx
@@ -754,19 +756,19 @@ index 9e2e6a058f22027f457ee3195cda08e33e96aecf..c203471ea894b25e396b8c45d11f1c54
      <SidebarDraftBlock
        draftIds={draftIds}
 diff --git a/apps/web/src/components/sidebar/SidebarDraftBlock.tsx b/apps/web/src/components/sidebar/SidebarDraftBlock.tsx
-index e0b0d92a764ac929b6b8ab46c9b806529bbf9eeb..d2c757230249ce3ff8cf56435f466c86da0c6e47 100644
+index f8874809c7d1638857d718c69047b8d16c3f3132..c3cca13cb18a79d251b73c43a876d79402c30707 100644
 --- a/apps/web/src/components/sidebar/SidebarDraftBlock.tsx
 +++ b/apps/web/src/components/sidebar/SidebarDraftBlock.tsx
-@@ -17,7 +17,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
- import { useShallow } from "zustand/react/shallow";
+@@ -18,7 +18,7 @@ import { useShallow } from "zustand/react/shallow";
+ import { terminalContextDisplayLabels } from "~/lib/terminalContext";
  import { cn } from "~/lib/utils";
  import { useTerminalLabelsByThreadKey } from "~/state/terminalSessions";
 -import { resolveSidebarRowAccessibility } from "../Sidebar.logic";
 +import { isInSidebarScope, resolveSidebarRowAccessibility } from "../Sidebar.logic";
  import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
- import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  import {
-@@ -213,6 +213,7 @@ function listedDraftComposer(draftId: string | null): ComposerThreadDraftState |
+   composerDraftHasUserContent,
+@@ -222,6 +222,7 @@ function listedDraftComposer(draftId: string | null): ComposerThreadDraftState |
   */
  export function useSidebarDrafts(
    scopedProjectKeys: ReadonlySet<string> | null,
@@ -774,7 +776,7 @@ index e0b0d92a764ac929b6b8ab46c9b806529bbf9eeb..d2c757230249ce3ff8cf56435f466c86
    routeDraftId: string | null,
    terminalLabels: ReadonlyMap<string, string>,
  ): { draftIds: readonly DraftId[]; routeDraftComposer: ComposerThreadDraftState | null } {
-@@ -230,12 +231,7 @@ export function useSidebarDrafts(
+@@ -239,12 +240,7 @@ export function useSidebarDrafts(
        const listed: [string, DraftSessionState][] = [];
        for (const [draftKey, session] of Object.entries(store.draftThreadsByThreadKey)) {
          if (session.promotedTo != null) continue;
@@ -970,10 +972,10 @@ index 0000000000000000000000000000000000000000..4a1fe4ab71201d857c5678e7e0dc5335
 +  );
 +}
 diff --git a/apps/web/src/components/sidebar/SidebarThreadHeader.tsx b/apps/web/src/components/sidebar/SidebarThreadHeader.tsx
-index 185f8fc8487a5b473e3634ef2cfbe34a03990031..89c0d2dc093cff288abe4aa353b5e44d15a410fe 100644
+index 91f7fe206d825a22213cc1f755152b7f11551e1d..a8825006ba9d70764b94d0be8b8762b7b3d6445b 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadHeader.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadHeader.tsx
-@@ -15,6 +15,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+@@ -15,6 +15,7 @@ import { SharedTooltipTrigger } from "../ui/shared-tooltip";
  
  export interface SidebarThreadHeaderProps {
    hasProjects: boolean;
@@ -1227,10 +1229,10 @@ index 0000000000000000000000000000000000000000..ee3dbf148afba6745ca7bae76f64b755
 +  await expect.element(screen.getByText("main")).toBeVisible();
 +});
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 9387988979e557f10831afc583c62d12706c4d85..e8556603e6de4cdf29b568d3ff444d43abd947e6 100644
+index 635d6acabfc3216f6fcdbdb203796c971372a039..7ac02717c451545ae2507ed559f2b1150cdacd93 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -627,6 +627,7 @@ type SidebarThreadRowProps = {
+@@ -630,6 +630,7 @@ type SidebarThreadRowProps = {
    jumpLabel: string | null;
    environmentLabel: string | null;
    environmentMachine: EnvironmentMachineKind;
@@ -1238,7 +1240,7 @@ index 9387988979e557f10831afc583c62d12706c4d85..e8556603e6de4cdf29b568d3ff444d43
    project: EnvironmentProject | null;
    projectDisplayName: string | null;
    providerEntryByInstanceId: ReadonlyMap<string, SidebarProviderEntry>;
-@@ -896,6 +897,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -899,6 +900,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      ? getTriggerDisplayModelName(selectedModel, providerEntry?.driverKind)
      : thread.modelSelection.model;
  
@@ -1247,7 +1249,7 @@ index 9387988979e557f10831afc583c62d12706c4d85..e8556603e6de4cdf29b568d3ff444d43
    const detailsTooltip = (
      <SidebarThreadTooltip
        thread={checkoutThread}
-@@ -1274,22 +1277,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1278,22 +1281,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
    const diff = latestRunDiff(thread);
    // Only the trailing icons would remain, so the row moves them to the title line instead.
    const metaLineEmpty =
@@ -1279,10 +1281,10 @@ index 9387988979e557f10831afc583c62d12706c4d85..e8556603e6de4cdf29b568d3ff444d43
          <span className="flex-1" />
        )}
 diff --git a/apps/web/src/components/sidebar/routeReveal.ts b/apps/web/src/components/sidebar/routeReveal.ts
-index 9cbb0909398e667d674f9430a68c998f415c2db7..31304ba91dc6eee4518278873130e10d7c63ebe4 100644
+index b4aa4a0bd60050de25f2737d6b43a8f3d089a7c4..823a7469679f4a71e72be51e93405dda061defe2 100644
 --- a/apps/web/src/components/sidebar/routeReveal.ts
 +++ b/apps/web/src/components/sidebar/routeReveal.ts
-@@ -80,18 +80,31 @@ export function resolveSidebarRouteReveal<T extends RevealableThread>(input: {
+@@ -85,18 +85,31 @@ export function resolveSidebarRouteReveal<T extends RevealableThread>(input: {
    readonly routeKeyInPlace: boolean;
    readonly isSearching: boolean;
    readonly scopedProjectKeys: ReadonlySet<string> | null;

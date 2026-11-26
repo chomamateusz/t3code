@@ -442,7 +442,7 @@ index 0915ed9df3b538b26f34d39ae482a35d88f185bd..1fb68ef7272dc5513f1de35a9dd2151c
            void store.syncPersistedAttachments(target, [capture]);
          }
 diff --git a/apps/web/src/components/preview/PreviewView.tsx b/apps/web/src/components/preview/PreviewView.tsx
-index bb62228b937369f81c9ec05d829b3dfdf71b8ca0..9f15d29f37360626d93fed65e7e41734e16b3212 100644
+index 84fd733275d93f5979260cf2a2b524eeea39b69e..4dce800b73d4b1223a8898ecac51b0847d7fa71a 100644
 --- a/apps/web/src/components/preview/PreviewView.tsx
 +++ b/apps/web/src/components/preview/PreviewView.tsx
 @@ -877,7 +877,7 @@ export function PreviewView({

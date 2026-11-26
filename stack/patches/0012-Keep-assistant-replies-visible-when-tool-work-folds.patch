@@ -56,10 +56,10 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  3 files changed, 405 insertions(+), 36 deletions(-)
 
 diff --git a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
-index 222f498e7123a6980a619180841d6da63814bdf7..be1f0d34a535c5305fb000efde65e3148fcedd80 100644
+index 67fd5114bb18d55e63276420c995bb401b2aba57..83ecb84545c0171649d49e162e9721239e9b8a12 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
 +++ b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
-@@ -299,9 +299,79 @@ describe("MessagesTimeline work rows", () => {
+@@ -327,9 +327,79 @@ describe("MessagesTimeline work rows", () => {
      });
    });
  
@@ -139,7 +139,7 @@ index 222f498e7123a6980a619180841d6da63814bdf7..be1f0d34a535c5305fb000efde65e314
      const container = document.createElement("div");
      // Keep the heading on screen so Playwright does not scroll it before clicking.
      container.style.cssText =
-@@ -313,7 +383,35 @@ describe("MessagesTimeline work rows", () => {
+@@ -341,7 +411,35 @@ describe("MessagesTimeline work rows", () => {
            ...Array.from({ length: 12 }, (_, index) =>
              message(`Earlier context ${index}`, {}, `context-${index}`),
            ),
@@ -176,7 +176,7 @@ index 222f498e7123a6980a619180841d6da63814bdf7..be1f0d34a535c5305fb000efde65e314
            message("Done", { role: "assistant", runId }, "final"),
          ]}
        />,
-@@ -323,6 +421,7 @@ describe("MessagesTimeline work rows", () => {
+@@ -351,6 +449,7 @@ describe("MessagesTimeline work rows", () => {
      // LegendList keeps rows click-through until its initial scroll settles on animation
      // frames, which the fake clock below would freeze.
      await expect.element(heading).toHaveStyle({ pointerEvents: "auto" });
@@ -184,7 +184,7 @@ index 222f498e7123a6980a619180841d6da63814bdf7..be1f0d34a535c5305fb000efde65e314
      const viewport = props.listRef.current!.getScrollableNode()!;
      // Legend keeps rows transparent and unclickable until its initial scroll settles.
      await vi.waitFor(() => {
-@@ -354,7 +453,13 @@ describe("MessagesTimeline work rows", () => {
+@@ -382,7 +481,13 @@ describe("MessagesTimeline work rows", () => {
        ...Array.from({ length: 12 }, (_, index) =>
          message(`Earlier context ${index}`, {}, `context-${index}`),
        ),
@@ -200,10 +200,10 @@ index 222f498e7123a6980a619180841d6da63814bdf7..be1f0d34a535c5305fb000efde65e314
      ];
      await using screen = await render(<MessagesTimeline {...props} timelineEntries={entries} />, {
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-index 3257f9588eeae5732221bfc42282b760ff289884..e8752ae6b3a25ae213976d212fe8ad4955bf1cb2 100644
+index fc7a5e07e3a747f650c93dd27c83a59d565d3c1b..5790c28f7cc7707c1b81997445c6798d12457302 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-@@ -1158,7 +1158,106 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -1156,7 +1156,106 @@ describe("deriveMessagesTimelineRows", () => {
      expect(userRow?.revertTurnCount).toBe(0);
    });
  
@@ -311,7 +311,7 @@ index 3257f9588eeae5732221bfc42282b760ff289884..e8752ae6b3a25ae213976d212fe8ad49
      const timelineEntries = [
        {
          id: "user-entry",
-@@ -1234,6 +1333,7 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -1232,6 +1331,7 @@ describe("deriveMessagesTimelineRows", () => {
      expect(collapsedRows.map((row) => row.id)).toEqual([
        "user-entry",
        "turn-fold:turn-1",
@@ -649,10 +649,10 @@ index 3257f9588eeae5732221bfc42282b760ff289884..e8752ae6b3a25ae213976d212fe8ad49
      ]);
    });
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index a7bca7de9f9015859449b9944cd0602e1cb7a6b7..98ba6df7482ed06d0a3e2bff8e12aa7cbad1ba11 100644
+index 90b324598ba72817969302d328af49cd4a87a496..224653f687491a0ace46d3040b6cdd1795949c15 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-@@ -844,6 +844,30 @@ function retainedAssistantReplyEntryIds(
+@@ -835,6 +835,30 @@ function retainedAssistantReplyEntryIds(
    return replyEntryIds;
  }
  
@@ -683,7 +683,7 @@ index a7bca7de9f9015859449b9944cd0602e1cb7a6b7..98ba6df7482ed06d0a3e2bff8e12aa7c
  function deriveSupersededAttemptFolds(
    timelineEntries: ReadonlyArray<TimelineEntry>,
    unfoldedRunIds: ReadonlySet<RunId>,
-@@ -855,11 +879,13 @@ function deriveSupersededAttemptFolds(
+@@ -846,11 +870,13 @@ function deriveSupersededAttemptFolds(
        entry.attempt !== undefined && retainedReplyEntryIds.has(entry.id) ? [entry.attempt.id] : [],
      ),
    );
@@ -697,7 +697,7 @@ index a7bca7de9f9015859449b9944cd0602e1cb7a6b7..98ba6df7482ed06d0a3e2bff8e12aa7c
        unfoldedRunIds.has(entry.attempt.runId) ||
        (entry.kind === "message" && entry.message.role === "user") ||
        (entry.kind === "event" && entry.projectedItem.item.type === "handoff") ||
-@@ -1196,7 +1222,7 @@ function deriveTurnFolds(input: {
+@@ -1187,7 +1213,7 @@ function deriveTurnFolds(input: {
      // Folded dividers lose their place in the turn, so only the latest stays visible.
      const visibleCompactionId = group.entries.findLast(timelineEntryIsCompaction)?.id;
      for (const [index, entry] of group.entries.entries()) {

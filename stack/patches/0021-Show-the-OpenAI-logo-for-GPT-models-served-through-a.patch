@@ -40,6 +40,8 @@ Tests:
 - No run in a real client yet.
 
 Model/harness: Claude Opus 5.5 / Claude Code
+
+Port to 0085217d1b: V2LifecycleRow.tsx follows upstream ea3328c50c (#42671, one shared tooltip serves every trigger): HandoffEndpoint is now a SharedTooltipTrigger, and its ProviderInstanceIcon inside the trigger takes this commit's brand driverKind. The change itself is unchanged.
 ---
  apps/web/src/components/ChatView.tsx          |  5 +++
  .../src/components/ThreadChipHoverCard.tsx    |  7 +++-
@@ -59,10 +61,10 @@ Model/harness: Claude Opus 5.5 / Claude Code
  create mode 100644 apps/web/src/components/chat/providerIconUtils.test.ts
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 65572bded1b616577408479218205eea4456ecbf..b93648cb6642ecf95244bff3d4dfb4b4dcf214d1 100644
+index 03cfe6eb508b893ebe18931e4b3a2951d0dcc2c4..e78b0e303adfa2638cce2135bb73d56289ba2dbd 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -3850,6 +3850,11 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3855,6 +3855,11 @@ export default function ChatView(props: ChatViewProps) {
                                      providerInstanceEntries,
                                    )
                                  }
@@ -100,7 +102,7 @@ index e6a51a9f8a5a5a109d0ac6e9fa82d91b714fe59b..d2d63bf184ea730d51faef5033acefd1
              acpRegistryIconUrl={provider.iconUrl}
              iconClassName="size-3 shrink-0 opacity-60"
 diff --git a/apps/web/src/components/chat/ComposerCommandMenu.tsx b/apps/web/src/components/chat/ComposerCommandMenu.tsx
-index 50ee237c87e0f0c86c86cd5e50dd70932ae8a63a..f0fd8a4e08a60323b1452cc36d62eaa537d3c198 100644
+index 75336eb987e3b2275d6f2fb2ca66d15e96d834cd..3898b7a25ac24c833c724106659424c1ffd70b52 100644
 --- a/apps/web/src/components/chat/ComposerCommandMenu.tsx
 +++ b/apps/web/src/components/chat/ComposerCommandMenu.tsx
 @@ -35,6 +35,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -111,7 +113,7 @@ index 50ee237c87e0f0c86c86cd5e50dd70932ae8a63a..f0fd8a4e08a60323b1452cc36d62eaa5
  import { ComposerBanner } from "./ComposerBanner";
  import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
  
-@@ -253,7 +254,10 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
+@@ -254,7 +255,10 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
        ) : null}
        {props.item.type === "model" ? (
          <ProviderInstanceIcon
@@ -124,7 +126,7 @@ index 50ee237c87e0f0c86c86cd5e50dd70932ae8a63a..f0fd8a4e08a60323b1452cc36d62eaa5
            acpRegistryAgentId={props.item.acpRegistryAgentId}
            acpRegistryIconUrl={props.item.acpRegistryIconUrl}
 diff --git a/apps/web/src/components/chat/ModelListRow.tsx b/apps/web/src/components/chat/ModelListRow.tsx
-index 74dae2dc23582985c08ee36dd3d6384cfa3516db..ba1222dac62bcad464bd17689af7fd4320b8b7ad 100644
+index 006484b65c7a642d9b52b0adc5263040df89d1a6..7c3d96c6ed82dc1203d3b98eba5ea82b79e54ec0 100644
 --- a/apps/web/src/components/chat/ModelListRow.tsx
 +++ b/apps/web/src/components/chat/ModelListRow.tsx
 @@ -2,7 +2,7 @@ import { type ProviderDriverKind, type ProviderInstanceId } from "@t3tools/contr
@@ -168,10 +170,10 @@ index 40210f2d9ef81a36e4186f63f03c0c8d306af35e..5c1fd4c6c5a2e1c294c07834b0275c49
        acpRegistryAgentId: entry.acpRegistryAgentId,
        acpRegistryIconUrl: entry.acpRegistryIconUrl,
 diff --git a/apps/web/src/components/chat/ProviderModelPicker.tsx b/apps/web/src/components/chat/ProviderModelPicker.tsx
-index 254b1ffeac9370d02ca64816bfdb24093a556b20..6023f62e05357b590cae21bc172bb9c05fa8e7ba 100644
+index d136a54fc606626c4a64bdbece509ef8cb0cc82f..36fe746ecf7dd6396e2c82803ab670f82d45744b 100644
 --- a/apps/web/src/components/chat/ProviderModelPicker.tsx
 +++ b/apps/web/src/components/chat/ProviderModelPicker.tsx
-@@ -26,7 +26,12 @@ import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPick
+@@ -25,7 +25,12 @@ import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPick
  import { retainedModelWhileProviderLocked } from "./ProviderModelPicker.logic";
  import { ChatGptSharingControl } from "./ChatGptSharingControl";
  import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
@@ -268,10 +270,10 @@ index 722968fb6241a18b81434a00be1517bbbd534cee..13abbfd33f052f3bebc3fd17d4c996ed
              accentColor={entry?.accentColor}
              acpRegistryIconUrl={props.provider?.iconUrl}
 diff --git a/apps/web/src/components/chat/V2LifecycleRow.tsx b/apps/web/src/components/chat/V2LifecycleRow.tsx
-index 44d578ee19b73dd4f72a16d9a654f8972a903d78..ff20ee42579955027255adf427a5249023a3a41c 100644
+index 161def82094c9daf06cdf19151b6bb118ad4d3d6..9043a2ebec81679d37d8a20c91f765e094a94b0f 100644
 --- a/apps/web/src/components/chat/V2LifecycleRow.tsx
 +++ b/apps/web/src/components/chat/V2LifecycleRow.tsx
-@@ -62,7 +62,7 @@ import {
+@@ -63,7 +63,7 @@ import {
    type ProviderInstanceEntry,
  } from "../../providerInstances";
  import { formatShortTimestamp } from "../../timestampFormat";
@@ -280,7 +282,7 @@ index 44d578ee19b73dd4f72a16d9a654f8972a903d78..ff20ee42579955027255adf427a52490
  import { ProviderInstanceIcon, providerTextColor } from "./ProviderInstanceIcon";
  import { cn } from "~/lib/utils";
  import { TimelineSystemDivider } from "./TimelineSystemDivider";
-@@ -736,9 +736,11 @@ function HandoffEndpoint(props: {
+@@ -737,9 +737,11 @@ function HandoffEndpoint(props: {
        : model !== undefined && model.length > 0
          ? model
          : (entry?.displayName ?? props.instanceId);
@@ -291,17 +293,17 @@ index 44d578ee19b73dd4f72a16d9a654f8972a903d78..ff20ee42579955027255adf427a52490
    );
 +  const labelColor = providerTextColor(driverKind);
    return (
-     <Tooltip>
-       <TooltipTrigger
+     <SharedTooltipTrigger
+       render={
 @@ -748,7 +750,7 @@ function HandoffEndpoint(props: {
-             className="inline-flex min-w-0 items-center gap-1.5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-           >
-             <ProviderInstanceIcon
--              driverKind={entry?.driverKind ?? ProviderDriverKind.make(props.instanceId)}
-+              driverKind={driverKind}
-               displayName={entry?.displayName ?? props.instanceId}
-               accentColor={entry?.accentColor}
-               acpRegistryAgentId={entry?.acpRegistryAgentId}
+           className="inline-flex min-w-0 items-center gap-1.5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+         >
+           <ProviderInstanceIcon
+-            driverKind={entry?.driverKind ?? ProviderDriverKind.make(props.instanceId)}
++            driverKind={driverKind}
+             displayName={entry?.displayName ?? props.instanceId}
+             accentColor={entry?.accentColor}
+             acpRegistryAgentId={entry?.acpRegistryAgentId}
 diff --git a/apps/web/src/components/chat/providerIconUtils.test.ts b/apps/web/src/components/chat/providerIconUtils.test.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..61a8232cdbe145d7599edfe209a349bfe020d7da
@@ -406,7 +408,7 @@ index 9cc690491d3290c5dfbc0f927a1f633cdfec6837..968655ddbc4fe7c1048644bdbce97b3f
            className="size-4"
            iconClassName="size-4"
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index b6a9400d91bf79bb911c7e7bc088870679f6b220..1e750495cd2d875a97fbb67811b74cb7aeb118cc 100644
+index 16de19832104c506187716c35c313df6a1603ef6..01553444f59c62dd7fc8285b5827388705f0bc8b 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -129,7 +129,7 @@ import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
@@ -418,7 +420,7 @@ index b6a9400d91bf79bb911c7e7bc088870679f6b220..1e750495cd2d875a97fbb67811b74cb7
  import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
  import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
  import { InlineButton } from "../ui/button";
-@@ -227,6 +227,13 @@ function terminalProcessLabel(count: number, resolve: MessageResolver): string {
+@@ -230,6 +230,13 @@ function terminalProcessLabel(count: number, resolve: MessageResolver): string {
    );
  }
  
@@ -432,7 +434,7 @@ index b6a9400d91bf79bb911c7e7bc088870679f6b220..1e750495cd2d875a97fbb67811b74cb7
  function SidebarProviderStack(props: {
    thread: SidebarThreadSummary;
    providerEntryByInstanceId: ReadonlyMap<string, SidebarProviderEntry>;
-@@ -241,7 +248,7 @@ function SidebarProviderStack(props: {
+@@ -244,7 +251,7 @@ function SidebarProviderStack(props: {
    );
    const current = (
      <ProviderInstanceIcon
@@ -441,7 +443,7 @@ index b6a9400d91bf79bb911c7e7bc088870679f6b220..1e750495cd2d875a97fbb67811b74cb7
        displayName={currentEntry.displayName}
        accentColor={currentEntry.accentColor}
        acpRegistryAgentId={currentEntry.acpRegistryAgentId}
-@@ -307,7 +314,9 @@ function SidebarThreadTooltip({
+@@ -310,7 +317,9 @@ function SidebarThreadTooltip({
    terminalStatus: TerminalStatusIndicator | null;
    terminalProcessCount: number;
  }) {

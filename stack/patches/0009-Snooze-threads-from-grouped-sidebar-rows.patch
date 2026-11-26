@@ -27,6 +27,8 @@ Port to b6ac2449f1: the Snooze and Settle hover branch keeps this commit's struc
 
 Port to b8be2287dc: upstream 78de041d48 (#24917, settle and snooze threads while their machine is offline) gates the row's Snooze on canTriageThread (operate scope not denied) instead of canOperateThread and shows a Pending label while a triage change waits to sync. The grouped Snooze keeps this commit's slim-row exclusion on top of upstream's new gate, so folder and folder-multiline rows offer Snooze offline exactly when card rows do; the stacked label cell holds upstream's Pending label in place of the time label. Upstream still offers only Settle in grouped rows, so this commit is still needed.
 
+Port to 0085217d1b: SidebarThreadRow.tsx follows upstream ea3328c50c (#42671, one shared tooltip serves every trigger): the folder and slim row is now a ThreadHoverCardTrigger, which takes this commit's snoozeMenuOpen in its disabled condition, and the Un-settle and Settle buttons, including the Settle button beside the snooze menu, are SharedTooltipTrigger with a label instead of Tooltip, TooltipTrigger and TooltipPopup. The layout, the slim-row rule and the snooze menu are unchanged.
+
 Files:
 apps/web:
 - apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
@@ -42,9 +44,9 @@ Tests:
 
 Model/harness: GPT-6 / Codex; hover layout follow-up: Claude Opus 5.5 / Claude Code; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
 ---
- .../sidebar/SidebarThreadRow.browser.test.tsx |  25 +++++
- .../components/sidebar/SidebarThreadRow.tsx   | 100 +++++++++++++-----
- 2 files changed, 98 insertions(+), 27 deletions(-)
+ .../sidebar/SidebarThreadRow.browser.test.tsx | 25 +++++
+ .../components/sidebar/SidebarThreadRow.tsx   | 98 ++++++++++++++-----
+ 2 files changed, 97 insertions(+), 26 deletions(-)
 
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
 index ee3dbf148afba6745ca7bae76f64b755a7cd2b63..39abba5e5b808c359db5300302d07018279ecb74 100644
@@ -90,10 +92,10 @@ index ee3dbf148afba6745ca7bae76f64b755a7cd2b63..39abba5e5b808c359db5300302d07018
    vi.mocked(useEnvironmentScope).mockReturnValue(true);
    await using screen = await render(
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index fd0f86fc2d5118ee9060cab7eac63be8a8923378..f15dac10bbb0ff0f0fea7cc2a2af136be623d6d2 100644
+index 267fb42b47c6920bf728638c57abfaca921f47e5..67d6c15b3f6269885c6a4fbe5d47aa277124f388 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -963,7 +963,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -967,7 +967,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      setSnoozeGateClock({ thread, now: new Date(snoozeGateOpensAt).toISOString() });
    }
    const showSnoozeButton =
@@ -105,133 +107,132 @@ index fd0f86fc2d5118ee9060cab7eac63be8a8923378..f15dac10bbb0ff0f0fea7cc2a2af136b
    // Closing here, not just masking, keeps the menu from reopening when the button returns.
    if (snoozeMenuOpenRaw && !showSnoozeButton) setSnoozeMenuOpen(false);
    const snoozeMenuOpen = snoozeMenuOpenRaw && showSnoozeButton;
-@@ -1282,7 +1285,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
-           sortable?.isDragging && "relative z-20",
-         )}
+@@ -1288,7 +1291,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
        >
--        <Tooltip disabled={isRenaming || sortable?.isDragging}>
-+        <Tooltip disabled={isRenaming || snoozeMenuOpen || sortable?.isDragging}>
-           <TooltipTrigger
-             render={
-               <div
-@@ -1341,7 +1344,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
-               ) : (
-                 <span
+         <ThreadHoverCardTrigger
+           card={detailsTooltip}
+-          disabled={isRenaming || sortable?.isDragging}
++          disabled={isRenaming || snoozeMenuOpen || sortable?.isDragging}
+           render={
+             <div
+               ref={rowRef}
+@@ -1349,7 +1352,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+             ) : (
+               <span
+                 className={cn(
+-                  "relative ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end",
++                  "group/sidebar-status-slot relative ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end",
++                  showSnoozeButton && "grid grid-flow-col",
+                   props.sweepAction !== null && "hidden",
+                   jumpHintLabel && JUMP_HINT_SLOT_CLASS_NAME,
+                 )}
+@@ -1358,6 +1362,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                    className={cn(
--                    "relative ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end",
-+                    "group/sidebar-status-slot relative ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end",
-+                    showSnoozeButton && "grid grid-flow-col",
-                     props.sweepAction !== null && "hidden",
-                     jumpHintLabel && JUMP_HINT_SLOT_CLASS_NAME,
+                     "inline-flex justify-end tabular-nums text-secondary-label transition-opacity",
+                     !isWoke && "group-any-hover/sidebar-row:opacity-0",
++                    showSnoozeButton &&
++                      !isWoke &&
++                      "col-start-1 row-start-1 justify-self-end group-has-[:focus-visible]/sidebar-status-slot:opacity-0",
++                    snoozeMenuOpen && "pointer-events-none opacity-0",
                    )}
-@@ -1350,6 +1354,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
-                     className={cn(
-                       "inline-flex justify-end tabular-nums text-secondary-label transition-opacity",
-                       !isWoke && "group-any-hover/sidebar-row:opacity-0",
-+                      showSnoozeButton &&
-+                        !isWoke &&
-+                        "col-start-1 row-start-1 justify-self-end group-has-[:focus-visible]/sidebar-status-slot:opacity-0",
-+                      snoozeMenuOpen && "pointer-events-none opacity-0",
-                     )}
-                   >
-                     {pendingSync ? (
-@@ -1421,29 +1429,67 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
-                         <AlarmClockOffIcon className="mb-px size-3" />
-                       </button>
-                     )
--                  ) : !props.settlementSupported ? null : variantAction === "unsettle" ? (
--                    <Tooltip>
--                      <TooltipTrigger
--                        render={
--                          <button
--                            type="button"
--                            aria-label={gt("Un-settle thread")}
--                            onClick={handleUnsettleClick}
--                            onPointerDown={handleActionPointerDown}
--                            className={cn(
--                              "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
--                              isWoke && "group-any-hover/sidebar-row:static",
--                            )}
--                          />
--                        }
--                      >
--                        <Undo2Icon className="mb-px size-3.5" />
--                      </TooltipTrigger>
--                      <TooltipPopup side="top">
+                 >
+                   {pendingSync ? (
+@@ -1429,29 +1437,67 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+                       <AlarmClockOffIcon className="mb-px size-3" />
+                     </button>
+                   )
+-                ) : !props.settlementSupported ? null : variantAction === "unsettle" ? (
+-                  <SharedTooltipTrigger
+-                    render={
+-                      <button
+-                        type="button"
+-                        aria-label={gt("Un-settle thread")}
+-                        onClick={handleUnsettleClick}
+-                        onPointerDown={handleActionPointerDown}
+-                        className={cn(
+-                          "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
+-                          isWoke && "group-any-hover/sidebar-row:static",
+-                        )}
+-                      />
+-                    }
+-                    label={
+-                      <>
 -                        <T>Un-settle thread</T>
--                      </TooltipPopup>
--                    </Tooltip>
--                  ) : (
-+                  ) : variantAction === "unsettle" ? (
-+                    !props.settlementSupported ? null : (
-+                      <Tooltip>
-+                        <TooltipTrigger
-+                          render={
-+                            <button
-+                              type="button"
-+                              aria-label={gt("Un-settle thread")}
-+                              onClick={handleUnsettleClick}
-+                              onPointerDown={handleActionPointerDown}
-+                              className={cn(
-+                                "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-+                                isWoke && "group-any-hover/sidebar-row:static",
-+                              )}
-+                            />
-+                          }
-+                        >
-+                          <Undo2Icon className="mb-px size-3.5" />
-+                        </TooltipTrigger>
-+                        <TooltipPopup side="top">
+-                      </>
+-                    }
++                ) : variantAction === "unsettle" ? (
++                  !props.settlementSupported ? null : (
++                    <SharedTooltipTrigger
++                      render={
++                        <button
++                          type="button"
++                          aria-label={gt("Un-settle thread")}
++                          onClick={handleUnsettleClick}
++                          onPointerDown={handleActionPointerDown}
++                          className={cn(
++                            "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
++                            isWoke && "group-any-hover/sidebar-row:static",
++                          )}
++                        />
++                      }
++                      label={
++                        <>
 +                          <T>Un-settle thread</T>
-+                        </TooltipPopup>
-+                      </Tooltip>
-+                    )
-+                  ) : showSnoozeButton ? (
-+                    <span
-+                      className={cn(
-+                        "pointer-events-none flex items-stretch self-stretch opacity-0 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-+                        !isWoke && "col-start-1 row-start-1",
-+                        snoozeMenuOpen && "pointer-events-auto opacity-100",
-+                      )}
++                        </>
++                      }
 +                    >
-+                      <SnoozeMenuButton
-+                        open={snoozeMenuOpen}
-+                        onOpenChange={setSnoozeMenuOpen}
-+                        onSnooze={handleSnoozePreset}
-+                        timestampFormat={props.timestampFormat}
-+                        environmentId={thread.environmentId}
-+                      />
-+                      {props.settlementSupported ? (
-+                        <Tooltip>
-+                          <TooltipTrigger
-+                            render={
-+                              <button
-+                                type="button"
-+                                aria-label={gt("Settle thread")}
-+                                onClick={handleSettleClick}
-+                                onPointerDown={handleActionPointerDown}
-+                                className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground hover:text-foreground"
-+                              />
-+                            }
-+                          >
-+                            <CheckIcon className="size-3" />
-+                          </TooltipTrigger>
-+                          <TooltipPopup side="top">
++                      <Undo2Icon className="mb-px size-3.5" />
++                    </SharedTooltipTrigger>
++                  )
++                ) : showSnoozeButton ? (
++                  <span
++                    className={cn(
++                      "pointer-events-none flex items-stretch self-stretch opacity-0 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
++                      !isWoke && "col-start-1 row-start-1",
++                      snoozeMenuOpen && "pointer-events-auto opacity-100",
++                    )}
+                   >
+-                    <Undo2Icon className="mb-px size-3.5" />
+-                  </SharedTooltipTrigger>
+-                ) : (
++                    <SnoozeMenuButton
++                      open={snoozeMenuOpen}
++                      onOpenChange={setSnoozeMenuOpen}
++                      onSnooze={handleSnoozePreset}
++                      timestampFormat={props.timestampFormat}
++                      environmentId={thread.environmentId}
++                    />
++                    {props.settlementSupported ? (
++                      <SharedTooltipTrigger
++                        render={
++                          <button
++                            type="button"
++                            aria-label={gt("Settle thread")}
++                            onClick={handleSettleClick}
++                            onPointerDown={handleActionPointerDown}
++                            className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground hover:text-foreground"
++                          />
++                        }
++                        label={
++                          <>
 +                            <T>Settle thread</T>
-+                          </TooltipPopup>
-+                        </Tooltip>
-+                      ) : null}
-+                    </span>
-+                  ) : props.settlementSupported ? (
-                     <Tooltip>
-                       <TooltipTrigger
-                         render={
-@@ -1465,7 +1511,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
-                         <T>Settle thread</T>
-                       </TooltipPopup>
-                     </Tooltip>
--                  )}
-+                  ) : null}
-                   {jumpHintLabel ? <JumpHintBadge label={jumpHintLabel} /> : null}
-                 </span>
-               )}
++                          </>
++                        }
++                      >
++                        <CheckIcon className="size-3" />
++                      </SharedTooltipTrigger>
++                    ) : null}
++                  </span>
++                ) : props.settlementSupported ? (
+                   <SharedTooltipTrigger
+                     render={
+                       <button
+@@ -1473,7 +1519,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+                   >
+                     <CheckIcon className="size-3" />
+                   </SharedTooltipTrigger>
+-                )}
++                ) : null}
+                 {jumpHintLabel ? <JumpHintBadge label={jumpHintLabel} /> : null}
+               </span>
+             )}

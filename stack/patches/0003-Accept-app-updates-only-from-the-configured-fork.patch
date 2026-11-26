@@ -166,7 +166,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 scripts/verify-fork-update-feed.ts
 
 diff --git a/.github/workflows/release-desktop.yml b/.github/workflows/release-desktop.yml
-index 2d3a38168c79eef782889f22e48034dc235cf8ea..cf0d6687a7dac8a51e75f5d040c3335239fd00f4 100644
+index 6ead5f98ee102897e12cc303e07818037666c6e2..370e00fd5b478cde8c304cfa9827284d4e4c43fa 100644
 --- a/.github/workflows/release-desktop.yml
 +++ b/.github/workflows/release-desktop.yml
 @@ -139,6 +139,9 @@ jobs:
@@ -2276,10 +2276,10 @@ index 307b9c5d8284dc07a5c257dfe6c3d91f6ff5219a..54e9b8fbfa89c89d8f1cf88fdf8f8693
  }
  
 diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
-index 2a68257cbfa635f5a2e8c33e6e9988f5cc78bb11..815124a5c546d682ef98537c42cce702b044fdba 100644
+index c88106c8d56b7a8dfbf81258055292723967f57b..e302dc0ad4fdf08d8858ff1cd7fc0582b62b6372 100644
 --- a/apps/web/vite.config.ts
 +++ b/apps/web/vite.config.ts
-@@ -357,6 +357,11 @@ export default defineConfig(({ command }) => {
+@@ -327,6 +327,11 @@ export default defineConfig(({ command }) => {
        ],
      },
      define: {
@@ -2292,10 +2292,10 @@ index 2a68257cbfa635f5a2e8c33e6e9988f5cc78bb11..815124a5c546d682ef98537c42cce702
        // Override .env URLs with empty values in single-origin dev so clients use window.location.origin.
        "import.meta.env.VITE_HTTP_URL": JSON.stringify(configuredHttpUrl ?? ""),
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index 43e89846bded00d933f000d7074873ce98e99c9f..237a4e9030f314abf63f6725ba7fe49238e49366 100644
+index 69520b75fb4e451c3ea766254eba9db8c96b2e9b..2363c46a4ef11d44c1de088d630c2f0e32e3aec4 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
-@@ -1979,3 +1979,67 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+@@ -2009,3 +2009,67 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
      assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
@@ -2364,7 +2364,7 @@ index 43e89846bded00d933f000d7074873ce98e99c9f..237a4e9030f314abf63f6725ba7fe492
 +  }).pipe(Effect.provide(NodeServices.layer)),
 +);
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 1d334ad98e5fcfa62bd13cb5ec73d723b1e0ea93..4a4e1e2c31c935d2edf6411d2d582d43320965e1 100644
+index b6bb677fb41b2c5bcc6d1527e970df8a3fdfe224..9e4fdaf5a37f2bfe6fe226b934dbeda256a0aa80 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -2728,6 +2728,13 @@ export function resolveDesktopRuntimeDependencies(
@@ -2392,7 +2392,7 @@ index 1d334ad98e5fcfa62bd13cb5ec73d723b1e0ea93..4a4e1e2c31c935d2edf6411d2d582d43
    if (!rawRepo) return undefined;
  
    const [owner, repo, ...rest] = rawRepo.split("/");
-@@ -2849,6 +2858,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2856,6 +2865,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
        ...(platform === "win" && wslRuntimeBundled ? WSL_RUNTIME_EXTRA_RESOURCES : []),
      ],
    };

@@ -103,7 +103,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  9 files changed, 206 insertions(+), 18 deletions(-)
 
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index 2d98cbb94e327af86d2d5ac8c56fda15e1ffa420..9519ce9b5a5a491f6300ad5d84dd594dbcb4617f 100644
+index 986e5623e08bf2ec087eaead3bf5c746f0e32a7c..990921395608be52a15bd6d439f8e0d10efb89f8 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
 @@ -1,7 +1,7 @@
@@ -227,10 +227,10 @@ index 2d98cbb94e327af86d2d5ac8c56fda15e1ffa420..9519ce9b5a5a491f6300ad5d84dd594d
      }),
    );
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 2b2401f42d57aa393fbc1ca04ba1140c3afacdea..6bdffc27b67869b9317fa4b445bc90910f82d812 100644
+index 0b635528a3cbe6ebf707ce9bf32ed6f95ecb20e6..9758aca4053ae1df1642f2c68a41fffae33a9768 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
-@@ -885,9 +885,27 @@ export const make = Effect.gen(function* () {
+@@ -887,9 +887,27 @@ export const make = Effect.gen(function* () {
      if (environment.platform === "darwin") {
        // Mouse drivers can deliver Back/Forward as macOS swipe gestures instead of buttons.
        window.on("swipe", (_event, direction) => {
@@ -351,7 +351,7 @@ index c97ea5e6412aa03730e1c7eeec996e57b18359d3..9807024a6a1cf078d241bd524a760c55
 +  );
 +});
 diff --git a/apps/web/src/components/AppSidebarLayout.tsx b/apps/web/src/components/AppSidebarLayout.tsx
-index 5d0383915f8c027b026ddfac2140c5e2207ad195..93ce40cd31ec618972db307da76f749818f14e41 100644
+index d8a748b8797bb597e9ac1c9af0f927c3f50a87e0..9dfc692793126f79f2800115cb20f4a8b52c694c 100644
 --- a/apps/web/src/components/AppSidebarLayout.tsx
 +++ b/apps/web/src/components/AppSidebarLayout.tsx
 @@ -33,7 +33,7 @@ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
@@ -363,7 +363,7 @@ index 5d0383915f8c027b026ddfac2140c5e2207ad195..93ce40cd31ec618972db307da76f7498
  import {
    PanelAnimationSuppressionProvider,
    usePanelAnimationSettings,
-@@ -425,6 +425,7 @@ export function AppSidebarLayout({
+@@ -424,6 +424,7 @@ export function AppSidebarLayout({
    showSidebar?: boolean;
  }) {
    const gt = useGT();
@@ -371,7 +371,7 @@ index 5d0383915f8c027b026ddfac2140c5e2207ad195..93ce40cd31ec618972db307da76f7498
    const sidebarArea = workspaceAreaProps("sidebar", 0, gt("Threads"));
    const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
      observedKey: null,
-@@ -503,7 +504,7 @@ export function AppSidebarLayout({
+@@ -502,7 +503,7 @@ export function AppSidebarLayout({
          {children}
          <BackgroundThreadAnnouncer />
          <SidebarControl showSidebar={showSidebar} />
@@ -498,7 +498,7 @@ index 9dc56d7a6a02d95c0b3c89882cbbc4dff1739bd6..771e102d2b25467839ce623f83e76d90
    it("resolves instance enabled state with explicit false winning", () => {
      const grok = ProviderDriverKind.make("grok");
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 27b2bbc35a332d7f001063e34808e5a9af4911a4..d514703bdfdc42c1aaabf414c1b7e9cdbcd32d78 100644
+index fbf5b08043c938f57eaaf6528ea2ee9f3ee3960c..29896b0e8e003c59664b3d85c182447585d5b91e 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -482,6 +482,7 @@ export const ClientSettingsSchema = Schema.Struct({
@@ -509,7 +509,7 @@ index 27b2bbc35a332d7f001063e34808e5a9af4911a4..d514703bdfdc42c1aaabf414c1b7e9cd
    confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
    confirmTerminalClose: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
    confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-@@ -2127,6 +2128,7 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2144,6 +2145,7 @@ export const ClientSettingsPatch = Schema.Struct({
    browserProfiles: Schema.optionalKey(Schema.Array(BrowserProfile)),
    browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),
    confirmQuit: Schema.optionalKey(QuitConfirmationMode),
