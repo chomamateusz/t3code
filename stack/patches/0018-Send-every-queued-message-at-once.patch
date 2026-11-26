@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
-Date: Thu, 26 Nov 2026 03:51:33 +0100
+Date: Sat, 21 Nov 2026 02:08:08 +0100
 Subject: =?UTF-8?q?=F0=9F=93=A4=20Send=20every=20queued=20message=20at=20o?=
  =?UTF-8?q?nce?=
 MIME-Version: 1.0
@@ -164,6 +164,8 @@ Tests:
   server would refuse, and Send all as one when the environment does not
   advertise or disables merging (with its tooltip); a single queued message
   shows no actions.
+
+Port to 77cd243e6b: the queue browser test mocks state/environments once. Upstream already mocks it for the linked environment, and with two mocks of one module the merge capability depended on which one won, so Send all as one could stay disabled in CI.
 ---
  .../src/orchestration-v2/GuestShare.test.ts   |  33 +-
  .../src/orchestration-v2/Orchestrator.ts      | 181 +++++++--
@@ -172,7 +174,7 @@ Tests:
  apps/server/src/telemetry/FeatureUsage.ts     |   1 +
  apps/server/src/ws.ts                         |   1 +
  apps/web/src/components/ChatView.tsx          |   7 +
- .../chat/QueuedRunsControl.browser.test.tsx   | 214 ++++++++++-
+ .../chat/QueuedRunsControl.browser.test.tsx   | 213 ++++++++++-
  .../src/components/chat/QueuedRunsControl.tsx | 184 +++++++--
  .../chat/useQueuedRunEdit.browser.test.tsx    |   5 +-
  .../settings/KeybindingsSettings.logic.ts     |   1 +
@@ -189,7 +191,7 @@ Tests:
  packages/shared/src/model.ts                  |   9 +-
  packages/shared/src/queuedMessageMerge.ts     | 160 ++++++++
  packages/shared/src/queuedMessageMergeCopy.ts |  29 ++
- 24 files changed, 1477 insertions(+), 114 deletions(-)
+ 24 files changed, 1475 insertions(+), 115 deletions(-)
  create mode 100644 packages/shared/src/queuedMessageMerge.ts
  create mode 100644 packages/shared/src/queuedMessageMergeCopy.ts
 
@@ -952,7 +954,7 @@ index e666f5ea7195e4f9c2c2c92d5f2c3b4dcece8623..d55bbac6aa2324e94554d84ae851a6ee
            threadId={activeThread.id}
            optimisticMessages={optimisticUserMessages}
 diff --git a/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx b/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx
-index 7a927d6cd3b48b888ddd0d2894b0a42948c859dd..ed421de896f4ec5854b0d2093d9cceb8c8274f7b 100644
+index 7a927d6cd3b48b888ddd0d2894b0a42948c859dd..456fff5bc27cec82e3140fdf2018165f7c4af6d3 100644
 --- a/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx
 +++ b/apps/web/src/components/chat/QueuedRunsControl.browser.test.tsx
 @@ -16,14 +16,16 @@ import * as Cause from "effect/Cause";
@@ -975,19 +977,18 @@ index 7a927d6cd3b48b888ddd0d2894b0a42948c859dd..ed421de896f4ec5854b0d2093d9cceb8
  }));
  
  vi.mock(import("@t3tools/client-runtime/state/thread-workflows"), async (importOriginal) => ({
-@@ -46,6 +48,11 @@ vi.mock(import("../../state/environments"), async (importOriginal) => ({
-     environmentId === "environment:linked" ? { environmentId } : null) as never,
+@@ -43,7 +45,9 @@ vi.mock(import("../../state/entities"), async (importOriginal) => ({
+ vi.mock(import("../../state/environments"), async (importOriginal) => ({
+   ...(await importOriginal()),
+   useEnvironment: ((environmentId: string | null) =>
+-    environmentId === "environment:linked" ? { environmentId } : null) as never,
++    environmentId === "environment:linked"
++      ? { environmentId }
++      : { serverConfig: { queuedRunMerge: state.queuedRunMerge } }) as never,
  }));
  
-+vi.mock(import("../../state/environments"), async (importOriginal) => ({
-+  ...(await importOriginal()),
-+  useEnvironment: (() => ({ serverConfig: { queuedRunMerge: state.queuedRunMerge } })) as never,
-+}));
-+
  vi.mock(import("../../state/query"), async (importOriginal) => ({
-   ...(await importOriginal()),
-   useEnvironmentQuery: (() => ({
-@@ -74,7 +81,10 @@ vi.mock(import("../../state/threads"), async (importOriginal) => {
+@@ -74,7 +78,10 @@ vi.mock(import("../../state/threads"), async (importOriginal) => {
  
  vi.mock(import("../../state/use-atom-command"), async (importOriginal) => ({
    ...(await importOriginal()),
@@ -999,7 +1000,7 @@ index 7a927d6cd3b48b888ddd0d2894b0a42948c859dd..ed421de896f4ec5854b0d2093d9cceb8
  }));
  
  vi.mock(import("../../assets/assetUrls"), async (importOriginal) => ({
-@@ -89,13 +99,28 @@ import { EMPTY_ENVIRONMENT_THREAD_STATE } from "@t3tools/client-runtime/state/th
+@@ -89,13 +96,28 @@ import { EMPTY_ENVIRONMENT_THREAD_STATE } from "@t3tools/client-runtime/state/th
  import { act, render as renderUi } from "../../../test/render";
  import { makeStreamingTimelineFixture, makeThreadProjectionFixture } from "../../test-fixtures";
  import { ToastProvider } from "../ui/toast";
@@ -1030,7 +1031,7 @@ index 7a927d6cd3b48b888ddd0d2894b0a42948c859dd..ed421de896f4ec5854b0d2093d9cceb8
  }
  
  const baseProps = {
-@@ -424,16 +449,7 @@ it("tells the user why Send now was rejected", async () => {
+@@ -424,16 +446,7 @@ it("tells the user why Send now was rejected", async () => {
        },
      ],
    };
@@ -1048,7 +1049,7 @@ index 7a927d6cd3b48b888ddd0d2894b0a42948c859dd..ed421de896f4ec5854b0d2093d9cceb8
    await using _screen = await renderUi(
      <ToastProvider timeout={0}>
        <QueuedRunsControl {...baseProps} />
-@@ -443,3 +459,169 @@ it("tells the user why Send now was rejected", async () => {
+@@ -443,3 +456,169 @@ it("tells the user why Send now was rejected", async () => {
    await page.getByRole("button", { name: "Send now" }).click();
    await vi.waitFor(() => expect(page.getByText(reason).element()).toBeVisible());
  });
