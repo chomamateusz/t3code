@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Mateusz Choma <chomamateusz@gmail.com>
-Date: Tue, 10 Nov 2026 17:23:23 +0100
+From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 03:28:46 +0100
 Subject: =?UTF-8?q?=F0=9F=97=83=EF=B8=8F=20Show=20full=20thread=20cards=20?=
  =?UTF-8?q?in=20the=20grouped=20sidebar?=
 MIME-Version: 1.0
@@ -45,6 +45,8 @@ Port to 047fb5b162: Sidebar.logic.test.ts only: the import list keeps upstream's
 Port to def64e3a54: settingsSearch.ts conflicted only in context: upstream fe9c98c98f (#35871) leaves a blank line after the Two-line folder rows entry this commit removes; the entry and that line go.
 
 Port to 0085217d1b: upstream acd4fc67b9 (#42884, Labs device preferences read-only for projects) marks the Two-line folder rows row devicePreference and checks it in LabsSettingsPanel.scope.browser.test.tsx and scripts/scenarios/labs-boring-sidebar-read-only-in-project.e2e.ts; this commit removes that row, so the test and the scenario check only the Boring sidebar switch. SidebarProjectFolderHeader.tsx keeps upstream ea3328c50c's (#42671) SharedTooltipTrigger import beside this commit's SidebarThreadBadge, and the folder-dot class and label maps (and the msg import) go as before. Sidebar.tsx conflicted only in context (ea3328c50c drops the TooltipProvider around the thread list). The change itself is unchanged.
+
+Port to 4c8a324e8f: upstream a03c43363b (#43206) condensed the Group threads by project section of docs/user/thread-sidebar.md into one paragraph without the folder count and pen-button sentences. This commit's additions now sit in that paragraph: folders follow the project icon order, folder threads use the full cards, Option/Alt-click or Alt+Enter toggles every folder, and a closed folder shows its project's badge. Code unchanged.
 
 Files:
 apps/web:
@@ -92,9 +94,9 @@ Model/harness: Claude Opus 5.5 / Claude Code (implementation and fix waves); rev
  .../components/sidebar/SidebarThreadBadge.tsx |  27 ++++
  .../components/sidebar/SidebarThreadRow.tsx   |   2 +
  apps/web/src/index.css                        |   3 +
- docs/user/thread-sidebar.md                   |  12 +-
+ docs/user/thread-sidebar.md                   |   2 +-
  ...boring-sidebar-read-only-in-project.e2e.ts |   4 +-
- 18 files changed, 442 insertions(+), 272 deletions(-)
+ 18 files changed, 435 insertions(+), 269 deletions(-)
  create mode 100644 apps/web/src/components/sidebar/SidebarThreadBadge.css
  create mode 100644 apps/web/src/components/sidebar/SidebarThreadBadge.tsx
 
@@ -1269,29 +1271,18 @@ index 7b7f83e80b2a701e7a3afa10f7b847a447967278..9b7785a1510d4d0d9db9ecb6783d1eac
    --command-content-inset: 1rem;
    --floating-content-inset: 0.75rem;
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index bc98df6a9549e1975c9960856ab688b0b9eb9b21..ce35f5123d06ce03b56c2b04610b8c4d9013ec01 100644
+index 14c458a0ff1c93a741d86ef6fdd9ac60f9fe3e8d..c154a5451453d4af9839cda8e3eca8b1d9c29a7b 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -231,11 +231,15 @@ selections so the thread can appear, while keeping selections for unavailable pr
+@@ -52,7 +52,7 @@ On web and desktop, a machine row and a project row below Search filter the side
+ 
  ### Group threads by project (beta)
  
- Turn on **Settings → Labs → Boring sidebar (group by project)** on web and desktop to put active
--threads in a folder for each project. Pinned projects come first. A project with no active
-+threads in a folder for each project. Folders follow the project icon order, so pinned projects
-+come first and **Settings → Labs → Project icon order** applies to both. A project with no active
- threads has no folder unless it is pinned or you pick it in the project filter. An archived
--project's folder comes last and shows only while it has active threads. Click a folder to open or
--close it. A closed folder shows how many threads it holds, and a dot when one of them
--needs you. Use the pen button on a folder, or right-click it, to start a thread in that project.
-+project's folder comes last and shows only while it has active threads. Threads in a folder use
-+the same cards as the ungrouped list. Click a folder to open or close it; hold **⌥** (Alt) while
-+clicking, or press Alt+Enter on a focused folder, to close every folder when it is open or open
-+every folder when it is closed. A closed folder shows how many threads it holds and the same
-+badge as its project icon for the hidden threads. Use the pen button on a folder, or right-click
-+it, to start a thread in that project.
- Pinned threads stay above the folders, and Snoozed and Settled stay below them. In this mode you
- can drag a thread onto the composer to mention it, but not within the sidebar, and the Working
- section is off. Each device keeps its own choice.
+-Enable **Settings → Labs → Boring sidebar (group by project)** on web/desktop (per device) to group active threads into collapsible project folders. Pinned threads stay above; Snoozed and Settled stay below. In this mode, the Working section and sidebar drag-reordering are disabled (dragging a thread onto the composer still works).
++Enable **Settings → Labs → Boring sidebar (group by project)** on web/desktop (per device) to group active threads into collapsible project folders. Folders follow the project icon order, so pinned projects come first and **Settings → Labs → Project icon order** applies to both. Threads in a folder use the same cards as the ungrouped list. `Option`-click (`Alt`-click) a folder, or press `Alt+Enter` on a focused folder, to close every folder when it is open or open every folder when it is closed. A closed folder shows the same badge as its project icon for the threads it hides. Pinned threads stay above; Snoozed and Settled stay below. In this mode, the Working section and sidebar drag-reordering are disabled (dragging a thread onto the composer still works).
+ 
+ ## Settle, snooze, and archive
+ 
 diff --git a/scripts/scenarios/labs-boring-sidebar-read-only-in-project.e2e.ts b/scripts/scenarios/labs-boring-sidebar-read-only-in-project.e2e.ts
 index 2885931821ce1269af2973016361671e182409a6..4feb882d17335ad578f64ffb171c3ebbec31ba30 100644
 --- a/scripts/scenarios/labs-boring-sidebar-read-only-in-project.e2e.ts

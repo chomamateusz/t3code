@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
-Date: Fri, 20 Nov 2026 02:06:47 +0100
+Date: Thu, 26 Nov 2026 03:27:27 +0100
 Subject: =?UTF-8?q?=E2=9C=A8=20Start=20new=20threads=20inside=20the=20side?=
  =?UTF-8?q?bar=20filter?=
 MIME-Version: 1.0
@@ -50,6 +50,8 @@ Port to 85aaef42d4: Sidebar.browser.test.tsx only: the entities import adds read
 Port to 54ba2408f4: CommandPalette.browser.test.tsx only: upstream's cases for a fresh, unmodified Backspace leaving a submenu (ccdafe1f61, #42205) and a held Esc stopping on the palette after file search (51a721da44, #42279) sit before this commit's restricted-picker cases and run on this commit's setup; this commit's Backspace widening goes through upstream's guarded Backspace branch, so a held or modified Backspace no longer widens a restricted picker either.
 
 Port to 0085217d1b: CommandPalette.logic.ts types only: upstream 83a7c75b88 (#42889, adding a project from a draft's picker no longer leaves the draft behind) gives the add-project intent and OpenAddProject an optional draftId; both keep it beside this commit's new-thread-in target. The change itself is unchanged.
+
+Port to 4c8a324e8f: upstream a03c43363b (#43206) rewrote docs/user/thread-sidebar.md's Start a thread section as bullets. The Web and desktop bullet now describes the filter-following New thread, with new bullets for choosing outside the filter and for the machine choice when several machines are selected; the Defaults bullet notes that an empty draft opens again, and the no-project shortcut names Cmd+Option+N on macOS. Code unchanged; useHandleNewThread.ts and keybindings.ts merged cleanly with upstream's workspaceExplicit (#43205) and own-property when-conditions (#43181).
 
 Files:
 apps/web:
@@ -127,8 +129,8 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  apps/web/src/newThreadTargetState.ts          | 107 ++++
  .../src/shortcuts/chatRouteCommands.test.ts   |   5 +-
  apps/web/src/shortcuts/chatRouteCommands.ts   |  30 +-
- docs/user/thread-sidebar.md                   |  33 +-
- 21 files changed, 1954 insertions(+), 154 deletions(-)
+ docs/user/thread-sidebar.md                   |   8 +-
+ 21 files changed, 1936 insertions(+), 147 deletions(-)
  create mode 100644 apps/web/src/components/sidebar/SidebarThreadHeader.browser.test.tsx
  create mode 100644 apps/web/src/newThreadActions.ts
  create mode 100644 apps/web/src/newThreadTarget.test.ts
@@ -1581,7 +1583,7 @@ index 07df36fe906a49112cf137466fa49338d484254d..3c78df2bbd4b44f60ad777a2a843cce8
      testState.reset(null);
      testState.openEmptyDraft("draft-open");
 diff --git a/apps/web/src/hooks/useHandleNewThread.ts b/apps/web/src/hooks/useHandleNewThread.ts
-index ea9c42b2649b56cc281441efc8fd110bf6721a1d..e1457fc385d08867280957943b4b613ff2a4b1fd 100644
+index 1fd3dad3478fca558ad01f48af819de7a02a5dfe..3cd1d7470f407136c6b8ecc3506f8d329442b484 100644
 --- a/apps/web/src/hooks/useHandleNewThread.ts
 +++ b/apps/web/src/hooks/useHandleNewThread.ts
 @@ -14,7 +14,7 @@ import { flushSync } from "react-dom";
@@ -1593,7 +1595,7 @@ index ea9c42b2649b56cc281441efc8fd110bf6721a1d..e1457fc385d08867280957943b4b613f
    type DraftSessionState,
    type DraftThreadEnvMode,
    type DraftThreadState,
-@@ -141,6 +141,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -145,6 +145,7 @@ export function createNewThreadHandler(router: AnyRouter) {
        envMode?: DraftThreadEnvMode;
        startFromOrigin?: boolean;
        replace?: boolean;
@@ -1601,7 +1603,7 @@ index ea9c42b2649b56cc281441efc8fd110bf6721a1d..e1457fc385d08867280957943b4b613f
        /** Composer text for the draft, set before it shows. A draft with user text keeps it. */
        prompt?: string;
      },
-@@ -309,11 +310,32 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -313,11 +314,32 @@ export function createNewThreadHandler(router: AnyRouter) {
      const logicalProjectKey = project
        ? deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings)
        : scopedProjectKey(projectRef);
@@ -1635,7 +1637,7 @@ index ea9c42b2649b56cc281441efc8fd110bf6721a1d..e1457fc385d08867280957943b4b613f
      const storedDraftThreadRef = storedDraftThread
        ? scopeThreadRef(storedDraftThread.environmentId, storedDraftThread.threadId)
        : null;
-@@ -384,6 +406,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -389,6 +411,7 @@ export function createNewThreadHandler(router: AnyRouter) {
            projectRef,
            emptyStoredDraftThread.draftId,
            {
@@ -1643,7 +1645,7 @@ index ea9c42b2649b56cc281441efc8fd110bf6721a1d..e1457fc385d08867280957943b4b613f
              threadId: emptyStoredDraftThread.threadId,
              ...workspaceContext,
              ...(!isDraftAlreadyOpen ? { runtimeMode: defaultRuntimeMode } : {}),
-@@ -416,6 +439,9 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -421,6 +444,9 @@ export function createNewThreadHandler(router: AnyRouter) {
        latestActiveDraftThread &&
        currentRouteTarget?.kind === "draft" &&
        latestActiveDraftThread.logicalProjectKey === logicalProjectKey &&
@@ -1653,7 +1655,7 @@ index ea9c42b2649b56cc281441efc8fd110bf6721a1d..e1457fc385d08867280957943b4b613f
        latestActiveDraftThread.promotedTo == null &&
        !composerDraftHasUserContent(getComposerDraft(currentRouteTarget.draftId))
      ) {
-@@ -428,6 +454,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -433,6 +459,7 @@ export function createNewThreadHandler(router: AnyRouter) {
          setDraftThreadContext(currentRouteTarget.draftId, pickExplicitWorkspaceOptions(options));
        }
        setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, currentRouteTarget.draftId, {
@@ -1661,7 +1663,7 @@ index ea9c42b2649b56cc281441efc8fd110bf6721a1d..e1457fc385d08867280957943b4b613f
          threadId: latestActiveDraftThread.threadId,
          createdAt: latestActiveDraftThread.createdAt,
          runtimeMode: latestActiveDraftThread.runtimeMode,
-@@ -448,6 +475,7 @@ export function createNewThreadHandler(router: AnyRouter) {
+@@ -453,6 +480,7 @@ export function createNewThreadHandler(router: AnyRouter) {
        const defaultEnvMode = options?.envMode === undefined ? resolveDefaultEnvMode() : null;
        const initialEnvMode = options?.envMode ?? defaultEnvMode?.envMode ?? "local";
        setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
@@ -1670,7 +1672,7 @@ index ea9c42b2649b56cc281441efc8fd110bf6721a1d..e1457fc385d08867280957943b4b613f
          createdAt,
          branch: options?.branch ?? null,
 diff --git a/apps/web/src/keybindings.test.ts b/apps/web/src/keybindings.test.ts
-index 8371b71e74645b9af9bf8bd3bfc8642496ff7468..a02e8a9db76217cc5ea3455923f04f21ea23c2fc 100644
+index 728797735e74176f9d68914ca5dfa7aa46ba7c15..b2ebda610af0408576131ad393bbcc4cda560a57 100644
 --- a/apps/web/src/keybindings.test.ts
 +++ b/apps/web/src/keybindings.test.ts
 @@ -1,4 +1,4 @@
@@ -1816,7 +1818,7 @@ index 8371b71e74645b9af9bf8bd3bfc8642496ff7468..a02e8a9db76217cc5ea3455923f04f21
    it("runs the active environment's script shortcut instead of the primary environment's", () => {
      const primary = compile([{ shortcut: modShortcut("r"), command: "script.setup.run" }]);
 diff --git a/apps/web/src/keybindings.ts b/apps/web/src/keybindings.ts
-index 3361faa3e54f7c29a62df944f6a12248c10fc051..ed9e83daed66dbfc52d0464f01e0437bc8eac3b3 100644
+index 0b15c4d9a64c9dee4c4519825c4a356b9fd2877c..03a5595bf72d7213c0e32dfa8bb8b83218cb2c9c 100644
 --- a/apps/web/src/keybindings.ts
 +++ b/apps/web/src/keybindings.ts
 @@ -192,7 +192,7 @@ function matchesCommandShortcut(
@@ -2930,53 +2932,25 @@ index 90ccf9fc2023f7746f76e707d49689e80c3548fa..e7c8a555a40b4da28fd413c8106ba70f
        "preview.toggle": (event) => {
          claim(event);
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index ca143d42f8ff62184621e74df5e336794fe7b32c..bc98df6a9549e1975c9960856ab688b0b9eb9b21 100644
+index 401f48a53f343d44c8db9dd330de9d116aed4b14..14c458a0ff1c93a741d86ef6fdd9ac60f9fe3e8d 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -16,14 +16,27 @@ and leaves it hidden. The sidebar toggle and shortcut still keep it open.
+@@ -4,13 +4,15 @@ Use a separate thread for each task. Choose **New worktree** when a task needs i
  
  ## Start a thread
  
--On web and desktop, **New thread** opens the project picker when you have more than one
--open project in the default or project-grouped sidebar. Archived projects don't count. **Shift-click** to start in
--the current project, or use a project's own new-thread action. A new thread carries
--your model and mode selections, unless the destination project has its own model default.
--Its branch and workspace mode come from your configured defaults. To continue in
--an existing worktree, use **New thread in this worktree** from the branch toolbar.
--While the sidebar is filtered to one project, the sidebar's **New thread** button
--starts the thread in that project instead of asking which project to use.
-+On web and desktop, including a mobile browser, **New thread** and its keyboard
-+shortcut follow the sidebar's machine and project filters. With one reachable
-+project on one machine, the thread opens there directly. When several machines
-+are selected, each project's target prefers connected selected machines, then the
-+machine where that project was most recently active. Ties use the first matching
-+machine in the list. With several project or folder choices, you choose from the filtered
-+list. Sidebar search text does not
-+affect this choice. Without a filter, the current project opens when there is
-+exactly one open project. Otherwise the full project list opens, including in the
-+project-grouped sidebar. Archived projects don't count and are not offered in the filtered picker. If nothing in the filter is reachable, the full list opens with a note.
-+
-+To choose outside the filter, **⌥-click** (Alt-click) **New thread**. In the
-+filtered picker, press **Backspace** with an empty search or choose **All projects…** for the full list;
-+**Esc** cancels. **Shift-click** starts in the current thread's project. The command
-+palette's **New thread in…** always shows the full list, with filtered projects first.
-+
-+A new thread carries your model and mode selections, unless the destination
-+project has its own model default. Its branch and workspace mode come from your
-+configured defaults. An existing empty draft for that project and machine opens
-+again. Use history back to return to the previous thread. To continue in an
-+existing worktree, use **New thread in this worktree** from the branch toolbar.
+-- **Web and desktop**: **New thread** opens the project picker when you have multiple open projects (unless the sidebar is filtered to one project). `Shift`-click to start in the current project. To reuse an existing worktree, choose **New thread in this worktree** from the branch toolbar.
++- **Web and desktop** (including a mobile browser): **New thread** and its shortcut follow the sidebar's machine and project filters. With one reachable project on one machine, the thread opens there directly; with several project or folder choices, you pick from the filtered list (sidebar search text does not change it, and archived projects are not offered). Without a filter, the current project opens when it is the only open project; otherwise the full project list opens, including in the project-grouped sidebar. If nothing in the filter is reachable, the full list opens with a note. `Shift`-click to start in the current thread's project. To reuse an existing worktree, choose **New thread in this worktree** from the branch toolbar.
++- **Outside the filter**: `Option`-click (`Alt`-click) **New thread**, or press `Backspace` with an empty search in the filtered picker or choose **All projects…** there; `Esc` cancels. The command palette's **New thread in…** always shows the full list, with filtered projects first.
++- **Several machines selected**: Each project's thread starts on a connected selected machine first, then on the machine where that project was most recently active; ties use the first matching machine in the list.
+ - **Mobile**: **New thread** uses the current, filtered, or last-opened project. Disable **Settings → General → Use last project** to pick every time.
+-- **Defaults**: New threads inherit your last model and mode unless the project sets its own model default.
++- **Defaults**: New threads inherit your last model and mode unless the project sets its own model default. An existing empty draft for that project and machine opens again; use history back to return to the previous thread.
  
- On mobile, **New thread** starts in the current thread's project, or else in the
- project the thread list is filtered to, or else in the last project you opened
-@@ -40,8 +53,8 @@ if that project exists there. Otherwise it selects an environment that has it.
- A thread does not need a project. To start one without a project, click **or
- start without a project** under a new thread's heading, pick **No project** from
- the project menu in that heading or from **New thread in...** in the command
--palette, or press `mod+alt+n`. On mobile, pick **No project** from the project
--list. It starts on your current machine; before sending, pick another machine
-+palette, or press `mod+alt+n` (⌘⌥N on macOS). On mobile, pick **No project** from
-+the project list. It starts on your current machine; before sending, pick another machine
- from the machine menu to move it there. To move a draft into a project, pick the
- project in the heading.
+ ### Start without a project
  
+-Threads don't require a project. Pick **No project** (or press `mod+alt+n` on web/desktop) to start a scratch thread in `~/.t3/scratch/<date>-<slug>-<id>`.
++Threads don't require a project. Pick **No project** (or press `mod+alt+n` on web/desktop, `Cmd+Option+N` on macOS) to start a scratch thread in `~/.t3/scratch/<date>-<slug>-<id>`.
+ 
+ - Deleting a scratch thread leaves its folder on disk.
+ - Git branch, worktree, and diff controls are hidden (and scratch threads are unavailable if your T3 data directory itself is inside a Git repo).

@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Mateusz Choma <chomamateusz@gmail.com>
-Date: Tue, 24 Nov 2026 20:29:03 +0100
+From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 03:52:23 +0100
 Subject: =?UTF-8?q?=F0=9F=90=9B=20All=20machines=20in=20the=20sidebar=20fi?=
  =?UTF-8?q?lter=20shows=20every=20machine=20checked?=
 MIME-Version: 1.0
@@ -10,6 +10,8 @@ Content-Transfer-Encoding: 8bit
 - With no machine filter (All machines), every machine in the menu shows as checked instead of none.
 - Cmd-click (Ctrl-click off macOS) on a machine while all are shown removes just that machine, so "all but one" is two clicks: All machines, then Cmd-click the one to hide.
 - Stored keys still use an empty list for all machines; stale ids alone also count as all.
+
+Port to 4c8a324e8f: the Machines bullet of docs/user/thread-sidebar.md (the Filter projects section, rewritten for upstream a03c43363b, #43206) now says All machines checks every machine and Cmd/Ctrl-click hides one. Code unchanged.
 
 Files:
 - apps/web: sidebarEnvironmentScope.ts, components/sidebar/SidebarMachineRow.tsx
@@ -21,8 +23,8 @@ Tests:
  apps/web/src/components/sidebar/SidebarMachineRow.tsx |  2 +-
  apps/web/src/sidebarEnvironmentScope.test.ts          | 10 ++++++++--
  apps/web/src/sidebarEnvironmentScope.ts               |  6 +++++-
- docs/user/thread-sidebar.md                           |  5 +++--
- 4 files changed, 17 insertions(+), 6 deletions(-)
+ docs/user/thread-sidebar.md                           |  2 +-
+ 4 files changed, 15 insertions(+), 5 deletions(-)
 
 diff --git a/apps/web/src/components/sidebar/SidebarMachineRow.tsx b/apps/web/src/components/sidebar/SidebarMachineRow.tsx
 index 4a1fe4ab71201d857c5678e7e0dc533539bbd0a9..f903e4a6b534edef3f72a29035ed453261ec8276 100644
@@ -81,18 +83,15 @@ index edcb93154ca516a6e9d4fe0e2d3f17c2921332dd..54495976d3dea1ada2cefae2ab4fecba
  }
  
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 6c45787ad9349ab1777d1f054c5102a548169da0..fc12cf05ea37df30817c7a553b3512f0f284e881 100644
+index d4f97fd4bae3b01c67edba879f9c182e80d25c67..76ded1d9afebba2213b6163908a1762898b072c9 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -184,8 +184,9 @@ On web and desktop, when two or more machines are known, the machine row below
- Search lets you filter by machine. A plain pick selects only that machine and
- closes the menu; picking the same singleton again clears the selection.
- **⌘-click** (Ctrl-click outside macOS) adds or removes a machine and keeps the
--menu open. Enter acts like a plain pick. Choose **All machines** to clear the
--selection; selecting every machine does the same. Projects remain available when
-+menu open. Enter acts like a plain pick. Choose **All machines** to check every
-+machine, then ⌘-click the one you want to hide; selecting every machine does the
-+same as **All machines**. Projects remain available when
- they exist on any selected machine. Opening a thread on another machine returns
- the machine filter to **All machines**.
+@@ -42,7 +42,7 @@ While enabled, Active is sorted by most recent return (manual reordering is paus
  
+ On web and desktop, a machine row and a project row below Search filter the sidebar.
+ 
+-- **Machines**: Shown when two or more machines are known. A plain pick (or `Enter`) selects only that machine and closes the menu; picking the same single machine again clears it. `Cmd`-click (`Ctrl`-click outside macOS) adds or removes a machine and keeps the menu open. **All machines** clears the selection, as does selecting every machine. Projects stay available while they exist on any selected machine. Opening a thread on another machine returns the filter to **All machines**.
++- **Machines**: Shown when two or more machines are known. A plain pick (or `Enter`) selects only that machine and closes the menu; picking the same single machine again clears it. `Cmd`-click (`Ctrl`-click outside macOS) adds or removes a machine and keeps the menu open. **All machines** checks every machine; then `Cmd`/`Ctrl`-click the one you want to hide. Selecting every machine does the same as **All machines**. Projects stay available while they exist on any selected machine. Opening a thread on another machine returns the filter to **All machines**.
+ - **Projects**: Click a project icon below the machine row (or below Search with one machine) to select only that project among the visible ones; click it again to clear the visible selection when it is the only selected project shown. Selections for projects on other machines stay saved. `Cmd`/`Ctrl`-click adds or removes a project. `Enter` and `Space` select only the focused project; `Cmd/Ctrl+Enter` adds or removes it. Picks keep the current Show only or Hide mode, including in **+N**. Right-click an icon to open its project settings. Archived projects are left out.
+ - **+N and icon order**: **+N** opens the remaining projects with a search field. Pinned projects come first, then the others by name; to order them by latest thread activity or in your own order, change **Settings → Labs → Project icon order** (per device). With **Manual**, drag projects in the list below that setting, or move a focused handle with `Space` and the arrow keys; projects you have not placed yet follow by name. Pin a project in **+N**, or use the pin shortcut while its icon or search result is focused.
+ - **Badges**: A project badge counts threads needing attention; a static dot means only working threads, and **+N** combines the projects that do not fit in the row. Hover an icon for its counts per state and a key to the badge colours.

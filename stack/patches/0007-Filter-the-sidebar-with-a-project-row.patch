@@ -78,6 +78,8 @@ Port to 221953fbf3: Sidebar.tsx conflicted only where upstream 221953fbf3 (#4265
 
 Port to 0085217d1b: Sidebar.tsx imports only: upstream ea3328c50c (#42671) no longer imports TooltipProvider, so this commit drops the whole ui/tooltip import with the TooltipScrollDismissArea it no longer uses. The change itself is unchanged.
 
+Port to 4c8a324e8f: upstream a03c43363b (#43206) rewrote docs/user/thread-sidebar.md as short bullet lists. The Filter projects in the sidebar section keeps its place under Sidebar layout and organization, above Group threads by project, and says the same in that form: one bullet each for machines, projects, +N and icon order, badges, the eye button (which now also names the Boring sidebar setting it controls), saved selections, clearing and the thread menu. Code unchanged.
+
 Files:
 apps/web:
 - apps/web/src/components/ProjectComboboxRow.tsx
@@ -162,9 +164,9 @@ Model/harness: GPT-6 / Codex; badge legend follow-up: Claude Opus 5.5 / Claude C
  apps/web/src/sidebarProjectRow.ts             | 459 ++++++++++
  apps/web/src/uiStateStore.test.ts             | 260 +++++-
  apps/web/src/uiStateStore.ts                  | 223 ++++-
- docs/user/thread-sidebar.md                   |  54 ++
+ docs/user/thread-sidebar.md                   |  13 +
  .../add-project-tab-reaches-submit.e2e.ts     |   3 +-
- 24 files changed, 4868 insertions(+), 581 deletions(-)
+ 24 files changed, 4827 insertions(+), 581 deletions(-)
  delete mode 100644 apps/web/src/components/ProjectComboboxRow.tsx
  create mode 100644 apps/web/src/components/settings/ProjectManualOrderList.browser.test.tsx
  create mode 100644 apps/web/src/components/settings/ProjectManualOrderList.tsx
@@ -6290,70 +6292,29 @@ index bde94d9548673ed4e0ce0cd40cb6a2002cac884f..e3ffc3e67a01a790eafe05fd5955b99d
      set((state) => setSidebarEnvironmentScopeKeys(state, environmentKeys)),
    setPullRequestMergeMethod: (method) => set((state) => setPullRequestMergeMethod(state, method)),
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 00ee74cd704f99f690771413f291f59ab4651401..ca143d42f8ff62184621e74df5e336794fe7b32c 100644
+index b739242ea5c422388429b1325c7024a5ff170d34..401f48a53f343d44c8db9dd330de9d116aed4b14 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -161,6 +161,60 @@ choice.
- While this is on, the active list is ordered by when each thread last came back to you, so you
- cannot drag or move threads within it. Your saved order returns when you turn it off.
+@@ -35,6 +35,19 @@ Enabled by default (**Settings → General → Working section**, per device). U
+ 
+ While enabled, Active is sorted by most recent return (manual reordering is paused until you turn it off).
  
 +### Filter projects in the sidebar
 +
-+On web and desktop, when two or more machines are known, the machine row below
-+Search lets you filter by machine. A plain pick selects only that machine and
-+closes the menu; picking the same singleton again clears the selection.
-+**⌘-click** (Ctrl-click outside macOS) adds or removes a machine and keeps the
-+menu open. Enter acts like a plain pick. Choose **All machines** to clear the
-+selection; selecting every machine does the same. Projects remain available when
-+they exist on any selected machine. Opening a thread on another machine returns
-+the machine filter to **All machines**.
++On web and desktop, a machine row and a project row below Search filter the sidebar.
 +
-+Use the project icons below the machine row (or below Search with one machine)
-+to filter threads. Click
-+an icon to select only that project among the visible projects; click it again to
-+clear the visible selection when it is the only selected project shown. Selections
-+for projects on other machines stay saved.
-+**⌘-click** (Ctrl-click outside macOS) adds or removes a project. Enter and Space
-+select only the focused project; **⌘/Ctrl+Enter** adds or removes it. The current
-+Show only or Hide mode is preserved, including when choosing a project in **+N**.
-+Right-click an icon to open its project settings. **+N** opens the remaining
-+projects with a search field. Pinned projects come first, then the others by name;
-+to order them by latest thread activity or in your own order instead, change **Settings → Labs → Project
-+icon order**. With **Manual**, drag projects in the list below that setting, or move a focused
-+handle with Space and the arrow keys; projects you have not placed yet follow by name. This choice
-+is saved on each device. Pin a project in **+N**
-+or use the pin shortcut while its icon or search result is focused. Archived projects
-+are left out of the filter choices.
-+Project badges count threads needing attention; a static dot means only working threads, and **+N** combines the projects that do not fit in the row.
-+Hover an icon for its counts per state and a key to the badge colours.
-+
-+The eye button at the end of the row switches between **Show selected** and **Hide
-+selected**; in Hide mode it turns red. Hold **⌘** (Ctrl outside macOS) and click it
-+to turn **Group threads by project** on or off, or hold the left **⌥** (left Alt) and click it to
-+open the sidebar settings. The right ⌥ and AltGr type characters, so they leave the button alone.
-+The button shows the action while you hold the key.
-+Right-click it, press Shift+F10, or long-press it on a touch screen for a menu with
-+the same three actions. Switching
-+modes restores that mode's saved selection if any of its projects are visible.
-+Otherwise, it adds the current visible selection to that mode's saved projects on
-+other machines. Both modes keep their saved selections. One project filter is shared across
-+all machine selections. Changing machines keeps the filter; projects unavailable
-+on the selected machines have no effect. If none of the Show only projects is
-+available, all threads on the selected machines are shown. **×** clears only the
-+visible selection. Choose **All machines**, then clear the project selection to remove
-+selections across machines. The thread menu's **Filter by project** selects that
-+project among the visible projects and switches to Show only. From Hide, it keeps
-+the saved Show only selections on other machines and leaves the Hide list saved.
-+**Show all projects** clears only the visible selection. Opening a hidden thread
-+reveals its project. Opening a thread in an archived project clears visible Show only
-+selections so the thread can appear, while keeping selections for unavailable projects.
-+
-+**Group threads by project** on the eye button controls the same setting as
-+**Settings → Labs → Boring sidebar (group by project)**.
++- **Machines**: Shown when two or more machines are known. A plain pick (or `Enter`) selects only that machine and closes the menu; picking the same single machine again clears it. `Cmd`-click (`Ctrl`-click outside macOS) adds or removes a machine and keeps the menu open. **All machines** clears the selection, as does selecting every machine. Projects stay available while they exist on any selected machine. Opening a thread on another machine returns the filter to **All machines**.
++- **Projects**: Click a project icon below the machine row (or below Search with one machine) to select only that project among the visible ones; click it again to clear the visible selection when it is the only selected project shown. Selections for projects on other machines stay saved. `Cmd`/`Ctrl`-click adds or removes a project. `Enter` and `Space` select only the focused project; `Cmd/Ctrl+Enter` adds or removes it. Picks keep the current Show only or Hide mode, including in **+N**. Right-click an icon to open its project settings. Archived projects are left out.
++- **+N and icon order**: **+N** opens the remaining projects with a search field. Pinned projects come first, then the others by name; to order them by latest thread activity or in your own order, change **Settings → Labs → Project icon order** (per device). With **Manual**, drag projects in the list below that setting, or move a focused handle with `Space` and the arrow keys; projects you have not placed yet follow by name. Pin a project in **+N**, or use the pin shortcut while its icon or search result is focused.
++- **Badges**: A project badge counts threads needing attention; a static dot means only working threads, and **+N** combines the projects that do not fit in the row. Hover an icon for its counts per state and a key to the badge colours.
++- **Show or hide selected**: The eye button at the end of the row switches between **Show selected** and **Hide selected**; in Hide mode it turns red. Hold `Cmd` (`Ctrl` outside macOS) and click it to turn **Group threads by project** on or off (the same setting as **Settings → Labs → Boring sidebar (group by project)**), or hold the left `Option` (left `Alt`) and click it to open the sidebar settings; the right `Option` and `AltGr` type characters, so they leave the button alone. The button shows the action while you hold the key. Right-click it, press `Shift+F10`, or long-press it on a touch screen for a menu with the same three actions.
++- **Saved selections**: Both modes keep their saved selections. Switching modes restores that mode's saved selection if any of its projects are visible; otherwise it adds the current visible selection to that mode's saved projects on other machines. One project filter is shared across all machine selections: changing machines keeps it, and projects unavailable on the selected machines have no effect. If none of the Show only projects is available, all threads on the selected machines are shown.
++- **Clear**: **×** clears only the visible selection. To remove selections across machines, choose **All machines**, then clear the project selection.
++- **From a thread**: The thread menu's **Filter by project** selects that project among the visible projects and switches to Show only; from Hide, it keeps the saved Show only selections on other machines and leaves the Hide list saved. **Show all projects** clears only the visible selection. Opening a hidden thread reveals its project. Opening a thread in an archived project clears visible Show only selections so the thread can appear, while keeping selections for unavailable projects.
 +
  ### Group threads by project (beta)
  
- Turn on **Settings → Labs → Boring sidebar (group by project)** on web and desktop to put active
+ Enable **Settings → Labs → Boring sidebar (group by project)** on web/desktop (per device) to group active threads into collapsible project folders. Pinned threads stay above; Snoozed and Settled stay below. In this mode, the Working section and sidebar drag-reordering are disabled (dragging a thread onto the composer still works).
 diff --git a/scripts/scenarios/add-project-tab-reaches-submit.e2e.ts b/scripts/scenarios/add-project-tab-reaches-submit.e2e.ts
 index 66c69347e4aa4e17e5b61c710fe702f7160a5445..b6afb9358cd2b9d713127765950767bfd04baf4a 100644
 --- a/scripts/scenarios/add-project-tab-reaches-submit.e2e.ts

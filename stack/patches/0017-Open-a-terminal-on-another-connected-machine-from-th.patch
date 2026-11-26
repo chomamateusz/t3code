@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
-Date: Fri, 20 Nov 2026 02:11:08 +0100
+Date: Thu, 26 Nov 2026 03:31:58 +0100
 Subject: =?UTF-8?q?=F0=9F=92=BB=20Open=20a=20terminal=20on=20another=20con?=
  =?UTF-8?q?nected=20machine=20from=20the=20thread's=20terminal=20drawer?=
 MIME-Version: 1.0
@@ -73,6 +73,8 @@ Port to b6ac2449f1: the drawer keeps this commit's remote-terminal permission sp
 Port to 29b42d409c: upstream #38998 (17c401ddc0) moved drawer reconciliation into the terminal UI store, which now records the server's terminal ids per metadata snapshot and closes only ids it saw before, and #39260 (80cf4f7945) forgets an observed id when this client places it again. PersistentThreadTerminals.tsx reads upstream's useTerminalDrawerSessions and passes drawerServerTerminalIds' list with the snapshot id to the new reconcileTerminalIds, so remote tabs stay as before. terminalUiStateStore.ts: clearTerminalUiState is upstream's removeTerminalUiState, which also drops the thread's remote terminals; updateTerminal compares and returns server observations and remote terminals together; reconcileTerminalIds no longer runs through updateTerminal, so it keeps only the remote terminals the thread still shows itself; orphan cleanup and persistence carry both. terminalUiStateStore.test.ts: the remote-terminal case reconciles twice with the same snapshot, since a terminal now leaves through reconcile only after the server listed it once.
 
 Port to 0085217d1b: Manager.test.ts imports only: upstream's terminal fixes (#42808 and the others in the range) import TERMINAL_BRACKETED_PASTE_START, TERMINAL_BRACKETED_PASTE_END and TerminalWriteInput and take TerminalAttachStreamEvent as a value; this commit's EnvironmentId and TerminalSummary imports sit beside them. The change itself is unchanged.
+
+Port to 4c8a324e8f: upstream a03c43363b (#43206) rewrote docs/user/terminal.md; the Terminals on other machines section keeps its place before fish shell, as a short paragraph with bullets for tabs, the starting folder and the terminal's lifetime. Code unchanged.
 
 Files:
 packages/contracts:
@@ -174,9 +176,9 @@ Tests:
  apps/web/src/state/terminalSessions.ts        |   6 +-
  apps/web/src/terminalUiStateStore.test.ts     |  32 ++++
  apps/web/src/terminalUiStateStore.ts          | 173 +++++++++++++++---
- docs/user/terminal.md                         |  14 ++
+ docs/user/terminal.md                         |   8 +
  packages/contracts/src/terminal.ts            |   6 +-
- 26 files changed, 991 insertions(+), 89 deletions(-)
+ 26 files changed, 985 insertions(+), 89 deletions(-)
  create mode 100644 apps/web/src/components/PersistentThreadTerminals.logic.test.ts
  create mode 100644 apps/web/src/components/PersistentThreadTerminals.logic.ts
  create mode 100644 apps/web/src/components/terminal/NewTerminalMachineMenu.tsx
@@ -2123,30 +2125,24 @@ index 6bb939f7958463abf931cae011666fba9d1fa5cf..5effc733b86be6dc6a4d780c29bc59c1
      },
    ),
 diff --git a/docs/user/terminal.md b/docs/user/terminal.md
-index 0ef9420be322e3d0a7638e404bb89e0c46f0aa73..34a24dba8475c26b5ba71cf6dab7bdf463c0d1fb 100644
+index bd2320e03d82b49c34c87318699fdfed6e253fe2..b3e34f3ca9feb6533272d304b841eddcb2531395 100644
 --- a/docs/user/terminal.md
 +++ b/docs/user/terminal.md
-@@ -54,6 +54,20 @@ shortcuts in Settings > Keybindings.
- On iPhone and iPad, long-press the terminal to paste or to choose Select Text.
- Select Text shows the visible output, where you can copy text or tap a link.
+@@ -27,6 +27,14 @@ Each terminal retains up to **5,000 lines** and **8 MiB** of scrollback on the s
+ 
+ On iOS/iPadOS, long-press the terminal to paste or choose **Select Text**.
  
 +## Terminals on other machines
 +
-+A thread's terminal drawer can also open terminals on your other connected
-+environments. Click the arrow beside the drawer's New Terminal button and
-+choose a machine. The button itself still opens a terminal on the thread's
-+machine. The tab shows which machine it runs on, and a split from it opens
-+on the same machine.
++A thread's terminal drawer can also open terminals on your other connected environments: click the arrow beside the drawer's **New Terminal** button and choose a machine. The button itself still opens a terminal on the thread's machine.
 +
-+The terminal starts in the thread's folder when that path exists on the other
-+machine, and in that server's own folder otherwise. Its tab stays until you
-+close it or its shell exits, even while that machine is offline. Closing the
-+tab, or archiving or deleting the thread from this client, ends the terminal on
-+the other machine, as soon as that machine is reachable again if it is offline.
++- **Tabs**: The tab shows which machine the terminal runs on, and a split from it opens on the same machine.
++- **Folder**: The terminal starts in the thread's folder when that path exists on the other machine, and in that server's own folder otherwise.
++- **Lifetime**: The tab stays until you close it or its shell exits, even while that machine is offline. Closing the tab, or archiving or deleting the thread from this client, ends the terminal on the other machine, as soon as that machine is reachable again if it is offline.
 +
- ## fish
+ ## fish shell
  
- T3 Code starts fish with `no-query-term`, avoiding startup waits for terminal
+ T3 Code launches `fish` with `no-query-term` to avoid startup delays, which overrides universal `fish_features`. To keep custom flags or re-enable `query-term`, export `fish_features` in the environment that launches T3 Code.
 diff --git a/packages/contracts/src/terminal.ts b/packages/contracts/src/terminal.ts
 index fb2f9a6a8fe937c1db9d5e2c92230889f0708698..bef075c9d77f2f4334a9703b2fb19e8ed5d725f9 100644
 --- a/packages/contracts/src/terminal.ts

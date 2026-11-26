@@ -98,7 +98,7 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 apps/server/src/provider/fleetProxyLimits.ts
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index 34dfc68442a88a1cf18693bdaec216476a3a7657..8c49ebb92d94ccd07f37b68b1ca58ba8fc0deb11 100644
+index 96d5968a7b57bb51cc6389177c576a789d6a3d71..9fbfb23410f00a9adaa9e416096a9e72034e4839 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -79,6 +79,7 @@ import * as Scope from "effect/Scope";
@@ -135,7 +135,7 @@ index 34dfc68442a88a1cf18693bdaec216476a3a7657..8c49ebb92d94ccd07f37b68b1ca58ba8
          continuationRequests: {
            offer: (request) =>
              Effect.sync(() => {
-@@ -10962,6 +10968,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -11145,6 +11151,172 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      ),
    );
  
@@ -309,7 +309,7 @@ index 34dfc68442a88a1cf18693bdaec216476a3a7657..8c49ebb92d94ccd07f37b68b1ca58ba8
      Effect.gen(function* () {
        const harness = yield* makeWakeHarness;
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index 89340e8f84c8abc3680a1efda132e24b9da0ab0a..3a0e6fa47b2325de4f6df504232e9b047eae5b16 100644
+index 22fe365b4eddb041113a729192fd3c691095cac2..56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -37,6 +37,7 @@ import {
@@ -320,7 +320,7 @@ index 89340e8f84c8abc3680a1efda132e24b9da0ab0a..3a0e6fa47b2325de4f6df504232e9b04
  import {
    type CanUseTool,
    type ElicitationRequest,
-@@ -167,6 +168,7 @@ import * as Semaphore from "effect/Semaphore";
+@@ -168,6 +169,7 @@ import * as Semaphore from "effect/Semaphore";
  import * as Stream from "effect/Stream";
  import * as ChildProcess from "effect/process/ChildProcess";
  import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -328,7 +328,7 @@ index 89340e8f84c8abc3680a1efda132e24b9da0ab0a..3a0e6fa47b2325de4f6df504232e9b04
  
  import { resolveAttachmentPath } from "../../attachmentStore.ts";
  import { snapshotMcpApp } from "../../mcpApps/McpAppSnapshot.ts";
-@@ -6037,6 +6039,7 @@ export interface ClaudeAdapterV2Options {
+@@ -6147,6 +6149,7 @@ export interface ClaudeAdapterV2Options {
      cwd: string | null,
      launchSettings?: ClaudeSdkSettings,
    ) => Effect.Effect<ClaudeModelCatalog>;
@@ -336,7 +336,7 @@ index 89340e8f84c8abc3680a1efda132e24b9da0ab0a..3a0e6fa47b2325de4f6df504232e9b04
    readonly continuationRequests?: {
      readonly offer: (
        request: ProviderContinuationRequests.ProviderContinuationRequest,
-@@ -12812,15 +12815,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12957,15 +12960,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                resetTimes.length > 0 && resetTimes.every((time) => time !== null)
                  ? resetTimes.reduce((latest, time) => (time! > latest ? time! : latest), "")
                  : null;
@@ -384,7 +384,7 @@ index 89340e8f84c8abc3680a1efda132e24b9da0ab0a..3a0e6fa47b2325de4f6df504232e9b04
              // Claude answers a steer it has not read yet as the next native turn, which echoes
              // the steer. A result without echoes cannot prove that turn will come.
              if (
-@@ -15831,7 +15858,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+@@ -15990,7 +16017,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
      input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
      hooks: Pick<
        ClaudeAdapterV2Options,
@@ -399,10 +399,10 @@ index 89340e8f84c8abc3680a1efda132e24b9da0ab0a..3a0e6fa47b2325de4f6df504232e9b04
    ) {
      const { instanceId, environment, enabled, config } = input;
 diff --git a/apps/server/src/provider/Drivers/ClaudeDriver.ts b/apps/server/src/provider/Drivers/ClaudeDriver.ts
-index 83a63f04392b92a8a4c95835b777449147b5ff3f..40007880e526a5489458a4aa33bd66d4f95e9011 100644
+index e97a99881cafc479b96eca28338b43f4d4989896..38f25eff89b5d5c633cebf9fad7c8081c6b30eb8 100644
 --- a/apps/server/src/provider/Drivers/ClaudeDriver.ts
 +++ b/apps/server/src/provider/Drivers/ClaudeDriver.ts
-@@ -193,6 +193,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
+@@ -195,6 +195,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
          onSessionInit: (cwd) => Queue.offer(workspaceRescans, cwd).pipe(Effect.asVoid),
          modelCatalog,
          routeModelCatalog: modelRoutes.route,

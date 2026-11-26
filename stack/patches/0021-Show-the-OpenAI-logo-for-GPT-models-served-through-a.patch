@@ -61,10 +61,10 @@ Port to 0085217d1b: V2LifecycleRow.tsx follows upstream ea3328c50c (#42671, one 
  create mode 100644 apps/web/src/components/chat/providerIconUtils.test.ts
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 03cfe6eb508b893ebe18931e4b3a2951d0dcc2c4..e78b0e303adfa2638cce2135bb73d56289ba2dbd 100644
+index 27127a6652f9b48ffbb226b089eff9297fd9a4d3..954c33561a3ec4c6f7936210e792439acb7f89fd 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -3855,6 +3855,11 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3858,6 +3858,11 @@ export default function ChatView(props: ChatViewProps) {
                                      providerInstanceEntries,
                                    )
                                  }

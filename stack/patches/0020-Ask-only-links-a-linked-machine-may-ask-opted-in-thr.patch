@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
-Date: Mon, 23 Nov 2026 04:35:32 +0100
+Date: Thu, 26 Nov 2026 03:52:16 +0100
 Subject: =?UTF-8?q?=F0=9F=94=97=20Ask-only=20links:=20a=20linked=20machine?=
  =?UTF-8?q?=20may=20ask=20opted-in=20threads=20and=20read=20the=20answers?=
 MIME-Version: 1.0
@@ -113,6 +113,8 @@ Port to b8be2287dc: ContextHandoffService.ts: upstream a22a4f9bba (#30044, prese
 Port to 221953fbf3: useThreadActionMenu.ts: upstream 95411e3cd7 (#40742, thread actions for the current thread from cmd+k) builds the menu in readMenu; the linked-questions support, linkedQuestionsEnabled and isLinkedQuestion now sit in readMenu's supports and buildThreadActionMenuItems call, and the linked-questions case runs in its run(action) with readMenu's thread, so the item reaches upstream's cmd+k rows for the current thread through the same decision and permission check. agentContextBudget.json: mcpToolListJsonBytes is 63253 as AgentContextBudget.test.ts measures it on the carried tree, after upstream 3b5033a28c (#42506) added the workflow question withdraw tool text.
 
 Port to 0085217d1b: ProviderTurnStartService.ts: upstream 2313dfadad (#42938, resend a request a restart cut off before its first checkpoint) settles a cut-off provider turn right after the session opens; this commit's check that the session supports tool-less turns now runs just before it, so a linked question that cannot run fails before any cut turn is settled. Mobile useThreadListActions.ts follows upstream 2ae731530d (#43024, thread switches commit less), which wraps every returned action in useStableCallback: setThreadLinkedQuestions is wrapped the same way; ThreadRouteScreen.tsx passes sendBlockedReason to the ThreadScreenBinding that 2ae731530d moved out of renderThreadRouteBody. ChatHeader.tsx: the Answers linked questions badge is a SharedTooltipTrigger with its explanation as the label, like upstream's From <origin> badge beside it, since ea3328c50c (#42671) no longer imports Tooltip there. McpHttpServer.ts keeps upstream's Ref import beside this commit's Schedule import; ClaudeAdapterV2.test.ts keeps upstream's Auto-mode case before this commit's tool-less cases; docs/internals/04_environment-auth.md keeps upstream's push-hooks paragraph before this commit's ask-grant paragraph. agentContextBudget.json: mcpToolListJsonBytes recomputed with AgentContextBudget.test.ts (63338, upstream's 62140 plus this commit's 1198, the same growth as before).
+
+Port to 4c8a324e8f: upstream a03c43363b (#43206) condensed docs/user/remote-access.md's Link another environment section into numbered steps and two bullets and dropped the batch-file and per-level details. This commit's user-doc additions follow that form: the ask link code joins the batch-linking step, the relink rule joins the expiry step, Ask only is a bullet beside Access boundary, Read a linked machine's threads notes that an Ask only link cannot read them, and Let linked machines ask a thread and Limit links into a machine are short subsections with labelled bullets. Code unchanged; ChatView.tsx and contracts rpc.ts merged cleanly with upstream #43162 and #43205.
 
 Files:
 - apps/mobile:
@@ -335,7 +337,7 @@ Tests:
  docs/internals/03_providers.md                |   5 +-
  docs/internals/04_environment-auth.md         |   8 +
  docs/internals/05_remote.md                   |  32 +-
- docs/user/remote-access.md                    |  57 +-
+ docs/user/remote-access.md                    |  21 +-
  .../cases/linked-questions.ndjson             |   2 +
  evals/mcp-tool-use/run.ts                     |   2 +
  .../client-runtime/src/operations/commands.ts |  14 +
@@ -357,7 +359,7 @@ Tests:
  packages/contracts/src/settings.ts            |  12 +-
  .../src/server/ProviderAdapter.ts             |   2 +
  .../src/server/subagentProjection.ts          |  10 +-
- 135 files changed, 6367 insertions(+), 537 deletions(-)
+ 135 files changed, 6329 insertions(+), 539 deletions(-)
  create mode 100644 apps/server/src/mcp/toolkits/ask/handlers.ts
  create mode 100644 apps/server/src/mcp/toolkits/ask/tools.ts
  create mode 100644 apps/server/src/orchestration-v2/linkedQuestionFailures.ts
@@ -1580,10 +1582,10 @@ index 2319216f64d602b0db2574656b6cb05f38b1ebe0..f8e295854a46c0c4566b04a67228c104
    }).pipe(Effect.scoped),
  );
 diff --git a/apps/server/src/auth/RpcAuthorization.ts b/apps/server/src/auth/RpcAuthorization.ts
-index 367ab10be6c0ccfded1b86f9c06e74c5eaa04474..4867ef62814e5e54e453ac5acab3de44424a2349 100644
+index 3c05f45c8fd5d365aaca6e57b28fbfd67fe3d6ad..b99dcd5db446c7e8a205a2fad8a6c1276b160e31 100644
 --- a/apps/server/src/auth/RpcAuthorization.ts
 +++ b/apps/server/src/auth/RpcAuthorization.ts
-@@ -302,7 +302,8 @@ const sendsProviderSignOutPrompt = (method: string, payload: unknown): boolean =
+@@ -303,7 +303,8 @@ const sendsProviderSignOutPrompt = (method: string, payload: unknown): boolean =
    const command = payload as OrchestrationV2Command;
    switch (command.type) {
      case "message.dispatch":
@@ -3561,7 +3563,7 @@ index 49f6c1c5c6b5af3ee6ba1a9c91e7c08602a00579..d492e6a944ede349b54d42b83ae9771b
    Effect.gen(function* () {
      expect(
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index 8c49ebb92d94ccd07f37b68b1ca58ba8fc0deb11..2a9e395a01ceaf49cc997f1faf4a893c7c2b941a 100644
+index 9fbfb23410f00a9adaa9e416096a9e72034e4839..d6ca385230f62da163f115a7959138b527478fbe 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -715,6 +715,96 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
@@ -4072,10 +4074,10 @@ index 8c49ebb92d94ccd07f37b68b1ca58ba8fc0deb11..2a9e395a01ceaf49cc997f1faf4a893c
  
  describe("ClaudeAdapterV2 MCP credential channel", () => {
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd061e067b5 100644
+index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb935e62f5 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-@@ -204,6 +204,7 @@ import { signalProcessGroup } from "@t3tools/provider-core/server/processGroup";
+@@ -205,6 +205,7 @@ import { signalProcessGroup } from "@t3tools/provider-core/server/processGroup";
  import {
    claudeLocalSettingsDirectory,
    claudeSignedOutMessage,
@@ -4083,7 +4085,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
    makeClaudeEnvironment,
    mergeClaudeProcessEnvironment,
    resolveClaudeHomePath,
-@@ -390,6 +391,21 @@ const CLAUDE_SCRIPT_EXTENSIONS = [".js", ".mjs", ".tsx", ".ts", ".jsx"];
+@@ -391,6 +392,21 @@ const CLAUDE_SCRIPT_EXTENSIONS = [".js", ".mjs", ".tsx", ".ts", ".jsx"];
  // The SDK has no control-request deadline; the CLI waits up to 30 s per MCP server.
  const CLAUDE_MCP_REGISTRATION_TIMEOUT = "90 seconds";
  const CLAUDE_BOOT_TIMEOUT = "5 minutes";
@@ -4105,7 +4107,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
  // Claude can consume a subagent result before the launching turn ends, leaving
  // its notification with no native wake turn to answer the continuation.
  const CLAUDE_WAKE_TURN_START_DEADLINE = "2 minutes";
-@@ -674,6 +690,7 @@ export const ClaudeProviderCapabilitiesV2 = {
+@@ -675,6 +691,7 @@ export const ClaudeProviderCapabilitiesV2 = {
      supportsMcpTools: true,
      supportsDynamicToolCallbacks: true,
      supportsBackgroundWait: true,
@@ -4113,7 +4115,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
    },
    approvals: {
      supportsCommandApproval: true,
-@@ -907,6 +924,24 @@ export class ClaudeBackgroundWorkBlocksQueryReplacementError extends Schema.Tagg
+@@ -908,6 +925,24 @@ export class ClaudeBackgroundWorkBlocksQueryReplacementError extends Schema.Tagg
    }
  }
  
@@ -4138,7 +4140,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
  export class ClaudeAppendSystemPromptFileError extends Schema.TaggedError<ClaudeAppendSystemPromptFileError>()(
    "ClaudeAppendSystemPromptFileError",
    {
-@@ -1843,29 +1878,41 @@ export const layerQueryRunner: Layer.Layer<
+@@ -1844,29 +1879,41 @@ export const layerQueryRunner: Layer.Layer<
            Effect.tap((queryRuntime) =>
              restore(
                Effect.gen(function* () {
@@ -4201,7 +4203,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
                    const onStartupPhase = input.onStartupPhase ?? (() => Effect.void);
                    yield* onStartupPhase("mcp");
                    // Errors and mcp_status can echo headers; log only server names.
-@@ -2558,6 +2605,8 @@ export function makeClaudeQueryOptions(input: {
+@@ -2559,6 +2606,8 @@ export function makeClaudeQueryOptions(input: {
    readonly appendSystemPromptFileText?: string;
    // Flag settings, because a user's settings.json env beats the process env in Claude Code.
    readonly toolSearchOverride?: "true";
@@ -4210,7 +4212,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
  }): ClaudeAgentSdkQueryOptions {
    const compiledSelection = compileClaudeModelSelection(input.modelSelection, input.modelCatalog);
    const {
-@@ -2578,10 +2627,13 @@ export function makeClaudeQueryOptions(input: {
+@@ -2579,10 +2628,13 @@ export function makeClaudeQueryOptions(input: {
    // Claude Code overwrites its CLI append text with the SDK's initialize
    // appendSystemPrompt, so launch-argument text has to travel in that value.
    // The CLI puts file text before inline text and trims one trailing newline.
@@ -4228,7 +4230,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
    const requestThinkingSummaries =
      compiledSelection.settings.alwaysThinkingEnabled !== false &&
      extraArgs["thinking-display"] !== "omitted";
-@@ -2589,9 +2641,20 @@ export function makeClaudeQueryOptions(input: {
+@@ -2590,9 +2642,20 @@ export function makeClaudeQueryOptions(input: {
      extraArgs["thinking-display"] = "summarized";
    }
    const pluginDirectories =
@@ -4250,7 +4252,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
    const threadIdentity: ClaudeAgentSdkThreadIdentity = input.resume
      ? { resume: input.nativeThreadId }
      : { sessionId: input.nativeThreadId };
-@@ -2600,11 +2663,13 @@ export function makeClaudeQueryOptions(input: {
+@@ -2601,11 +2664,13 @@ export function makeClaudeQueryOptions(input: {
      Object.keys(compiledSelection.settings).length === 0
        ? undefined
        : (compiledSelection.settings as ClaudeSdkSettings);
@@ -4267,7 +4269,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
          : selectionSettings;
    const autoCompactWindow =
      input.settings?.autoCompactWindow === undefined || input.settings.autoCompactWindow.length === 0
-@@ -2647,6 +2712,16 @@ export function makeClaudeQueryOptions(input: {
+@@ -2648,6 +2713,16 @@ export function makeClaudeQueryOptions(input: {
                : { ENABLE_TOOL_SEARCH: input.toolSearchOverride }),
            },
          } as ClaudeSdkSettings);
@@ -4284,7 +4286,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
    const deviceInstructions = input.mcpServers !== undefined && input.deviceToolsAvailable === true;
    const agentFeedback = input.mcpServers === undefined ? "off" : (input.agentFeedback ?? "off");
    const options: ClaudeAgentSdkQueryOptions = {
-@@ -2655,10 +2730,21 @@ export function makeClaudeQueryOptions(input: {
+@@ -2656,10 +2731,21 @@ export function makeClaudeQueryOptions(input: {
      ...(input.title === undefined ? {} : { title: input.title }),
      tools: claudeAgentSdkQueryToolsForSdk(selectedTools),
      permissionMode:
@@ -4310,7 +4312,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
      includePartialMessages: true,
      promptSuggestions: input.promptSuggestions === true,
      ...(compiledSelection.effort === undefined
-@@ -2678,16 +2764,16 @@ export function makeClaudeQueryOptions(input: {
+@@ -2679,16 +2765,16 @@ export function makeClaudeQueryOptions(input: {
        ? {
            thinking: { type: "adaptive" as const, display: "summarized" as const },
            settings:
@@ -4332,7 +4334,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
      ...(input.onUserDialog === undefined ? {} : { onUserDialog: input.onUserDialog }),
      ...(input.onElicitation === undefined ? {} : { onElicitation: input.onElicitation }),
      ...(input.supportedDialogKinds === undefined
-@@ -2705,7 +2791,10 @@ export function makeClaudeQueryOptions(input: {
+@@ -2706,7 +2792,10 @@ export function makeClaudeQueryOptions(input: {
          buildRuntimeInstructions({
            harness: "Claude Code",
            agentFeedback,
@@ -4344,7 +4346,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
          }) +
            (input.mcpServers === undefined
              ? ""
-@@ -2731,14 +2820,19 @@ export function makeClaudeQueryOptions(input: {
+@@ -2732,14 +2821,19 @@ export function makeClaudeQueryOptions(input: {
      ...(pluginDirectories.length === 0
        ? {}
        : { plugins: pluginDirectories.map((path) => ({ type: "local" as const, path })) }),
@@ -4371,7 +4373,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
    const withDirectories =
      additionalDirectories.length === 0 ? options : { ...options, additionalDirectories };
    return input.cwd === null ? withDirectories : { ...withDirectories, cwd: input.cwd };
-@@ -3737,6 +3831,9 @@ function readOnlyPolicyAllowsGlobalReads(
+@@ -3738,6 +3832,9 @@ function readOnlyPolicyAllowsGlobalReads(
  function permissionModeForClaudeRuntimePolicy(
    runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
  ): PermissionMode {
@@ -4381,7 +4383,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
    if (runtimePolicy.interactionMode === "plan") {
      return "plan";
    }
-@@ -3789,8 +3886,16 @@ export interface ClaudeRuntimeQueryPolicy {
+@@ -3790,8 +3887,16 @@ export interface ClaudeRuntimeQueryPolicy {
    readonly allowedTools?: ReadonlyArray<string>;
    readonly allowDangerouslySkipPermissions?: true;
    readonly installPermissionCallback: boolean;
@@ -4398,7 +4400,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
  interface ClaudeBypassAvailability {
    readonly bypassDisabled: boolean;
    readonly autoDisabled: boolean;
-@@ -3805,6 +3910,9 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
+@@ -3808,6 +3913,9 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
    runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
    availability: ClaudeBypassAvailability = CLAUDE_BYPASS_FULLY_AVAILABLE,
  ): ClaudeRuntimeQueryPolicy {
@@ -4408,7 +4410,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
    const requestedMode = permissionModeForClaudeRuntimePolicy(runtimePolicy);
    const downgraded = requestedMode === "bypassPermissions" && availability.bypassDisabled;
    const permissionMode = downgraded
-@@ -3955,6 +4063,7 @@ function claudeRuntimeQueryPolicyKey(policy: ClaudeRuntimeQueryPolicy): string {
+@@ -4063,6 +4171,7 @@ function claudeRuntimeQueryPolicyKey(policy: ClaudeRuntimeQueryPolicy): string {
      allowedTools: policy.allowedTools,
      allowDangerouslySkipPermissions: policy.allowDangerouslySkipPermissions,
      installPermissionCallback: policy.installPermissionCallback,
@@ -4416,7 +4418,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
    });
  }
  
-@@ -12385,7 +12494,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12530,7 +12639,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
            }
  
            const toolPresentations = claudeToolPresentationsFromAssistantMessage(message);
@@ -4429,7 +4431,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
              const nativeToolInput = claudeNativeToolInputFromUnknown(toolUse.input);
              if (toolUse.name === "Agent") {
                rememberClaudeSubagentLaunch(
-@@ -13152,6 +13265,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13297,6 +13410,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                toolUseID: callbackOptions.toolUseID,
              } satisfies PermissionResult;
            }
@@ -4446,7 +4448,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
  
            const nativeRequestId = callbackOptions.toolUseID;
            const nativeToolInput = claudeNativeToolInputFromRecord(toolInput);
-@@ -13789,13 +13912,25 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13934,13 +14057,25 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
            nativeThreadId: string,
            queryPolicy: Effect.Success<ReturnType<typeof queryPolicyForTurn>>,
          ) {
@@ -4474,7 +4476,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
                  const pendingWake = (yield* mcpSessions.read(turnInput.threadId))?.hasPendingWake;
                  return pendingWake !== undefined && (yield* pendingWake) ? { continue: false } : {};
                }),
-@@ -13820,7 +13955,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13965,7 +14100,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              existing !== null &&
              existing.nativeThreadId === nativeThreadId &&
              !existing.stopping &&
@@ -4485,7 +4487,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
            ) {
              return existing;
            }
-@@ -13858,8 +13995,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -14003,8 +14140,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              existing.nativeThreadId === nativeThreadId &&
              existing.queryPolicyKey === queryPolicyKey &&
              !existing.stopping;
@@ -4498,7 +4500,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
              cwd: turnInput.runtimePolicy.cwd,
              fileSystem,
              path,
-@@ -13954,7 +14094,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -14099,7 +14239,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
            const [appendSystemPromptFileText, toolSearchOverride] = yield* Effect.all(
              [
                readClaudeAppendSystemPromptFile({
@@ -4507,7 +4509,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
                  cwd: turnInput.runtimePolicy.cwd,
                  fileSystem,
                  path,
-@@ -14031,6 +14171,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -14176,6 +14316,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              supportedDialogKinds: ["resume_return"],
              ...(appendSystemPromptFileText === undefined ? {} : { appendSystemPromptFileText }),
              ...(toolSearchOverride === undefined ? {} : { toolSearchOverride }),
@@ -4515,7 +4517,7 @@ index 3a0e6fa47b2325de4f6df504232e9b047eae5b16..9634372af970932b05478a791263afd0
            });
            const resolvedTurnCwd = yield* fileSystem
              .realPath(turnInput.runtimePolicy.cwd ?? ".")
-@@ -14338,7 +14479,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -14495,7 +14636,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              }
              const [skills, queryPolicy] = yield* Effect.all(
                [
@@ -9436,7 +9438,7 @@ index ad8593c387528bb9fe22253fbd1d3cd1c2e693f3..3897bce94d4bf14162ea570091565aa9
  
  const claudeSystemAppend = () => {
 diff --git a/apps/server/src/provider/ProviderRegistry.test.ts b/apps/server/src/provider/ProviderRegistry.test.ts
-index 31ce877de6f728abd51650f554e1812d9f229aef..cd1c0c7ad8df7443f7eb3b144b96f6d93f5594d3 100644
+index 3b5956b25a3c69e36c407ce1960cdb5be7ed534c..0ab5412f52f5de196e3187e94a2c0798029f43ab 100644
 --- a/apps/server/src/provider/ProviderRegistry.test.ts
 +++ b/apps/server/src/provider/ProviderRegistry.test.ts
 @@ -466,6 +466,7 @@ function makeMutableServerSettingsService(
@@ -9664,10 +9666,10 @@ index 1484df35853212461acd962cb2906c6a60dc1d57..27805ed7c1245a262e4e3d06d1d68fdb
  });
  
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 7db0f43ff38c3c7259080e3790798166b82d4c92..03cfe6eb508b893ebe18931e4b3a2951d0dcc2c4 100644
+index d55bbac6aa2324e94554d84ae851a6ee383b168a..27127a6652f9b48ffbb226b089eff9297fd9a4d3 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -1110,6 +1110,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1113,6 +1113,10 @@ export default function ChatView(props: ChatViewProps) {
    );
    const browserAvailable = isPreviewSupportedInRuntime() || activeEnvironmentServerBrowser;
    const activeThreadShell = serverThread;
@@ -9678,7 +9680,7 @@ index 7db0f43ff38c3c7259080e3790798166b82d4c92..03cfe6eb508b893ebe18931e4b3a2951
    const limitRecoveryRun =
      serverRuntime?.status === "failed" && serverRuntime.lastErrorClass === "usage_limit"
        ? (activeThreadShell?.latestRun ?? null)
-@@ -3604,6 +3608,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3607,6 +3611,9 @@ export default function ChatView(props: ChatViewProps) {
                isServerThread={isServerThread}
                activeThreadTitle={activeThread.title}
                activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
@@ -9688,7 +9690,7 @@ index 7db0f43ff38c3c7259080e3790798166b82d4c92..03cfe6eb508b893ebe18931e4b3a2951
                activeProject={activeProject ?? null}
                parentThreadLink={headerParentThreadLink}
                onOpenThread={onOpenRelatedThreadStable}
-@@ -3905,19 +3912,24 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3908,19 +3915,24 @@ export default function ChatView(props: ChatViewProps) {
                                  canResume={canResume}
                                  isRevertingCheckpoint={isRevertingCheckpoint}
                                  sendDisabledReason={
@@ -10728,91 +10730,40 @@ index 375ee83b2c60a700d4a477fa18bb6bb654d1ddc9..0da134e212701cc757421625cf8e1f28
  ## Hosted web is a client
  
 diff --git a/docs/user/remote-access.md b/docs/user/remote-access.md
-index aca1d31998e2c1d07873633af4a7a686ade83e8e..cbf0762bc8de9e8472f5e25a43dd9d687871269b 100644
+index cead48da5af3aa3418949c32fa96ba12c2f14a40..99568767f824507ac7ac2faf3d47142f90482807 100644
 --- a/docs/user/remote-access.md
 +++ b/docs/user/remote-access.md
-@@ -449,7 +449,8 @@ reports its own result, and the ones that failed stay ticked so you can try
- only those again. Machines already linked are left as they are.
+@@ -74,15 +74,30 @@ This installs an AppArmor profile for Chrome's sandbox plus missing libraries an
+ Link two T3 Code machines (beta) so agents on one can launch, message, delegate to, and manage threads on the other.
  
- For machines no app is connected to, put one `<address> <pairing-code>` per
--line in a file (make each code with `t3 pair` on that machine) and run
-+line in a file (make each code with `t3 pair` on that machine, or
-+`t3 auth pairing create --link ask` for `--access ask`) and run
- `t3 environment link --from <file> --access <mode>`, or `--from -` to read
- standard input. It prints a result per line, leaves machines already linked as
- they are, and exits non-zero if any line failed, so the same file can be run
-@@ -463,6 +464,12 @@ an address you trust: the code is sent there.
+ 1. Enable **Settings → Labs → Linked environments** on **both** machines (or `"linkedEnvironmentsEnabled": true` in `userdata/settings.json`).
+-2. On the source machine, open **Settings → Environments → Linked environments → Link** (or drag from one machine's `+` to another on the Environments map, or run `t3 environment link <address> --pairing-code <code> --access <mode>`). Use **Link several…** or `--from <file>` for batch linking.
+-3. Links are one-way (tick **Also link … back** for two-way) and do not chain. Links expire after 30 days of inactivity and can be revoked in **Settings → Sharing & access** or **Forget**.
++2. On the source machine, open **Settings → Environments → Linked environments → Link** (or drag from one machine's `+` to another on the Environments map, or run `t3 environment link <address> --pairing-code <code> --access <mode>`). Use **Link several…** or `--from <file>` for batch linking (make each code with `t3 pair` on that machine, or `t3 auth pairing create --link ask` for `--access ask`).
++3. Links are one-way (tick **Also link … back** for two-way) and do not chain. Links expire after 30 days of inactivity and can be revoked in **Settings → Sharing & access** or **Forget**. Linking a machine again replaces its link and ends the old link's session there; if that machine does not confirm it, linking says so, and you revoke the old one in that machine's Sharing & access.
  
- - The access you pick is the most agents from this machine may do there. An
-   agent also never gets more there than its own mode here.
-+- **Ask only** is the narrowest level: agents from this machine may only
-+  [ask that machine's threads questions](#let-linked-machines-ask-a-thread),
-+  and nothing else. Both machines need a T3 Code version that has it. It takes
-+  only a link code: this app makes one when it can, or run
-+  `t3 auth pairing create --link ask` on that machine. A general pairing code
-+  (`t3 pair`) is refused for it and used up.
- - Threads a link starts are marked **From** and this machine's name there.
- - A full-access link works there like that machine's own agents. Below full
-   access, the link's agents can change only threads it started, not that
-@@ -476,6 +483,9 @@ an address you trust: the code is sent there.
- - A link stays valid while agents use it. One unused for 30 days expires, as
-   does one to a machine on an older T3 Code after 30 days; link again with a
-   new pairing code.
-+- Linking a machine again replaces its link and ends the old link's session
-+  there. If that machine does not confirm it, linking says so; revoke the old
-+  one in that machine's Sharing & access.
+ - **Access boundary**: Agents never get more permissions on the target than the link's access level or their own thread mode. Below Full access, linked agents can only modify threads they started and skip project setup scripts.
++- **Ask only**: The narrowest level. Agents from this machine may only [ask that machine's threads questions](#let-linked-machines-ask-a-thread), nothing else, and both machines need a T3 Code version that has it. It takes a link code: this app makes one when it can, or run `t3 auth pairing create --link ask` on that machine. A general pairing code (`t3 pair`) is refused for it and used up.
+ - **Delegation**: Agents can target a linked machine with `delegate_task`, or ask you to link an unlinked machine via an in-thread approval card.
  
- On web and desktop, **Settings → Environments** opens as a map of your machines:
- this app, each environment with one line per route (the one in use is
-@@ -560,6 +570,51 @@ any other thread on web and desktop, and a shorter read-only list on mobile.
- - You need permission to read threads on the machine you are connected to, and
-   Linked environments must be on there. Both machines need a version of T3 Code
-   that has this view.
-+- An **Ask only** link cannot read threads.
+ ### Read a linked machine's threads
+ 
+-Open a delegated task or thread link on a linked machine to follow it live (read-only) in the right panel without pairing your client directly. Click **Connect to interact** to pair and take action (one-click if the link has Full access and you can manage access). Files, images, and HTML renders stay on the remote machine until you connect directly.
++Open a delegated task or thread link on a linked machine to follow it live (read-only) in the right panel without pairing your client directly. Click **Connect to interact** to pair and take action (one-click if the link has Full access and you can manage access). Files, images, and HTML renders stay on the remote machine until you connect directly. An **Ask only** link cannot read threads.
 +
 +### Let linked machines ask a thread
 +
-+A thread answers questions from linked machines only after you turn on **Answer
-+linked questions** in its thread menu. It is off by default. Only a session that
-+manages access can change it; agents, links and scheduled tasks cannot. While it
-+is on, the thread's header shows **Answers linked questions**.
++A thread answers questions from linked machines only after you turn on **Answer linked questions** in its thread menu (off by default). Only a session that manages access can change it; agents, links, and scheduled tasks cannot. While it is on, the thread's header shows **Answers linked questions**.
 +
-+- Agents on a linked machine list these threads with `t3_ask_list`, ask one with
-+  `t3_ask_send` and read the reply with `t3_ask_wait`. A link at any level can
-+  ask; an **Ask only** link can do nothing else.
-+- Each question is answered in its own new thread in the same project, marked
-+  **From** and the asking machine's name. The question is its title, so it also
-+  shows in notifications. Nothing is added to the thread you opted in, and its
-+  queue, snooze and settled state stay as they were.
-+- The answer sees the newest of that thread's messages that fit a limit, the
-+  ones you typed and its replies, and nothing else from it: no files, command
-+  output, attachments, guest messages, automation prompts, or messages from
-+  agents and other threads. It answers in
-+  text with every tool off: no shell, files, MCP servers, browser, web or
-+  subagents. It may decline.
-+- Claude answers with your user-level Claude settings, so your global
-+  `CLAUDE.md` reaches it too; project files, project settings, git state and
-+  hooks do not.
-+- A question's thread takes no messages after its question, and cannot be
-+  forked or asked itself. It turns unread when the answer is done and stays
-+  until auto-settle or you settle, archive or delete it. You can also stop it.
-+- Only threads running on Claude can answer; on other providers the question is
-+  refused.
-+- Each link may ask 10 questions in 10 minutes. A thread takes one question at a
-+  time, and refuses more while 20 of its question threads are not archived.
-+- A question stopped by a usage limit or a restart fails and is not resumed. Ask
-+  again later.
-+- Turning the setting off refuses questions that have not started yet.
++- **Asking**: Agents on a linked machine list these threads with `t3_ask_list`, ask one with `t3_ask_send`, and read the reply with `t3_ask_wait`. A link at any level can ask; an **Ask only** link can do nothing else.
++- **Where answers go**: Each question is answered in its own new thread in the same project, marked **From** and the asking machine's name, with the question as its title (so it shows in notifications). Nothing is added to the thread you opted in, and its queue, snooze, and settled state stay as they were.
++- **What the answer sees**: The newest of that thread's messages that fit a limit (the ones you typed and its replies) and nothing else from it: no files, command output, attachments, guest messages, automation prompts, or messages from agents and other threads. It answers in text with every tool off (no shell, files, MCP servers, browser, web, or subagents) and may decline. Claude answers with your user-level Claude settings, so your global `CLAUDE.md` reaches it too; project files, project settings, git state, and hooks do not.
++- **Question threads**: They take no messages after the question and cannot be forked or asked themselves. One turns unread when its answer is done and stays until auto-settle or until you settle, archive, or delete it; you can also stop it.
++- **Limits**: Only threads running on Claude can answer; on other providers the question is refused. Each link may ask 10 questions in 10 minutes. A thread takes one question at a time and refuses more while 20 of its question threads are not archived. A question stopped by a usage limit or a restart fails and is not resumed; ask again later. Turning the setting off refuses questions that have not started yet.
 +
 +### Limit links into a machine
 +
-+**Links into this machine** in **Settings → Environments → Linked environments**
-+(the **List** view) sets the broadest access another machine may link here with.
-+It defaults to Full access. A pairing above it fails and names the limit. A link
-+already above it stops working and stays stopped even if you raise the limit
-+later; link it again within the limit. A [managed policy](./managed-policy.md#settings)
-+can set and lock it with the key `linkedEnvironmentsInboundMaxAccess`, for
-+example `{ "value": "ask", "locked": true }`.
++**Links into this machine** in **Settings → Environments → Linked environments** (the **List** view) sets the broadest access another machine may link here with (default Full access). A pairing above it fails and names the limit. A link already above it stops working and stays stopped even if you raise the limit later; link it again within the limit. A [managed policy](./managed-policy.md#settings) can set and lock it with the key `linkedEnvironmentsInboundMaxAccess`, for example `{ "value": "ask", "locked": true }`.
  
  ## Manage or revoke access
  
@@ -11641,7 +11592,7 @@ index 3ff0fe93228d8dc6e06edf7d535541567c878b3c..b0092742acec08e41146787b51922db0
  export type PeerLinkRemoveInput = typeof PeerLinkRemoveInput.Type;
  
 diff --git a/packages/contracts/src/rpc.ts b/packages/contracts/src/rpc.ts
-index 29cea4095c2a19c1efc8a578415c0251401ce77f..dd82a2bca571073e4fe49f136e62d5e4583aef75 100644
+index f10819d20fcd546c48d631e4bf5293a3fce48c56..dcb785ff0f799349c0a495e601edf9cad6036b9e 100644
 --- a/packages/contracts/src/rpc.ts
 +++ b/packages/contracts/src/rpc.ts
 @@ -17,11 +17,11 @@ import {
@@ -11657,7 +11608,7 @@ index 29cea4095c2a19c1efc8a578415c0251401ce77f..dd82a2bca571073e4fe49f136e62d5e4
    PeerLinkError,
    PeerLinkName,
    PeerLinkRemoveInput,
-@@ -975,7 +975,7 @@ const WsPeerLinksNamesRpc = Rpc.make(WS_METHODS.peerLinksNames, {
+@@ -987,7 +987,7 @@ const WsPeerLinksNamesRpc = Rpc.make(WS_METHODS.peerLinksNames, {
  
  const WsPeerLinksLinkRpc = Rpc.make(WS_METHODS.peerLinksLink, {
    payload: PeerLinkCreateInput,

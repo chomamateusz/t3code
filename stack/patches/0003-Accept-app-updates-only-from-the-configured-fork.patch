@@ -970,10 +970,10 @@ index ce2f23ab3e781e724be26ae1f9fec05770d72e94..b1d31456e37d20885db7f9f005f6ef13
              yield* publishReport(state, { outcome: "up-to-date" }, request.requestId);
              return;
 diff --git a/apps/desktop/src/updates/DesktopUpdates.ts b/apps/desktop/src/updates/DesktopUpdates.ts
-index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917b170834e 100644
+index b6a9aa0ac64a2a9001eddf5ce6a902ba256321c5..0b72a2ff0e1b79ae45a06bde12379655adf73c91 100644
 --- a/apps/desktop/src/updates/DesktopUpdates.ts
 +++ b/apps/desktop/src/updates/DesktopUpdates.ts
-@@ -287,9 +287,21 @@ export function describeUpdateErrorCause(cause: unknown): string {
+@@ -290,9 +290,21 @@ export function describeUpdateErrorCause(cause: unknown): string {
    }
  }
  
@@ -996,7 +996,7 @@ index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917
      const match = line.match(/^(\w+):\s*(.+)$/);
      if (match?.[1] && match[2]) {
        entries[match[1]] = match[2].trim();
-@@ -396,6 +408,32 @@ export const make = Effect.gen(function* () {
+@@ -399,6 +411,32 @@ export const make = Effect.gen(function* () {
    // Any user can set the mock flag, so it never replaces an administrator's update source.
    const mockUpdates = config.mockUpdates && policy.message === null;
  
@@ -1029,7 +1029,7 @@ index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917
    const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
    const activeUpdateActionRef = yield* Ref.make<Option.Option<UpdateAction>>(Option.none());
    const installRunningBackendsRef = yield* Ref.make<
-@@ -458,7 +496,7 @@ export const make = Effect.gen(function* () {
+@@ -461,7 +499,7 @@ export const make = Effect.gen(function* () {
      Effect.flatMap(
        Option.match({
          onNone: () => Effect.succeed(Option.none<AppUpdateYmlConfig>()),
@@ -1038,7 +1038,7 @@ index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917
        }),
      ),
    );
-@@ -481,7 +519,32 @@ export const make = Effect.gen(function* () {
+@@ -484,7 +522,32 @@ export const make = Effect.gen(function* () {
      ),
    );
  
@@ -1071,7 +1071,7 @@ index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917
      const hasFeedConfig = yield* hasUpdateFeedConfig;
      return Option.fromNullishOr(
        getAutoUpdateDisabledReason({
-@@ -573,6 +636,7 @@ export const make = Effect.gen(function* () {
+@@ -576,6 +639,7 @@ export const make = Effect.gen(function* () {
      channel: DesktopUpdateChannel,
    ) {
      yield* Effect.annotateCurrentSpan({ channel });
@@ -1079,7 +1079,7 @@ index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917
      const allowsPrerelease = channel === "nightly";
      yield* electronUpdater.setChannel(channel);
      yield* electronUpdater.setAllowPrerelease(allowsPrerelease);
-@@ -606,6 +670,7 @@ export const make = Effect.gen(function* () {
+@@ -609,6 +673,7 @@ export const make = Effect.gen(function* () {
      yield* Effect.annotateCurrentSpan({ reason });
      if (yield* Ref.get(desktopState.quitting)) return false;
      if (!(yield* Ref.get(updaterConfiguredRef))) return false;
@@ -1087,7 +1087,7 @@ index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917
  
      const state = yield* Ref.get(updateStateRef);
      // A configured updater is disabled only by a channel the managed policy blocks.
-@@ -660,6 +725,7 @@ export const make = Effect.gen(function* () {
+@@ -663,6 +728,7 @@ export const make = Effect.gen(function* () {
    const downloadAvailableUpdate = Effect.fn("desktop.updates.downloadAvailableUpdate")(function* (
      refresh: boolean,
    ) {
@@ -1095,7 +1095,7 @@ index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917
      const admission = yield* Effect.scoped(
        admitAfterCheck(
          Effect.gen(function* () {
-@@ -711,6 +777,7 @@ export const make = Effect.gen(function* () {
+@@ -714,6 +780,7 @@ export const make = Effect.gen(function* () {
          isArm64HostRunningIntelBuild(environment.runtimeInfo),
        );
        yield* logUpdaterInfo("downloading update");
@@ -1103,7 +1103,7 @@ index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917
        yield* electronUpdater.downloadUpdate;
        return { accepted: true, completed: true };
      }).pipe(
-@@ -897,6 +964,7 @@ export const make = Effect.gen(function* () {
+@@ -900,6 +967,7 @@ export const make = Effect.gen(function* () {
    const installDownloadedUpdate = (expectedVersion?: string) =>
      Effect.scoped(
        Effect.gen(function* () {
@@ -1111,7 +1111,7 @@ index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917
          const admission = yield* admitAfterCheck(
            Effect.gen(function* () {
              const state = yield* Ref.get(updateStateRef);
-@@ -930,6 +998,10 @@ export const make = Effect.gen(function* () {
+@@ -933,6 +1001,10 @@ export const make = Effect.gen(function* () {
            return { accepted: false, completed: false, failed: false };
          }
  
@@ -1122,7 +1122,7 @@ index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917
          yield* Ref.set(desktopState.quitting, true);
          yield* Ref.set(installRunningBackendsRef, []);
  
-@@ -957,6 +1029,12 @@ export const make = Effect.gen(function* () {
+@@ -960,6 +1032,12 @@ export const make = Effect.gen(function* () {
              ],
              { concurrency: "unbounded" },
            );
@@ -1135,7 +1135,7 @@ index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917
            yield* electronUpdater.quitAndInstall({
              isSilent: true,
              isForceRunAfter: true,
-@@ -1337,7 +1415,7 @@ export const make = Effect.gen(function* () {
+@@ -1340,7 +1418,7 @@ export const make = Effect.gen(function* () {
          });
        }
  
@@ -1144,7 +1144,7 @@ index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917
          yield* electronUpdater.setFeedURL({
            provider: "generic",
            url: `http://localhost:${config.mockUpdateServerPort}`,
-@@ -1354,10 +1432,11 @@ export const make = Effect.gen(function* () {
+@@ -1357,10 +1435,11 @@ export const make = Effect.gen(function* () {
        const disabledReason = yield* resolveDisabledReason;
        // A blocked nightly channel still lets the user switch back to stable, so it stays updatable.
        yield* Ref.set(desktopState.canInstallUpdates, Option.isNone(disabledReason));
@@ -1158,7 +1158,7 @@ index 32e64502d93330d8eb0e14ae82c1f80fbd3e93ca..ac6466b3767e18534c3d08fdf39db917
          ),
        );
        if (Option.isSome(disabledReason)) {
-@@ -1407,6 +1486,9 @@ export const make = Effect.gen(function* () {
+@@ -1410,6 +1489,9 @@ export const make = Effect.gen(function* () {
        nextChannel: DesktopUpdateChannel,
        options?: { readonly minimumVersion?: string | undefined },
      ) {

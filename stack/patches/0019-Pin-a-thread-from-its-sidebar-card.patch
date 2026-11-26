@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Mateusz Choma <chomamateusz@gmail.com>
-Date: Fri, 20 Nov 2026 19:41:12 +0100
+From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 03:51:41 +0100
 Subject: =?UTF-8?q?=F0=9F=93=8C=20Pin=20a=20thread=20from=20its=20sidebar?=
  =?UTF-8?q?=20card?=
 MIME-Version: 1.0
@@ -32,12 +32,14 @@ Tests:
 Model/harness: Claude Opus 5.5 / Claude Code
 
 Port to 0085217d1b: SidebarThreadRow.tsx follows upstream ea3328c50c (#42671, one shared tooltip serves every trigger): the Pin thread button is a SharedTooltipTrigger with its label instead of Tooltip, TooltipTrigger and TooltipPopup, like upstream's Unpin button beside it. Sidebar.tsx conflicted only in context. The change itself is unchanged.
+
+Port to 4c8a324e8f: upstream a03c43363b (#43206) folded the Pin and reorder threads section of docs/user/thread-sidebar.md into the Pin and reorder bullet; that bullet now names the hover pin button beside the thread menu. Code unchanged.
 ---
  apps/web/src/components/Sidebar.tsx           |  1 +
  .../sidebar/SidebarThreadRow.browser.test.tsx |  1 +
  .../components/sidebar/SidebarThreadRow.tsx   | 29 +++++++++++++++++++
- docs/user/thread-sidebar.md                   |  3 +-
- 4 files changed, 33 insertions(+), 1 deletion(-)
+ docs/user/thread-sidebar.md                   |  2 +-
+ 4 files changed, 32 insertions(+), 1 deletion(-)
 
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
 index 1463f9d56a6003f05e6cc5f9cd4a4beb9ef19f81..17a3ebe123bdb2bc42ad422d4d282b9956dc1b65 100644
@@ -132,16 +134,15 @@ index ac10820e78414c6e75e272492f2291c8d35fc021..16de19832104c506187716c35c313df6
                <span
                  className={cn("min-w-0 flex-1 truncate font-normal text-secondary-label text-xs")}
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index cca97d378a0641209aea272b04c782eddace3874..6c45787ad9349ab1777d1f054c5102a548169da0 100644
+index ff0b2e23447920784bb2166ce6e15805220db9f8..d4f97fd4bae3b01c67edba879f9c182e80d25c67 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -86,7 +86,8 @@ and worktree while you stay in the new thread composer. This requires a Git proj
+@@ -27,7 +27,7 @@ Threads don't require a project. Pick **No project** (or press `mod+alt+n` on we
  
- ## Pin and reorder threads
- 
--Pin a thread from its menu to keep it above your active work.
-+Pin a thread from its menu, or with the pin button that appears when you hover its card, to keep it
-+above your active work.
- 
- On web and desktop, unpinning, settling, snoozing, and archiving a thread each show
- a notification with **Undo** for five seconds. Undo restores the thread's previous
+ - **Resize or hide** (web/desktop): Drag the sidebar's right edge past its minimum width to hide it; hover the left window edge and click or drag the handle to bring it back.
+ - **Drop files onto a thread** (web/desktop): Drag files from your computer onto any thread row to open it and attach them to its composer.
+-- **Pin and reorder**: Pin a thread from its menu or drag threads between **Pinned**, **Active**, and **Settled** (or drag out of **Snoozed** to wake). On mobile, use **Arrange threads** or **Move up / Move down** in the thread menu. Custom order syncs across devices (requires an up-to-date server).
++- **Pin and reorder**: Pin a thread from its menu or with the pin button that appears when you hover its card, or drag threads between **Pinned**, **Active**, and **Settled** (or drag out of **Snoozed** to wake). On mobile, use **Arrange threads** or **Move up / Move down** in the thread menu. Custom order syncs across devices (requires an up-to-date server).
+ - **Mark read or unread**: **Mark read**, in a thread card's hover actions or its menu, clears **Done** and **Woke** as if you had opened the thread. **Mark unread** brings **Done** back.
+ - **Undo** (web/desktop): Unpinning, settling, snoozing, archiving, or discarding a draft shows a 5-second **Undo** toast (`mod+z`).
+ - **Titles**: Choose **Regenerate title** from a thread's menu, or customize title style in **Settings → Threads → Text generation → Thread title instructions** (global or per-project).

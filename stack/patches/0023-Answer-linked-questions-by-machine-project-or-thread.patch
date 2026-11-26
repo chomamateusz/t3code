@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
-Date: Wed, 25 Nov 2026 00:03:33 +0100
+Date: Thu, 26 Nov 2026 03:52:53 +0100
 Subject: =?UTF-8?q?=F0=9F=8E=9B=EF=B8=8F=20Answer=20linked=20questions=20b?=
  =?UTF-8?q?y=20machine,=20project=20or=20thread?=
 MIME-Version: 1.0
@@ -167,6 +167,8 @@ Port to 221953fbf3: useThreadActionMenu.ts: upstream 95411e3cd7 (#40742, thread 
 
 Port to 0085217d1b: agentContextBudget.json: mcpToolListJsonBytes recomputed with AgentContextBudget.test.ts on the new base (63528, the ask-only links value 63338 plus this commit's 190, the same growth as before). Mobile useThreadListActions.ts: the useStableCallback wrapper the ask-only links port added (upstream 2ae731530d, #43024) takes enabled as boolean | null, as this commit's setThreadLinkedQuestions does. The change itself is otherwise unchanged.
 
+Port to 4c8a324e8f: docs/user/remote-access.md (rewritten for upstream a03c43363b, #43206; see the previous commit's port note): the three levels are a numbered list at the top of Let linked machines ask a thread, followed by Choosing and Never answering bullets; the Asking, Where answers go and Limits bullets and the Limit links into a machine paragraph carry this commit's list size, asked-thread, any-level and linkedQuestionsAnswerByDefault wording. Code unchanged; ChatView.tsx merged cleanly with upstream #43162 and #43205.
+
 Files:
 - apps/mobile:
   src/features/home/HomeScreen.tsx, src/features/home/useThreadListActions.ts,
@@ -306,7 +308,7 @@ Tests:
  apps/web/src/hooks/useThreadActionMenu.ts     |   9 +-
  apps/web/src/hooks/useThreadActions.ts        |  41 +++-
  docs/internals/05_remote.md                   |   4 +-
- docs/user/remote-access.md                    |  41 +++-
+ docs/user/remote-access.md                    |  17 +-
  .../cases/linked-questions.ndjson             |   3 +-
  .../client-runtime/src/operations/commands.ts |  24 ++-
  .../src/state/commandPermissions.test.ts      |  50 +++--
@@ -327,7 +329,7 @@ Tests:
  packages/contracts/src/settings.test.ts       |  10 +
  packages/contracts/src/settings.ts            |  12 +-
  .../src/server/subagentProjection.ts          |   1 +
- 82 files changed, 2585 insertions(+), 225 deletions(-)
+ 82 files changed, 2564 insertions(+), 222 deletions(-)
  create mode 100644 apps/server/src/orchestration-v2/linkedQuestionsOff.ts
  create mode 100644 packages/contracts/src/linkedQuestions.test.ts
  create mode 100644 packages/contracts/src/linkedQuestions.ts
@@ -3582,10 +3584,10 @@ index 9b5018adffaf43f4f95d61188bddaeaa68780876..92ef3ba2830c33ab2508d51c48157d9a
        getByWorkspaceRoot: unused,
        workspaceScanDirectory: unused,
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index e78b0e303adfa2638cce2135bb73d56289ba2dbd..f8864add043c434c80cd0385e6f66d7c7ff00c79 100644
+index 954c33561a3ec4c6f7936210e792439acb7f89fd..8a828f79a45955a78255b555a4124613249909e1 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -87,6 +87,7 @@ import {
+@@ -90,6 +90,7 @@ import {
    ProviderInteractionMode,
    resolveIdleCompaction,
    RuntimeMode,
@@ -3593,7 +3595,7 @@ index e78b0e303adfa2638cce2135bb73d56289ba2dbd..f8864add043c434c80cd0385e6f66d7c
  } from "@t3tools/contracts";
  import {
    canResumeThread,
-@@ -3609,7 +3610,12 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3612,7 +3613,12 @@ export default function ChatView(props: ChatViewProps) {
                activeThreadTitle={activeThread.title}
                activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
                activeThreadAnswersLinkedQuestions={
@@ -4414,73 +4416,36 @@ index 0da134e212701cc757421625cf8e1f28e9d6155d..9aa49d519912cd575d98a9df235d9c0b
    the asked thread's owner and assistant messages that fit 32,000 characters, read at turn start
    and never stored; only messages the owner typed in a client stay in, so wakes, agent sends,
 diff --git a/docs/user/remote-access.md b/docs/user/remote-access.md
-index cbf0762bc8de9e8472f5e25a43dd9d687871269b..e172e786eb3b7259f3f339a0b8631b8acafac925 100644
+index 99568767f824507ac7ac2faf3d47142f90482807..18c1cfe907c458c3d44fe25e0d7a67c32e843b25 100644
 --- a/docs/user/remote-access.md
 +++ b/docs/user/remote-access.md
-@@ -574,17 +574,38 @@ any other thread on web and desktop, and a shorter read-only list on mobile.
+@@ -87,17 +87,24 @@ Open a delegated task or thread link on a linked machine to follow it live (read
  
  ### Let linked machines ask a thread
  
--A thread answers questions from linked machines only after you turn on **Answer
--linked questions** in its thread menu. It is off by default. Only a session that
--manages access can change it; agents, links and scheduled tasks cannot. While it
--is on, the thread's header shows **Answers linked questions**.
-+Whether a thread answers questions from linked machines is set at three levels,
-+and the nearest one that is set wins:
-+
-+1. The thread: **Answer linked questions** in its thread menu.
-+2. Its project: **Answer linked questions** in **Settings → Projects**, or in the
-+   project folder's menu in the sidebar. It applies to every thread of the
-+   project that has no choice of its own.
-+3. The machine: **Answer linked questions in every thread** in **Settings →
-+   Environments → Linked environments** (the **List** view). It is off by
-+   default.
-+
-+The thread and project menus offer **Default**, **On** and **Off**; **Default**
-+names what the thread or project follows right now, for example
-+**Default (off, from this machine)**. Choose it to return to that. Only a session
-+that manages access can change any level; agents, links and scheduled tasks
-+cannot, and no file in a project folder can switch it on. Question threads,
-+subagents, side chats and a workflow's agent steps never answer. A thread set to
-+**Off** is not listed and cannot be asked, and its messages are never read for an
-+answer, also not through a fork. A fork of it, or a thread its agent starts on
-+this machine or on a linked machine that has these levels, starts at **Off**.
-+Threads that already exist keep their own choice, title and messages, so switch
-+a fork you made earlier off separately.
-+While a thread answers, its header shows **Answers linked questions**.
+-A thread answers questions from linked machines only after you turn on **Answer linked questions** in its thread menu (off by default). Only a session that manages access can change it; agents, links, and scheduled tasks cannot. While it is on, the thread's header shows **Answers linked questions**.
++Whether a thread answers questions from linked machines is set at three levels, and the nearest one that is set wins:
  
- - Agents on a linked machine list these threads with `t3_ask_list`, ask one with
-   `t3_ask_send` and read the reply with `t3_ask_wait`. A link at any level can
--  ask; an **Ask only** link can do nothing else.
-+  ask; an **Ask only** link can do nothing else. The list shows the 50 threads
-+  with the newest activity and each one's project; agents narrow it by thread or
-+  project name.
- - Each question is answered in its own new thread in the same project, marked
-   **From** and the asking machine's name. The question is its title, so it also
--  shows in notifications. Nothing is added to the thread you opted in, and its
-+  shows in notifications. Nothing is added to the thread that was asked, and its
-   queue, snooze and settled state stay as they were.
- - The answer sees the newest of that thread's messages that fit a limit, the
-   ones you typed and its replies, and nothing else from it: no files, command
-@@ -604,7 +625,8 @@ is on, the thread's header shows **Answers linked questions**.
-   time, and refuses more while 20 of its question threads are not archived.
- - A question stopped by a usage limit or a restart fails and is not resumed. Ask
-   again later.
--- Turning the setting off refuses questions that have not started yet.
-+- Turning answering off at any level refuses questions that have not started
-+  yet.
+-- **Asking**: Agents on a linked machine list these threads with `t3_ask_list`, ask one with `t3_ask_send`, and read the reply with `t3_ask_wait`. A link at any level can ask; an **Ask only** link can do nothing else.
+-- **Where answers go**: Each question is answered in its own new thread in the same project, marked **From** and the asking machine's name, with the question as its title (so it shows in notifications). Nothing is added to the thread you opted in, and its queue, snooze, and settled state stay as they were.
++1. **Thread**: **Answer linked questions** in its thread menu.
++2. **Project**: **Answer linked questions** in **Settings → Projects**, or in the project folder's menu in the sidebar. It applies to every thread of the project that has no choice of its own.
++3. **Machine**: **Answer linked questions in every thread** in **Settings → Environments → Linked environments** (the **List** view). Off by default.
++
++- **Choosing**: The thread and project menus offer **Default**, **On**, and **Off**; **Default** names what the thread or project follows right now, for example **Default (off, from this machine)**. Only a session that manages access can change any level; agents, links, and scheduled tasks cannot, and no file in a project folder can switch it on. While a thread answers, its header shows **Answers linked questions**.
++- **Never answering**: Question threads, subagents, side chats, and a workflow's agent steps never answer. A thread set to **Off** is not listed and cannot be asked, and its messages are never read for an answer, also not through a fork. A fork of it, or a thread its agent starts on this machine or on a linked machine that has these levels, starts at **Off**. Threads that already exist keep their own choice, title, and messages, so switch a fork you made earlier off separately.
++
++- **Asking**: Agents on a linked machine list these threads with `t3_ask_list`, ask one with `t3_ask_send`, and read the reply with `t3_ask_wait`. A link at any level can ask; an **Ask only** link can do nothing else. The list shows the 50 threads with the newest activity and each one's project; agents narrow it by thread or project name.
++- **Where answers go**: Each question is answered in its own new thread in the same project, marked **From** and the asking machine's name, with the question as its title (so it shows in notifications). Nothing is added to the thread that was asked, and its queue, snooze, and settled state stay as they were.
+ - **What the answer sees**: The newest of that thread's messages that fit a limit (the ones you typed and its replies) and nothing else from it: no files, command output, attachments, guest messages, automation prompts, or messages from agents and other threads. It answers in text with every tool off (no shell, files, MCP servers, browser, web, or subagents) and may decline. Claude answers with your user-level Claude settings, so your global `CLAUDE.md` reaches it too; project files, project settings, git state, and hooks do not.
+ - **Question threads**: They take no messages after the question and cannot be forked or asked themselves. One turns unread when its answer is done and stays until auto-settle or until you settle, archive, or delete it; you can also stop it.
+-- **Limits**: Only threads running on Claude can answer; on other providers the question is refused. Each link may ask 10 questions in 10 minutes. A thread takes one question at a time and refuses more while 20 of its question threads are not archived. A question stopped by a usage limit or a restart fails and is not resumed; ask again later. Turning the setting off refuses questions that have not started yet.
++- **Limits**: Only threads running on Claude can answer; on other providers the question is refused. Each link may ask 10 questions in 10 minutes. A thread takes one question at a time and refuses more while 20 of its question threads are not archived. A question stopped by a usage limit or a restart fails and is not resumed; ask again later. Turning answering off at any level refuses questions that have not started yet.
  
  ### Limit links into a machine
  
-@@ -614,7 +636,10 @@ It defaults to Full access. A pairing above it fails and names the limit. A link
- already above it stops working and stays stopped even if you raise the limit
- later; link it again within the limit. A [managed policy](./managed-policy.md#settings)
- can set and lock it with the key `linkedEnvironmentsInboundMaxAccess`, for
--example `{ "value": "ask", "locked": true }`.
-+example `{ "value": "ask", "locked": true }`, and the machine level of
-+**Answer linked questions in every thread** with the key
-+`linkedQuestionsAnswerByDefault`. Locking that key fixes the machine level only;
-+projects and threads can still choose.
+-**Links into this machine** in **Settings → Environments → Linked environments** (the **List** view) sets the broadest access another machine may link here with (default Full access). A pairing above it fails and names the limit. A link already above it stops working and stays stopped even if you raise the limit later; link it again within the limit. A [managed policy](./managed-policy.md#settings) can set and lock it with the key `linkedEnvironmentsInboundMaxAccess`, for example `{ "value": "ask", "locked": true }`.
++**Links into this machine** in **Settings → Environments → Linked environments** (the **List** view) sets the broadest access another machine may link here with (default Full access). A pairing above it fails and names the limit. A link already above it stops working and stays stopped even if you raise the limit later; link it again within the limit. A [managed policy](./managed-policy.md#settings) can set and lock it with the key `linkedEnvironmentsInboundMaxAccess`, for example `{ "value": "ask", "locked": true }`, and the machine level of **Answer linked questions in every thread** with the key `linkedQuestionsAnswerByDefault`. Locking that key fixes the machine level only; projects and threads can still choose.
  
  ## Manage or revoke access
  

@@ -49,6 +49,8 @@ imageCompression.browser.test.ts: Display P3 colour is now checked on the fork's
 
 Port to b8be2287dc: upstream c3aacf1e5b (#42377, pasted images over 2000 px no longer stall on "Preparing" on busy pages) moved canvas work into imageCanvas.ts and decodes, resizes and encodes in imageCompression.worker.ts, but still reads only the header and resizes only PNG and JPEG. Its fitImageToMaxEdge is replaced by fitImageWithinLimits in imageCanvas.ts, which the worker's "fit" task and the main-thread fallback both run: it decodes once, passes an image within both limits through unchanged, resizes a PNG or JPEG over 2000 px and keeps it when it fits the byte cap, and otherwise hands the decoded bitmap back (transferred from the worker) so reencodeWithinBudget reuses it for the WebP/JPEG byte-budget path, which also resizes GIF and WebP. The source-size refusal still comes before any decode, and a failed decode is still "unreadable". Upstream's off-main-thread browser case runs unchanged. useComposerContextImport.browser.test.tsx: the delayed-import cases hide Worker so preparation decodes on the main-thread fallback, where their createImageBitmap stub can hold the decode while a chip is deleted; the deleted-chip guard runs after preparation either way.
 
+Port to 4c8a324e8f: upstream a03c43363b (#43206) turned docs/user/composer.md's attachment section into bullet lists; the 2000-pixel resize note is now part of the Web and desktop bullet instead of its own paragraph. Code unchanged.
+
 Files:
 apps/web:
 - apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
@@ -88,8 +90,8 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  apps/web/src/lib/imageCompression.worker.ts   |  25 ++-
  apps/web/src/lib/previewAnnotation.test.ts    |  50 +++++-
  apps/web/src/lib/previewAnnotation.ts         |  15 +-
- docs/user/composer.md                         |   4 +
- 12 files changed, 531 insertions(+), 107 deletions(-)
+ docs/user/composer.md                         |   2 +-
+ 12 files changed, 528 insertions(+), 108 deletions(-)
 
 diff --git a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
 index d48e965895ddd40377c2836ffc39435e889af34a..34a6e7dbf8d8550f52f6eba4f357e1923ddb3fa8 100644
@@ -1081,17 +1083,15 @@ index 8f8b944e2fa1ce73444ca9f27e41d37da76b07af..fdd8b9af2e1ca40c29b5d3eb0885a10e
      return { status: "failed" };
    }
 diff --git a/docs/user/composer.md b/docs/user/composer.md
-index 53017052a2a0177d650435a0e1f10fa286498ef9..2e2047452b2dafc2055fa760e9bc7c299581f278 100644
+index 5f068ea756e9417fb7e0005c3871384f158971ce..abcb52e5fb853da1b2f0c3f207512979586c2804 100644
 --- a/docs/user/composer.md
 +++ b/docs/user/composer.md
-@@ -58,6 +58,10 @@ also send files to T3 Code through another app's system share sheet.
- On Android, you can also drag images from another app into the message input
- in split screen.
+@@ -25,7 +25,7 @@ Attach up to **100 files** per message:
  
-+On web and desktop, images larger than 2000 pixels on either side are resized before
-+upload, preserving their proportions. For small text, attach a crop of the relevant
-+area. Previously sent images are not changed.
-+
+ Files upload to the environment's machine as soon as you attach them, and all uploads must finish before sending. Provider and model limits still apply.
+ 
+-- **Web and desktop**: Drag, paste, or pick files. Reloading before an upload finishes requires re-attaching.
++- **Web and desktop**: Drag, paste, or pick files. Reloading before an upload finishes requires re-attaching. Images larger than 2000 pixels on either side are resized before upload, keeping their proportions (previously sent images are unchanged); for small text, attach a crop of the relevant area.
+ - **Mobile**: Pick files, share into T3 Code via the system share sheet, or drag images in Android split screen.
+ 
  See [images and videos](#images-and-videos-in-messages) for previewing and saving media.
- 
- ## Send while the agent is working

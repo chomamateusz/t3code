@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
-Date: Wed, 18 Nov 2026 02:11:50 +0100
+Date: Thu, 26 Nov 2026 03:23:14 +0100
 Subject: =?UTF-8?q?=F0=9F=93=88=20Show=20all-time=20usage=20without=20age-?=
  =?UTF-8?q?based=20pruning?=
 MIME-Version: 1.0
@@ -62,6 +62,8 @@ Port to b6ac2449f1: upstream 52f0f8afb8 (#38567) makes CursorUsageAccounts.refre
 
 Port to 21b52875ea: UsageService.ts: upstream 2808e878de (#41157, skipped-record warnings count only the selected dates) filters each directory's retained files to the requested window and turns malformedRecords into timestamps. The window filter now runs inside this commit's loop that yields every 1,000 items, on the files pushed per directory, so retained deleted-transcript records are kept and all-time queries still see them.
 
+Port to 4c8a324e8f: upstream a03c43363b (#43206) condensed docs/user/usage.md into bullet lists. Its Retention bullet now says history is kept indefinitely by default, even after transcripts are deleted, and that a number of days limits it ("unlimited" restores the default); the Quick shortcuts bullet points to All in the period control for all available history. Code unchanged.
+
 Files:
 packages/contracts:
 - packages/contracts/src/settings.ts
@@ -113,11 +115,11 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code;
  .../src/components/usage/usageRange.test.ts   |  44 +++
  apps/web/src/components/usage/usageRange.ts   |  26 ++
  .../src/components/usage/usageShortcuts.ts    |   8 +-
- docs/user/usage.md                            |  17 +-
+ docs/user/usage.md                            |   4 +-
  packages/contracts/src/settings.ts            |   2 +-
  .../src/server/CursorUsageAccounts.ts         |   3 +-
  .../src/server/accountCache.ts                |   3 +
- 16 files changed, 624 insertions(+), 127 deletions(-)
+ 16 files changed, 616 insertions(+), 122 deletions(-)
  create mode 100644 apps/web/src/components/usage/usageRange.test.ts
  create mode 100644 apps/web/src/components/usage/usageRange.ts
 
@@ -1337,46 +1339,25 @@ index 64a81e20a53e4c097382dcb3e75b948cf038f61c..0348b19cf5a64eedb542b361ea15c571
  export function resolveUsageShortcut(
    event: ShortcutEventLike & { target: EventTarget | null },
 diff --git a/docs/user/usage.md b/docs/user/usage.md
-index 6681bd34ea402653270c47d8a77cf262386fd10c..de39e68c39611fc6aedb294844b30ca1ca7774e4 100644
+index 14b4c1b6aa5677d4341e0881cabb4f923cfac231..a024c3ca23ccf519d90e83cd3e528fe532995631 100644
 --- a/docs/user/usage.md
 +++ b/docs/user/usage.md
-@@ -20,12 +20,12 @@ record are missing from the totals.
- Text generation (thread titles, commit messages, PR text, branch names and review guides) is not in
- the totals for Codex or Claude Code 2.0.63 and newer, because those runs save no session history.
+@@ -3,13 +3,13 @@
+ Track token usage, cache hit rates, estimated API-equivalent costs, and pooled subscription quotas across all connected environments.
  
--The server keeps scanned usage history for 92 days by default. Claude Code deletes its own
--transcripts after 30 days, so for older Claude usage this history is the only record left. To keep
--it longer, set `usageHistoryRetentionDays` in `<T3 home>/userdata/settings.json` to a number of days
--such as `365`, or to `"unlimited"`. Usage views still show at most 90 days. Lowering the value
--prunes older history on the next refresh, and raising it again does not bring pruned history back.
--While `settings.json` cannot be read, nothing is pruned.
-+The server keeps scanned usage history indefinitely by default, even after the original transcripts
-+are deleted. Claude Code deletes its own transcripts after 30 days, so for older Claude usage this
-+history is the only record left. To limit it, set `usageHistoryRetentionDays` in
-+`<T3 home>/userdata/settings.json` to a number of days such as `365`; `"unlimited"` restores the
-+default. Lowering the value prunes older history on the next refresh, and raising it again does not
-+bring pruned history back. While `settings.json` cannot be read, nothing is pruned.
+ - **Open Usage**: Click **Usage** in the sidebar, press `mod+u` (web/desktop outside terminals), or pick **Usage** on mobile.
+-- **Quick shortcuts** (web/desktop on Usage): `C` (Cost), `T` (Tokens), `L` (Limits), `mod+Shift+1/2/3/4` (24h / 7d / 30d / 90d), `Esc` (back).
++- **Quick shortcuts** (web/desktop on Usage): `C` (Cost), `T` (Tokens), `L` (Limits), `mod+Shift+1/2/3/4` (24h / 7d / 30d / 90d), `Esc` (back). Pick **All** in the period control for all available history.
  
- OpenCode reads its SQLite database and older JSON history. Antigravity reads local conversation
- databases, including T3-managed profiles. Set `OPENCODE_DATA_DIR` or `ANTIGRAVITY_DATA_DIR` on the
-@@ -61,6 +61,8 @@ environments are selected by default. The dropdown shows which environments are
- results appear as each one responds, and figures still updating are dimmed. Cursor shows its last
- saved totals first, then updates them when Cursor's API responds.
+ ## Understand your usage
  
-+Cost and Tokens can show the past 24 hours, 7 days, 30 days, 90 days, or all available history.
-+
- If recent work is missing or a new model shows no cost, refresh to rescan session history and
- update model pricing.
+ Usage aggregates history across Codex, Claude Code, Grok Build, OpenCode, Antigravity, Pi, Muse Code, and Cursor from your selected environments. Estimates reflect API-equivalent rates (not your subscription bill); **Premium** shows Fast/Ultrafast surcharge, and **Other** shows unsplit provider-reported costs.
  
-@@ -243,6 +245,7 @@ Session, Weekly, or both for each provider. Reopen T3 to refresh expired reading
- On web and desktop, open Usage from the command palette. While on Usage,
- press `C`, `T`, or `L` for Cost, Tokens, or Limits while not typing in a field.
- Use `Ctrl+Shift+1/2/3/4` (`Cmd+Shift+1/2/3/4` on macOS) for the past
--24 hours, 7 days, 30 days, or 90 days. Period shortcuts do nothing on Limits.
-+24 hours, 7 days, 30 days, or 90 days. Choose **All** from the period control for all available
-+history. Period shortcuts do nothing on Limits.
- Press `Escape` to return to the previous page. Customize these shortcuts in
- **Settings → Keybindings**.
+-- **Retention**: Servers keep scanned usage history for **92 days** by default (preserving Claude history after Claude's 30-day cleanup). Change `usageHistoryRetentionDays` in `<t3-home>/userdata/settings.json` (e.g. `365` or `"unlimited"`; views show up to 90 days).
++- **Retention**: Servers keep scanned usage history **indefinitely** by default, even after the original transcripts are deleted (preserving Claude history after Claude's 30-day cleanup). To limit it, set `usageHistoryRetentionDays` in `<t3-home>/userdata/settings.json` to a number of days (e.g. `365`; `"unlimited"` restores the default). Lowering it prunes older history on the next refresh.
+ - **Custom data directories**: Honors `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `GROK_HOME`, `PI_CODING_AGENT_DIR` / `PI_CODING_AGENT_SESSION_DIR`, `OPENCODE_DATA_DIR`, `ANTIGRAVITY_DATA_DIR`, and `XDG_DATA_HOME` (Muse). Use absolute or `~/` paths. Set `T3CODE_HOST_ID` to pin a container's host identity.
+ - **Exclusions**: Codex and Claude Code 2.0.63+ text-generation runs (titles, commits, PR text, review guides) and Grok turns without a saved completed-turn record are not included.
+ 
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
 index 630527f75690b8c2859c4d9db4c9107a7dc18b67..fbf5b08043c938f57eaaf6528ea2ee9f3ee3960c 100644
 --- a/packages/contracts/src/settings.ts

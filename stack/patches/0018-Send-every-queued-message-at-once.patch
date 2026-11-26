@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
-Date: Sat, 21 Nov 2026 02:08:08 +0100
+Date: Thu, 26 Nov 2026 03:51:33 +0100
 Subject: =?UTF-8?q?=F0=9F=93=A4=20Send=20every=20queued=20message=20at=20o?=
  =?UTF-8?q?nce?=
 MIME-Version: 1.0
@@ -102,6 +102,8 @@ queuedMessageMerge.ts: since upstream 08804b2170 (#40373) a queued message that 
 
 Port to a6c69be8df: upstream d572ce9afe (#41814, preserve model choices when editing queued messages) lets queued-run.edit carry a modelSelection. Orchestrator.ts: dispatchQueuedRunEdit takes upstream's single run.updated (the edited model selection and provider instance, plus the cleared steer-when-ready mark for a command or a limit) before this commit's shared emitQueuedMessageRewrite, which rewrites the message without followsThreadSelection when the edit picked a model, as upstream does. A merge keeps the first run and its model selection, so an edited model choice survives Send all as one; parts whose model selections or followsThreadSelection differ (an edited message beside one that follows the thread's pick, or two edited to different models) are still refused with "Queued messages use different models.". runtimeLayer.test.ts gains a case: a merge across one edited and one unedited message is refused and leaves the queue as it was, and after both are edited to the same model the merge keeps that model.
 
+Port to 4c8a324e8f: upstream a03c43363b (#43206) rewrote docs/user/composer.md's queue section as bullets and docs/user/keybindings.md's composer shortcuts as a table. Send all as one and Send one by one are now two bullets after the queued-message shortcuts in composer.md, and the unbound Queue: Send All Queued as One Message is a row of the shortcuts table. Code unchanged.
+
 Files:
 apps/server:
 - apps/server/src/orchestration-v2/GuestShare.test.ts
@@ -174,8 +176,8 @@ Tests:
  .../src/components/chat/QueuedRunsControl.tsx | 184 +++++++--
  .../chat/useQueuedRunEdit.browser.test.tsx    |   5 +-
  .../settings/KeybindingsSettings.logic.ts     |   1 +
- docs/user/composer.md                         |   9 +
- docs/user/keybindings.md                      |   3 +-
+ docs/user/composer.md                         |   5 +
+ docs/user/keybindings.md                      |   1 +
  .../client-runtime/src/operations/commands.ts |  15 +
  .../src/state/threadCommands.ts               |   7 +
  .../src/state/threadWorkflows.test.ts         | 241 +++++++++++-
@@ -187,7 +189,7 @@ Tests:
  packages/shared/src/model.ts                  |   9 +-
  packages/shared/src/queuedMessageMerge.ts     | 160 ++++++++
  packages/shared/src/queuedMessageMergeCopy.ts |  29 ++
- 24 files changed, 1482 insertions(+), 115 deletions(-)
+ 24 files changed, 1477 insertions(+), 114 deletions(-)
  create mode 100644 packages/shared/src/queuedMessageMerge.ts
  create mode 100644 packages/shared/src/queuedMessageMergeCopy.ts
 
@@ -913,7 +915,7 @@ index 61fb57ada454ed0b1a9a309eb066ff03db841f86..33aa46863d0b7f36613f6f8b959933e7
    "thread.guest-message.dismiss": () => ({ feature: "guest_message.dismiss" }),
  };
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index c14a8fb943452613313bbcbed89b5c666a85b103..060c9142f41b07e7fc7f4196ed20f975fe070b32 100644
+index 645942fb818da2f27b1d34d5d125b58cf9db9a9d..fa72dda9b8b1973b6dd7bc3ec0ad9fa62c4876a8 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -1966,6 +1966,7 @@ export const layerWsRpc = (
@@ -925,10 +927,10 @@ index c14a8fb943452613313bbcbed89b5c666a85b103..060c9142f41b07e7fc7f4196ed20f975
            secretReferences: true,
            secretRequestReferences: true,
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index b5d3d71aa10f7324ee270d1d44ab091b1e0ef45b..7db0f43ff38c3c7259080e3790798166b82d4c92 100644
+index e666f5ea7195e4f9c2c2c92d5f2c3b4dcece8623..d55bbac6aa2324e94554d84ae851a6ee383b168a 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -2974,6 +2974,8 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2977,6 +2977,8 @@ export default function ChatView(props: ChatViewProps) {
          routeKind !== "draft" &&
          composerRef.current?.isCaretAtStart() === true &&
          queuedRunsControlRef.current?.editLatest(event.repeat) === true,
@@ -937,7 +939,7 @@ index b5d3d71aa10f7324ee270d1d44ab091b1e0ef45b..7db0f43ff38c3c7259080e3790798166
        "thread.stop": ({ event }) => {
          if (!canInterruptRunningThread) return false;
          if (!event.repeat) void onInterruptStable();
-@@ -3272,6 +3274,11 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3275,6 +3277,11 @@ export default function ChatView(props: ChatViewProps) {
            editShortcutLabel={shortcutLabelForCommand(keybindings, "thread.editQueuedMessage", {
              context: { composerFocus: true },
            })}
@@ -1493,39 +1495,33 @@ index 5be27ee4fd1fe1f40c44389bc04ec83369e97fd3..385bd0a5542bea4e64f4fd9550c1d808
    "sidebar.toggle": msg("Sidebar: Toggle"),
    "navigation.back": msg("Navigation: Back"),
 diff --git a/docs/user/composer.md b/docs/user/composer.md
-index 2e2047452b2dafc2055fa760e9bc7c299581f278..17923c77901831df09c5a499a3b531304a86f161 100644
+index abcb52e5fb853da1b2f0c3f207512979586c2804..e3c03694112ab87ae5f39abbc1873960e98028f9 100644
 --- a/docs/user/composer.md
 +++ b/docs/user/composer.md
-@@ -101,6 +101,15 @@ Press `Option+Up` on macOS or `Alt+Up` on Windows and Linux with the cursor at t
- start of the composer to edit the most recently queued message. Change
- `thread.editQueuedMessage` to use another shortcut.
+@@ -52,6 +52,11 @@ Shortcuts while a turn is running:
  
-+With two or more queued messages, **Send all as one** below the queue combines them,
-+in order, into one message and sends it now: into the running turn, or as a new turn
-+when the thread is stopped. **Send all as one** is unavailable if the queue includes
-+a guest's, an agent's, or an automation's message, a command such as `/compact`, or
-+messages using different models. The tooltip explains why. **Send one by one** sends each
-+queued message now, in order; it is not offered during a turn on an agent that
-+restarts its turn for every steer. Bind `thread.sendQueuedMessagesAsOne` in
-+**Settings → Keybindings** to send all as one from the keyboard.
+ - **Edit most recently queued message**: `Option+Up` (macOS) or `Alt+Up` (Windows/Linux) at the start of the composer (`thread.editQueuedMessage`).
+ 
++With two or more queued messages, two actions appear below the queue:
 +
- Mobile has the same choice under **Settings → Chat**. While a turn is
- running the send button shows which action it will take. Long-press it to use the
- other action for a single message. From a hardware keyboard, `Cmd+Return`
++- **Send all as one**: Combines them, in order, into one message and sends it now: into the running turn, or as a new turn when the thread is stopped. Unavailable (the tooltip says why) if the queue includes a guest's, an agent's, or an automation's message, a command such as `/compact`, or messages using different models. Bind `thread.sendQueuedMessagesAsOne` in **Settings → Keybindings** to use it from the keyboard.
++- **Send one by one**: Sends each queued message now, in order. Not offered during a turn on an agent that restarts its turn for every steer.
++
+ Slash commands (such as `/compact` or `/context`) wait for the current turn to finish rather than steering into it. [Goal](#goals) commands are the exception.
+ 
+ ## Queue messages offline on mobile
 diff --git a/docs/user/keybindings.md b/docs/user/keybindings.md
-index eab9e88ec98f0eab13a6ce39b7867a745d7d38bb..e7c895d6ff20303346d3a95ae4f6a56462f685ab 100644
+index fc2f5f04509242d72034bd7432b9f3bf208472ba..f87357072ce5d1ace5e37e474fcf9e86b010cb43 100644
 --- a/docs/user/keybindings.md
 +++ b/docs/user/keybindings.md
-@@ -28,7 +28,8 @@ send shortcut. Click the send button to use the configured follow-up behavior.
- 
- When a thread has queued messages, `mod+Shift+Enter` sends the first one as a steer
- while a turn is running, or as a new turn when the thread is stopped. Change it under
--**Queue: Send First Queued Message** in Keybindings.
-+**Queue: Send First Queued Message** in Keybindings. To send every queued message
-+as one, bind **Queue: Send All Queued as One Message**. It has no default shortcut.
- 
- Use `mod+shift+m` to choose a model and `mod+shift+h` to choose a host.
- To step a new thread to the next machine instead of opening the menu, bind
+@@ -14,6 +14,7 @@ To free a default shortcut, choose **Unassign** from its row menu (**Reset to de
+ | Opposite queue/steer action | `mod+Enter`       | Uses the non-default follow-up behavior while a turn runs.         |
+ | Start thread in background  | `mod+Alt+Enter`   | Also `mod+Enter` in a new thread; opens a fresh draft immediately. |
+ | Send first queued message   | `mod+Shift+Enter` | Steers if running, or starts a turn if stopped.                    |
++| Send all queued as one      | Unbound           | Bind **Queue: Send All Queued as One Message**.                    |
+ | Pick model                  | `mod+shift+m`     | `mod+shift+up/down` switches providers inside the picker.          |
+ | Pick host / environment     | `mod+shift+h`     | Bind **Composer: Cycle Host** to step without a menu.              |
+ | Pick effort                 | `mod+shift+e`     | Bind **Increase/Decrease Effort** to step without a menu.          |
 diff --git a/packages/client-runtime/src/operations/commands.ts b/packages/client-runtime/src/operations/commands.ts
 index 17d6264c401879b1689b284e4b8335e54285296c..393c9374d352738e7c6afc0e35cc06cffd319ef2 100644
 --- a/packages/client-runtime/src/operations/commands.ts
@@ -2051,10 +2047,10 @@ index 9064d5bd19fbb9d11927729f0c7eecb1eafa4cfc..844926c2a8eee4b8ca526982cc753be3
      type: Schema.Literal("runtime-request.respond"),
      commandId: CommandId,
 diff --git a/packages/contracts/src/server.ts b/packages/contracts/src/server.ts
-index 68ef9c37f0386fd8a4358365e432ce72ab85c0ed..042fb48a376395f2988f2d475a9b38bef5cb77c1 100644
+index 94933a71d6e76413fd3731e1bacec50563902a6b..d32572d369c74d0acea96d70dc632a2e3b5ad54b 100644
 --- a/packages/contracts/src/server.ts
 +++ b/packages/contracts/src/server.ts
-@@ -747,6 +747,7 @@ export const ServerConfig = Schema.Struct({
+@@ -775,6 +775,7 @@ export const ServerConfig = Schema.Struct({
    threadFind: Schema.optionalKey(Schema.Boolean),
    threadFindProgressive: Schema.optionalKey(Schema.Boolean),
    featureFlags: Schema.optionalKey(ServerFeatureFlags),

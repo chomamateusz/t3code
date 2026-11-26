@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Mateusz Choma <chomamateusz@gmail.com>
-Date: Tue, 10 Nov 2026 21:03:40 +0100
+From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 03:30:54 +0100
 Subject: =?UTF-8?q?=E2=86=95=EF=B8=8F=20Reorder=20threads=20inside=20proje?=
  =?UTF-8?q?ct=20groups=20by=20dragging?=
 MIME-Version: 1.0
@@ -44,6 +44,8 @@ Tests:
 Model/harness: Claude Opus 5.5 / Claude Code
 
 Port to 0085217d1b: Sidebar.tsx and SidebarThreadRow.tsx conflicted only in context: upstream ea3328c50c (#42671, one shared tooltip serves every trigger) drops the TooltipProvider around the thread list and turns the Snooze and Discard draft triggers into SharedTooltipTrigger; the pointer-down guards this commit adds sit on those buttons. The change itself is unchanged.
+
+Port to 4c8a324e8f: upstream a03c43363b (#43206) shortened the Group threads by project paragraph of docs/user/thread-sidebar.md to say drag-reordering is disabled in that mode; that sentence now describes this commit's in-folder order and drag rules, with the composer drop kept. Code unchanged.
 ---
  .../src/components/Sidebar.browser.test.tsx   |  27 ++-
  apps/web/src/components/Sidebar.drag.test.ts  | 167 ++++++++++++++++++
@@ -52,8 +54,8 @@ Port to 0085217d1b: Sidebar.tsx and SidebarThreadRow.tsx conflicted only in cont
  apps/web/src/components/Sidebar.logic.ts      |  67 ++++++-
  apps/web/src/components/Sidebar.tsx           | 101 ++++++-----
  .../components/sidebar/SidebarThreadRow.tsx   |   2 +
- docs/user/thread-sidebar.md                   |   9 +-
- 8 files changed, 519 insertions(+), 52 deletions(-)
+ docs/user/thread-sidebar.md                   |   2 +-
+ 8 files changed, 514 insertions(+), 50 deletions(-)
 
 diff --git a/apps/web/src/components/Sidebar.browser.test.tsx b/apps/web/src/components/Sidebar.browser.test.tsx
 index 48dbcaded63273e9727200b0ed0cf594f6f11562..c8a1931aa97a76c5276ae24e97ae1e69775b13bc 100644
@@ -915,22 +917,15 @@ index 762c767e5abab952d029984c6e1ae08bfc4e61b9..ac10820e78414c6e75e272492f2291c8
                            />
                          }
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 8757b812efe3307458521654433a737de1fde82c..cca97d378a0641209aea272b04c782eddace3874 100644
+index 7f28cbb5561cd89e1370aa2b34baf420b91c485f..ff0b2e23447920784bb2166ce6e15805220db9f8 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -243,9 +243,12 @@ clicking, or press Alt+Enter on a focused folder, to close every folder when it
- every folder when it is closed. A closed folder shows how many threads it holds and the same
- badge as its project icon for the hidden threads. Use the pen button on a folder, or right-click
- it, to start a thread in that project.
--Pinned threads stay above the folders, and Snoozed and Settled stay below them. In this mode you
--can drag a thread onto the composer to mention it, but not within the sidebar, and the Working
--section is off. Each device keeps its own choice.
-+Pinned threads stay above the folders, and Snoozed and Settled stay below them. Threads in a
-+folder keep your saved active order, so thread activity does not move them. Drag a thread within
-+its folder to change that order; it is saved like a reorder in the ungrouped list. Pinned threads
-+can be dragged to reorder among themselves, but not into a folder. In this mode a thread cannot be
-+dragged into another folder or section, but you can drag it onto the composer to mention it. The
-+Working section is off. Each device keeps its own choice.
+@@ -53,7 +53,7 @@ On web and desktop, a machine row and a project row below Search filter the side
  
- ## Settle finished work
+ ### Group threads by project (beta)
+ 
+-Enable **Settings → Labs → Boring sidebar (group by project)** on web/desktop (per device) to group active threads into collapsible project folders. Folders follow the project icon order, so pinned projects come first and **Settings → Labs → Project icon order** applies to both. Threads in a folder use the same cards as the ungrouped list. `Option`-click (`Alt`-click) a folder, or press `Alt+Enter` on a focused folder, to close every folder when it is open or open every folder when it is closed. A closed folder shows the same badge as its project icon for the threads it hides. Pinned threads stay above; Snoozed and Settled stay below. In this mode, the Working section and sidebar drag-reordering are disabled (dragging a thread onto the composer still works).
++Enable **Settings → Labs → Boring sidebar (group by project)** on web/desktop (per device) to group active threads into collapsible project folders. Folders follow the project icon order, so pinned projects come first and **Settings → Labs → Project icon order** applies to both. Threads in a folder use the same cards as the ungrouped list. `Option`-click (`Alt`-click) a folder, or press `Alt+Enter` on a focused folder, to close every folder when it is open or open every folder when it is closed. A closed folder shows the same badge as its project icon for the threads it hides. Pinned threads stay above; Snoozed and Settled stay below. In this mode the Working section is off. Threads in a folder keep your saved active order, so thread activity does not move them; drag a thread within its folder to change that order, saved like a reorder in the ungrouped list. Pinned threads can be dragged to reorder among themselves, but not into a folder, and a thread cannot be dragged into another folder or section (dragging a thread onto the composer still works).
+ 
+ ## Settle, snooze, and archive
  

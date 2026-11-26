@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Mateusz Choma <chomamateusz@gmail.com>
-Date: Tue, 10 Nov 2026 20:28:20 +0100
+From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 03:29:49 +0100
 Subject: =?UTF-8?q?=F0=9F=93=AC=20Mark=20threads=20read=20or=20unread=20fr?=
  =?UTF-8?q?om=20sidebar=20cards?=
 MIME-Version: 1.0
@@ -32,6 +32,8 @@ Port to b8be2287dc: threadActionMenu.logic.ts conflicted only in placement: upst
 Port to 221953fbf3: upstream 95411e3cd7 (#40742, settle, pin, snooze and more for the current thread from cmd+k) moved the menu build out of openMenu into readMenu, which returns the items and a run(action) runner. readAction: readThreadReadAction(threadRef) replaces hasCompletedRun in readMenu's buildThreadActionMenuItems call and the mark-read case sits in run before mark-unread, so the sidebar row menu, the chat header menu and upstream's cmd+k rows for the current thread all take the same three-state decision. CommandPaletteThreadActions.tsx maps the mail-check icon so the palette's Mark read row shows the same icon as the menus; no palette entries are added.
 
 Port to 0085217d1b: SidebarThreadRow.tsx follows upstream ea3328c50c (#42671, one shared tooltip serves every trigger): ReadActionButton is a SharedTooltipTrigger with its label instead of Tooltip, TooltipTrigger and TooltipPopup, and sits between upstream's shared-tooltip Discard draft and the snooze menu as before. Sidebar.tsx conflicted only in context (ea3328c50c drops the TooltipProvider around the thread list). The change itself is unchanged.
+
+Port to 4c8a324e8f: upstream a03c43363b (#43206) turned the pin, reorder and undo paragraphs of docs/user/thread-sidebar.md into the Sidebar layout and organization bullets; Mark read and Mark unread are now a bullet there, before Undo. Code unchanged.
 
 Files:
 apps/web:
@@ -71,8 +73,8 @@ Model/harness: Claude Opus 5.5 / Claude Code
  .../web/src/hooks/useThreadActionMenu.test.ts |  1 +
  apps/web/src/hooks/useThreadActionMenu.ts     | 12 ++-
  apps/web/src/hooks/useThreadActions.ts        | 45 ++++++++++-
- docs/user/thread-sidebar.md                   |  3 +
- 13 files changed, 253 insertions(+), 24 deletions(-)
+ docs/user/thread-sidebar.md                   |  1 +
+ 13 files changed, 251 insertions(+), 24 deletions(-)
 
 diff --git a/apps/web/src/components/CommandPaletteThreadActions.tsx b/apps/web/src/components/CommandPaletteThreadActions.tsx
 index 80e0213026846f9adbe60c88fef1686259c91183..938bfe4d950636407b78a2410df1baba2cb4886a 100644
@@ -711,16 +713,14 @@ index d6868fbc02eb8df903619cc5529b32ee6a1a93df..e0b1cce853759551131b8904e010ab11
      turnThreadIntoProject: (target: ScopedThreadRef) =>
        createProjectFromThread({
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index ce35f5123d06ce03b56c2b04610b8c4d9013ec01..8757b812efe3307458521654433a737de1fde82c 100644
+index c154a5451453d4af9839cda8e3eca8b1d9c29a7b..7f28cbb5561cd89e1370aa2b34baf420b91c485f 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -95,6 +95,9 @@ viewing. Discarding an unsent draft from the sidebar works the same way: Undo br
- back its text and attachments. `mod+z` triggers the most recent Undo, even from the composer; see
- [Keybindings](./keybindings.md#commands-with-special-behavior).
+@@ -28,6 +28,7 @@ Threads don't require a project. Pick **No project** (or press `mod+alt+n` on we
+ - **Resize or hide** (web/desktop): Drag the sidebar's right edge past its minimum width to hide it; hover the left window edge and click or drag the handle to bring it back.
+ - **Drop files onto a thread** (web/desktop): Drag files from your computer onto any thread row to open it and attach them to its composer.
+ - **Pin and reorder**: Pin a thread from its menu or drag threads between **Pinned**, **Active**, and **Settled** (or drag out of **Snoozed** to wake). On mobile, use **Arrange threads** or **Move up / Move down** in the thread menu. Custom order syncs across devices (requires an up-to-date server).
++- **Mark read or unread**: **Mark read**, in a thread card's hover actions or its menu, clears **Done** and **Woke** as if you had opened the thread. **Mark unread** brings **Done** back.
+ - **Undo** (web/desktop): Unpinning, settling, snoozing, archiving, or discarding a draft shows a 5-second **Undo** toast (`mod+z`).
+ - **Titles**: Choose **Regenerate title** from a thread's menu, or customize title style in **Settings → Threads → Text generation → Thread title instructions** (global or per-project).
  
-+**Mark read**, in a thread card's hover actions or its menu, clears **Done** and **Woke** as if you
-+had opened the thread. **Mark unread** brings **Done** back.
-+
- On web and desktop, you can also drag files from your computer onto any thread row:
- the thread opens and the files are attached in its composer, ready for
- your next message. The same per-message file limits apply as when attaching

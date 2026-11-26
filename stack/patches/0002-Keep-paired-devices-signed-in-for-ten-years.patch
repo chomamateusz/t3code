@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Mateusz Choma <chomamateusz@gmail.com>
-Date: Fri, 25 Sep 2026 12:31:05 +0200
+From: chomamateusz-agent <chomamateusz-agent@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 03:22:04 +0100
 Subject: =?UTF-8?q?=F0=9F=94=90=20Keep=20paired=20devices=20signed=20in=20?=
  =?UTF-8?q?for=20ten=20years?=
 MIME-Version: 1.0
@@ -23,6 +23,8 @@ Port to 965ddc1d6c:
 Port to b6ac2449f1: upstream dd512d86c5 (#37980) and e396bb2e26 (#37990) make direct pairing links send a DPoP proof and give such sessions a one-hour access token with a 30-day sliding renewal window (RENEWABLE_SESSION_WINDOW in EnvironmentAuth.ts, used by exchangeBootstrapCredentialForAccessToken and renewAccessToken), so a device idle for 30 days would have had to pair again. RENEWABLE_SESSION_WINDOW is now DEFAULT_SESSION_TTL. SessionStore keeps the window only as the session row's expires_at (issue writes issuedAt + renewalWindow, each renew writes now + renewalWindow through AuthSessions.extend, which refuses an expired or revoked row; the token carries only the rnw flag), so rows issued with 30 days move to ten years at their next successful renewal. EnvironmentAuth.test.ts: upstream's renewal case expects ten-year expiries, renews after 400 idle days and checks that a device idle for 3651 days pairs again (it fails with the 30-day window).
 
 Port to d63b9c4c76: upstream 780db269df (#41330) replaced docs/internals/environment-auth.md with docs/internals/04_environment-auth.md, which no longer states the renewal window, so the environment-auth hunk is dropped; code unchanged.
+
+Port to 4c8a324e8f: upstream a03c43363b (#43206) rewrote docs/user/remote-access.md; the LAN pairing section is now a bullet list whose Session lifetime bullet says 30 days, so that bullet now says ten years. Code unchanged.
 
 Files:
 apps/server:
@@ -147,15 +149,15 @@ index 4057cbdb4540c3d2672b9ff56145873131bba9fa..3f454241cafb0c89c265cb4cba7cbc25
  
  const SessionClaims = Schema.Struct({
 diff --git a/docs/user/remote-access.md b/docs/user/remote-access.md
-index 378ec90d28ef5487ae86dec59a515fabedc614d7..aca1d31998e2c1d07873633af4a7a686ade83e8e 100644
+index 8b1a2df162aeae64cbf590ca78bcd25678551594..cead48da5af3aa3418949c32fa96ba12c2f14a40 100644
 --- a/docs/user/remote-access.md
 +++ b/docs/user/remote-access.md
-@@ -128,7 +128,7 @@ Android app then trusts it.
- Pairing authorizes that device for future connections. Use a fresh one-time link
- for each new device; you do not need the original token to reconnect. A device
- stays signed in while you keep using it, until you revoke it in **Settings →
--Sharing & access** on the host. One unused for 30 days, or paired with a host
-+Sharing & access** on the host. One unused for ten years, or paired with a host
- older than this release, has to pair again. Links
- created in Settings can only be copied from the client that created them while
- its Sharing & access page stays open. If you leave or reload that page, create
+@@ -23,7 +23,7 @@ Free T3 Connect accounts can link up to **3 host machines** (phones and browsers
+ - **Desktop host**: Enable **Settings → Sharing & access → Network access** (restarts desktop) and create a one-time pairing link.
+ - **CLI host**: Run `t3 up --lan` (background service) or `t3 serve --lan` (foreground), then run `t3 pair` to generate a QR code / pairing URL (`t3code://pair` opens directly in the desktop app).
+ - **Hosted web app (`app.t3.codes`)**: Requires an HTTPS endpoint (T3 Connect or Tailscale HTTPS). For plain HTTP on a LAN, open the direct pairing URL in a local browser or pair from the desktop/mobile app. For custom CAs on Android, install the CA certificate in Android security settings.
+-- **Session lifetime**: Paired devices stay signed in while active; sessions unused for 30 days must re-pair.
++- **Session lifetime**: Paired devices stay signed in while active; sessions unused for ten years must re-pair.
+ 
+ ### Reach one machine several ways
+ 
