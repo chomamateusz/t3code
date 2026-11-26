@@ -306,7 +306,7 @@ index 39abba5e5b808c359db5300302d07018279ecb74..7707afbbb31d28cfcbfee4dd3e7380a1
        <li>Outside</li>
      </ul>
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index ca4e27750388abbca117bc15c1475192ec21f3c1..762c767e5abab952d029984c6e1ae08bfc4e61b9 100644
+index 4d3431f8af960c84b9cc9226f86074970f4ef23b..641116794cce1019225e4e94572ec5dea2639d4a 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -50,6 +50,8 @@ import {
@@ -329,7 +329,7 @@ index ca4e27750388abbca117bc15c1475192ec21f3c1..762c767e5abab952d029984c6e1ae08b
    shouldRecedeSidebarThread,
    resolveWorkingStartedAt,
    useRetainedValue,
-@@ -491,6 +495,37 @@ function SnoozeMenuButton(props: {
+@@ -493,6 +497,37 @@ function SnoozeMenuButton(props: {
    );
  }
  
@@ -367,7 +367,7 @@ index ca4e27750388abbca117bc15c1475192ec21f3c1..762c767e5abab952d029984c6e1ae08b
  type SortableThreadRowBag = Pick<
    ReturnType<typeof useSortable>,
    "listeners" | "setNodeRef" | "transform" | "transition" | "isDragging"
-@@ -659,6 +694,7 @@ type SidebarThreadRowProps = {
+@@ -661,6 +696,7 @@ type SidebarThreadRowProps = {
    onUnsnooze: (threadRef: ScopedThreadRef) => void;
    onUnpin: (threadRef: ScopedThreadRef) => void;
    onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
@@ -375,7 +375,7 @@ index ca4e27750388abbca117bc15c1475192ec21f3c1..762c767e5abab952d029984c6e1ae08b
    onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
  };
  
-@@ -714,6 +750,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -716,6 +752,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      onContextMenu,
      onAcknowledgeWoke,
      onFileDropThreads,
@@ -383,7 +383,7 @@ index ca4e27750388abbca117bc15c1475192ec21f3c1..762c767e5abab952d029984c6e1ae08b
      onRenameTitleChange,
      onSettle,
      onActionSweepStart,
-@@ -818,6 +855,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -820,6 +857,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      isSelected,
    });
    const isWokeStatus = topStatus?.icon === "woke";
@@ -394,7 +394,7 @@ index ca4e27750388abbca117bc15c1475192ec21f3c1..762c767e5abab952d029984c6e1ae08b
  
    const branchMismatch = resolveLocalCheckoutBranchMismatch({
      effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
-@@ -913,6 +954,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -915,6 +956,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
          addFolders: () => {},
        })
      : null;
@@ -406,7 +406,7 @@ index ca4e27750388abbca117bc15c1475192ec21f3c1..762c767e5abab952d029984c6e1ae08b
    const handleSettleClick = (event: ReactMouseEvent) => {
      event.preventDefault();
      event.stopPropagation();
-@@ -1671,7 +1717,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1679,7 +1725,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                      <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
                    )}
                  </span>
@@ -418,7 +418,7 @@ index ca4e27750388abbca117bc15c1475192ec21f3c1..762c767e5abab952d029984c6e1ae08b
                    <span
                      className={cn(
                        // Mouse clicks leave Settle focused; focus-within would pin controls over
-@@ -1699,6 +1748,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1707,6 +1756,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                          <XIcon className="size-3.5" />
                        </SharedTooltipTrigger>
                      ) : null}

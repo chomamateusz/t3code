@@ -897,10 +897,10 @@ index 321c871d9571f36ad05fe6958f0a8db49905353c..1463f9d56a6003f05e6cc5f9cd4a4beb
                        <SidebarDraftBlock
                          key="draft-sessions"
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 762c767e5abab952d029984c6e1ae08bfc4e61b9..ac10820e78414c6e75e272492f2291c8d35fc021 100644
+index 641116794cce1019225e4e94572ec5dea2639d4a..a294f0131617ccb8f0a6c8c813686e41d56e7991 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -452,6 +452,7 @@ function SnoozeMenuButton(props: {
+@@ -454,6 +454,7 @@ function SnoozeMenuButton(props: {
                  type="button"
                  aria-label={gt("Snooze thread")}
                  onClick={(event) => event.stopPropagation()}
@@ -908,7 +908,7 @@ index 762c767e5abab952d029984c6e1ae08bfc4e61b9..ac10820e78414c6e75e272492f2291c8
                  onDoubleClick={(event) => event.stopPropagation()}
                  className="inline-flex h-full cursor-pointer items-center gap-0.5 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
                />
-@@ -1736,6 +1737,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1744,6 +1745,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                              type="button"
                              aria-label={gt("Discard draft")}
                              onClick={handleDiscardDraftClick}

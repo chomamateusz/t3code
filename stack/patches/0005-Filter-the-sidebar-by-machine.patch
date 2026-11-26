@@ -1229,10 +1229,10 @@ index 0000000000000000000000000000000000000000..ee3dbf148afba6745ca7bae76f64b755
 +  await expect.element(screen.getByText("main")).toBeVisible();
 +});
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 635d6acabfc3216f6fcdbdb203796c971372a039..7ac02717c451545ae2507ed559f2b1150cdacd93 100644
+index a2478fd84c10d65cdef255c7eda1db170487fbe4..e401767291ed656c967cd0e850c7e9f7508de209 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -630,6 +630,7 @@ type SidebarThreadRowProps = {
+@@ -632,6 +632,7 @@ type SidebarThreadRowProps = {
    jumpLabel: string | null;
    environmentLabel: string | null;
    environmentMachine: EnvironmentMachineKind;
@@ -1240,7 +1240,7 @@ index 635d6acabfc3216f6fcdbdb203796c971372a039..7ac02717c451545ae2507ed559f2b115
    project: EnvironmentProject | null;
    projectDisplayName: string | null;
    providerEntryByInstanceId: ReadonlyMap<string, SidebarProviderEntry>;
-@@ -899,6 +900,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -901,6 +902,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      ? getTriggerDisplayModelName(selectedModel, providerEntry?.driverKind)
      : thread.modelSelection.model;
  
@@ -1249,7 +1249,7 @@ index 635d6acabfc3216f6fcdbdb203796c971372a039..7ac02717c451545ae2507ed559f2b115
    const detailsTooltip = (
      <SidebarThreadTooltip
        thread={checkoutThread}
-@@ -1278,22 +1281,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1286,22 +1289,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
    const diff = latestRunDiff(thread);
    // Only the trailing icons would remain, so the row moves them to the title line instead.
    const metaLineEmpty =

@@ -408,10 +408,10 @@ index 9cc690491d3290c5dfbc0f927a1f633cdfec6837..968655ddbc4fe7c1048644bdbce97b3f
            className="size-4"
            iconClassName="size-4"
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 16de19832104c506187716c35c313df6a1603ef6..01553444f59c62dd7fc8285b5827388705f0bc8b 100644
+index daeaaa1a4e003fa66cf3f287de91b2c5bb44b192..055dbfd0f40c8a40bc6b7fab9548fcb92afcd4a9 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -129,7 +129,7 @@ import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
+@@ -131,7 +131,7 @@ import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
  import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
  import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
  import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
@@ -420,7 +420,7 @@ index 16de19832104c506187716c35c313df6a1603ef6..01553444f59c62dd7fc8285b58273887
  import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
  import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
  import { InlineButton } from "../ui/button";
-@@ -230,6 +230,13 @@ function terminalProcessLabel(count: number, resolve: MessageResolver): string {
+@@ -232,6 +232,13 @@ function terminalProcessLabel(count: number, resolve: MessageResolver): string {
    );
  }
  
@@ -434,7 +434,7 @@ index 16de19832104c506187716c35c313df6a1603ef6..01553444f59c62dd7fc8285b58273887
  function SidebarProviderStack(props: {
    thread: SidebarThreadSummary;
    providerEntryByInstanceId: ReadonlyMap<string, SidebarProviderEntry>;
-@@ -244,7 +251,7 @@ function SidebarProviderStack(props: {
+@@ -246,7 +253,7 @@ function SidebarProviderStack(props: {
    );
    const current = (
      <ProviderInstanceIcon
@@ -443,7 +443,7 @@ index 16de19832104c506187716c35c313df6a1603ef6..01553444f59c62dd7fc8285b58273887
        displayName={currentEntry.displayName}
        accentColor={currentEntry.accentColor}
        acpRegistryAgentId={currentEntry.acpRegistryAgentId}
-@@ -310,7 +317,9 @@ function SidebarThreadTooltip({
+@@ -312,7 +319,9 @@ function SidebarThreadTooltip({
    terminalStatus: TerminalStatusIndicator | null;
    terminalProcessCount: number;
  }) {

@@ -579,7 +579,7 @@ index 1ee34663431b81e5fd1379b0e6ba32426bf7e886..6c58c2e8e1b30d45c90a1c23fbe5cf55
          )}
          {error !== null ? (
 diff --git a/apps/mobile/src/features/threads/ThreadDetailScreen.tsx b/apps/mobile/src/features/threads/ThreadDetailScreen.tsx
-index 7ba8e460671486760ae6b1046643d0da266da3e2..d303712b088a1fc7fc39c771fa2a2c1fb22fc0f8 100644
+index df71dde488583eb48efb797ade4cb316a405a83d..f432c2e3c0146f3d3a6ef1818b85cf602c15147c 100644
 --- a/apps/mobile/src/features/threads/ThreadDetailScreen.tsx
 +++ b/apps/mobile/src/features/threads/ThreadDetailScreen.tsx
 @@ -238,6 +238,7 @@ export interface ThreadDetailScreenProps {
@@ -2179,7 +2179,7 @@ index 3ad87a19806e51578305d9f5918d03a0d7df978a..208b1de01965c716253de0d724835488
      ).pipe(Effect.provide(NodeHttpServer.layerTest)),
  );
 diff --git a/apps/server/src/mcp/McpHttpServer.ts b/apps/server/src/mcp/McpHttpServer.ts
-index b8bf4dee9668698855df0966db9f3591a321a5c2..7789792dfd199d795510d4163cb4f7f2f9ee3d29 100644
+index 92b8468b14edd3f6b7762128a38f426341e74c4e..3027b323f689aadaa3af70eff3e203e0463f7581 100644
 --- a/apps/server/src/mcp/McpHttpServer.ts
 +++ b/apps/server/src/mcp/McpHttpServer.ts
 @@ -12,6 +12,7 @@ import * as Option from "effect/Option";
@@ -2208,7 +2208,7 @@ index b8bf4dee9668698855df0966db9f3591a321a5c2..7789792dfd199d795510d4163cb4f7f2
  import * as OrchestratorHandlers from "./toolkits/orchestrator/handlers.ts";
  import { OrchestratorToolkit } from "./toolkits/orchestrator/tools.ts";
  import * as PreviewHandlers from "./toolkits/preview/handlers.ts";
-@@ -156,7 +161,10 @@ export class McpClientAuthenticator extends Context.Service<
+@@ -157,7 +162,10 @@ export class McpClientAuthenticator extends Context.Service<
    {
      readonly authenticate: (
        request: HttpServerRequest.HttpServerRequest,
@@ -2220,7 +2220,7 @@ index b8bf4dee9668698855df0966db9f3591a321a5c2..7789792dfd199d795510d4163cb4f7f2
    }
  >()("t3/mcp/McpHttpServer/McpClientAuthenticator") {}
  
-@@ -307,6 +315,21 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
+@@ -308,6 +316,21 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
    const pullRequests = yield* Effect.serviceOption(PullRequestService.PullRequestService);
    const projections = yield* Effect.serviceOption(ProjectionStore.ProjectionStoreV2);
    const sessions = yield* Effect.serviceOption(SessionStore.SessionStore);
@@ -2242,7 +2242,7 @@ index b8bf4dee9668698855df0966db9f3591a321a5c2..7789792dfd199d795510d4163cb4f7f2
    // Auth runs once per request, so a response that streams on ends when the outside client's
    // session is revoked or expires. `events/stream` ends itself first with
    // `notifications/events/terminated`, which cutting the body here would lose.
-@@ -316,15 +339,20 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
+@@ -317,15 +340,20 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
      client: McpInvocationContext.McpClientCaller | undefined,
    ) => {
      const body = response.body;
@@ -2269,7 +2269,7 @@ index b8bf4dee9668698855df0966db9f3591a321a5c2..7789792dfd199d795510d4163cb4f7f2
          body.contentType,
          body.contentLength,
        ),
-@@ -397,7 +425,12 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
+@@ -398,7 +426,12 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
      const request = yield* HttpServerRequest.HttpServerRequest;
      // The transport allows no browser Origin; refuse it before credentials, as the MCP spec requires.
      if (request.headers.origin !== undefined) return HttpServerResponse.empty({ status: 403 });
@@ -2283,7 +2283,7 @@ index b8bf4dee9668698855df0966db9f3591a321a5c2..7789792dfd199d795510d4163cb4f7f2
      if (HttpServerResponse.isHttpServerResponse(admitted)) return admitted;
      if (yield* isUndefinedNotification(request)) return HttpServerResponse.empty({ status: 202 });
      const linkExpiresAt = admitted.client?.linkExpiresAt;
-@@ -1498,6 +1531,10 @@ export const layerPullRequestsToolkit = toolkitRegistration(
+@@ -1499,6 +1532,10 @@ export const layerPullRequestsToolkit = toolkitRegistration(
  
  const layerIssuesToolkit = toolkitRegistration(IssuesToolkit, IssuesHandlers.layer);
  
@@ -2294,7 +2294,7 @@ index b8bf4dee9668698855df0966db9f3591a321a5c2..7789792dfd199d795510d4163cb4f7f2
  const layerDeviceStandardToolkitRegistration = toolkitRegistration(
    DeviceStandardToolkit,
    DeviceHandlers.layerStandard,
-@@ -1532,6 +1569,18 @@ export const layerInProcessMcpServer = McpServer.middleware<{
+@@ -1533,6 +1570,18 @@ export const layerInProcessMcpServer = McpServer.middleware<{
    { global: true },
  ).pipe(Layer.provideMerge(McpServer.McpServer.layer));
  
@@ -2313,7 +2313,7 @@ index b8bf4dee9668698855df0966db9f3591a321a5c2..7789792dfd199d795510d4163cb4f7f2
  export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE, RR>) =>
    McpServer.layerHttp({
      name: "T3 Code",
-@@ -1539,7 +1588,7 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
+@@ -1540,7 +1589,7 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
      path: MCP_HTTP_PATH,
      protocols: mcpProtocols,
      allowSessionTermination: true,
@@ -2322,7 +2322,7 @@ index b8bf4dee9668698855df0966db9f3591a321a5c2..7789792dfd199d795510d4163cb4f7f2
    }).pipe(Layer.provide(layerMcpAuthMiddleware));
  
  /** Every tool the T3 MCP server advertises. AgentContextBudget.test.ts measures this set. */
-@@ -1560,6 +1609,7 @@ export const layerTools = Layer.mergeAll(
+@@ -1561,6 +1610,7 @@ export const layerTools = Layer.mergeAll(
    layerDeviceToolkit,
    layerHtmlToolkit,
    layerMessageToolkit,
@@ -4074,10 +4074,10 @@ index 9fbfb23410f00a9adaa9e416096a9e72034e4839..d6ca385230f62da163f115a7959138b5
  
  describe("ClaudeAdapterV2 MCP credential channel", () => {
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb935e62f5 100644
+index d898c1ee6a8ac831a2941def95b93a9872995674..7b929a21dd84bdb5d34bd56dd5d65bab14510cdd 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-@@ -205,6 +205,7 @@ import { signalProcessGroup } from "@t3tools/provider-core/server/processGroup";
+@@ -206,6 +206,7 @@ import { signalProcessGroup } from "@t3tools/provider-core/server/processGroup";
  import {
    claudeLocalSettingsDirectory,
    claudeSignedOutMessage,
@@ -4085,7 +4085,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
    makeClaudeEnvironment,
    mergeClaudeProcessEnvironment,
    resolveClaudeHomePath,
-@@ -391,6 +392,21 @@ const CLAUDE_SCRIPT_EXTENSIONS = [".js", ".mjs", ".tsx", ".ts", ".jsx"];
+@@ -392,6 +393,21 @@ const CLAUDE_SCRIPT_EXTENSIONS = [".js", ".mjs", ".tsx", ".ts", ".jsx"];
  // The SDK has no control-request deadline; the CLI waits up to 30 s per MCP server.
  const CLAUDE_MCP_REGISTRATION_TIMEOUT = "90 seconds";
  const CLAUDE_BOOT_TIMEOUT = "5 minutes";
@@ -4107,7 +4107,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
  // Claude can consume a subagent result before the launching turn ends, leaving
  // its notification with no native wake turn to answer the continuation.
  const CLAUDE_WAKE_TURN_START_DEADLINE = "2 minutes";
-@@ -675,6 +691,7 @@ export const ClaudeProviderCapabilitiesV2 = {
+@@ -699,6 +715,7 @@ export const ClaudeProviderCapabilitiesV2 = {
      supportsMcpTools: true,
      supportsDynamicToolCallbacks: true,
      supportsBackgroundWait: true,
@@ -4115,7 +4115,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
    },
    approvals: {
      supportsCommandApproval: true,
-@@ -908,6 +925,24 @@ export class ClaudeBackgroundWorkBlocksQueryReplacementError extends Schema.Tagg
+@@ -932,6 +949,24 @@ export class ClaudeBackgroundWorkBlocksQueryReplacementError extends Schema.Tagg
    }
  }
  
@@ -4140,7 +4140,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
  export class ClaudeAppendSystemPromptFileError extends Schema.TaggedError<ClaudeAppendSystemPromptFileError>()(
    "ClaudeAppendSystemPromptFileError",
    {
-@@ -1844,29 +1879,41 @@ export const layerQueryRunner: Layer.Layer<
+@@ -1896,29 +1931,41 @@ export const layerQueryRunner: Layer.Layer<
            Effect.tap((queryRuntime) =>
              restore(
                Effect.gen(function* () {
@@ -4203,7 +4203,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
                    const onStartupPhase = input.onStartupPhase ?? (() => Effect.void);
                    yield* onStartupPhase("mcp");
                    // Errors and mcp_status can echo headers; log only server names.
-@@ -2559,6 +2606,8 @@ export function makeClaudeQueryOptions(input: {
+@@ -2611,6 +2658,8 @@ export function makeClaudeQueryOptions(input: {
    readonly appendSystemPromptFileText?: string;
    // Flag settings, because a user's settings.json env beats the process env in Claude Code.
    readonly toolSearchOverride?: "true";
@@ -4212,7 +4212,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
  }): ClaudeAgentSdkQueryOptions {
    const compiledSelection = compileClaudeModelSelection(input.modelSelection, input.modelCatalog);
    const {
-@@ -2579,10 +2628,13 @@ export function makeClaudeQueryOptions(input: {
+@@ -2631,10 +2680,13 @@ export function makeClaudeQueryOptions(input: {
    // Claude Code overwrites its CLI append text with the SDK's initialize
    // appendSystemPrompt, so launch-argument text has to travel in that value.
    // The CLI puts file text before inline text and trims one trailing newline.
@@ -4230,7 +4230,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
    const requestThinkingSummaries =
      compiledSelection.settings.alwaysThinkingEnabled !== false &&
      extraArgs["thinking-display"] !== "omitted";
-@@ -2590,9 +2642,20 @@ export function makeClaudeQueryOptions(input: {
+@@ -2642,9 +2694,20 @@ export function makeClaudeQueryOptions(input: {
      extraArgs["thinking-display"] = "summarized";
    }
    const pluginDirectories =
@@ -4252,7 +4252,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
    const threadIdentity: ClaudeAgentSdkThreadIdentity = input.resume
      ? { resume: input.nativeThreadId }
      : { sessionId: input.nativeThreadId };
-@@ -2601,11 +2664,13 @@ export function makeClaudeQueryOptions(input: {
+@@ -2653,11 +2716,13 @@ export function makeClaudeQueryOptions(input: {
      Object.keys(compiledSelection.settings).length === 0
        ? undefined
        : (compiledSelection.settings as ClaudeSdkSettings);
@@ -4269,7 +4269,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
          : selectionSettings;
    const autoCompactWindow =
      input.settings?.autoCompactWindow === undefined || input.settings.autoCompactWindow.length === 0
-@@ -2648,6 +2713,16 @@ export function makeClaudeQueryOptions(input: {
+@@ -2700,6 +2765,16 @@ export function makeClaudeQueryOptions(input: {
                : { ENABLE_TOOL_SEARCH: input.toolSearchOverride }),
            },
          } as ClaudeSdkSettings);
@@ -4286,7 +4286,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
    const deviceInstructions = input.mcpServers !== undefined && input.deviceToolsAvailable === true;
    const agentFeedback = input.mcpServers === undefined ? "off" : (input.agentFeedback ?? "off");
    const options: ClaudeAgentSdkQueryOptions = {
-@@ -2656,10 +2731,21 @@ export function makeClaudeQueryOptions(input: {
+@@ -2708,10 +2783,21 @@ export function makeClaudeQueryOptions(input: {
      ...(input.title === undefined ? {} : { title: input.title }),
      tools: claudeAgentSdkQueryToolsForSdk(selectedTools),
      permissionMode:
@@ -4312,7 +4312,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
      includePartialMessages: true,
      promptSuggestions: input.promptSuggestions === true,
      ...(compiledSelection.effort === undefined
-@@ -2679,16 +2765,16 @@ export function makeClaudeQueryOptions(input: {
+@@ -2731,16 +2817,16 @@ export function makeClaudeQueryOptions(input: {
        ? {
            thinking: { type: "adaptive" as const, display: "summarized" as const },
            settings:
@@ -4334,7 +4334,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
      ...(input.onUserDialog === undefined ? {} : { onUserDialog: input.onUserDialog }),
      ...(input.onElicitation === undefined ? {} : { onElicitation: input.onElicitation }),
      ...(input.supportedDialogKinds === undefined
-@@ -2706,7 +2792,10 @@ export function makeClaudeQueryOptions(input: {
+@@ -2758,7 +2844,10 @@ export function makeClaudeQueryOptions(input: {
          buildRuntimeInstructions({
            harness: "Claude Code",
            agentFeedback,
@@ -4346,7 +4346,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
          }) +
            (input.mcpServers === undefined
              ? ""
-@@ -2732,14 +2821,19 @@ export function makeClaudeQueryOptions(input: {
+@@ -2784,14 +2873,19 @@ export function makeClaudeQueryOptions(input: {
      ...(pluginDirectories.length === 0
        ? {}
        : { plugins: pluginDirectories.map((path) => ({ type: "local" as const, path })) }),
@@ -4373,7 +4373,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
    const withDirectories =
      additionalDirectories.length === 0 ? options : { ...options, additionalDirectories };
    return input.cwd === null ? withDirectories : { ...withDirectories, cwd: input.cwd };
-@@ -3738,6 +3832,9 @@ function readOnlyPolicyAllowsGlobalReads(
+@@ -3790,6 +3884,9 @@ function readOnlyPolicyAllowsGlobalReads(
  function permissionModeForClaudeRuntimePolicy(
    runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
  ): PermissionMode {
@@ -4383,7 +4383,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
    if (runtimePolicy.interactionMode === "plan") {
      return "plan";
    }
-@@ -3790,8 +3887,16 @@ export interface ClaudeRuntimeQueryPolicy {
+@@ -3842,8 +3939,16 @@ export interface ClaudeRuntimeQueryPolicy {
    readonly allowedTools?: ReadonlyArray<string>;
    readonly allowDangerouslySkipPermissions?: true;
    readonly installPermissionCallback: boolean;
@@ -4400,7 +4400,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
  interface ClaudeBypassAvailability {
    readonly bypassDisabled: boolean;
    readonly autoDisabled: boolean;
-@@ -3808,6 +3913,9 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
+@@ -3860,6 +3965,9 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
    runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
    availability: ClaudeBypassAvailability = CLAUDE_BYPASS_FULLY_AVAILABLE,
  ): ClaudeRuntimeQueryPolicy {
@@ -4410,7 +4410,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
    const requestedMode = permissionModeForClaudeRuntimePolicy(runtimePolicy);
    const downgraded = requestedMode === "bypassPermissions" && availability.bypassDisabled;
    const permissionMode = downgraded
-@@ -4063,6 +4171,7 @@ function claudeRuntimeQueryPolicyKey(policy: ClaudeRuntimeQueryPolicy): string {
+@@ -4115,6 +4223,7 @@ function claudeRuntimeQueryPolicyKey(policy: ClaudeRuntimeQueryPolicy): string {
      allowedTools: policy.allowedTools,
      allowDangerouslySkipPermissions: policy.allowDangerouslySkipPermissions,
      installPermissionCallback: policy.installPermissionCallback,
@@ -4418,7 +4418,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
    });
  }
  
-@@ -12530,7 +12639,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12582,7 +12691,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
            }
  
            const toolPresentations = claudeToolPresentationsFromAssistantMessage(message);
@@ -4431,7 +4431,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
              const nativeToolInput = claudeNativeToolInputFromUnknown(toolUse.input);
              if (toolUse.name === "Agent") {
                rememberClaudeSubagentLaunch(
-@@ -13297,6 +13410,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13349,6 +13462,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                toolUseID: callbackOptions.toolUseID,
              } satisfies PermissionResult;
            }
@@ -4448,7 +4448,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
  
            const nativeRequestId = callbackOptions.toolUseID;
            const nativeToolInput = claudeNativeToolInputFromRecord(toolInput);
-@@ -13934,13 +14057,25 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13986,13 +14109,25 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
            nativeThreadId: string,
            queryPolicy: Effect.Success<ReturnType<typeof queryPolicyForTurn>>,
          ) {
@@ -4476,7 +4476,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
                  const pendingWake = (yield* mcpSessions.read(turnInput.threadId))?.hasPendingWake;
                  return pendingWake !== undefined && (yield* pendingWake) ? { continue: false } : {};
                }),
-@@ -13965,7 +14100,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -14017,7 +14152,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              existing !== null &&
              existing.nativeThreadId === nativeThreadId &&
              !existing.stopping &&
@@ -4487,7 +4487,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
            ) {
              return existing;
            }
-@@ -14003,8 +14140,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -14055,8 +14192,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              existing.nativeThreadId === nativeThreadId &&
              existing.queryPolicyKey === queryPolicyKey &&
              !existing.stopping;
@@ -4500,7 +4500,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
              cwd: turnInput.runtimePolicy.cwd,
              fileSystem,
              path,
-@@ -14099,7 +14239,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -14151,7 +14291,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
            const [appendSystemPromptFileText, toolSearchOverride] = yield* Effect.all(
              [
                readClaudeAppendSystemPromptFile({
@@ -4509,7 +4509,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
                  cwd: turnInput.runtimePolicy.cwd,
                  fileSystem,
                  path,
-@@ -14176,6 +14316,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -14228,6 +14368,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              supportedDialogKinds: ["resume_return"],
              ...(appendSystemPromptFileText === undefined ? {} : { appendSystemPromptFileText }),
              ...(toolSearchOverride === undefined ? {} : { toolSearchOverride }),
@@ -4517,7 +4517,7 @@ index 56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b..84f1d3ccf8631f61d20b27b37d155dfb
            });
            const resolvedTurnCwd = yield* fileSystem
              .realPath(turnInput.runtimePolicy.cwd ?? ".")
-@@ -14495,7 +14636,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -14547,7 +14688,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              }
              const [skills, queryPolicy] = yield* Effect.all(
                [
@@ -5049,10 +5049,10 @@ index 54b521c474378099100349242335e71fe5a2f7ea..e128c620eae0bd7b64634f214e525314
  
  const makeContextHandoffService = Effect.fn("orchestrationV2.ContextHandoffService.layer")(
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e43ba3075f 100644
+index 154bd10696d88cb96ba0de6761122b5389540f7f..8d8d327006b7e1ee5e77d7cb0c105bdfbce2ac28 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
-@@ -662,6 +662,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
+@@ -663,6 +663,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
      case "thread.snooze":
      case "thread.unsnooze":
      case "thread.auto-settle.set":
@@ -5060,7 +5060,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
      case "thread.pin":
      case "thread.unpin":
      case "thread.pin.reorder":
-@@ -851,6 +852,36 @@ function metadataUpdateContinuation(
+@@ -852,6 +853,36 @@ function metadataUpdateContinuation(
        };
  }
  
@@ -5097,7 +5097,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
  // A later command for the first message would leave the new thread committed with no run,
  // and every client would show it idle until that command landed.
  function threadCreateInitialMessage(
-@@ -868,6 +899,9 @@ function threadCreateInitialMessage(
+@@ -869,6 +900,9 @@ function threadCreateInitialMessage(
        workspaceStrategy === undefined
          ? { type: "start_immediately" }
          : { type: "defer_start", workspaceStrategy },
@@ -5107,7 +5107,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
      createdBy: command.createdBy,
      creationSource: command.creationSource,
    };
-@@ -2935,6 +2969,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -2937,6 +2971,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : projection.runs.filter(
                (run) =>
                  isHandoffSourceRun(run) &&
@@ -5115,7 +5115,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
                  run.ordinal >= contextBoundary &&
                  run.ordinal > (targetLastCompletedRun?.ordinal ?? 0) &&
                  run.ordinal <= latestHandoffRun.ordinal,
-@@ -4147,6 +4182,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4149,6 +4184,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        ...(command.linkOrigin === undefined || command.delegatedFrom === undefined
          ? {}
          : { delegatedFrom: command.delegatedFrom }),
@@ -5125,7 +5125,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
        ...(command.workflowRun === undefined ? {} : { workflowRun: command.workflowRun }),
        lineage: {
          parentThreadId: null,
-@@ -4471,6 +4509,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4473,6 +4511,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            | "thread.snooze"
            | "thread.unsnooze"
            | "thread.auto-settle.set"
@@ -5133,7 +5133,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
            | "thread.pin"
            | "thread.unpin"
            | "thread.pin.reorder"
-@@ -4634,6 +4673,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4636,6 +4675,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          command.type === "thread.snooze" ||
          command.type === "thread.unsnooze" ||
          command.type === "thread.auto-settle.set" ||
@@ -5141,7 +5141,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
          command.type === "thread.pin" ||
          command.type === "thread.unpin" ||
          command.type === "thread.pin.reorder" ||
-@@ -4647,6 +4687,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4649,6 +4689,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: `Thread ${command.threadId} is archived.`,
        });
      }
@@ -5155,7 +5155,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
      // Reject reorder after unpin so a raced request cannot restore a cleared pin.
      if (command.type === "thread.pin.reorder" && thread.pinnedAt == null) {
        return yield* new OrchestratorDispatchError({
-@@ -5135,6 +5182,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5137,6 +5184,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
              updatedAt: unchanged ? thread.updatedAt : now,
            };
          }
@@ -5172,7 +5172,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
          case "thread.pin": {
            const alreadyPinned = thread.pinnedAt != null;
            const promotes = thread.settledOverride === "settled" || thread.snoozedUntil != null;
-@@ -5647,6 +5704,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5649,6 +5706,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            return "thread.unsnoozed" as const;
          case "thread.auto-settle.set":
            return "thread.auto-settle-set" as const;
@@ -5181,7 +5181,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
          case "thread.pin":
            return "thread.pinned" as const;
          case "thread.unpin":
-@@ -6007,6 +6066,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6009,6 +6068,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        );
      const thread = projection.thread;
      if (thread.deletedAt !== null) return yield* reject("is deleted.");
@@ -5191,7 +5191,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
      if (threadHasUnfinishedWork(projection)) {
        return yield* reject("still has work in progress. Finish or stop it first.");
      }
-@@ -7313,6 +7375,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -7322,6 +7384,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            }
          : undefined,
      );
@@ -5205,7 +5205,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
      if (command.steerFollowUpOfRunId !== undefined) {
        const source = projection.runs.find((run) => run.id === command.steerFollowUpOfRunId);
        if (
-@@ -7731,6 +7800,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -7740,6 +7809,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        });
      }
      const output = outputSchema === undefined ? {} : { outputSchema };
@@ -5214,7 +5214,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
      if (
        (freshContext || command.outputSchema !== undefined) &&
        (dispatchMode.type === "steer_active" || dispatchMode.type === "restart_active")
-@@ -8752,6 +8823,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8761,6 +8832,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          ...wakeWorkStartedAt(projection, command),
          ...(freshContext ? { freshContext: true } : {}),
          ...output,
@@ -5222,7 +5222,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
        };
        const attempt: OrchestrationV2RunAttempt = {
          id: attemptId,
-@@ -8791,6 +8863,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -8800,6 +8872,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : { scheduledTaskId: command.scheduledTaskId }),
          ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
          ...(command.linkedSender === undefined ? {} : { linkedSender: command.linkedSender }),
@@ -5230,7 +5230,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
          ...(command.idleCompaction === undefined ? {} : { idleCompaction: command.idleCompaction }),
          ...(followsThreadSelection ? { followsThreadSelection: true as const } : {}),
          id: command.messageId,
-@@ -9290,6 +9363,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -9299,6 +9372,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          : projection.runs.filter(
              (run) =>
                isHandoffSourceRun(run) &&
@@ -5238,7 +5238,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
                run.ordinal >= contextBoundary &&
                run.ordinal >
                  (requiresFullProviderSwitchContext ? 0 : (targetLastCompletedRun?.ordinal ?? 0)) &&
-@@ -10078,6 +10152,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -10087,6 +10161,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
              (cause) => new OrchestratorProjectionError({ threadId: command.parentThreadId, cause }),
            ),
          );
@@ -5246,7 +5246,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
        const parentRun = parentProjection.runs.find(
          (candidate) => candidate.id === command.parentRunId,
        );
-@@ -10554,6 +10629,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -10563,6 +10638,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            (cause) => new OrchestratorProjectionError({ threadId: command.parentThreadId, cause }),
          ),
        );
@@ -5254,7 +5254,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
      const parentRun = parentProjection.runs.find(
        (candidate) => candidate.id === command.parentRunId,
      );
-@@ -11047,6 +11123,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -11056,6 +11132,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                }),
            ),
          );
@@ -5262,7 +5262,7 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
        const targetProjection = yield* projectionStore
          .getThreadRecords(
            command.targetThreadId,
-@@ -16291,6 +16368,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16300,6 +16377,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "thread.snooze":
        case "thread.unsnooze":
        case "thread.auto-settle.set":
@@ -5271,10 +5271,10 @@ index 3b4cb76344ae9616f39e01407ac7e7ece62821a6..a350cdd4cbaec196168bacef5be589e4
        case "thread.unpin":
        case "thread.pin.reorder":
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.ts b/apps/server/src/orchestration-v2/ProjectionStore.ts
-index 5d7944394f11d5c79dc7149a4d237ec7cd36a12e..ddd74a434394b3982a556015ee244f6071c368f6 100644
+index 24a61b05b2934561c8a396a78d828d2b444a3d99..cc70589a979393cdaf8e6b1f8c11143452b77f81 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.ts
-@@ -291,8 +291,8 @@ export interface ProjectionCheckpointCaptureContext {
+@@ -292,8 +292,8 @@ export interface ProjectionCheckpointCaptureContext {
     * a run. Without file snapshots that run link is what rewind uses. Stale rows are rebaselined.
     */
    readonly preservedCheckpointOrdinals: ReadonlyArray<number>;
@@ -5285,7 +5285,7 @@ index 5d7944394f11d5c79dc7149a4d237ec7cd36a12e..ddd74a434394b3982a556015ee244f60
    /** What resolves the tracked folders the thread reaches. */
    readonly thread: Pick<OrchestrationV2AppThread, "projectId" | "worktreePath"> | undefined;
    /** Every repository scope the thread has recorded so far. */
-@@ -665,6 +665,22 @@ export interface ProjectionStoreV2Shape {
+@@ -666,6 +666,22 @@ export interface ProjectionStoreV2Shape {
    readonly getThreadShell: (
      threadId: ThreadId,
    ) => Effect.Effect<OrchestrationV2ThreadShell | null, ProjectionStoreV2Error>;
@@ -5308,7 +5308,7 @@ index 5d7944394f11d5c79dc7149a4d237ec7cd36a12e..ddd74a434394b3982a556015ee244f60
    /** The thread whose current guest share has this id. Scans thread rows; only redeem uses it. */
    readonly findGuestShareThreadId: (
      shareId: GuestShareId,
-@@ -1065,6 +1081,7 @@ export function applyToProjection(
+@@ -1066,6 +1082,7 @@ export function applyToProjection(
      case "thread.snoozed":
      case "thread.unsnoozed":
      case "thread.auto-settle-set":
@@ -5316,7 +5316,7 @@ index 5d7944394f11d5c79dc7149a4d237ec7cd36a12e..ddd74a434394b3982a556015ee244f60
      case "thread.pinned":
      case "thread.unpinned":
      case "thread.pin-reordered":
-@@ -1977,6 +1994,9 @@ export function threadShellFromProjection(
+@@ -1978,6 +1995,9 @@ export function threadShellFromProjection(
      ...(projection.thread.linkOrigin === undefined
        ? {}
        : { linkOrigin: projection.thread.linkOrigin }),
@@ -5326,7 +5326,7 @@ index 5d7944394f11d5c79dc7149a4d237ec7cd36a12e..ddd74a434394b3982a556015ee244f60
      ...(projection.thread.delegatedFrom === undefined
        ? {}
        : { delegatedFrom: projection.thread.delegatedFrom }),
-@@ -2036,6 +2056,7 @@ export function threadShellFromProjection(
+@@ -2037,6 +2057,7 @@ export function threadShellFromProjection(
      pinnedAt: projection.thread.pinnedAt ?? null,
  
      autoSettleDisabledAt: projection.thread.autoSettleDisabledAt ?? null,
@@ -5334,7 +5334,7 @@ index 5d7944394f11d5c79dc7149a4d237ec7cd36a12e..ddd74a434394b3982a556015ee244f60
      pinOrderKey: projection.thread.pinOrderKey ?? null,
      ...(projection.thread.tags?.length ? { tags: projection.thread.tags } : {}),
      lastVisitedAt: projection.thread.lastVisitedAt,
-@@ -2298,6 +2319,9 @@ function shellFromState(input: {
+@@ -2299,6 +2320,9 @@ function shellFromState(input: {
      ...(input.state.thread.linkOrigin === undefined
        ? {}
        : { linkOrigin: input.state.thread.linkOrigin }),
@@ -5344,7 +5344,7 @@ index 5d7944394f11d5c79dc7149a4d237ec7cd36a12e..ddd74a434394b3982a556015ee244f60
      ...(input.state.thread.delegatedFrom === undefined
        ? {}
        : { delegatedFrom: input.state.thread.delegatedFrom }),
-@@ -2341,6 +2365,7 @@ function shellFromState(input: {
+@@ -2342,6 +2366,7 @@ function shellFromState(input: {
      pinnedAt: input.state.thread.pinnedAt ?? null,
  
      autoSettleDisabledAt: input.state.thread.autoSettleDisabledAt ?? null,
@@ -5352,7 +5352,7 @@ index 5d7944394f11d5c79dc7149a4d237ec7cd36a12e..ddd74a434394b3982a556015ee244f60
      pinOrderKey: input.state.thread.pinOrderKey ?? null,
      ...(input.state.thread.tags?.length ? { tags: input.state.thread.tags } : {}),
      lastVisitedAt: input.state.thread.lastVisitedAt,
-@@ -2543,6 +2568,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -2544,6 +2569,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
              case "thread.snoozed":
              case "thread.unsnoozed":
              case "thread.auto-settle-set":
@@ -5360,7 +5360,7 @@ index 5d7944394f11d5c79dc7149a4d237ec7cd36a12e..ddd74a434394b3982a556015ee244f60
              case "thread.pinned":
              case "thread.unpinned":
              case "thread.pin-reordered":
-@@ -3414,6 +3440,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -3415,6 +3441,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
              event.type !== "thread.snoozed" &&
              event.type !== "thread.unsnoozed" &&
              event.type !== "thread.auto-settle-set" &&
@@ -5368,7 +5368,7 @@ index 5d7944394f11d5c79dc7149a4d237ec7cd36a12e..ddd74a434394b3982a556015ee244f60
              event.type !== "thread.pinned" &&
              event.type !== "thread.unpinned" &&
              event.type !== "thread.pin-reordered" &&
-@@ -6421,11 +6448,12 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -6423,11 +6450,12 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
          .withTransaction(
            Effect.gen(function* () {
              const threadRows = yield* sql<{
@@ -5383,7 +5383,7 @@ index 5d7944394f11d5c79dc7149a4d237ec7cd36a12e..ddd74a434394b3982a556015ee244f60
              json_extract(payload_json, '$.projectId') AS project_id,
              json_extract(payload_json, '$.worktreePath') AS worktree_path
            FROM orchestration_v2_projection_threads WHERE thread_id = ${threadId} LIMIT 1`;
-@@ -6486,7 +6514,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -6488,7 +6516,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                    ? undefined
                    : yield* decodeProviderThreadPayload(providerRows[0].payload_json),
                preservedCheckpointOrdinals: preservedRows.map(({ ordinal }) => ordinal),
@@ -5392,7 +5392,7 @@ index 5d7944394f11d5c79dc7149a4d237ec7cd36a12e..ddd74a434394b3982a556015ee244f60
                thread: {
                  projectId: threadRows[0].project_id,
                  worktreePath: threadRows[0].worktree_path,
-@@ -9817,6 +9845,47 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -9819,6 +9847,47 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        return rows[0] === undefined ? null : ThreadId.make(rows[0].thread_id);
      }, Effect.mapError(shellSnapshotReadError));
  
@@ -5440,7 +5440,7 @@ index 5d7944394f11d5c79dc7149a4d237ec7cd36a12e..ddd74a434394b3982a556015ee244f60
      const listOlderSettledThreads: ProjectionStoreV2Shape["listOlderSettledThreads"] = Effect.fn(
        "ProjectionStore.listOlderSettledThreads",
      )(function* ({ before, projectIds, limit }) {
-@@ -9970,6 +10039,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -9972,6 +10041,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        readShellSnapshot: readOnReader(readShellSnapshot),
        listOlderSettledThreads: readOnReader(listOlderSettledThreads),
        getThreadShell: readOnReader(getThreadShell),
@@ -6459,10 +6459,10 @@ index 0b9450c7c0fe22cc96e9997e5345a59f15343a3a..73ea9e4b6f61474a7681a311bfddc066
  
  const layerReceiptsTest = CommandReceiptStore.layer.pipe(
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index a928d46a1764f92992c4f5980d682740be2b869f..85dc09c085b159d2e476e9d6aadad5c5d5e11bd2 100644
+index f87068b672b5149b0e52c73cb47e5114eba0ad26..1ce2d27a56de19866d22b60e237a963e781953bf 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-@@ -94,6 +94,7 @@ export function withCreationProvenance(
+@@ -95,6 +95,7 @@ export function withCreationProvenance(
        // Only the server stamps a link's origin or folds in a first message, so a client cannot.
        const {
          linkOrigin: _linkOrigin,
@@ -6470,7 +6470,7 @@ index a928d46a1764f92992c4f5980d682740be2b869f..85dc09c085b159d2e476e9d6aadad5c5
          delegatedFrom: _delegatedFrom,
          initialMessage: _initialMessage,
          workflowRun: _workflowRun,
-@@ -101,7 +102,10 @@ export function withCreationProvenance(
+@@ -102,7 +103,10 @@ export function withCreationProvenance(
        } = command;
        return { ...rest, ...provenance };
      }
@@ -6482,7 +6482,7 @@ index a928d46a1764f92992c4f5980d682740be2b869f..85dc09c085b159d2e476e9d6aadad5c5
      case "thread.fork":
      case "thread.merge_back":
      case "delegated_task.request":
-@@ -508,6 +512,7 @@ export interface ThreadManagementServiceShape {
+@@ -509,6 +513,7 @@ export interface ThreadManagementServiceShape {
    }) => Effect.Effect<boolean>;
    /** Receipt replays start no work; skip enablement checks with the same command id so settings cannot reject accepted retries. */
    readonly hasReceipt: (commandId: CommandId) => Effect.Effect<boolean>;
@@ -6490,7 +6490,7 @@ index a928d46a1764f92992c4f5980d682740be2b869f..85dc09c085b159d2e476e9d6aadad5c5
    readonly waitForThread: (
      input: ThreadManagementWaitInput,
    ) => Effect.Effect<ThreadManagementWaitResult, ThreadManagementError>;
-@@ -687,6 +692,17 @@ const make = Effect.gen(function* () {
+@@ -688,6 +693,17 @@ const make = Effect.gen(function* () {
        Effect.map(Option.isSome),
      );
  
@@ -6507,8 +6507,8 @@ index a928d46a1764f92992c4f5980d682740be2b869f..85dc09c085b159d2e476e9d6aadad5c5
 +
    const ensureLegacyTranscript = Effect.fn(
      "orchestrationV2.threadManagement.ensureLegacyTranscript",
-   )(function* (threadId: ThreadId) {
-@@ -2004,6 +2020,7 @@ const make = Effect.gen(function* () {
+     { attributes: routineSpan },
+@@ -2006,6 +2022,7 @@ const make = Effect.gen(function* () {
      assertProviderInstanceEnabled,
      isProviderInstanceEnabledForProject,
      hasReceipt,
@@ -6917,7 +6917,7 @@ index 2df5138a8d433be66b2687fcdf4aa7b9e15d30da..63af1b421fe31842ddd4583855f6ee32
      Effect.gen(function* () {
        const orchestrator = yield* Orchestrator.OrchestratorV2;
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.ts b/apps/server/src/orchestration-v2/runtimeLayer.ts
-index 241dbd21e51dcef87d715cf0237d748753720107..eef1f343c92614fea437ff1258ae96d2d3820bb8 100644
+index cbf1bba1ca802773932f2052e6cd6cef1e07b57c..22f5a4678f0a78621c0c62fd5b9b84a91c1049a2 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.ts
 @@ -191,6 +191,7 @@ const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pip

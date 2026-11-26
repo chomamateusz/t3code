@@ -66,10 +66,10 @@ index 7707afbbb31d28cfcbfee4dd3e7380a16200d7d2..8e37eeabc0b22914e0f0f58df59a3964
          onAcknowledgeWoke={noop}
          onReadAction={noop}
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index ac10820e78414c6e75e272492f2291c8d35fc021..16de19832104c506187716c35c313df6a1603ef6 100644
+index a294f0131617ccb8f0a6c8c813686e41d56e7991..daeaaa1a4e003fa66cf3f287de91b2c5bb44b192 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -693,6 +693,7 @@ type SidebarThreadRowProps = {
+@@ -695,6 +695,7 @@ type SidebarThreadRowProps = {
    onUnsettle: (threadRef: ScopedThreadRef) => void;
    onSnooze: (threadRef: ScopedThreadRef, preset: Pick<SnoozePreset, "snoozedUntil">) => void;
    onUnsnooze: (threadRef: ScopedThreadRef) => void;
@@ -77,7 +77,7 @@ index ac10820e78414c6e75e272492f2291c8d35fc021..16de19832104c506187716c35c313df6
    onUnpin: (threadRef: ScopedThreadRef) => void;
    onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
    onReadAction: (threadRef: ScopedThreadRef, action: SidebarThreadReadAction) => void;
-@@ -761,6 +762,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -763,6 +764,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      onThreadClick,
      onUnsettle,
      onUnsnooze,
@@ -85,7 +85,7 @@ index ac10820e78414c6e75e272492f2291c8d35fc021..16de19832104c506187716c35c313df6
      onUnpin,
      readOpensPullRequestsInRightPanel,
      renamingTitle,
-@@ -980,6 +982,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -982,6 +984,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      event.stopPropagation();
      onUnsnooze(threadRef);
    };
@@ -97,7 +97,7 @@ index ac10820e78414c6e75e272492f2291c8d35fc021..16de19832104c506187716c35c313df6
    const handleUnpinClick = (event: ReactMouseEvent) => {
      event.preventDefault();
      event.stopPropagation();
-@@ -1266,6 +1273,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1274,6 +1281,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
        />
      )
    ) : null;
@@ -125,7 +125,7 @@ index ac10820e78414c6e75e272492f2291c8d35fc021..16de19832104c506187716c35c313df6
  
    const diff = latestRunDiff(thread);
    // Only the trailing icons would remain, so the row moves them to the title line instead.
-@@ -1632,6 +1660,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1640,6 +1668,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
              {/* Left of the status slot, the pin would slide when hover swaps the
                  label for the wider row controls. */}
              {pinIndicator}

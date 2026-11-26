@@ -3960,7 +3960,7 @@ index a8825006ba9d70764b94d0be8b8762b7b3d6445b..ff2a2f54eb0511eaf6be0648ebd6a5d6
    tooltip = label,
    className,
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 7ac02717c451545ae2507ed559f2b1150cdacd93..267fb42b47c6920bf728638c57abfaca921f47e5 100644
+index e401767291ed656c967cd0e850c7e9f7508de209..6280e82fba653354c01bb4940fcfab0d23348a49 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -88,7 +88,7 @@ import {
@@ -3984,7 +3984,7 @@ index 7ac02717c451545ae2507ed559f2b1150cdacd93..267fb42b47c6920bf728638c57abfaca
    resolveThreadLastVisitedAt,
    shouldRecedeSidebarThread,
    resolveWorkingStartedAt,
-@@ -802,14 +801,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -804,14 +803,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      ? resolveThreadCurrentPullRequestLink(thread.pullRequests)
      : null;
  
@@ -4007,7 +4007,7 @@ index 7ac02717c451545ae2507ed559f2b1150cdacd93..267fb42b47c6920bf728638c57abfaca
    const shouldRecede = shouldRecedeSidebarThread({
      status,
      isUnread,
-@@ -817,67 +816,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -819,67 +818,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
      isActive: props.isActive,
      isSelected,
    });

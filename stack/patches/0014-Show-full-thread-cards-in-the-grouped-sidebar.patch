@@ -1237,10 +1237,10 @@ index 0000000000000000000000000000000000000000..db439e67964e4dea091c47376eead71c
 +    previous.badge?.description === next.badge?.description,
 +);
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 67d6c15b3f6269885c6a4fbe5d47aa277124f388..ca4e27750388abbca117bc15c1475192ec21f3c1 100644
+index 0bc1d839966529a621c18c59eaf7ce7e74696686..4d3431f8af960c84b9cc9226f86074970f4ef23b 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -607,6 +607,7 @@ type SidebarThreadRowProps = {
+@@ -609,6 +609,7 @@ type SidebarThreadRowProps = {
    // "folder-multiline" adds the card's environment and PR line under it.
    variant: "card" | "slim" | "folder" | "folder-multiline";
    navigationParent?: string | undefined;
@@ -1248,7 +1248,7 @@ index 67d6c15b3f6269885c6a4fbe5d47aa277124f388..ca4e27750388abbca117bc15c1475192
    variantAction: SidebarSweepAction;
    settlementSupported: boolean;
    snoozeSupported: boolean;
-@@ -1541,6 +1542,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1549,6 +1550,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
        className={cn(
          "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
          metaLineEmpty && "[contain-intrinsic-size:auto_60px]",

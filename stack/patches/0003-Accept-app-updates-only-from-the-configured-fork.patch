@@ -166,7 +166,7 @@ Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 scripts/verify-fork-update-feed.ts
 
 diff --git a/.github/workflows/release-desktop.yml b/.github/workflows/release-desktop.yml
-index 6ead5f98ee102897e12cc303e07818037666c6e2..370e00fd5b478cde8c304cfa9827284d4e4c43fa 100644
+index 58771c8f07cc7304202098ee616d9dfaec4ca194..106d8bbc5bcca18b1af6eb5c1b848450797f5c24 100644
 --- a/.github/workflows/release-desktop.yml
 +++ b/.github/workflows/release-desktop.yml
 @@ -139,6 +139,9 @@ jobs:

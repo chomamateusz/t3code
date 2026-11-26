@@ -248,7 +248,7 @@ index 7ea6f95a7a5159dc636b48f8aa020f543ec653a8..646cee832d6d4372a0132985fe4811f7
  );
  
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index e65439305e2217967379d511752011121eab681c..3b4cb76344ae9616f39e01407ac7e7ece62821a6 100644
+index c90d1ac16252256348844a4b2fcb081bdfc0b2b3..154bd10696d88cb96ba0de6761122b5389540f7f 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -32,6 +32,7 @@ import {
@@ -259,15 +259,15 @@ index e65439305e2217967379d511752011121eab681c..3b4cb76344ae9616f39e01407ac7e7ec
    type NodeId,
    type ModelSelection,
    OrchestrationV2Command,
-@@ -98,6 +99,7 @@ import { combinePullRequestWatchWakes, type PullRequestWatchWake } from "./pullR
- import { outputRequestProblem } from "./runOutput.ts";
+@@ -99,6 +100,7 @@ import { outputRequestProblem } from "./runOutput.ts";
+ import * as WorktreeSetupTracker from "../project/WorktreeSetupTracker.ts";
  import { recordThreadOpen } from "@t3tools/shared/paletteSearch";
  import { isSlashCommand } from "@t3tools/shared/composerTrigger";
 +import { mergeQueuedMessages } from "@t3tools/shared/queuedMessageMerge";
  import {
    backgroundWorkHoldsCompletion,
    derivePendingBackgroundWork,
-@@ -229,6 +231,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
+@@ -230,6 +232,7 @@ import { planThreadDeletion } from "./ThreadDeletion.ts";
  import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import * as ServerSettings from "../serverSettings.ts";
  
@@ -275,7 +275,7 @@ index e65439305e2217967379d511752011121eab681c..3b4cb76344ae9616f39e01407ac7e7ec
  const isMessageQuestionAnswer = Schema.is(
    Schema.Union([TrimmedNonEmptyString, Schema.NonEmptyArray(TrimmedNonEmptyString)]),
  );
-@@ -697,6 +700,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
+@@ -698,6 +701,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
      case "queued-run.reorder":
      case "queued-run.cancel":
      case "queued-run.edit":
@@ -283,7 +283,7 @@ index e65439305e2217967379d511752011121eab681c..3b4cb76344ae9616f39e01407ac7e7ec
      case "runtime-request.respond":
      case "runtime-request.delivery.fail":
      case "thread.user-input.dismiss":
-@@ -12629,12 +12633,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12638,12 +12642,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: editProblem,
        });
      }
@@ -296,7 +296,7 @@ index e65439305e2217967379d511752011121eab681c..3b4cb76344ae9616f39e01407ac7e7ec
      let updatedRun =
        command.modelSelection === undefined
          ? queuedRun
-@@ -12651,7 +12650,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12660,7 +12659,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        updatedRun = queued;
      }
      if (updatedRun !== queuedRun) {
@@ -308,7 +308,7 @@ index e65439305e2217967379d511752011121eab681c..3b4cb76344ae9616f39e01407ac7e7ec
          type: "run.updated",
          threadId: command.threadId,
          runId: queuedRun.id,
-@@ -12661,41 +12663,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12670,41 +12672,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          payload: updatedRun,
        });
      }
@@ -359,7 +359,7 @@ index e65439305e2217967379d511752011121eab681c..3b4cb76344ae9616f39e01407ac7e7ec
      // Thread deletion only cleans files the thread still references.
      const keptAttachmentIds = new Set(
        (command.attachments ?? queuedMessage.attachments).map((attachment) => attachment.id),
-@@ -12720,6 +12700,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12729,6 +12709,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
      }
    });
  
@@ -488,7 +488,7 @@ index e65439305e2217967379d511752011121eab681c..3b4cb76344ae9616f39e01407ac7e7ec
    const subagentCount = (threadId: ThreadId) =>
      projectionStore
        .getSubagentCount(threadId)
-@@ -16417,6 +16519,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16426,6 +16528,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "run.output.submit":
          yield* dispatchRunOutputSubmit(command, events);
          break;
@@ -498,7 +498,7 @@ index e65439305e2217967379d511752011121eab681c..3b4cb76344ae9616f39e01407ac7e7ec
        case "checkpoint.rollback":
          yield* dispatchCheckpointRollback(command, events, effects);
          break;
-@@ -16657,7 +16762,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16666,7 +16771,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                ),
              );
            if (

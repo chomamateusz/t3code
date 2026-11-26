@@ -309,7 +309,7 @@ index 96d5968a7b57bb51cc6389177c576a789d6a3d71..9fbfb23410f00a9adaa9e416096a9e72
      Effect.gen(function* () {
        const harness = yield* makeWakeHarness;
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index 22fe365b4eddb041113a729192fd3c691095cac2..56cf0ea96bb63dbaf6a99a446eb27b20fce5fb0b 100644
+index ff8682ba1e97b928cd335a65ca6c881d5f96fc2d..d898c1ee6a8ac831a2941def95b93a9872995674 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -37,6 +37,7 @@ import {
@@ -328,7 +328,7 @@ index 22fe365b4eddb041113a729192fd3c691095cac2..56cf0ea96bb63dbaf6a99a446eb27b20
  
  import { resolveAttachmentPath } from "../../attachmentStore.ts";
  import { snapshotMcpApp } from "../../mcpApps/McpAppSnapshot.ts";
-@@ -6147,6 +6149,7 @@ export interface ClaudeAdapterV2Options {
+@@ -6199,6 +6201,7 @@ export interface ClaudeAdapterV2Options {
      cwd: string | null,
      launchSettings?: ClaudeSdkSettings,
    ) => Effect.Effect<ClaudeModelCatalog>;
@@ -336,7 +336,7 @@ index 22fe365b4eddb041113a729192fd3c691095cac2..56cf0ea96bb63dbaf6a99a446eb27b20
    readonly continuationRequests?: {
      readonly offer: (
        request: ProviderContinuationRequests.ProviderContinuationRequest,
-@@ -12957,15 +12960,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13009,15 +13012,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                resetTimes.length > 0 && resetTimes.every((time) => time !== null)
                  ? resetTimes.reduce((latest, time) => (time! > latest ? time! : latest), "")
                  : null;
@@ -384,7 +384,7 @@ index 22fe365b4eddb041113a729192fd3c691095cac2..56cf0ea96bb63dbaf6a99a446eb27b20
              // Claude answers a steer it has not read yet as the next native turn, which echoes
              // the steer. A result without echoes cannot prove that turn will come.
              if (
-@@ -15990,7 +16017,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+@@ -16042,7 +16069,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
      input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
      hooks: Pick<
        ClaudeAdapterV2Options,
