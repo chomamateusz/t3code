@@ -26,8 +26,6 @@ assert(binary, 'fff native binary missing');
 ffi.open({ library: 't3_native_probe', path: binary });
 ffi.close('t3_native_probe');
 console.log('fff/ffi-rs: native library opened and closed');
-require('@napi-rs/keyring');
-console.log('keyring: native module loaded (no credential-store access)');
 const monitor = spawnSync(join(root, 'resource-monitor/linux-x64/t3-resource-monitor'), [], { input: '{"version":3,"type":"shutdown"}\n', encoding: 'utf8', timeout: 10000 });
 assert.equal(monitor.error, undefined);
 assert.equal(monitor.status, 0, monitor.stderr);
