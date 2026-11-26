@@ -113,6 +113,10 @@ Behaviours:
   (ProjectionStoreV2.linkedQuestionsOffRepaired), one attempt at a time and
   not sooner than 30 seconds after a failed one ended. Clients keep showing
   the stored choices.
+  A thread write whose payload has no linkedQuestionsDisabledAt key keeps
+  the stored row's off (one CASE in the thread upsert), so a command that
+  read its thread before a repair attempt committed does not write the
+  restored off away; every way out of off writes the key.
 - The header chip "Answers linked questions" and the mobile thread row
   (the menu's subtitle) show the effective state.
 - t3_ask_list returns the newest activity first, at most 50 threads, each
@@ -160,6 +164,7 @@ Not covered:
 - A Default set on release 20261125.1 (plain receipt) reads as off once a build without levels has rewritten the thread.
 - A fork an off thread's agent makes of another thread, here or on a linked machine, follows that thread's choice.
 - The repair reads every thread receipt on each store start (about 20 ms per 100,000); receipts have no index on command_type.
+- An off restored from a receipt whose accepted_at is not a time leaves the thread unreadable, also after later thread writes.
 
 Port to b8be2287dc: imports only, plus the measured budget. Sidebar.tsx imports upstream 78de041d48's (#24917, settle and snooze threads while their machine is offline) isThreadTriageAction next to this commit's linkedQuestionsEnabledFor; thread-list-v2-items.tsx keeps upstream's useEnvironmentScopeDenied next to this commit's useEnvironmentServerConfig and useProject. agentContextBudget.json: mcpToolListJsonBytes is 63302 as AgentContextBudget.test.ts measures it on the carried tree. No upstream migration up to b8be2287dc rebuilds projection_projects, so the linked_questions column is still added at store start. The change itself is unchanged. commandPermissions.test.ts keeps passing upstream's shell status atom (live) as createThreadEnvironmentAtoms's third argument.
 
@@ -254,7 +259,7 @@ Tests:
  apps/server/src/auth/RpcAuthorization.test.ts |  21 +-
  .../src/environment/ServerEnvironment.ts      |   1 +
  apps/server/src/mcp/OrchestratorMcpService.ts |   1 +
- apps/server/src/mcp/linkOrigin.test.ts        | 197 +++++++++++++++++-
+ apps/server/src/mcp/linkOrigin.test.ts        | 197 ++++++++++++++++-
  apps/server/src/mcp/toolkits/ask/handlers.ts  |   2 +-
  apps/server/src/mcp/toolkits/ask/tools.ts     |   2 +-
  .../src/mcp/toolkits/project/handlers.test.ts |  10 +
@@ -267,8 +272,8 @@ Tests:
  .../src/orchestration-v2/ProjectCommands.ts   |   5 +
  .../src/orchestration-v2/ProjectStore.test.ts |  13 ++
  .../src/orchestration-v2/ProjectStore.ts      |  32 +++
- .../orchestration-v2/ProjectionStore.test.ts  | 167 +++++++++++++++
- .../src/orchestration-v2/ProjectionStore.ts   | 165 +++++++++++++--
+ .../orchestration-v2/ProjectionStore.test.ts  | 199 ++++++++++++++++++
+ .../src/orchestration-v2/ProjectionStore.ts   | 188 +++++++++++++++--
  .../ProviderTurnControlService.test.ts        |   3 +-
  .../ProviderTurnStartService.test.ts          |  83 +++++++-
  .../ProviderTurnStartService.testkit.ts       |   1 +
@@ -301,8 +306,8 @@ Tests:
  .../settings/ProjectSettingsPanel.tsx         |  49 +++++
  .../settings/settingsSearch.test.ts           |   7 +
  .../src/components/settings/settingsSearch.ts |   7 +
- .../components/threadActionMenu.logic.test.ts |  93 ++++++++-
- .../src/components/threadActionMenu.logic.ts  | 117 ++++++++++-
+ .../components/threadActionMenu.logic.test.ts |  93 +++++++-
+ .../src/components/threadActionMenu.logic.ts  | 117 +++++++++-
  apps/web/src/hooks/useProjectGroupUpdate.ts   |  50 +++++
  .../web/src/hooks/useThreadActionMenu.test.ts |   6 +-
  apps/web/src/hooks/useThreadActionMenu.ts     |   9 +-
@@ -329,7 +334,7 @@ Tests:
  packages/contracts/src/settings.test.ts       |  10 +
  packages/contracts/src/settings.ts            |  12 +-
  .../src/server/subagentProjection.ts          |   1 +
- 82 files changed, 2564 insertions(+), 222 deletions(-)
+ 82 files changed, 2618 insertions(+), 223 deletions(-)
  create mode 100644 apps/server/src/orchestration-v2/linkedQuestionsOff.ts
  create mode 100644 packages/contracts/src/linkedQuestions.test.ts
  create mode 100644 packages/contracts/src/linkedQuestions.ts
@@ -1629,7 +1634,7 @@ index ee83411213a26b38d2b81f5573b55b3e039053cf..b95788a98664d9cd7b25b2592a8a5505
        }).pipe(mapError("apply"));
      },
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.test.ts b/apps/server/src/orchestration-v2/ProjectionStore.test.ts
-index 211b2c8f8935c56fd6ea9e2b8bd1f547d6a4a618..01c8bc21aa1633302101f2b64f15fd2d4b73ca18 100644
+index 211b2c8f8935c56fd6ea9e2b8bd1f547d6a4a618..81a98bedca07b2b95a8bf8d402eb4bf214cd6198 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.test.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.test.ts
 @@ -32,6 +32,8 @@ import {
@@ -1660,7 +1665,7 @@ index 211b2c8f8935c56fd6ea9e2b8bd1f547d6a4a618..01c8bc21aa1633302101f2b64f15fd2d
  
  import { layerReaderDatabase, traceSqlRouting } from "../persistence/testkit/SqliteRouting.ts";
  
-@@ -3756,6 +3763,166 @@ it.effect("SQL snapshot windows leave handoff bodies in SQLite without changing
+@@ -3756,6 +3763,198 @@ it.effect("SQL snapshot windows leave handoff bodies in SQLite without changing
    }).pipe(Effect.provide(layerTest)),
  );
  
@@ -1808,13 +1813,45 @@ index 211b2c8f8935c56fd6ea9e2b8bd1f547d6a4a618..01c8bc21aa1633302101f2b64f15fd2d
 +      yield* sql`ALTER TABLE receipts_unreadable RENAME TO orchestration_command_receipts`;
 +      yield* TestClock.adjust("29999 millis");
 +      assert.isFalse(yield* started.linkedQuestionsOffRepaired());
-+      assert.isNull(threadLinkedQuestionsChoice(yield* started.getThread(offWhileRepairFails)));
++      const readBeforeRepair = yield* started.getThread(offWhileRepairFails);
++      assert.isNull(threadLinkedQuestionsChoice(readBeforeRepair));
 +      yield* TestClock.adjust("1 millis");
 +      assert.isTrue(yield* started.linkedQuestionsOffRepaired());
 +      assert.equal(
 +        threadLinkedQuestionsChoice(yield* started.getThread(offWhileRepairFails)),
 +        "off",
 +      );
++
++      yield* started.apply({
++        id: EventId.make("event:offWhileRepairFails:renamed"),
++        type: "thread.metadata-updated",
++        threadId: offWhileRepairFails,
++        occurredAt: at(6),
++        payload: { ...readBeforeRepair, title: "renamed from a read before the repair" },
++      });
++      const renamed = yield* started.getThread(offWhileRepairFails);
++      assert.deepEqual(
++        [renamed.title, threadLinkedQuestionsChoice(renamed)],
++        ["renamed from a read before the repair", "off"],
++      );
++      yield* started.apply({
++        id: EventId.make("event:offWhileRepairFails:default"),
++        type: "thread.linked-questions-set",
++        threadId: offWhileRepairFails,
++        occurredAt: at(7),
++        payload: { ...renamed, linkedQuestionsDisabledAt: null },
++      });
++      assert.isNull(threadLinkedQuestionsChoice(yield* started.getThread(offWhileRepairFails)));
++
++      const damaged = ThreadId.make("thread:damaged");
++      yield* started.apply({
++        id: EventId.make("event:damaged:rewritten"),
++        type: "thread.metadata-updated",
++        threadId: damaged,
++        occurredAt: at(7),
++        payload: { ...readBeforeRepair, id: damaged },
++      });
++      assert.isNull(threadLinkedQuestionsChoice(yield* started.getThread(damaged)));
 +    }).pipe(Effect.provide(Layer.fresh(ProjectionStore.layer)));
 +    const marker = yield* sql<{ readonly updated_at: string }>`
 +      SELECT updated_at FROM orchestration_v2_projection_metadata
@@ -1828,7 +1865,7 @@ index 211b2c8f8935c56fd6ea9e2b8bd1f547d6a4a618..01c8bc21aa1633302101f2b64f15fd2d
    Effect.gen(function* () {
      const store = yield* ProjectionStore.ProjectionStoreV2;
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.ts b/apps/server/src/orchestration-v2/ProjectionStore.ts
-index cc70589a979393cdaf8e6b1f8c11143452b77f81..e3752954f5adc68d7f4a3062e445da774d1af33e 100644
+index cc70589a979393cdaf8e6b1f8c11143452b77f81..3b61e4c288812a74b1bb815401f24768aae75823 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.ts
 @@ -1,5 +1,10 @@
@@ -1922,7 +1959,7 @@ index cc70589a979393cdaf8e6b1f8c11143452b77f81..e3752954f5adc68d7f4a3062e445da77
      pinOrderKey: input.state.thread.pinOrderKey ?? null,
      ...(input.state.thread.tags?.length ? { tags: input.state.thread.tags } : {}),
      lastVisitedAt: input.state.thread.lastVisitedAt,
-@@ -2398,10 +2418,104 @@ const isInlineWorkOutput = (payloadJson: string) => {
+@@ -2398,10 +2418,125 @@ const isInlineWorkOutput = (payloadJson: string) => {
    );
  };
  
@@ -2024,10 +2061,40 @@ index cc70589a979393cdaf8e6b1f8c11143452b77f81..e3752954f5adc68d7f4a3062e445da77
 +        ),
 +      );
 +    yield* linkedQuestionsOffRepaired();
++
++    // A payload without the key carries no choice, so a write decided from a thread read before
++    // the stored row got its Off must not clear it; every way out of Off writes the key. The
++    // branch order keeps json_type, which throws on bad JSON, away from a damaged stored row.
++    const THREAD_PAYLOAD_KEEPING_RESTORED_OFF = sql.literal(`CASE
++      WHEN json_type(excluded.payload_json, '$.linkedQuestionsDisabledAt') IS NOT NULL
++        THEN excluded.payload_json
++      WHEN NOT json_valid(orchestration_v2_projection_threads.payload_json)
++        THEN excluded.payload_json
++      WHEN json_type(
++        orchestration_v2_projection_threads.payload_json, '$.linkedQuestionsDisabledAt'
++      ) = 'text'
++        THEN json_set(
++          excluded.payload_json,
++          '$.linkedQuestionsDisabledAt',
++          json_extract(
++            orchestration_v2_projection_threads.payload_json, '$.linkedQuestionsDisabledAt'
++          )
++        )
++      ELSE excluded.payload_json
++    END`);
  
      // SQLite uses the partial conversation index of migration 082 only for this exact predicate.
      const CONVERSATION_INDEX_EXCLUDED_TYPES = sql.literal(
-@@ -9847,24 +9961,46 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -2631,7 +2766,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+                 updated_at = excluded.updated_at,
+                 archived_at = excluded.archived_at,
+                 deleted_at = excluded.deleted_at,
+-                payload_json = excluded.payload_json
++                payload_json = ${THREAD_PAYLOAD_KEEPING_RESTORED_OFF}
+             `;
+               // EventSink applies committed events serially; retries retain the original membership.
+               if (event.type === "thread.created" && event.payload.forkedFrom?.type === "run") {
+@@ -9847,24 +9982,46 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        return rows[0] === undefined ? null : ThreadId.make(rows[0].thread_id);
      }, Effect.mapError(shellSnapshotReadError));
  
@@ -2079,7 +2146,7 @@ index cc70589a979393cdaf8e6b1f8c11143452b77f81..e3752954f5adc68d7f4a3062e445da77
          }));
        },
        Effect.mapError(shellSnapshotReadError),
-@@ -10041,7 +10177,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -10041,7 +10198,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        readShellSnapshot: readOnReader(readShellSnapshot),
        listOlderSettledThreads: readOnReader(listOlderSettledThreads),
        getThreadShell: readOnReader(getThreadShell),
