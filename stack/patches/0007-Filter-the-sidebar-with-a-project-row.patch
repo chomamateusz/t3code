@@ -1054,7 +1054,7 @@ index e1732d642fcc84a127d97ecb86790f682a071742..a2b1d06a850333b97d1a3c3ac42cb01f
    thread: Pick<SidebarThreadSummary, "latestRun" | "runtime">,
  ): string | null {
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 0ea3446b79eacbebcd4b7796c6c5565b3ab3b6db..745acfcc101ce52cfa3ccec53531887819444202 100644
+index b4d54632267ec87ee55d89cb8a7eb6eb8ad809f6..1bf4b2336090d99fa9411cd9963b4f8b1dd03334 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -68,18 +68,10 @@ import {
@@ -1219,7 +1219,7 @@ index 0ea3446b79eacbebcd4b7796c6c5565b3ab3b6db..745acfcc101ce52cfa3ccec535318878
    const messages = useMessages();
    const {
      projects,
-@@ -1052,17 +1021,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1051,17 +1020,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const projectGroupsRef = useRef(projectGroups);
    const persistedProjectScopeKeys = useUiStateStore((store) => store.sidebarProjectScopeKeys);
    const setPersistedProjectScopeKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
@@ -1242,7 +1242,7 @@ index 0ea3446b79eacbebcd4b7796c6c5565b3ab3b6db..745acfcc101ce52cfa3ccec535318878
    const chosenEnvironmentScope = resolveSidebarEnvironmentScope({
      environments,
      keys: persistedEnvironmentScopeKeys,
-@@ -1073,9 +1042,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1072,9 +1041,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
        : new Set(chosenEnvironmentScope.map((environment) => environment.environmentId));
    const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
    const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
@@ -1252,7 +1252,7 @@ index 0ea3446b79eacbebcd4b7796c6c5565b3ab3b6db..745acfcc101ce52cfa3ccec535318878
    // Hold dropped rows until server placement is confirmed; block another pickup from replacing the hold.
    const [optimisticDrop, setOptimisticDrop] = useState<SidebarOptimisticDrop | null>(null);
    const threadSearchInputRef = useRef<HTMLInputElement>(null);
-@@ -1145,29 +1111,40 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1144,29 +1110,40 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      chosenEnvironmentIds,
      { projects, settings: projectGroupingSettings, primaryEnvironmentId },
    );
@@ -1314,7 +1314,7 @@ index 0ea3446b79eacbebcd4b7796c6c5565b3ab3b6db..745acfcc101ce52cfa3ccec535318878
    const threads = useQuietThreadShells();
    const promotingDraftThreadKeys = usePromotingDraftThreadKeys();
    const listedThreads =
-@@ -1204,59 +1181,119 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1203,59 +1180,119 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      delegatedUnderParent,
      findThread: (key) => threads.find((candidate) => threadShellKey(candidate) === key),
    });
@@ -1472,7 +1472,7 @@ index 0ea3446b79eacbebcd4b7796c6c5565b3ab3b6db..745acfcc101ce52cfa3ccec535318878
    };
    const revealActiveRow = useActiveRowReveal(routeReveal, routeRowThreadKey, routeKeyInPlace);
    const [departingThreadKey, setDepartingThreadKey] = useState<string | null>(null);
-@@ -1266,36 +1303,24 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1265,36 +1302,24 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const departRouteThread = (threadKey: string) => setDepartingThreadKey(threadKey);
    const stayOnRouteThread = (threadKey: string) =>
      setDepartingThreadKey((current) => (current === threadKey ? null : current));
@@ -1517,7 +1517,7 @@ index 0ea3446b79eacbebcd4b7796c6c5565b3ab3b6db..745acfcc101ce52cfa3ccec535318878
        ? {}
        : { projectIds: scopedProjectRefs.map((projectRef) => projectRef.projectId) },
    );
-@@ -1344,15 +1369,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1343,15 +1368,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      setProjectGroupPinned,
      toggleProjectGroupPin,
    } = useProjectPin();
@@ -1538,7 +1538,7 @@ index 0ea3446b79eacbebcd4b7796c6c5565b3ab3b6db..745acfcc101ce52cfa3ccec535318878
        openProjectSettings(projectGroup);
      },
    );
-@@ -1463,12 +1490,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1462,12 +1489,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      routeRowThreadKey,
      departingThreadKey,
      folderGroups: boringSidebarEnabled
@@ -1555,7 +1555,7 @@ index 0ea3446b79eacbebcd4b7796c6c5565b3ab3b6db..745acfcc101ce52cfa3ccec535318878
        : null,
      keepEmptyFolders: (group) =>
        scopedProjectGroups.length > 0 || (group.pinned && !group.archived),
-@@ -2811,12 +2836,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2813,12 +2838,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                ),
                canTriage: threadTriagePermitted(threadRef.environmentId),
                branch: thread.branch ?? null,
@@ -1571,7 +1571,7 @@ index 0ea3446b79eacbebcd4b7796c6c5565b3ab3b6db..745acfcc101ce52cfa3ccec535318878
                      }
                    : null,
                isPinned,
-@@ -2868,9 +2894,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2870,9 +2896,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            case "filter-by-project":
              if (threadProjectGroup) {
                setProjectScopeKeys(
@@ -1587,7 +1587,7 @@ index 0ea3446b79eacbebcd4b7796c6c5565b3ab3b6db..745acfcc101ce52cfa3ccec535318878
                );
              }
              return;
-@@ -3187,229 +3216,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3189,229 +3218,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    onChange={setEnvironmentScopeKeys}
                  />
                }
@@ -1833,7 +1833,7 @@ index 0ea3446b79eacbebcd4b7796c6c5565b3ab3b6db..745acfcc101ce52cfa3ccec535318878
                onNewThread={handleNewThreadClick}
                newThreadDisabled={projects.length === 0}
                newThreadShortcutLabel={newThreadShortcutLabel}
-@@ -3556,7 +3379,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3558,7 +3381,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                    </span>
                    <button
                      type="button"
@@ -1842,7 +1842,7 @@ index 0ea3446b79eacbebcd4b7796c6c5565b3ab3b6db..745acfcc101ce52cfa3ccec535318878
                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
                    >
                      <T>Show all projects</T>
-@@ -3564,7 +3387,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3566,7 +3389,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                  </>
                ) : (
                  sidebarEmptyThreadsLabel(
@@ -2157,7 +2157,7 @@ index 0000000000000000000000000000000000000000..f42e64664c68627a6a28849a12a22d53
 +  );
 +}
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index a7629c16be088242f4afecfefa452c9ca31e37f6..f3d3b68f06bb2c8fd6b67710d23076dfa94d69bf 100644
+index 22d005761fcca82628b919df157b2cba911cf640..0121564b745b7e9cd5f68f26f1b3258d4294bc8b 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -521,6 +521,16 @@ export const SETTINGS_SEARCH_ITEMS = [
@@ -3960,7 +3960,7 @@ index a8825006ba9d70764b94d0be8b8762b7b3d6445b..ff2a2f54eb0511eaf6be0648ebd6a5d6
    tooltip = label,
    className,
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index e401767291ed656c967cd0e850c7e9f7508de209..6280e82fba653354c01bb4940fcfab0d23348a49 100644
+index 9e49c80fafa98d55833fe2f8f39aa3541b231410..26bc47321660087436aa3dbba6b875486b00e2f8 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -88,7 +88,7 @@ import {

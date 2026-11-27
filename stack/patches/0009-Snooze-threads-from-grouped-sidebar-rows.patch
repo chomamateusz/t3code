@@ -29,6 +29,8 @@ Port to b8be2287dc: upstream 78de041d48 (#24917, settle and snooze threads while
 
 Port to 0085217d1b: SidebarThreadRow.tsx follows upstream ea3328c50c (#42671, one shared tooltip serves every trigger): the folder and slim row is now a ThreadHoverCardTrigger, which takes this commit's snoozeMenuOpen in its disabled condition, and the Un-settle and Settle buttons, including the Settle button beside the snooze menu, are SharedTooltipTrigger with a label instead of Tooltip, TooltipTrigger and TooltipPopup. The layout, the slim-row rule and the snooze menu are unchanged.
 
+Port to ce2611312d: SidebarThreadRow.tsx: upstream 5a563f8df4 (#43245, settle tooltips open to the right) passes side="right" to the grouped rows' Un-settle and Settle tooltips and to the card row's Settle beside the snooze menu; this commit's Un-settle and the Settle beside its grouped snooze menu take the same side, and the fallback Settle keeps upstream's. The layout, the slim-row rule and the snooze menu are unchanged.
+
 Files:
 apps/web:
 - apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
@@ -44,9 +46,9 @@ Tests:
 
 Model/harness: GPT-6 / Codex; hover layout follow-up: Claude Opus 5.5 / Claude Code; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
 ---
- .../sidebar/SidebarThreadRow.browser.test.tsx | 25 +++++
- .../components/sidebar/SidebarThreadRow.tsx   | 98 ++++++++++++++-----
- 2 files changed, 97 insertions(+), 26 deletions(-)
+ .../sidebar/SidebarThreadRow.browser.test.tsx |  25 +++++
+ .../components/sidebar/SidebarThreadRow.tsx   | 101 +++++++++++++-----
+ 2 files changed, 99 insertions(+), 27 deletions(-)
 
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.browser.test.tsx
 index ee3dbf148afba6745ca7bae76f64b755a7cd2b63..39abba5e5b808c359db5300302d07018279ecb74 100644
@@ -92,7 +94,7 @@ index ee3dbf148afba6745ca7bae76f64b755a7cd2b63..39abba5e5b808c359db5300302d07018
    vi.mocked(useEnvironmentScope).mockReturnValue(true);
    await using screen = await render(
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 6280e82fba653354c01bb4940fcfab0d23348a49..0bc1d839966529a621c18c59eaf7ce7e74696686 100644
+index 26bc47321660087436aa3dbba6b875486b00e2f8..b00ee9f10b8de009b8df605bad27e227af62739c 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -969,7 +969,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
@@ -137,12 +139,13 @@ index 6280e82fba653354c01bb4940fcfab0d23348a49..0bc1d839966529a621c18c59eaf7ce7e
                    )}
                  >
                    {pendingSync ? (
-@@ -1437,29 +1445,67 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1437,30 +1445,69 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                        <AlarmClockOffIcon className="mb-px size-3" />
                      </button>
                    )
 -                ) : !props.settlementSupported ? null : variantAction === "unsettle" ? (
 -                  <SharedTooltipTrigger
+-                    side="right"
 -                    render={
 -                      <button
 -                        type="button"
@@ -163,6 +166,7 @@ index 6280e82fba653354c01bb4940fcfab0d23348a49..0bc1d839966529a621c18c59eaf7ce7e
 +                ) : variantAction === "unsettle" ? (
 +                  !props.settlementSupported ? null : (
 +                    <SharedTooltipTrigger
++                      side="right"
 +                      render={
 +                        <button
 +                          type="button"
@@ -204,6 +208,7 @@ index 6280e82fba653354c01bb4940fcfab0d23348a49..0bc1d839966529a621c18c59eaf7ce7e
 +                    />
 +                    {props.settlementSupported ? (
 +                      <SharedTooltipTrigger
++                        side="right"
 +                        render={
 +                          <button
 +                            type="button"
@@ -225,9 +230,9 @@ index 6280e82fba653354c01bb4940fcfab0d23348a49..0bc1d839966529a621c18c59eaf7ce7e
 +                  </span>
 +                ) : props.settlementSupported ? (
                    <SharedTooltipTrigger
+                     side="right"
                      render={
-                       <button
-@@ -1481,7 +1527,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1483,7 +1530,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                    >
                      <CheckIcon className="size-3" />
                    </SharedTooltipTrigger>

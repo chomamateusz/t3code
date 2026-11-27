@@ -98,7 +98,7 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  create mode 100644 apps/server/src/provider/fleetProxyLimits.ts
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index 96d5968a7b57bb51cc6389177c576a789d6a3d71..9fbfb23410f00a9adaa9e416096a9e72034e4839 100644
+index c539b215d625b350f6fafc135bc67d35b6a0d2e1..f360d66c481659c620f18b472bfac2b1a6087185 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -79,6 +79,7 @@ import * as Scope from "effect/Scope";
@@ -309,7 +309,7 @@ index 96d5968a7b57bb51cc6389177c576a789d6a3d71..9fbfb23410f00a9adaa9e416096a9e72
      Effect.gen(function* () {
        const harness = yield* makeWakeHarness;
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index ff8682ba1e97b928cd335a65ca6c881d5f96fc2d..d898c1ee6a8ac831a2941def95b93a9872995674 100644
+index 676220abe42ef4ba36783701722cc9970bc112a5..9a9b966dd9f28856243a0df8202b65b3c8083a76 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -37,6 +37,7 @@ import {
@@ -336,7 +336,7 @@ index ff8682ba1e97b928cd335a65ca6c881d5f96fc2d..d898c1ee6a8ac831a2941def95b93a98
    readonly continuationRequests?: {
      readonly offer: (
        request: ProviderContinuationRequests.ProviderContinuationRequest,
-@@ -13009,15 +13012,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13087,15 +13090,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                resetTimes.length > 0 && resetTimes.every((time) => time !== null)
                  ? resetTimes.reduce((latest, time) => (time! > latest ? time! : latest), "")
                  : null;
@@ -384,7 +384,7 @@ index ff8682ba1e97b928cd335a65ca6c881d5f96fc2d..d898c1ee6a8ac831a2941def95b93a98
              // Claude answers a steer it has not read yet as the next native turn, which echoes
              // the steer. A result without echoes cannot prove that turn will come.
              if (
-@@ -16042,7 +16069,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+@@ -16124,7 +16151,12 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
      input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
      hooks: Pick<
        ClaudeAdapterV2Options,

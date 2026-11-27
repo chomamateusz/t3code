@@ -441,10 +441,10 @@ index 10d4e2c6fab5d0cc55332e0a361a4faa789bee32..8f5d9a272d146328e8b2de90be843ba4
          <SettingsRow
            {...setting("unpin-confirmation")}
 diff --git a/apps/web/src/components/settings/settingsSearch.test.ts b/apps/web/src/components/settings/settingsSearch.test.ts
-index 3249b6762423440d5fb22feca52d5e2ef92aef61..efcf6e4559622a12ce9ce6c0af72649732878bb2 100644
+index d8a04cc149bd115b6b192edb34d86cb568e0e3fa..bdeb70069b59566975bb232ea4c7c45853028eca 100644
 --- a/apps/web/src/components/settings/settingsSearch.test.ts
 +++ b/apps/web/src/components/settings/settingsSearch.test.ts
-@@ -135,6 +135,8 @@ describe("searchSettings", () => {
+@@ -158,6 +158,8 @@ describe("searchSettings", () => {
  
    it("hides desktop-only settings from browser search", () => {
      expect(SETTINGS_SEARCH_ITEMS.some((item) => item.id === "quit-confirmation")).toBe(true);
@@ -454,7 +454,7 @@ index 3249b6762423440d5fb22feca52d5e2ef92aef61..efcf6e4559622a12ce9ce6c0af726497
      expect(searchSettings("wsl")).toEqual([]);
      expect(searchSettings("update track")).toEqual([]);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index f3d3b68f06bb2c8fd6b67710d23076dfa94d69bf..0b4f68951e7c1f5a2be42c41af709469f5a048fd 100644
+index 0121564b745b7e9cd5f68f26f1b3258d4294bc8b..aed2b6484ea837fbe4f5db022da646542538d365 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -965,6 +965,15 @@ export const SETTINGS_SEARCH_ITEMS = [

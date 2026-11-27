@@ -250,7 +250,7 @@ index 7ea6f95a7a5159dc636b48f8aa020f543ec653a8..646cee832d6d4372a0132985fe4811f7
  );
  
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index c90d1ac16252256348844a4b2fcb081bdfc0b2b3..154bd10696d88cb96ba0de6761122b5389540f7f 100644
+index a51c669af98ff1c6a0587c7c73ac41006bdbaf6f..2aff748f2e300af2f0725e6ca4fb083c6381cf24 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -32,6 +32,7 @@ import {
@@ -285,7 +285,7 @@ index c90d1ac16252256348844a4b2fcb081bdfc0b2b3..154bd10696d88cb96ba0de6761122b53
      case "runtime-request.respond":
      case "runtime-request.delivery.fail":
      case "thread.user-input.dismiss":
-@@ -12638,12 +12642,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12666,12 +12670,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: editProblem,
        });
      }
@@ -298,7 +298,7 @@ index c90d1ac16252256348844a4b2fcb081bdfc0b2b3..154bd10696d88cb96ba0de6761122b53
      let updatedRun =
        command.modelSelection === undefined
          ? queuedRun
-@@ -12660,7 +12659,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12688,7 +12687,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        updatedRun = queued;
      }
      if (updatedRun !== queuedRun) {
@@ -310,7 +310,7 @@ index c90d1ac16252256348844a4b2fcb081bdfc0b2b3..154bd10696d88cb96ba0de6761122b53
          type: "run.updated",
          threadId: command.threadId,
          runId: queuedRun.id,
-@@ -12670,41 +12672,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12698,41 +12700,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          payload: updatedRun,
        });
      }
@@ -361,7 +361,7 @@ index c90d1ac16252256348844a4b2fcb081bdfc0b2b3..154bd10696d88cb96ba0de6761122b53
      // Thread deletion only cleans files the thread still references.
      const keptAttachmentIds = new Set(
        (command.attachments ?? queuedMessage.attachments).map((attachment) => attachment.id),
-@@ -12729,6 +12709,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12757,6 +12737,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
      }
    });
  
@@ -490,7 +490,7 @@ index c90d1ac16252256348844a4b2fcb081bdfc0b2b3..154bd10696d88cb96ba0de6761122b53
    const subagentCount = (threadId: ThreadId) =>
      projectionStore
        .getSubagentCount(threadId)
-@@ -16426,6 +16528,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16455,6 +16557,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "run.output.submit":
          yield* dispatchRunOutputSubmit(command, events);
          break;
@@ -500,7 +500,7 @@ index c90d1ac16252256348844a4b2fcb081bdfc0b2b3..154bd10696d88cb96ba0de6761122b53
        case "checkpoint.rollback":
          yield* dispatchCheckpointRollback(command, events, effects);
          break;
-@@ -16666,7 +16771,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16695,7 +16800,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                ),
              );
            if (
@@ -929,7 +929,7 @@ index 645942fb818da2f27b1d34d5d125b58cf9db9a9d..fa72dda9b8b1973b6dd7bc3ec0ad9fa6
            secretReferences: true,
            secretRequestReferences: true,
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index e666f5ea7195e4f9c2c2c92d5f2c3b4dcece8623..d55bbac6aa2324e94554d84ae851a6ee383b168a 100644
+index 55839853d5d9f975de02ab13e7613056c6dbad68..b9fe163c13fa21e773c189d8d6ed3b3a943f0de2 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
 @@ -2977,6 +2977,8 @@ export default function ChatView(props: ChatViewProps) {
@@ -1484,10 +1484,10 @@ index ca4118e0ff28b134895bf2dd019dd201012eef97..a9e796dad4a19d8ac1a52e29358f6ea6
                providerThreads: [],
                providerSessions: [
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index 5be27ee4fd1fe1f40c44389bc04ec83369e97fd3..385bd0a5542bea4e64f4fd9550c1d8084c583f2c 100644
+index 21da2f863f9feb50590517c7cff85d66cf0bcc02..c5025881c7f593ac3803d10cbbede0dd15086cbc 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-@@ -462,6 +462,7 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+@@ -464,6 +464,7 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
    "composer.dictation": msg("Composer: Start or Finish Dictation"),
    "thread.steerQueuedMessage": msg("Queue: Send First Queued Message"),
    "thread.editQueuedMessage": msg("Queue: Edit Last Queued Message"),
@@ -2030,10 +2030,10 @@ index 855afb74013a532ff6f824c7480ae7775ab68c98..402c8f35d4a0cc0577a47ca11f69c5d3
    "thread.next",
    "thread.copyReference",
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index 9064d5bd19fbb9d11927729f0c7eecb1eafa4cfc..844926c2a8eee4b8ca526982cc753be385fe51b5 100644
+index ded60ba899b37e849112706a394e761dba35a9f0..9fee931582a7a5707a1d362d9ab8c97c64cf0095 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
-@@ -3744,6 +3744,13 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3749,6 +3749,13 @@ export const OrchestrationV2Command = Schema.Union([
      // Replaces all attachments; absent preserves them for older clients editing text.
      attachments: Schema.optional(Schema.Array(ChatAttachment)),
    }),
@@ -2048,10 +2048,10 @@ index 9064d5bd19fbb9d11927729f0c7eecb1eafa4cfc..844926c2a8eee4b8ca526982cc753be3
      type: Schema.Literal("runtime-request.respond"),
      commandId: CommandId,
 diff --git a/packages/contracts/src/server.ts b/packages/contracts/src/server.ts
-index 94933a71d6e76413fd3731e1bacec50563902a6b..d32572d369c74d0acea96d70dc632a2e3b5ad54b 100644
+index a3476003afb41687579374b9d54389aaa6474ecd..53989369223d1794f72898ff53776079c6ff33e1 100644
 --- a/packages/contracts/src/server.ts
 +++ b/packages/contracts/src/server.ts
-@@ -775,6 +775,7 @@ export const ServerConfig = Schema.Struct({
+@@ -777,6 +777,7 @@ export const ServerConfig = Schema.Struct({
    threadFind: Schema.optionalKey(Schema.Boolean),
    threadFindProgressive: Schema.optionalKey(Schema.Boolean),
    featureFlags: Schema.optionalKey(ServerFeatureFlags),

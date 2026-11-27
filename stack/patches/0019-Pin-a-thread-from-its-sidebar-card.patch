@@ -42,10 +42,10 @@ Port to 4c8a324e8f: upstream a03c43363b (#43206) folded the Pin and reorder thre
  4 files changed, 32 insertions(+), 1 deletion(-)
 
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 1463f9d56a6003f05e6cc5f9cd4a4beb9ef19f81..17a3ebe123bdb2bc42ad422d4d282b9956dc1b65 100644
+index 8501acd10840879a9e8747a3c33c6099243ca8b3..f7883260a1f3b24227e93f17a8e76471e9cd0701 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -3574,6 +3574,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3576,6 +3576,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                            onUnsettle={attemptUnsettle}
                            onSnooze={attemptSnooze}
                            onUnsnooze={attemptUnsnooze}
@@ -66,7 +66,7 @@ index 7707afbbb31d28cfcbfee4dd3e7380a16200d7d2..8e37eeabc0b22914e0f0f58df59a3964
          onAcknowledgeWoke={noop}
          onReadAction={noop}
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index a294f0131617ccb8f0a6c8c813686e41d56e7991..daeaaa1a4e003fa66cf3f287de91b2c5bb44b192 100644
+index fb99ed8b2b398a4f4510ccd7c6fa8c86e0a48aa7..09d1c47bb6ed53bd8dbcd7b4d27f4d6cb1ea6a9a 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -695,6 +695,7 @@ type SidebarThreadRowProps = {
@@ -125,7 +125,7 @@ index a294f0131617ccb8f0a6c8c813686e41d56e7991..daeaaa1a4e003fa66cf3f287de91b2c5
  
    const diff = latestRunDiff(thread);
    // Only the trailing icons would remain, so the row moves them to the title line instead.
-@@ -1640,6 +1668,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1643,6 +1671,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
              {/* Left of the status slot, the pin would slide when hover swaps the
                  label for the wider row controls. */}
              {pinIndicator}

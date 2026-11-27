@@ -224,7 +224,7 @@ index d31d96c9517b384b0ccf6a18b110a3a1fc19a018..8160be91b63cc78e5d88525218283b06
    "approval",
    "input",
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index eb52beccf31332efc589d49721d451273cd95498..321c871d9571f36ad05fe6958f0a8db49905353c 100644
+index 0ba7e1a738b93af6897fd2bd446787d3552cbf70..b5b0820b429b36539efb430e10cfcadfe63ffb44 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -142,6 +142,7 @@ import {
@@ -251,7 +251,7 @@ index eb52beccf31332efc589d49721d451273cd95498..321c871d9571f36ad05fe6958f0a8db4
      archiveThread,
      deleteThread,
    } = useThreadActions();
-@@ -1053,6 +1056,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1052,6 +1055,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
    const rangeSelectTo = useThreadSelectionStore((s) => s.rangeSelectTo);
    const acknowledgeWoke = useAcknowledgeThreadWoke();
@@ -264,7 +264,7 @@ index eb52beccf31332efc589d49721d451273cd95498..321c871d9571f36ad05fe6958f0a8db4
    // A Settings or Usage modal keeps the thread behind it current.
    const routeTarget = useShownThreadRouteTarget().shownTarget;
    const routeDraftThread = useComposerDraftStore((store) =>
-@@ -2889,8 +2898,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2891,8 +2900,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                isSnoozed,
                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
                isRegeneratingTitle,
@@ -274,7 +274,7 @@ index eb52beccf31332efc589d49721d451273cd95498..321c871d9571f36ad05fe6958f0a8db4
                canShareWithGuest: appAtomRegistry.get(
                  canShareWithGuestAtom(threadRef.environmentId),
                ),
-@@ -3039,8 +3048,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3041,8 +3050,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              if (toast) toastManager.add(toast);
              return;
            }
@@ -285,7 +285,7 @@ index eb52beccf31332efc589d49721d451273cd95498..321c871d9571f36ad05fe6958f0a8db4
              return;
            case "copy-path":
              if (!threadWorkspacePath) {
-@@ -3550,6 +3560,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3552,6 +3562,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                            onUnsnooze={attemptUnsnooze}
                            onUnpin={attemptUnpin}
                            onAcknowledgeWoke={acknowledgeWoke}
@@ -306,7 +306,7 @@ index 39abba5e5b808c359db5300302d07018279ecb74..7707afbbb31d28cfcbfee4dd3e7380a1
        <li>Outside</li>
      </ul>
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 4d3431f8af960c84b9cc9226f86074970f4ef23b..641116794cce1019225e4e94572ec5dea2639d4a 100644
+index 5485f7bdc44c1124d1f796786acc2c9499688e72..abf6d62b222b27192d5c1a1c4fa4286eb35f2a01 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -50,6 +50,8 @@ import {
@@ -406,7 +406,7 @@ index 4d3431f8af960c84b9cc9226f86074970f4ef23b..641116794cce1019225e4e94572ec5de
    const handleSettleClick = (event: ReactMouseEvent) => {
      event.preventDefault();
      event.stopPropagation();
-@@ -1679,7 +1725,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1682,7 +1728,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                      <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
                    )}
                  </span>
@@ -418,7 +418,7 @@ index 4d3431f8af960c84b9cc9226f86074970f4ef23b..641116794cce1019225e4e94572ec5de
                    <span
                      className={cn(
                        // Mouse clicks leave Settle focused; focus-within would pin controls over
-@@ -1707,6 +1756,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1710,6 +1759,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                          <XIcon className="size-3.5" />
                        </SharedTooltipTrigger>
                      ) : null}

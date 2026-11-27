@@ -48,6 +48,8 @@ Port to 0085217d1b: upstream acd4fc67b9 (#42884, Labs device preferences read-on
 
 Port to 4c8a324e8f: upstream a03c43363b (#43206) condensed the Group threads by project section of docs/user/thread-sidebar.md into one paragraph without the folder count and pen-button sentences. This commit's additions now sit in that paragraph: folders follow the project icon order, folder threads use the full cards, Option/Alt-click or Alt+Enter toggles every folder, and a closed folder shows its project's badge. Code unchanged.
 
+Port to ce2611312d: SidebarProjectFolderHeader.tsx: upstream 59e80b72ca (#43802, folder names no longer run under the new-thread button) wraps the hidden-thread count in a span that widens to the new-thread button; this commit's badge and its screen-reader description sit before that span in place of upstream's folder dot, as before. The change itself is unchanged.
+
 Files:
 apps/web:
 - apps/web/src/components/Sidebar.browser.test.tsx
@@ -519,7 +521,7 @@ index a2b1d06a850333b97d1a3c3ac42cb01f772ec65e..d31d96c9517b384b0ccf6a18b110a3a1
   * Boring sidebar folders. Folders follow `groups` order and threads keep their
   * input order. A project with no threads gets a folder only when `keepEmpty` says so.
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 1f64f9f9fd8f2364bbd8124dbe67093afd15cebc..eb52beccf31332efc589d49721d451273cd95498 100644
+index 35dfadb0ff7ab19984b9808442a0c4fc7670fa1a..0ba7e1a738b93af6897fd2bd446787d3552cbf70 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -124,12 +124,18 @@ import {
@@ -632,7 +634,7 @@ index 1f64f9f9fd8f2364bbd8124dbe67093afd15cebc..eb52beccf31332efc589d49721d45127
    const newThreadContext = useHandleNewThread();
    // Row callbacks capture only the handler; the rest of the context changes with the route.
    const { handleNewThread } = newThreadContext;
-@@ -1023,23 +1067,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1022,23 +1066,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    const setPersistedProjectScopeKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
    const persistedProjectExcludeKeys = useUiStateStore((store) => store.sidebarProjectExcludeKeys);
    const projectFilterMode = useUiStateStore((store) => store.sidebarProjectFilterMode);
@@ -660,7 +662,7 @@ index 1f64f9f9fd8f2364bbd8124dbe67093afd15cebc..eb52beccf31332efc589d49721d45127
    const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
    const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
    // Hold dropped rows until server placement is confirmed; block another pickup from replacing the hold.
-@@ -1106,11 +1143,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1105,11 +1142,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
    // A scope whose project is gone reads as all projects once every snapshot has
    // loaded. The stored keys are left alone, so the scope returns with its project.
    const scopeGroups = pickableProjectGroups(projectGroups);
@@ -672,7 +674,7 @@ index 1f64f9f9fd8f2364bbd8124dbe67093afd15cebc..eb52beccf31332efc589d49721d45127
    const storedProjectSelection = {
      include: persistedProjectScopeKeys,
      exclude: persistedProjectExcludeKeys,
-@@ -1466,6 +1498,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1465,6 +1497,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      toggleWorkingShelf,
      projectFolders,
      toggleProjectFolder,
@@ -680,7 +682,7 @@ index 1f64f9f9fd8f2364bbd8124dbe67093afd15cebc..eb52beccf31332efc589d49721d45127
      renderedSettledThreads,
      visibleSnoozedThreads,
      visibleWorkingThreads,
-@@ -1491,7 +1524,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1490,7 +1523,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      departingThreadKey,
      folderGroups: boringSidebarEnabled
        ? [
@@ -694,7 +696,7 @@ index 1f64f9f9fd8f2364bbd8124dbe67093afd15cebc..eb52beccf31332efc589d49721d45127
            ...visibleProjectGroups.filter((project) => project.archived),
          ]
        : null,
-@@ -3420,13 +3458,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3422,13 +3460,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                        const threadKey = scopedThreadKey(
                          scopeThreadRef(thread.environmentId, thread.id),
                        );
@@ -710,7 +712,7 @@ index 1f64f9f9fd8f2364bbd8124dbe67093afd15cebc..eb52beccf31332efc589d49721d45127
                            ? "card"
                            : "slim";
                        return (
-@@ -3441,6 +3474,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3443,6 +3476,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                            }
                            thread={thread}
                            variant={rowVariant}
@@ -718,7 +720,7 @@ index 1f64f9f9fd8f2364bbd8124dbe67093afd15cebc..eb52beccf31332efc589d49721d45127
                            navigationParent={
                              folderRow ??
                              (section === "working" || section === "snoozed" || section === "settled"
-@@ -3550,6 +3584,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3552,6 +3586,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                group={folder.group}
                                collapsed={folder.collapsed}
                                hiddenThreads={folder.hiddenThreads}
@@ -806,7 +808,7 @@ index 1c5df2b06d70412e027694a10198358438f36c37..01245a32a5416c23547e7f0a1809c92e
  function GuestLinksRowWithSignIn() {
    const searchableSetting = useSearchableSetting();
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 0b4f68951e7c1f5a2be42c41af709469f5a048fd..5cd6f5e872d6c30932510b63f1fee9f1435ebd04 100644
+index aed2b6484ea837fbe4f5db022da646542538d365..926932c7f8b402f64d892d8c7faf47e334ed45b9 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -512,22 +512,13 @@ export const SETTINGS_SEARCH_ITEMS = [
@@ -834,7 +836,7 @@ index 0b4f68951e7c1f5a2be42c41af709469f5a048fd..5cd6f5e872d6c30932510b63f1fee9f1
      ],
    },
 diff --git a/apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx b/apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx
-index 8c4f6131dff6ae689c608ab4879a55ec19935c43..6d5fbd9aa84be8e947316e6b36ccc543637d19b2 100644
+index 489aebbf0480d1d0dbd622778c522b6c21f22856..a3ca02e0dec96e1c49521422e341dc01d0af9b2c 100644
 --- a/apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx
 +++ b/apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx
 @@ -1,71 +1,74 @@
@@ -954,8 +956,8 @@ index 8c4f6131dff6ae689c608ab4879a55ec19935c43..6d5fbd9aa84be8e947316e6b36ccc543
 +        messages,
        )
      : null;
-   return (
-@@ -77,7 +80,12 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
+   const hasCount = collapsed && hiddenThreads.length > 0;
+@@ -78,7 +81,12 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
          type="button"
          data-sidebar-row={rowId}
          aria-expanded={!collapsed}
@@ -969,7 +971,7 @@ index 8c4f6131dff6ae689c608ab4879a55ec19935c43..6d5fbd9aa84be8e947316e6b36ccc543
          onContextMenu={(event) => {
            event.preventDefault();
            props.onContextMenu(
-@@ -86,17 +94,14 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
+@@ -87,17 +95,14 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
              contextMenuSourceOf(event),
            );
          }}
@@ -988,10 +990,10 @@ index 8c4f6131dff6ae689c608ab4879a55ec19935c43..6d5fbd9aa84be8e947316e6b36ccc543
 -        ) : null}
 +        <SidebarThreadBadge badge={badge} />
 +        {badge ? <span className="sr-only">, {badge.description}</span> : null}
-         {collapsed && hiddenThreads.length > 0 ? (
-           <span className="shrink-0 text-xs tabular-nums text-sidebar-muted-foreground group-hover/project-folder:invisible group-has-[[data-sidebar-action-for]:focus]/project-folder:invisible pointer-coarse:invisible">
-             {hiddenThreads.length}
-@@ -135,4 +140,4 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
+         {/* Widens to the new-thread button while it shows; empty, it also gives back its flex gap. */}
+         <span
+           className={cn(
+@@ -145,4 +150,4 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
        </span>
      </li>
    );
@@ -1237,7 +1239,7 @@ index 0000000000000000000000000000000000000000..db439e67964e4dea091c47376eead71c
 +    previous.badge?.description === next.badge?.description,
 +);
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 0bc1d839966529a621c18c59eaf7ce7e74696686..4d3431f8af960c84b9cc9226f86074970f4ef23b 100644
+index b00ee9f10b8de009b8df605bad27e227af62739c..5485f7bdc44c1124d1f796786acc2c9499688e72 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -609,6 +609,7 @@ type SidebarThreadRowProps = {
@@ -1248,7 +1250,7 @@ index 0bc1d839966529a621c18c59eaf7ce7e74696686..4d3431f8af960c84b9cc9226f8607497
    variantAction: SidebarSweepAction;
    settlementSupported: boolean;
    snoozeSupported: boolean;
-@@ -1549,6 +1550,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1552,6 +1553,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
        className={cn(
          "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
          metaLineEmpty && "[contain-intrinsic-size:auto_60px]",
@@ -1257,7 +1259,7 @@ index 0bc1d839966529a621c18c59eaf7ce7e74696686..4d3431f8af960c84b9cc9226f8607497
        )}
      >
 diff --git a/apps/web/src/index.css b/apps/web/src/index.css
-index 7b7f83e80b2a701e7a3afa10f7b847a447967278..9b7785a1510d4d0d9db9ecb6783d1eacc87affff 100644
+index 5f80057be572e85ff6e7be4a55903fcd5d71a7e5..5c98410efab40782a4f217a3c660003ec02ffc91 100644
 --- a/apps/web/src/index.css
 +++ b/apps/web/src/index.css
 @@ -109,6 +109,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil

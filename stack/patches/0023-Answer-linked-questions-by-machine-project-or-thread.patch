@@ -174,6 +174,8 @@ Port to 0085217d1b: agentContextBudget.json: mcpToolListJsonBytes recomputed wit
 
 Port to 4c8a324e8f: docs/user/remote-access.md (rewritten for upstream a03c43363b, #43206; see the previous commit's port note): the three levels are a numbered list at the top of Let linked machines ask a thread, followed by Choosing and Never answering bullets; the Asking, Where answers go and Limits bullets and the Limit links into a machine paragraph carry this commit's list size, asked-thread, any-level and linkedQuestionsAnswerByDefault wording. Code unchanged; ChatView.tsx merged cleanly with upstream #43162 and #43205.
 
+Port to ce2611312d: agentContextBudget.json takes upstream 266e92fa9d's (#39800) codexAdditionalContextBytes 7814; mcpToolListJsonBytes stays 63528 as AgentContextBudget.test.ts measures it on the carried tree. No upstream migration up to ce2611312d (the newest is still 119_WorkflowRunSubject) rebuilds projection_projects or orchestration_v2_projection_threads, so the linked_questions column is still added at store start and the threads upsert still writes payload_json through THREAD_PAYLOAD_KEEPING_RESTORED_OFF. The change itself is unchanged.
+
 Files:
 - apps/mobile:
   src/features/home/HomeScreen.tsx, src/features/home/useThreadListActions.ts,
@@ -582,10 +584,10 @@ index fd89e365b43371ee3ee4d65136a8ca19dc9dfe3d..d0c24c3038adbd4663178474d2dc91d6
        handleUnsettle,
        handleUnsnooze,
 diff --git a/apps/mobile/src/state/use-thread-selection.ts b/apps/mobile/src/state/use-thread-selection.ts
-index 08be4a407e2f826f7d2f05a1b7d3d1ec751721d8..60a57a74a68565475478f2187a1fdac9f9e09025 100644
+index 442ce6295b40f6a470442c1cdda7c4aba4bfc879..e3f81bfc31bac3406c2386bf7559b422a20836fa 100644
 --- a/apps/mobile/src/state/use-thread-selection.ts
 +++ b/apps/mobile/src/state/use-thread-selection.ts
-@@ -107,6 +107,7 @@ function threadDetailToShell(
+@@ -108,6 +108,7 @@ function threadDetailToShell(
      activeOrderKey: thread.activeOrderKey,
      autoSettleDisabledAt: thread.autoSettleDisabledAt,
      linkedQuestionsEnabledAt: thread.linkedQuestionsEnabledAt,
@@ -1373,7 +1375,7 @@ index ac7cb9c714d88942da0a5a17c261017fb0a2b9bc..f6094db10d65ef97895fa60e9de2ff81
    Effect.gen(function* () {
      const orchestrator = yield* Orchestrator.OrchestratorV2;
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 8d8d327006b7e1ee5e77d7cb0c105bdfbce2ac28..2e880ce5234801eb954a9a2390f57a42235652b7 100644
+index a5ab191e9cd368b9c333a5e629a4fd8c9a348593..e0cf2fdcacb1aef0a997e873a182594619cee7a5 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -13,7 +13,7 @@ import {
@@ -1451,7 +1453,7 @@ index 8d8d327006b7e1ee5e77d7cb0c105bdfbce2ac28..2e880ce5234801eb954a9a2390f57a42
          createdBy: command.createdBy,
          creationSource: command.creationSource,
          createdAt: now,
-@@ -16912,7 +16924,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16941,7 +16953,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        .commitCommand({
          commandId: command.commandId,
          threadId: commandThreadId(command),
@@ -1634,7 +1636,7 @@ index ee83411213a26b38d2b81f5573b55b3e039053cf..b95788a98664d9cd7b25b2592a8a5505
        }).pipe(mapError("apply"));
      },
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.test.ts b/apps/server/src/orchestration-v2/ProjectionStore.test.ts
-index 211b2c8f8935c56fd6ea9e2b8bd1f547d6a4a618..81a98bedca07b2b95a8bf8d402eb4bf214cd6198 100644
+index 10d2db4b9003294c81a23587373fa12638985313..b66c4c81e260d9e6a8b95e4096288639dd3e0de6 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.test.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.test.ts
 @@ -32,6 +32,8 @@ import {
@@ -1665,7 +1667,7 @@ index 211b2c8f8935c56fd6ea9e2b8bd1f547d6a4a618..81a98bedca07b2b95a8bf8d402eb4bf2
  
  import { layerReaderDatabase, traceSqlRouting } from "../persistence/testkit/SqliteRouting.ts";
  
-@@ -3756,6 +3763,198 @@ it.effect("SQL snapshot windows leave handoff bodies in SQLite without changing
+@@ -3784,6 +3791,198 @@ it.effect("SQL snapshot windows leave handoff bodies in SQLite without changing
    }).pipe(Effect.provide(layerTest)),
  );
  
@@ -1865,7 +1867,7 @@ index 211b2c8f8935c56fd6ea9e2b8bd1f547d6a4a618..81a98bedca07b2b95a8bf8d402eb4bf2
    Effect.gen(function* () {
      const store = yield* ProjectionStore.ProjectionStoreV2;
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.ts b/apps/server/src/orchestration-v2/ProjectionStore.ts
-index cc70589a979393cdaf8e6b1f8c11143452b77f81..3b61e4c288812a74b1bb815401f24768aae75823 100644
+index fbb2ae52a8678db62f2684dc505b2b734642a076..0e6cb4829ca1354b38d54dadc7ab2ad1a6188be4 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.ts
 @@ -1,5 +1,10 @@
@@ -1919,7 +1921,7 @@ index cc70589a979393cdaf8e6b1f8c11143452b77f81..3b61e4c288812a74b1bb815401f24768
  export type ProjectionThreadPullRequests = Pick<
    OrchestrationV2AppThread,
    "id" | "projectId" | "lineage" | "settledOverride" | "settledAt" | "pullRequests"
-@@ -666,15 +683,16 @@ export interface ProjectionStoreV2Shape {
+@@ -667,15 +684,16 @@ export interface ProjectionStoreV2Shape {
    readonly getThreadShell: (
      threadId: ThreadId,
    ) => Effect.Effect<OrchestrationV2ThreadShell | null, ProjectionStoreV2Error>;
@@ -1943,7 +1945,7 @@ index cc70589a979393cdaf8e6b1f8c11143452b77f81..3b61e4c288812a74b1bb815401f24768
    /** The linked questions asked of this thread that are not deleted: those still answering and those not archived. */
    readonly getLinkedQuestionLoad: (
      askedThreadId: ThreadId,
-@@ -2058,6 +2076,7 @@ export function threadShellFromProjection(
+@@ -2062,6 +2080,7 @@ export function threadShellFromProjection(
  
      autoSettleDisabledAt: projection.thread.autoSettleDisabledAt ?? null,
      linkedQuestionsEnabledAt: projection.thread.linkedQuestionsEnabledAt ?? null,
@@ -1951,7 +1953,7 @@ index cc70589a979393cdaf8e6b1f8c11143452b77f81..3b61e4c288812a74b1bb815401f24768
      pinOrderKey: projection.thread.pinOrderKey ?? null,
      ...(projection.thread.tags?.length ? { tags: projection.thread.tags } : {}),
      lastVisitedAt: projection.thread.lastVisitedAt,
-@@ -2367,6 +2386,7 @@ function shellFromState(input: {
+@@ -2371,6 +2390,7 @@ function shellFromState(input: {
  
      autoSettleDisabledAt: input.state.thread.autoSettleDisabledAt ?? null,
      linkedQuestionsEnabledAt: input.state.thread.linkedQuestionsEnabledAt ?? null,
@@ -1959,7 +1961,7 @@ index cc70589a979393cdaf8e6b1f8c11143452b77f81..3b61e4c288812a74b1bb815401f24768
      pinOrderKey: input.state.thread.pinOrderKey ?? null,
      ...(input.state.thread.tags?.length ? { tags: input.state.thread.tags } : {}),
      lastVisitedAt: input.state.thread.lastVisitedAt,
-@@ -2398,10 +2418,125 @@ const isInlineWorkOutput = (payloadJson: string) => {
+@@ -2402,10 +2422,125 @@ const isInlineWorkOutput = (payloadJson: string) => {
    );
  };
  
@@ -2085,7 +2087,7 @@ index cc70589a979393cdaf8e6b1f8c11143452b77f81..3b61e4c288812a74b1bb815401f24768
  
      // SQLite uses the partial conversation index of migration 082 only for this exact predicate.
      const CONVERSATION_INDEX_EXCLUDED_TYPES = sql.literal(
-@@ -2631,7 +2766,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -2635,7 +2770,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                  updated_at = excluded.updated_at,
                  archived_at = excluded.archived_at,
                  deleted_at = excluded.deleted_at,
@@ -2094,7 +2096,7 @@ index cc70589a979393cdaf8e6b1f8c11143452b77f81..3b61e4c288812a74b1bb815401f24768
              `;
                // EventSink applies committed events serially; retries retain the original membership.
                if (event.type === "thread.created" && event.payload.forkedFrom?.type === "run") {
-@@ -9847,24 +9982,46 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -9879,24 +10014,46 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        return rows[0] === undefined ? null : ThreadId.make(rows[0].thread_id);
      }, Effect.mapError(shellSnapshotReadError));
  
@@ -2146,7 +2148,7 @@ index cc70589a979393cdaf8e6b1f8c11143452b77f81..3b61e4c288812a74b1bb815401f24768
          }));
        },
        Effect.mapError(shellSnapshotReadError),
-@@ -10041,7 +10198,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -10073,7 +10230,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
        readShellSnapshot: readOnReader(readShellSnapshot),
        listOlderSettledThreads: readOnReader(listOlderSettledThreads),
        getThreadShell: readOnReader(getThreadShell),
@@ -2171,10 +2173,10 @@ index 09d34ab7e470babb6697b5f5626d67f0f2556afa..f71550309daf8bff1bf7c3c4dd791019
        findGuestShareThreadId: () => Effect.die("unused findGuestShareThreadId"),
        getThread: () => Effect.die("unused getThread"),
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.test.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.test.ts
-index 2ae04fe9d4779dc5d611bd13868d4d91b3af78d3..73600371398654f36dfacac1e0260cbb1df1dafe 100644
+index f1a6eb1e4b281e2107a3a1ab247e4e1f1a2177cc..1dbc252609d64de38859f3802fd8d03c30219d7e 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnStartService.test.ts
 +++ b/apps/server/src/orchestration-v2/ProviderTurnStartService.test.ts
-@@ -106,11 +106,14 @@ const normalize = (target: string) => {
+@@ -107,11 +107,14 @@ const normalize = (target: string) => {
    }
    return `/${parts.join("/")}`;
  };
@@ -2191,7 +2193,7 @@ index 2ae04fe9d4779dc5d611bd13868d4d91b3af78d3..73600371398654f36dfacac1e0260cbb
    );
  
  function startWithMissingWorktree(
-@@ -527,7 +530,16 @@ function makeLocalCommandHarness(input: {
+@@ -528,7 +531,16 @@ function makeLocalCommandHarness(input: {
    readonly turnStartHistory?: ReadonlyArray<OrchestrationV2TurnItem>;
    readonly linkedQuestion?: {
      readonly toollessTurns?: boolean;
@@ -2209,7 +2211,7 @@ index 2ae04fe9d4779dc5d611bd13868d4d91b3af78d3..73600371398654f36dfacac1e0260cbb
      readonly outsideQuestionThread?: boolean;
    };
    readonly previousTurn?: {
-@@ -1425,11 +1437,15 @@ function makeLocalCommandHarness(input: {
+@@ -1426,11 +1438,15 @@ function makeLocalCommandHarness(input: {
              : projection,
        ),
    );
@@ -2227,7 +2229,7 @@ index 2ae04fe9d4779dc5d611bd13868d4d91b3af78d3..73600371398654f36dfacac1e0260cbb
    } as never as OrchestrationV2ThreadShell;
    const prepareProviderHandoff = vi.fn<
      ContextHandoffService.ContextHandoffServiceV2["Service"]["prepareProviderHandoff"]
-@@ -1517,7 +1533,10 @@ function makeLocalCommandHarness(input: {
+@@ -1518,7 +1534,10 @@ function makeLocalCommandHarness(input: {
                };
              }),
          }),
@@ -2239,7 +2241,7 @@ index 2ae04fe9d4779dc5d611bd13868d4d91b3af78d3..73600371398654f36dfacac1e0260cbb
          layerNoTaskFolders,
          input.fileSystem === undefined
            ? FileSystem.layerNoop({ exists: () => Effect.succeed(true) })
-@@ -1534,11 +1553,28 @@ function makeLocalCommandHarness(input: {
+@@ -1535,11 +1554,28 @@ function makeLocalCommandHarness(input: {
              Effect.succeedSome({
                workspaceRoot: input.workspaceRoot ?? "/tmp/native-account-project",
              } as never),
@@ -2266,9 +2268,9 @@ index 2ae04fe9d4779dc5d611bd13868d4d91b3af78d3..73600371398654f36dfacac1e0260cbb
            getThreadShell: (id) => Effect.succeed(id === askedThreadId ? askedShell : null),
 +          linkedQuestionsOffRepaired: () => Effect.succeed(asked !== "defaults-before-repair"),
            getTurnStartContext,
+           getTurnItem: () => Effect.succeed(null),
            getRuntimeRecoveryProjection,
-           getRun,
-@@ -3393,6 +3429,21 @@ effectIt.effect.each(["/logout", "/compact", "/goal ship it", "Which branch is d
+@@ -3483,6 +3519,21 @@ effectIt.effect.each(["/logout", "/compact", "/goal ship it", "Which branch is d
      }),
  );
  
@@ -2290,7 +2292,7 @@ index 2ae04fe9d4779dc5d611bd13868d4d91b3af78d3..73600371398654f36dfacac1e0260cbb
  effectIt.effect.each([
    {
      refusal: "a provider that cannot turn its tools off",
-@@ -3409,6 +3460,26 @@ effectIt.effect.each([
+@@ -3499,6 +3550,26 @@ effectIt.effect.each([
      linkedQuestion: { asked: "archived", toollessTurns: true },
      message: LINKED_QUESTION_FAILURES.optedOut,
    },
@@ -2330,10 +2332,10 @@ index 8b5fbc009aae939b5968eda9e3309828810a487b..c147a4811e45d7ab5b5a65e684667b20
  );
  
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-index 4d210c06ee872e42a65b8c3e344a98acdc61c373..eb2475fbdd7251a111c3c891a707843cc2321295 100644
+index b7a4c983febfc5ddbc232c4d33a7e4f039a1b2fe..30afb22b568052f0d110510775ff8901ed045280 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
 +++ b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-@@ -373,6 +373,11 @@ export const layer: Layer.Layer<
+@@ -422,6 +422,11 @@ export const layer: Layer.Layer<
      const restoreMissingWorktree = yield* makeRestoreMissingWorktree;
      const worktreeRestore = yield* ThreadWorktreeRestore;
      const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
@@ -2345,7 +2347,7 @@ index 4d210c06ee872e42a65b8c3e344a98acdc61c373..eb2475fbdd7251a111c3c891a707843c
  
      // Build draining callbacks outside startup scope so they cannot retain full thread history.
      const makeRunControls = (input: {
-@@ -417,7 +422,7 @@ export const layer: Layer.Layer<
+@@ -466,7 +471,7 @@ export const layer: Layer.Layer<
            isCurrentAttemptInStatus("running").pipe(
              Effect.tap((current) =>
                current && input.linkedQuestionOf !== undefined
@@ -2354,7 +2356,7 @@ index 4d210c06ee872e42a65b8c3e344a98acdc61c373..eb2475fbdd7251a111c3c891a707843c
                  : Effect.void,
              ),
            ),
-@@ -788,7 +793,7 @@ export const layer: Layer.Layer<
+@@ -837,7 +842,7 @@ export const layer: Layer.Layer<
        const linkedQuestionRefusal = yield* linkedQuestionStartRefusal({
          run,
          askedThreadId: linkedQuestionOf,
@@ -2654,7 +2656,7 @@ index 73ea9e4b6f61474a7681a311bfddc0664cf2adc5..6acfdcc4ce89a2c12b0cdce978373314
    const question = ThreadManagementService.withCreationProvenance(
      {
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index 1ce2d27a56de19866d22b60e237a963e781953bf..c9699f3ee8adecba83f6102ba4c2f95515766b2f 100644
+index 8367dc749318f7dee7e58f6ba78c763b5d8bca8a..0c63edd59cfed92ee3d4bdea6de9984e78916e38 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
 @@ -99,6 +99,8 @@ export function withCreationProvenance(
@@ -3628,13 +3630,13 @@ index c5e67e2ea1aa7c166c9925d9b5eb5accc6317265..00936a672d39828a9ec3162bc18dee3e
      getById,
      getByWorkspaceRoot,
 diff --git a/apps/server/src/provider/agentContextBudget.json b/apps/server/src/provider/agentContextBudget.json
-index 90320cc755c8aaa07ef7cbf03c0cc882f2ec3ce5..35c3e9c18e29fd58437e0fd6d1c5c0e1cb379d97 100644
+index 31845b5f1304a4432cead115397ab94fec3a8b55..939fa9634f77eb4907692e6e35b8d0fc011dddcd 100644
 --- a/apps/server/src/provider/agentContextBudget.json
 +++ b/apps/server/src/provider/agentContextBudget.json
 @@ -1,5 +1,5 @@
  {
    "claudeSystemAppendBytes": 6245,
-   "codexAdditionalContextBytes": 7639,
+   "codexAdditionalContextBytes": 7814,
 -  "mcpToolListJsonBytes": 63338
 +  "mcpToolListJsonBytes": 63528
  }
@@ -3651,7 +3653,7 @@ index 9b5018adffaf43f4f95d61188bddaeaa68780876..92ef3ba2830c33ab2508d51c48157d9a
        getByWorkspaceRoot: unused,
        workspaceScanDirectory: unused,
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 954c33561a3ec4c6f7936210e792439acb7f89fd..8a828f79a45955a78255b555a4124613249909e1 100644
+index f7e8168d6724a4f6572fea92c15d4e88e147dfb2..a223c38289270afa2050c12c38d29a7d300c0dc7 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
 @@ -90,6 +90,7 @@ import {
@@ -3677,7 +3679,7 @@ index 954c33561a3ec4c6f7936210e792439acb7f89fd..8a828f79a45955a78255b555a4124613
                activeProject={activeProject ?? null}
                parentThreadLink={headerParentThreadLink}
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 5780112441c1719e1c3aba2a7d0d291ea79296d9..dd61c530c28c00754f210cbfe1d63a95d2d4ca95 100644
+index 318f3f1c6dae2bad2fb38684a5700ae4b68df42b..4d547d170091a01a4393b51dda27ba1ba9c0d099 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -143,12 +143,13 @@ import {
@@ -3708,7 +3710,7 @@ index 5780112441c1719e1c3aba2a7d0d291ea79296d9..dd61c530c28c00754f210cbfe1d63a95
  } from "./threadActionMenu.logic";
  import {
    applySidebarThreadDrop,
-@@ -1413,6 +1417,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1412,6 +1416,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      setProjectGroupPinned,
      toggleProjectGroupPin,
    } = useProjectPin();
@@ -3717,7 +3719,7 @@ index 5780112441c1719e1c3aba2a7d0d291ea79296d9..dd61c530c28c00754f210cbfe1d63a95
    const openSidebarSettings = useStableCallback(() => {
      if (isMobile) setOpenMobile(false);
      void router.navigate({ to: "/settings/labs", hash: searchableSetting("boring-sidebar").id });
-@@ -1447,6 +1453,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1446,6 +1452,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      ) => {
        const api = readLocalApi();
        if (!api) return;
@@ -3725,7 +3727,7 @@ index 5780112441c1719e1c3aba2a7d0d291ea79296d9..dd61c530c28c00754f210cbfe1d63a95
        void (async () => {
          const clicked = await settlePromise(() =>
            api.contextMenu.show(
-@@ -1460,6 +1467,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1459,6 +1466,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                        : { id: "pin", label: gt("Pin project"), icon: "pin" },
                    ]
                  : []),
@@ -3735,7 +3737,7 @@ index 5780112441c1719e1c3aba2a7d0d291ea79296d9..dd61c530c28c00754f210cbfe1d63a95
                { id: "project-settings", label: gt("Project settings"), icon: "settings" },
              ],
              position,
-@@ -1478,6 +1488,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1477,6 +1487,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            case "unpin":
              setProjectGroupPinned(group, clicked.value === "pin");
              return;
@@ -3747,7 +3749,7 @@ index 5780112441c1719e1c3aba2a7d0d291ea79296d9..dd61c530c28c00754f210cbfe1d63a95
            case "project-settings":
              openProjectSettings(group);
              return;
-@@ -2913,7 +2928,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2915,7 +2930,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                isPinned,
                isSettled,
                autoSettleEnabled: thread.autoSettleDisabledAt == null,
@@ -3756,7 +3758,7 @@ index 5780112441c1719e1c3aba2a7d0d291ea79296d9..dd61c530c28c00754f210cbfe1d63a95
                isLinkedQuestion: thread.linkedQuestionOf != null,
                isSnoozed,
                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
-@@ -3052,10 +3067,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3054,10 +3069,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              }
              return;
            }
@@ -3923,10 +3925,10 @@ index 666e774556b707bb37209c26f17bd44b820e215f..a970dc1107104b6c551442406f165b5b
          <ProjectDefaultsSettings category="project" />
          <ProjectActionsSettings />
 diff --git a/apps/web/src/components/settings/settingsSearch.test.ts b/apps/web/src/components/settings/settingsSearch.test.ts
-index b6778b3f99991b30be74c6e1ee48613a3ac37867..755d4c0d3fb1dd5add438a65731ada29959abaa1 100644
+index 5f54fcb16eb2bd1dbd7c60512143b2f1ebf0a3de..d49b94d2948fe22919aa999a49905fab06960f1e 100644
 --- a/apps/web/src/components/settings/settingsSearch.test.ts
 +++ b/apps/web/src/components/settings/settingsSearch.test.ts
-@@ -172,6 +172,7 @@ describe("searchSettings", () => {
+@@ -195,6 +195,7 @@ describe("searchSettings", () => {
        "linked-environments",
        "agent-feedback",
        "linked-environments-inbound-cap",
@@ -3934,7 +3936,7 @@ index b6778b3f99991b30be74c6e1ee48613a3ac37867..755d4c0d3fb1dd5add438a65731ada29
      ]);
      expect(available.map((item) => item.id).filter((id) => gatedIds.has(id))).toEqual([]);
    });
-@@ -205,6 +206,12 @@ describe("searchSettings", () => {
+@@ -228,6 +229,12 @@ describe("searchSettings", () => {
          filterAvailableSettingsSearchItems({ ...availability, hasPeerLinkHost: true }),
        )[0],
      ).toMatchObject({ id: "linked-environments-inbound-cap", to: "/settings/connections" });
@@ -3948,7 +3950,7 @@ index b6778b3f99991b30be74c6e1ee48613a3ac37867..755d4c0d3fb1dd5add438a65731ada29
  
    it("finds the Welcome page only where a primary computer can open it", () => {
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 628219e10a50d3277762a25b28a3f67906835d21..4ece63bad67b5337e42b380120ed3eae93f3baf3 100644
+index 234d332e3dd2f7705eaf83a9ce21dd351912595c..5fe454705f8e08dd31b37c6f6b93603a2700d078 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -1497,6 +1497,13 @@ export const SETTINGS_SEARCH_ITEMS = [
@@ -4720,7 +4722,7 @@ index ce5ff551d9404b84048239391775e38f460be435..c49f4b3d492540f5377e2875705dce00
      activeOrderKey: thread.activeOrderKey ?? null,
      ...(thread.lastVisitedAt === undefined
 diff --git a/packages/client-runtime/src/state/projectCommands.ts b/packages/client-runtime/src/state/projectCommands.ts
-index 670588b82c145ce35431f3fd1e5efb65a55d55fe..6e37dc88056fc2af2f33daa189b8113bee3fb409 100644
+index 2abd3607de359d087db6dd2960d6896aa3c20136..c2709eb65f510928989bb5ea52e275f889875f57 100644
 --- a/packages/client-runtime/src/state/projectCommands.ts
 +++ b/packages/client-runtime/src/state/projectCommands.ts
 @@ -25,10 +25,16 @@ import type { EnvironmentProject } from "./models.ts";
@@ -4749,7 +4751,7 @@ index 670588b82c145ce35431f3fd1e5efb65a55d55fe..6e37dc88056fc2af2f33daa189b8113b
    UpdateProjectInput,
  } from "../operations/commands.ts";
  
-@@ -183,6 +190,14 @@ export function createProjectEnvironmentAtoms<R, E>(
+@@ -185,6 +192,14 @@ export function createProjectEnvironmentAtoms<R, E>(
        scheduler: projectScheduler,
        concurrency: projectConcurrency,
      }),
@@ -5082,7 +5084,7 @@ index e060c7da8059e05df33e7a0e82adb72dabf94aba..3a3f9644ea781c183457d3ef9f78557d
    updatedAt: IsoDateTime,
  });
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index 51316df9442591bcbfb3688313cf654ce1056be1..c559486f6df3f52845c7a759c4242038e4ac4b71 100644
+index b8154e31d275b7b8b6037cb9bbeab8ca18baac34..0615e39eac355d073edacffe8dad0ef9cf606dd5 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
 @@ -553,6 +553,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
@@ -5093,7 +5095,7 @@ index 51316df9442591bcbfb3688313cf654ce1056be1..c559486f6df3f52845c7a759c4242038
    pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    /** Absent on threads written before tags existed; read as empty. */
-@@ -2501,6 +2502,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
+@@ -2505,6 +2506,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
    linkedQuestionsEnabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -5101,7 +5103,7 @@ index 51316df9442591bcbfb3688313cf654ce1056be1..c559486f6df3f52845c7a759c4242038
    pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
    /** Absent on threads written before tags existed; read as empty. */
-@@ -2675,6 +2677,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
+@@ -2679,6 +2681,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    linkedQuestionsEnabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
@@ -5109,7 +5111,7 @@ index 51316df9442591bcbfb3688313cf654ce1056be1..c559486f6df3f52845c7a759c4242038
    lastVisitedAt: Schema.NullOr(Schema.DateTimeUtcFromString).pipe(
      Schema.withDecodingDefault(Effect.succeed(null)),
    ),
-@@ -3139,6 +3142,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
+@@ -3143,6 +3146,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
    pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    linkedQuestionsEnabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
@@ -5117,7 +5119,7 @@ index 51316df9442591bcbfb3688313cf654ce1056be1..c559486f6df3f52845c7a759c4242038
    lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
    titleRegeneration: Schema.optional(
      Schema.NullOr(
-@@ -3366,6 +3370,10 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3370,6 +3374,10 @@ export const OrchestrationV2Command = Schema.Union([
      delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
      /** Only the server sets this, for a thread that is a workflow run's agent step. */
      workflowRun: Schema.optional(OrchestrationV2WorkflowOrigin),
@@ -5128,7 +5130,7 @@ index 51316df9442591bcbfb3688313cf654ce1056be1..c559486f6df3f52845c7a759c4242038
      importedNativeThread: Schema.optional(
        Schema.Struct({
          ref: Schema.Struct({
-@@ -3467,7 +3475,8 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3471,7 +3479,8 @@ export const OrchestrationV2Command = Schema.Union([
      type: Schema.Literal("thread.linked-questions.set"),
      commandId: CommandId,
      threadId: ThreadId,
