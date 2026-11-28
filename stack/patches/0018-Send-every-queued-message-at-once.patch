@@ -196,10 +196,10 @@ Port to 77cd243e6b: the queue browser test mocks state/environments once. Upstre
  create mode 100644 packages/shared/src/queuedMessageMergeCopy.ts
 
 diff --git a/apps/server/src/orchestration-v2/GuestShare.test.ts b/apps/server/src/orchestration-v2/GuestShare.test.ts
-index 7ea6f95a7a5159dc636b48f8aa020f543ec653a8..646cee832d6d4372a0132985fe4811f7867480b5 100644
+index 0f815ec486899196bbad731a7c6046deaff57ca1..8131088728404fd0fa7393a0c2f09b2b9d7f5b90 100644
 --- a/apps/server/src/orchestration-v2/GuestShare.test.ts
 +++ b/apps/server/src/orchestration-v2/GuestShare.test.ts
-@@ -199,7 +199,7 @@ it.effect("drops guest attribution that a client sends on its own message", () =
+@@ -200,7 +200,7 @@ it.effect("drops guest attribution that a client sends on its own message", () =
    }).pipe(Effect.provide(layerTest)),
  );
  
@@ -208,7 +208,7 @@ index 7ea6f95a7a5159dc636b48f8aa020f543ec653a8..646cee832d6d4372a0132985fe4811f7
    Effect.gen(function* () {
      const orchestrator = yield* setup;
      const projections = yield* ProjectionStore.ProjectionStoreV2;
-@@ -254,10 +254,39 @@ it.effect("keeps a queued guest message unchanged when the owner tries to edit i
+@@ -255,10 +255,39 @@ it.effect("keeps a queued guest message unchanged when the owner tries to edit i
        text: "My own words",
      });
      assert.isTrue(Exit.isFailure(yield* Effect.exit(edit)));
@@ -250,7 +250,7 @@ index 7ea6f95a7a5159dc636b48f8aa020f543ec653a8..646cee832d6d4372a0132985fe4811f7
  );
  
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index a51c669af98ff1c6a0587c7c73ac41006bdbaf6f..2aff748f2e300af2f0725e6ca4fb083c6381cf24 100644
+index a649d22aedca883df686d1a9611e7b523a10e447..4e38e33c6339e5630369e8513ded647e1cc83059 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -32,6 +32,7 @@ import {
@@ -285,7 +285,7 @@ index a51c669af98ff1c6a0587c7c73ac41006bdbaf6f..2aff748f2e300af2f0725e6ca4fb083c
      case "runtime-request.respond":
      case "runtime-request.delivery.fail":
      case "thread.user-input.dismiss":
-@@ -12666,12 +12670,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12740,12 +12744,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          cause: editProblem,
        });
      }
@@ -298,7 +298,7 @@ index a51c669af98ff1c6a0587c7c73ac41006bdbaf6f..2aff748f2e300af2f0725e6ca4fb083c
      let updatedRun =
        command.modelSelection === undefined
          ? queuedRun
-@@ -12688,7 +12687,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12762,7 +12761,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        updatedRun = queued;
      }
      if (updatedRun !== queuedRun) {
@@ -310,7 +310,7 @@ index a51c669af98ff1c6a0587c7c73ac41006bdbaf6f..2aff748f2e300af2f0725e6ca4fb083c
          type: "run.updated",
          threadId: command.threadId,
          runId: queuedRun.id,
-@@ -12698,41 +12700,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12772,41 +12774,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          payload: updatedRun,
        });
      }
@@ -361,7 +361,7 @@ index a51c669af98ff1c6a0587c7c73ac41006bdbaf6f..2aff748f2e300af2f0725e6ca4fb083c
      // Thread deletion only cleans files the thread still references.
      const keptAttachmentIds = new Set(
        (command.attachments ?? queuedMessage.attachments).map((attachment) => attachment.id),
-@@ -12757,6 +12737,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -12831,6 +12811,128 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
      }
    });
  
@@ -490,7 +490,7 @@ index a51c669af98ff1c6a0587c7c73ac41006bdbaf6f..2aff748f2e300af2f0725e6ca4fb083c
    const subagentCount = (threadId: ThreadId) =>
      projectionStore
        .getSubagentCount(threadId)
-@@ -16455,6 +16557,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16539,6 +16641,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        case "run.output.submit":
          yield* dispatchRunOutputSubmit(command, events);
          break;
@@ -500,7 +500,7 @@ index a51c669af98ff1c6a0587c7c73ac41006bdbaf6f..2aff748f2e300af2f0725e6ca4fb083c
        case "checkpoint.rollback":
          yield* dispatchCheckpointRollback(command, events, effects);
          break;
-@@ -16695,7 +16800,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -16779,7 +16884,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                ),
              );
            if (
@@ -510,7 +510,7 @@ index a51c669af98ff1c6a0587c7c73ac41006bdbaf6f..2aff748f2e300af2f0725e6ca4fb083c
              cause._tag === "OrchestratorDispatchError"
            ) {
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index 539bd8dd31200f95196655bf3dbce26b4b8f6399..2df5138a8d433be66b2687fcdf4aa7b9e15d30da 100644
+index 79ec521f91e85f087c0639c074a69827b79c11e3..fc687d2a9ad1a22cfd69ddea380272fa78bb8a5e 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 @@ -10,6 +10,8 @@ import { assert, it } from "@effect/vitest";
@@ -917,7 +917,7 @@ index 61fb57ada454ed0b1a9a309eb066ff03db841f86..33aa46863d0b7f36613f6f8b959933e7
    "thread.guest-message.dismiss": () => ({ feature: "guest_message.dismiss" }),
  };
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 645942fb818da2f27b1d34d5d125b58cf9db9a9d..fa72dda9b8b1973b6dd7bc3ec0ad9fa62c4876a8 100644
+index 6bb03fca13742e536cb61f4b055c69d7cbce9778..1d2099906b72ddd4f469b3b04b972680ff6ba333 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -1966,6 +1966,7 @@ export const layerWsRpc = (
@@ -929,10 +929,10 @@ index 645942fb818da2f27b1d34d5d125b58cf9db9a9d..fa72dda9b8b1973b6dd7bc3ec0ad9fa6
            secretReferences: true,
            secretRequestReferences: true,
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 55839853d5d9f975de02ab13e7613056c6dbad68..b9fe163c13fa21e773c189d8d6ed3b3a943f0de2 100644
+index 812d653a77f4f96988699490a6fbaa4af869fa93..093b5ec51af2fdb539dc2dd16b9bf7725a826291 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -2977,6 +2977,8 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2989,6 +2989,8 @@ export default function ChatView(props: ChatViewProps) {
          routeKind !== "draft" &&
          composerRef.current?.isCaretAtStart() === true &&
          queuedRunsControlRef.current?.editLatest(event.repeat) === true,
@@ -941,7 +941,7 @@ index 55839853d5d9f975de02ab13e7613056c6dbad68..b9fe163c13fa21e773c189d8d6ed3b3a
        "thread.stop": ({ event }) => {
          if (!canInterruptRunningThread) return false;
          if (!event.repeat) void onInterruptStable();
-@@ -3275,6 +3277,11 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3283,6 +3285,11 @@ export default function ChatView(props: ChatViewProps) {
            editShortcutLabel={shortcutLabelForCommand(keybindings, "thread.editQueuedMessage", {
              context: { composerFocus: true },
            })}
@@ -1468,10 +1468,10 @@ index c01fd90e5c22ebc51d76c17d4d5e880c888bb99c..f79d9c50c2b81889dc63d9ad2528767f
        ) : null}
      </section>
 diff --git a/apps/web/src/components/chat/useQueuedRunEdit.browser.test.tsx b/apps/web/src/components/chat/useQueuedRunEdit.browser.test.tsx
-index ca4118e0ff28b134895bf2dd019dd201012eef97..a9e796dad4a19d8ac1a52e29358f6ea6f09393be 100644
+index e1c2717ca35a5d21a432a868ae56a2c687c985be..db0396058977fe1c887ce1942ae4bb28cdebad9f 100644
 --- a/apps/web/src/components/chat/useQueuedRunEdit.browser.test.tsx
 +++ b/apps/web/src/components/chat/useQueuedRunEdit.browser.test.tsx
-@@ -82,7 +82,10 @@ vi.mock("../../state/threads", async () => {
+@@ -84,7 +84,10 @@ vi.mock("../../state/threads", async () => {
            return {
              projection: {
                thread: { id: ref.threadId, activeProviderThreadId: null },
@@ -1484,10 +1484,10 @@ index ca4118e0ff28b134895bf2dd019dd201012eef97..a9e796dad4a19d8ac1a52e29358f6ea6
                providerThreads: [],
                providerSessions: [
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index 21da2f863f9feb50590517c7cff85d66cf0bcc02..c5025881c7f593ac3803d10cbbede0dd15086cbc 100644
+index 5d21c15045a951a9c8c17626b9a470238f34d066..e9da671c79faf66ed44f6ea133830d672497fd69 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-@@ -464,6 +464,7 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+@@ -475,6 +475,7 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
    "composer.dictation": msg("Composer: Start or Finish Dictation"),
    "thread.steerQueuedMessage": msg("Queue: Send First Queued Message"),
    "thread.editQueuedMessage": msg("Queue: Edit Last Queued Message"),
@@ -1496,7 +1496,7 @@ index 21da2f863f9feb50590517c7cff85d66cf0bcc02..c5025881c7f593ac3803d10cbbede0dd
    "sidebar.toggle": msg("Sidebar: Toggle"),
    "navigation.back": msg("Navigation: Back"),
 diff --git a/docs/user/composer.md b/docs/user/composer.md
-index abcb52e5fb853da1b2f0c3f207512979586c2804..e3c03694112ab87ae5f39abbc1873960e98028f9 100644
+index cd2c032feba737afac81d20419aa43c5e1ae9b81..d55b8b7eff949df3ff0bd074f0ca091441352fe2 100644
 --- a/docs/user/composer.md
 +++ b/docs/user/composer.md
 @@ -52,6 +52,11 @@ Shortcuts while a turn is running:
@@ -1512,7 +1512,7 @@ index abcb52e5fb853da1b2f0c3f207512979586c2804..e3c03694112ab87ae5f39abbc1873960
  
  ## Queue messages offline on mobile
 diff --git a/docs/user/keybindings.md b/docs/user/keybindings.md
-index fc2f5f04509242d72034bd7432b9f3bf208472ba..f87357072ce5d1ace5e37e474fcf9e86b010cb43 100644
+index b2562b869d3c1294a87ca9c322035548d978ab83..4a62a0acbfae8f1d6be381dd14ac58bcd627d71d 100644
 --- a/docs/user/keybindings.md
 +++ b/docs/user/keybindings.md
 @@ -14,6 +14,7 @@ To free a default shortcut, choose **Unassign** from its row menu (**Reset to de
@@ -1524,7 +1524,7 @@ index fc2f5f04509242d72034bd7432b9f3bf208472ba..f87357072ce5d1ace5e37e474fcf9e86
  | Pick host / environment     | `mod+shift+h`     | Bind **Composer: Cycle Host** to step without a menu.              |
  | Pick effort                 | `mod+shift+e`     | Bind **Increase/Decrease Effort** to step without a menu.          |
 diff --git a/packages/client-runtime/src/operations/commands.ts b/packages/client-runtime/src/operations/commands.ts
-index 17d6264c401879b1689b284e4b8335e54285296c..393c9374d352738e7c6afc0e35cc06cffd319ef2 100644
+index 65b9ae8930f3181c4058fec2e8902f65ec5960dc..f6a8cb59d35acee9afb8748df6b6b3368b116b31 100644
 --- a/packages/client-runtime/src/operations/commands.ts
 +++ b/packages/client-runtime/src/operations/commands.ts
 @@ -276,6 +276,10 @@ export interface CancelQueuedRunInput extends ThreadCommandInput {
@@ -1538,7 +1538,7 @@ index 17d6264c401879b1689b284e4b8335e54285296c..393c9374d352738e7c6afc0e35cc06cf
  export interface RetryWorkspacePreparationInput extends ThreadCommandInput {
    readonly runId: RunId;
  }
-@@ -1202,6 +1206,17 @@ export const cancelQueuedRun = Effect.fn("EnvironmentCommands.cancelQueuedRun")(
+@@ -1203,6 +1207,17 @@ export const cancelQueuedRun = Effect.fn("EnvironmentCommands.cancelQueuedRun")(
    });
  });
  
@@ -2030,7 +2030,7 @@ index 855afb74013a532ff6f824c7480ae7775ab68c98..402c8f35d4a0cc0577a47ca11f69c5d3
    "thread.next",
    "thread.copyReference",
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index ded60ba899b37e849112706a394e761dba35a9f0..9fee931582a7a5707a1d362d9ab8c97c64cf0095 100644
+index 65c98580764e7b371107f129d4edb392a819b3d9..93c1bf5cc2e0092e1f32a5b7300bfd1b1c5cde7f 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
 @@ -3749,6 +3749,13 @@ export const OrchestrationV2Command = Schema.Union([
@@ -2060,10 +2060,10 @@ index a3476003afb41687579374b9d54389aaa6474ecd..53989369223d1794f72898ff53776079
    secretProviderSettings: Schema.optionalKey(Schema.Boolean),
    /** Secret settings may point at a secret provider; older servers drop the reference. */
 diff --git a/packages/shared/package.json b/packages/shared/package.json
-index 123da46863a99311e0cd7ee6a6aebd6aef3355d2..071bc7f924a132ad918e8458f0fc15dc49536d78 100644
+index 3cb729f0b3acc35690edf57e019f0ce52caaabc2..2326ade6995c92d2cfcd05f794da1cb13a09e9f6 100644
 --- a/packages/shared/package.json
 +++ b/packages/shared/package.json
-@@ -331,6 +331,14 @@
+@@ -335,6 +335,14 @@
        "types": "./src/composerContextReferences.ts",
        "import": "./src/composerContextReferences.ts"
      },

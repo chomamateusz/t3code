@@ -61,10 +61,10 @@ Port to 0085217d1b: V2LifecycleRow.tsx follows upstream ea3328c50c (#42671, one 
  create mode 100644 apps/web/src/components/chat/providerIconUtils.test.ts
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 54ac57a4b72f871c42365d1eee723e42332076b8..f7e8168d6724a4f6572fea92c15d4e88e147dfb2 100644
+index 1a5a724ad6b58c42098696858b700832ab8a0f22..4363cbae4e7239677e136c6fe2bd6578d24d387d 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -3858,6 +3858,11 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3866,6 +3866,11 @@ export default function ChatView(props: ChatViewProps) {
                                      providerInstanceEntries,
                                    )
                                  }
@@ -455,7 +455,7 @@ index 09d1c47bb6ed53bd8dbcd7b4d27f4d6cb1ea6a9a..53b1eed5473833fc15e0cc597cdea472
    const previousProviderNames = thread.providerInstanceHistory
      .filter((instanceId) => instanceId !== modelInstanceId)
 diff --git a/apps/web/src/components/usage/UsageModelDialog.tsx b/apps/web/src/components/usage/UsageModelDialog.tsx
-index d2b5dcc6caa0efbc811ec385eeaeb3662095f26a..ae84201b1f288827eca9865ace2baea5cdae2cad 100644
+index c6cd2dcc6d0a443e556e5343358eae98d76d210f..984d5849455e30fe72583a651a0b3fe99944f069 100644
 --- a/apps/web/src/components/usage/UsageModelDialog.tsx
 +++ b/apps/web/src/components/usage/UsageModelDialog.tsx
 @@ -4,6 +4,7 @@ import { isModelCostUnknown, type ModelTotals } from "@t3tools/shared/usageMerge

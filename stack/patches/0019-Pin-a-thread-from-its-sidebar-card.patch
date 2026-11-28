@@ -42,10 +42,10 @@ Port to 4c8a324e8f: upstream a03c43363b (#43206) folded the Pin and reorder thre
  4 files changed, 32 insertions(+), 1 deletion(-)
 
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 8501acd10840879a9e8747a3c33c6099243ca8b3..f7883260a1f3b24227e93f17a8e76471e9cd0701 100644
+index e081e3289601161094fe4dbf8bd7b7437db0e89c..0bb5b1955cd7d844884c41c9d32bf3bd35270e52 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -3576,6 +3576,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3612,6 +3612,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                            onUnsettle={attemptUnsettle}
                            onSnooze={attemptSnooze}
                            onUnsnooze={attemptUnsnooze}

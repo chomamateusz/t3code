@@ -51,6 +51,8 @@ Port to b8be2287dc: upstream c3aacf1e5b (#42377, pasted images over 2000 px no l
 
 Port to 4c8a324e8f: upstream a03c43363b (#43206) turned docs/user/composer.md's attachment section into bullet lists; the 2000-pixel resize note is now part of the Web and desktop bullet instead of its own paragraph. Code unchanged.
 
+Port to 8bc6a06a12: useComposerContextImport.ts: upstream 99582d429f (#44226, pasted attachments finish downloading after switching threads) replaced the draft-key guard with ownsAttachment(), stages the image record and serializes it for the persisted draft before publishing it, and skips the ownership check for a cached copy because it resolves before the chip lands. Preparation (2000 px longest edge and byte limit) now runs before that staging for downloaded and cached images alike; the staged image takes the prepared file, its name and the resizeSnapShotSource-scaled source, and the byte fingerprint is read from the prepared file. Because preparation awaits, a cached image is checked for ownership too, so a chip deleted during decoding still never comes back. useComposerContextImport.browser.test.tsx: upstream's question, switch (now an unmount), reload and serialization-pause cases run with the PNG fixture; the reload case compares the restored bytes with that fixture instead of the text "notes", upstream's own image/cached row replaces this commit's duplicate, the delete-during-decode cases also assert that nothing was serialized, and the resized-snapshot case uses the hook's input without promptRef, attachmentTargetKeyRef and composerFilesRef. Upstream 0404f700e8 (#44008) changes docs/user/composer.md elsewhere.
+
 Files:
 apps/web:
 - apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
@@ -79,38 +81,36 @@ Tests:
 
 Model/harness: GPT-6 / Codex; port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
 ---
- .../useComposerContextImport.browser.test.tsx | 159 ++++++++++++++++-
- .../chat/useComposerContextImport.ts          |  33 +++-
- .../SnapShotCoordinator.browser.test.ts       |  20 ++-
+ .../useComposerContextImport.browser.test.tsx | 181 +++++++++++++++---
+ .../chat/useComposerContextImport.ts          |  32 +++-
+ .../SnapShotCoordinator.browser.test.ts       |  20 +-
  .../src/components/preview/PreviewView.tsx    |   2 +-
- apps/web/src/lib/imageCanvas.ts               |  62 ++++---
+ apps/web/src/lib/imageCanvas.ts               |  62 +++---
  .../src/lib/imageCompression.browser.test.ts  |  47 +++--
- apps/web/src/lib/imageCompression.test.ts     | 160 ++++++++++++++++--
- apps/web/src/lib/imageCompression.ts          |  61 +++----
+ apps/web/src/lib/imageCompression.test.ts     | 160 ++++++++++++++--
+ apps/web/src/lib/imageCompression.ts          |  61 +++---
  apps/web/src/lib/imageCompression.worker.ts   |  25 ++-
- apps/web/src/lib/previewAnnotation.test.ts    |  50 +++++-
+ apps/web/src/lib/previewAnnotation.test.ts    |  50 ++++-
  apps/web/src/lib/previewAnnotation.ts         |  15 +-
  docs/user/composer.md                         |   2 +-
- 12 files changed, 528 insertions(+), 108 deletions(-)
+ 12 files changed, 532 insertions(+), 125 deletions(-)
 
 diff --git a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
-index d48e965895ddd40377c2836ffc39435e889af34a..34a6e7dbf8d8550f52f6eba4f357e1923ddb3fa8 100644
+index b2646c793f23dcc4b3bbd6406e30e3ae7c28d30f..374483c60fc7137afe712131b210f948058780da 100644
 --- a/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
 +++ b/apps/web/src/components/chat/useComposerContextImport.browser.test.tsx
-@@ -48,7 +48,10 @@ function deferred<T>() {
+@@ -62,6 +62,8 @@ function deferred<T>() {
  it.each([
    { kind: "file", edit: "delete" },
    { kind: "image", edit: "delete" },
 +  { kind: "image", edit: "delete-during-decode" },
 +  { kind: "image", edit: "cached-delete-during-decode" },
    { kind: "image", edit: "retain" },
-+  { kind: "image", edit: "cached" },
    { kind: "file", edit: "undo" },
    { kind: "file", edit: "retain" },
-   { kind: "file", edit: "switch" },
-@@ -62,11 +65,22 @@ it.each([
-   const store = useComposerDraftStore.getState();
-   using _draft = { [Symbol.dispose]: () => store.clearComposerContent(target) };
+@@ -118,18 +120,27 @@ it.each([
+     },
+   };
    const sourceEnvironmentId = EnvironmentId.make("clipboard-source");
 +  const bytes =
 +    kind === "image"
@@ -125,28 +125,40 @@ index d48e965895ddd40377c2836ffc39435e889af34a..34a6e7dbf8d8550f52f6eba4f357e192
 +  const file = new File([bytes], "notes.txt", { type: mimeType });
 +  const cached = edit === "cached" || edit === "cached-delete-during-decode";
 +  const delayDecode = edit === "delete-during-decode" || edit === "cached-delete-during-decode";
++  const deleted =
++    edit === "delete" ||
++    edit === "delete-annotation" ||
++    edit === "delete-during-decode" ||
++    edit === "cached-delete-during-decode";
    rememberCopiedComposerAttachments(
      sourceEnvironmentId,
 -    edit === "cached"
--      ? new Map([["source-attachment", new File(["notes"], "notes.txt")]])
+-      ? new Map([
+-          [
+-            "source-attachment",
+-            new File(["notes"], "notes.txt", {
+-              type: kind === "image" ? "image/png" : "text/plain",
+-            }),
+-          ],
+-        ])
 -      : new Map(),
 +    cached ? new Map([["source-attachment", file]]) : new Map(),
    );
    using _copy = {
      [Symbol.dispose]: () => rememberCopiedComposerAttachments(sourceEnvironmentId, new Map()),
-@@ -75,6 +89,8 @@ it.each([
+@@ -137,6 +148,8 @@ it.each([
    const downloaded = deferred<Response>();
    const requested = deferred<void>();
    const settled = deferred<void>();
 +  const decoding = deferred<void>();
 +  const resumeDecode = deferred<void>();
    const input = {
-     environmentId: EnvironmentId.make("clipboard-target"),
+     environmentId: thread.environmentId,
      linkedEnvironments: new Map(),
-@@ -112,6 +128,20 @@ it.each([
-     requested.resolve();
-     return downloaded.promise;
-   });
+@@ -183,6 +196,20 @@ it.each([
+       void resumeSerialization.promise.then(() => readAsDataURL.call(this, blob));
+     });
+   }
 +  // Image preparation decodes in a worker when one exists; the stub below sees only this thread.
 +  using _worker = stubGlobal("Worker", undefined);
 +  const decode = globalThis.createImageBitmap.bind(globalThis);
@@ -164,7 +176,7 @@ index d48e965895ddd40377c2836ffc39435e889af34a..34a6e7dbf8d8550f52f6eba4f357e192
    const contextId = ComposerContextId.make(`${kind}_source`);
    const attachmentFields = {
      version: 1 as const,
-@@ -119,8 +149,8 @@ it.each([
+@@ -190,8 +217,8 @@ it.each([
      label: "notes.txt",
      attachmentId: "source-attachment",
      name: "notes.txt",
@@ -175,9 +187,9 @@ index d48e965895ddd40377c2836ffc39435e889af34a..34a6e7dbf8d8550f52f6eba4f357e192
    };
    const attachment = (
      kind === "file"
-@@ -165,9 +195,15 @@ it.each([
-     if (edit === "question") pastedPrompt = "Question answer";
-     promptRef.current = pastedPrompt;
+@@ -235,11 +262,17 @@ it.each([
+     });
+     if (isQuestion) pastedPrompt = "Question answer";
      store.setPrompt(target, pastedPrompt);
 -    if (edit !== "cached") await requested.promise;
 +    if (!cached) await requested.promise;
@@ -191,27 +203,57 @@ index d48e965895ddd40377c2836ffc39435e889af34a..34a6e7dbf8d8550f52f6eba4f357e192
 +    });
 +  }
    await act(() => {
-     if (
-       edit !== "annotation" &&
-@@ -186,14 +222,15 @@ it.each([
-     if (edit === "switch") input.attachmentTargetKeyRef.current = DraftId.make("other-draft");
-   });
+-    if (edit === "delete" || edit === "delete-annotation" || edit === "undo") {
++    if (deleted || edit === "undo") {
+       store.setPrompt(target, "Keep this edit");
+     }
+     if (edit === "undo") {
+@@ -258,7 +291,8 @@ it.each([
+   if (edit === "question-close") closeQuestion();
+   let slotsDuringSerialization: number | undefined;
    await act(async () => {
 -    downloaded.resolve(new Response("notes", { headers: { "Content-Type": attachment.mimeType } }));
 +    downloaded.resolve(new Response(bytes, { headers: { "Content-Type": mimeType } }));
 +    resumeDecode.resolve();
+     if (pauseSerialization) {
+       await serializing.promise;
+       slotsDuringSerialization = countQuestionAttachments([target]);
+@@ -268,10 +302,7 @@ it.each([
      await settled.promise;
    });
    expect(pendingDraftWork.has(target)).toBe(false);
+-  if (
+-    kind === "image" &&
+-    (edit === "delete" || edit === "delete-annotation" || edit === "question-close")
+-  ) {
++  if (kind === "image" && (deleted || edit === "question-close")) {
+     expect(reader).not.toHaveBeenCalled();
+   }
+   if (pauseSerialization) expect(slotsDuringSerialization).toBe(1);
+@@ -281,7 +312,7 @@ it.each([
+     await useComposerDraftStore.persist.rehydrate();
+     const restored = store.getComposerDraft(target)?.images[0]?.file;
+     expect(restored).not.toBe(inMemoryFile);
+-    expect(await restored?.text()).toBe("notes");
++    expect(new Uint8Array(await restored!.arrayBuffer())).toEqual(bytes);
+   }
+   if (edit === "question-close" || edit === "question-close-during-serialization") {
+     expect(store.getComposerDraft(target)).toBeNull();
+@@ -289,11 +320,9 @@ it.each([
+     return;
+   }
    const draft = store.getComposerDraft(target)!;
-   expect(draft.prompt).toBe(promptRef.current);
+-  expect(draft.prompt).toBe(
+-    edit === "delete" || edit === "delete-annotation" ? "Keep this edit" : pastedPrompt,
+-  );
++  expect(draft.prompt).toBe(deleted ? "Keep this edit" : pastedPrompt);
    const attachments = kind === "file" ? draft.files : draft.images;
 -  if (kind === "image" && edit === "retain")
 +  if (kind === "image" && (edit === "retain" || edit === "cached"))
      expect(draft.images[0]?.source).toEqual(
        attachment.kind === "image" ? attachment.source : undefined,
      );
-@@ -208,6 +245,110 @@ it.each([
+@@ -310,6 +339,108 @@ it.each([
    );
  });
  
@@ -235,7 +277,6 @@ index d48e965895ddd40377c2836ffc39435e889af34a..34a6e7dbf8d8550f52f6eba4f357e192
 +    end(key);
 +    settled.resolve();
 +  });
-+  const promptRef = { current: "" };
 +  const input = {
 +    environmentId: EnvironmentId.make("clipboard-target"),
 +    linkedEnvironments: new Map(),
@@ -244,14 +285,11 @@ index d48e965895ddd40377c2836ffc39435e889af34a..34a6e7dbf8d8550f52f6eba4f357e192
 +    composerDraftTarget: target,
 +    attachmentDraftTarget: target,
 +    attachmentTargetKey: target,
-+    attachmentTargetKeyRef: { current: target },
 +    questionAttachmentTarget: null,
 +    pendingUserInputs: [],
 +    composerContextRecords: new Map(),
 +    composerImages: [],
-+    composerFilesRef: { current: [] },
 +    pendingThreadImportsRef: { current: new Map() },
-+    promptRef,
 +    addComposerFilesToDraft: (files: Parameters<typeof store.addFiles>[1]) =>
 +      store.addFiles(target, files),
 +  } satisfies ImportInput;
@@ -301,12 +339,14 @@ index d48e965895ddd40377c2836ffc39435e889af34a..34a6e7dbf8d8550f52f6eba4f357e192
 +  } satisfies ComposerContextRecord;
 +  await act(async () => {
 +    const remapped = importer.importContextRecords([record], sourceEnvironmentId);
-+    promptRef.current = formatInlineContextReference({
-+      kind: "image",
-+      contextId: remapped.get(contextId)!,
-+      label: "window.png",
-+    });
-+    store.setPrompt(target, promptRef.current);
++    store.setPrompt(
++      target,
++      formatInlineContextReference({
++        kind: "image",
++        contextId: remapped.get(contextId)!,
++        label: "window.png",
++      }),
++    );
 +    await settled.promise;
 +  });
 +
@@ -323,10 +363,10 @@ index d48e965895ddd40377c2836ffc39435e889af34a..34a6e7dbf8d8550f52f6eba4f357e192
    "preserves thread identity across repeated pastes: %s",
    async (variant) => {
 diff --git a/apps/web/src/components/chat/useComposerContextImport.ts b/apps/web/src/components/chat/useComposerContextImport.ts
-index 458f39dc9863834708bd03e87ead78ef3968ffca..f12c450b640e3d78ed187a1b6e922246c44dc815 100644
+index 8eb5b59638728445be32cedf6ba288b5e5274e7d..4e1d30e480e5d88d6ffdf2ef7bb6052d173f2565 100644
 --- a/apps/web/src/components/chat/useComposerContextImport.ts
 +++ b/apps/web/src/components/chat/useComposerContextImport.ts
-@@ -15,6 +15,7 @@ import {
+@@ -16,6 +16,7 @@ import {
    type ComposerContextRecord,
    type EnvironmentId,
    PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
@@ -334,26 +374,16 @@ index 458f39dc9863834708bd03e87ead78ef3968ffca..f12c450b640e3d78ed187a1b6e922246
  } from "@t3tools/contracts";
  import {
    type ComposerFileAttachment,
-@@ -62,6 +63,8 @@ import { useStableCallback } from "../../hooks/useStableCallback";
- import { countPreparingComposerImages } from "./preparingComposerImages";
- import type { QueuedAttachmentContextBinding } from "./composerContextUndo";
+@@ -71,6 +72,8 @@ import type { QueuedAttachmentContextBinding } from "./composerContextUndo";
  import { matchRestorableQueuedAttachment } from "./queuedMessageEdit";
+ import { appAtomRegistry } from "~/rpc/atomRegistry";
+ import { environmentThreadDetails } from "~/state/threads";
 +import { prepareImageForAttachment } from "~/lib/imageCompression";
 +import { resizeSnapShotSource } from "~/lib/snapShotSource";
  
  const isUnreachable = Schema.is(
    Schema.Union([ConnectionTransientError, ConnectionBlockedError, EnvironmentRpcUnavailableError]),
-@@ -175,7 +178,8 @@ export function useComposerContextImport(input: {
-         description: m(msg("{reason} Remove the chip or attach the file again.", { reason })),
-       });
-     };
--    let file = copiedComposerAttachmentFile(sourceEnvironmentId, record.attachmentId);
-+    const cachedFile = copiedComposerAttachmentFile(sourceEnvironmentId, record.attachmentId);
-+    let file = cachedFile;
-     if (!file) {
-       const sourceConnection = readPreparedConnection(sourceEnvironmentId);
-       if (!sourceConnection) {
-@@ -205,7 +209,26 @@ export function useComposerContextImport(input: {
+@@ -217,19 +220,38 @@ export function useComposerContextImport(input: {
          return;
        }
        file = new File([blob], record.name, { type: record.mimeType || blob.type });
@@ -376,28 +406,36 @@ index 458f39dc9863834708bd03e87ead78ef3968ffca..f12c450b640e3d78ed187a1b6e922246
 +      file = prepared.file;
 +      preparedImageSize = prepared.imageSize;
 +      await readComposerImageBytes(file);
-+    }
-+    if (!cachedFile || record.kind === "image") {
-       // Question attachments have no inline reference; annotations can own their screenshots.
-       const references = new Set(collectInlineContextIds(promptRef.current));
-       if (
-@@ -250,12 +273,14 @@ export function useComposerContextImport(input: {
-           {
+     }
+     const stagedImage: ComposerImageAttachment | null =
+       record.kind === "image"
+         ? {
              type: "image",
              id: localId,
 -            name: record.name,
 +            name: file.name,
              mimeType: file.type,
              sizeBytes: file.size,
-             previewUrl: URL.createObjectURL(file),
+             previewUrl: "",
              file,
 -            ...(record.source ? { source: record.source } : {}),
 +            ...(record.source
 +              ? { source: resizeSnapShotSource(record.source, preparedImageSize) }
 +              : {}),
-           },
-         ],
-         {
+           }
+         : null;
+     const ownsAttachment = () => {
+@@ -247,8 +269,8 @@ export function useComposerContextImport(input: {
+           draft?.previewAnnotations.some((annotation) => annotation.id === localId))
+       );
+     };
+-    // A cached copy resolves before the paste inserts its chip; only a download can outlive it.
+-    if (!copiedFile && !ownsAttachment()) return;
++    // A cached file resolves before the paste inserts its chip; a download or image preparation can outlive it.
++    if ((!copiedFile || stagedImage) && !ownsAttachment()) return;
+     // Question cleanup can move an accepted image. Prepare its saved record before publishing it.
+     const serialized = stagedImage ? await serializeComposerImages([stagedImage], []) : [];
+     if (stagedImage && !ownsAttachment()) return;
 diff --git a/apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts b/apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts
 index 0915ed9df3b538b26f34d39ae482a35d88f185bd..1fb68ef7272dc5513f1de35a9dd2151cdeb251f8 100644
 --- a/apps/web/src/components/desktop/SnapShotCoordinator.browser.test.ts
@@ -1083,7 +1121,7 @@ index 8f8b944e2fa1ce73444ca9f27e41d37da76b07af..fdd8b9af2e1ca40c29b5d3eb0885a10e
      return { status: "failed" };
    }
 diff --git a/docs/user/composer.md b/docs/user/composer.md
-index 5f068ea756e9417fb7e0005c3871384f158971ce..abcb52e5fb853da1b2f0c3f207512979586c2804 100644
+index d15c8e58818d5b664099a34fd365159225d8f751..cd2c032feba737afac81d20419aa43c5e1ae9b81 100644
 --- a/docs/user/composer.md
 +++ b/docs/user/composer.md
 @@ -25,7 +25,7 @@ Attach up to **100 files** per message:

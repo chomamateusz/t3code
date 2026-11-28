@@ -56,7 +56,7 @@ Model/harness: port to 965ddc1d6c: Claude Opus 5.5 / Claude Code.
  3 files changed, 405 insertions(+), 36 deletions(-)
 
 diff --git a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
-index 5ebe6aaae180c6c84aa59b69410a12b40cb1afc8..8d3cbc1ac28db860cb68f15b599fabf6690711ea 100644
+index 8450f8abb3f83788c70ba048e131fadadd617c0e..dea557671bb759b19f927926665d762b1b995cb1 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
 +++ b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
 @@ -327,9 +327,79 @@ describe("MessagesTimeline work rows", () => {
@@ -200,7 +200,7 @@ index 5ebe6aaae180c6c84aa59b69410a12b40cb1afc8..8d3cbc1ac28db860cb68f15b599fabf6
      ];
      await using screen = await render(<MessagesTimeline {...props} timelineEntries={entries} />, {
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-index fc7a5e07e3a747f650c93dd27c83a59d565d3c1b..5790c28f7cc7707c1b81997445c6798d12457302 100644
+index 37a61de763de36301deece983a393b13109403de..c759045616a2116f7d3d4075d27d81d034a3765d 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 @@ -1156,7 +1156,106 @@ describe("deriveMessagesTimelineRows", () => {
@@ -649,10 +649,10 @@ index fc7a5e07e3a747f650c93dd27c83a59d565d3c1b..5790c28f7cc7707c1b81997445c6798d
      ]);
    });
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index 90b324598ba72817969302d328af49cd4a87a496..224653f687491a0ace46d3040b6cdd1795949c15 100644
+index caf4daa172062c8b0e42e87849d02362e3afa503..d78898104f4c07c3f5b2b15cf7eab20598abfb5d 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-@@ -835,6 +835,30 @@ function retainedAssistantReplyEntryIds(
+@@ -856,6 +856,30 @@ function retainedAssistantReplyEntryIds(
    return replyEntryIds;
  }
  
@@ -683,7 +683,7 @@ index 90b324598ba72817969302d328af49cd4a87a496..224653f687491a0ace46d3040b6cdd17
  function deriveSupersededAttemptFolds(
    timelineEntries: ReadonlyArray<TimelineEntry>,
    unfoldedRunIds: ReadonlySet<RunId>,
-@@ -846,11 +870,13 @@ function deriveSupersededAttemptFolds(
+@@ -867,11 +891,13 @@ function deriveSupersededAttemptFolds(
        entry.attempt !== undefined && retainedReplyEntryIds.has(entry.id) ? [entry.attempt.id] : [],
      ),
    );
@@ -697,7 +697,7 @@ index 90b324598ba72817969302d328af49cd4a87a496..224653f687491a0ace46d3040b6cdd17
        unfoldedRunIds.has(entry.attempt.runId) ||
        (entry.kind === "message" && entry.message.role === "user") ||
        (entry.kind === "event" && entry.projectedItem.item.type === "handoff") ||
-@@ -1187,7 +1213,7 @@ function deriveTurnFolds(input: {
+@@ -1208,7 +1234,7 @@ function deriveTurnFolds(input: {
      // Folded dividers lose their place in the turn, so only the latest stays visible.
      const visibleCompactionId = group.entries.findLast(timelineEntryIsCompaction)?.id;
      for (const [index, entry] of group.entries.entries()) {

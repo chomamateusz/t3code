@@ -2276,10 +2276,10 @@ index 307b9c5d8284dc07a5c257dfe6c3d91f6ff5219a..54e9b8fbfa89c89d8f1cf88fdf8f8693
  }
  
 diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
-index c88106c8d56b7a8dfbf81258055292723967f57b..e302dc0ad4fdf08d8858ff1cd7fc0582b62b6372 100644
+index 1c441cde829b98c5b3fef6a182b10375c1d12db4..f3f698a9741ef2d8482d47e06fbe42eb981b2ff1 100644
 --- a/apps/web/vite.config.ts
 +++ b/apps/web/vite.config.ts
-@@ -327,6 +327,11 @@ export default defineConfig(({ command }) => {
+@@ -335,6 +335,11 @@ export default defineConfig(({ command }) => {
        ],
      },
      define: {

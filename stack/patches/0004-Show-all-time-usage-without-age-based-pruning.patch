@@ -1019,7 +1019,7 @@ index ae0fe6cec090d42df1133c81ccff67a6d76a0b6f..f01d059affd81254766156033084fe17
    // Snapshot now: the encoding runs later, while the file is written.
    return (cache, extra) => encode([...cache], extra);
 diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
-index d69de91e9715b9b89b0697ebce3d7232d009c944..21da2f863f9feb50590517c7cff85d66cf0bcc02 100644
+index 46190965b0edef05f8e41b712772ff19df67cd83..5d21c15045a951a9c8c17626b9a470238f34d066 100644
 --- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 +++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
 @@ -29,7 +29,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
@@ -1033,7 +1033,7 @@ index d69de91e9715b9b89b0697ebce3d7232d009c944..21da2f863f9feb50590517c7cff85d66
    ].map((command, index) => [command, index]),
  );
  
-@@ -521,7 +523,9 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+@@ -532,7 +534,9 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
  
  // Whole labels: search titles keep the encoded message, which cannot nest another one.
  const USAGE_COMMAND_LABELS: Record<
@@ -1045,7 +1045,7 @@ index d69de91e9715b9b89b0697ebce3d7232d009c944..21da2f863f9feb50590517c7cff85d66
  > = {
    "usage.cost": msg("Usage: Cost"),
 diff --git a/apps/web/src/components/usage/UsagePage.tsx b/apps/web/src/components/usage/UsagePage.tsx
-index f4aa54b160eb2e7b3b71329eb188cd7499b9f90b..d08a4e95605ecc154d03aa8171ca5c25b81e2184 100644
+index 34517ffc0f90033995e73693673e3a13d9d2d932..cf31f5f2d52ec3476545fbe00bd88557887818b8 100644
 --- a/apps/web/src/components/usage/UsagePage.tsx
 +++ b/apps/web/src/components/usage/UsagePage.tsx
 @@ -43,7 +43,6 @@ import { shortcutLabelForCommand } from "../../keybindings";

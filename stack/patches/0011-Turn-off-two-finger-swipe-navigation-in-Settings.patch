@@ -381,7 +381,7 @@ index d8a748b8797bb597e9ac1c9af0f927c3f50a87e0..9dfc692793126f79f2800115cb20f4a8
      </PanelAnimationSuppressionProvider>
    );
 diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
-index 10d4e2c6fab5d0cc55332e0a361a4faa789bee32..8f5d9a272d146328e8b2de90be843ba4f8756998 100644
+index 4f06a217d346287309189e39154b27b32e969950..77dbcadaf80f567585b490fe74b29cb94e869f76 100644
 --- a/apps/web/src/components/settings/SettingsPanels.tsx
 +++ b/apps/web/src/components/settings/SettingsPanels.tsx
 @@ -646,6 +646,9 @@ export function useSettingsRestore(onRestored?: () => void) {
@@ -441,10 +441,10 @@ index 10d4e2c6fab5d0cc55332e0a361a4faa789bee32..8f5d9a272d146328e8b2de90be843ba4
          <SettingsRow
            {...setting("unpin-confirmation")}
 diff --git a/apps/web/src/components/settings/settingsSearch.test.ts b/apps/web/src/components/settings/settingsSearch.test.ts
-index d8a04cc149bd115b6b192edb34d86cb568e0e3fa..bdeb70069b59566975bb232ea4c7c45853028eca 100644
+index 18397dfe5a4b2e567ccd1cf4a2f6f97269c68594..9d6e68f0ad453a1dbcc9be654190305167460bba 100644
 --- a/apps/web/src/components/settings/settingsSearch.test.ts
 +++ b/apps/web/src/components/settings/settingsSearch.test.ts
-@@ -158,6 +158,8 @@ describe("searchSettings", () => {
+@@ -187,6 +187,8 @@ describe("searchSettings", () => {
  
    it("hides desktop-only settings from browser search", () => {
      expect(SETTINGS_SEARCH_ITEMS.some((item) => item.id === "quit-confirmation")).toBe(true);
@@ -454,10 +454,10 @@ index d8a04cc149bd115b6b192edb34d86cb568e0e3fa..bdeb70069b59566975bb232ea4c7c458
      expect(searchSettings("wsl")).toEqual([]);
      expect(searchSettings("update track")).toEqual([]);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 0121564b745b7e9cd5f68f26f1b3258d4294bc8b..aed2b6484ea837fbe4f5db022da646542538d365 100644
+index 013d8f868dcfcfdbacbcfb30806c62bd01c73a99..01e85051d7a91b61326d26a65f4f4185ae781d29 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -965,6 +965,15 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -969,6 +969,15 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: [msg("confirmation desktop app exit direct hold double click press twice")],
      desktopOnly: true,
    },
